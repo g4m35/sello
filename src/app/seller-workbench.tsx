@@ -23,7 +23,10 @@ import {
 } from "lucide-react";
 
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import type { InventoryStatus } from "@/generated/prisma/client";
+import { canPublish, canTransition, toLifecycleState } from "@/lib/lifecycle/item-status";
 import CompsPanel from "./comps-panel";
+import StatusBadge from "./status-badge";
 
 type Marketplace = "ebay" | "grailed" | "poshmark" | "depop";
 
@@ -37,7 +40,7 @@ type MarketplaceDraft = {
 type DraftApiResponse = {
   inventoryItem: {
     id: string;
-    status: string;
+    status: InventoryStatus;
     productName: string;
     brand: string | null;
     category: string;
@@ -218,6 +221,7 @@ export default function SellerWorkbench() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDraftActionRunning, setIsDraftActionRunning] = useState(false);
+  const [isLifecycleRunning, setIsLifecycleRunning] = useState(false);
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [activeSection, setActiveSection] = useState<AppSection>("account");
@@ -533,6 +537,41 @@ export default function SellerWorkbench() {
     setSaveMessage(action === "reset" ? "Draft reset to the validated AI output." : "Draft duplicated.");
   }
 
+  async function runLifecycleAction(action: "mark_sold" | "delist") {
+    if (!session || !result) {
+      return;
+    }
+
+    setIsLifecycleRunning(true);
+    setError("");
+    setSaveMessage("");
+
+    const response = await fetch("/api/listings/lifecycle", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ inventoryItemId: result.inventoryItem.id, action }),
+    });
+
+    const payload = await response.json();
+    setIsLifecycleRunning(false);
+
+    if (!response.ok) {
+      setSaveState("error");
+      setError(payload.error ?? "Could not update the item status.");
+      return;
+    }
+
+    setResult((current) =>
+      current ? { ...current, inventoryItem: payload.inventoryItem } : current,
+    );
+    setSaveMessage(
+      action === "mark_sold" ? "Item marked as sold." : "Item delisted locally.",
+    );
+  }
+
   async function saveDraft(approve: boolean) {
     await persistDraft(approve);
   }
@@ -552,6 +591,8 @@ export default function SellerWorkbench() {
   }
 
   const hasDraft = Boolean(result && editableDraft);
+  const lifecycleState = result ? toLifecycleState(result.inventoryItem.status) : null;
+  const publishingAllowed = lifecycleState ? canPublish(lifecycleState) : false;
   const requiredIssues = useMemo(() => getRequiredFieldIssues(editableDraft), [editableDraft]);
   const platformWarnings = useMemo(() => getPlatformWarnings(result, editableDraft), [result, editableDraft]);
   const canApprove = hasDraft && requiredIssues.length === 0;
@@ -673,6 +714,9 @@ export default function SellerWorkbench() {
                       <p className="mt-2 text-sm text-neutral-600">
                         {result.inventoryItem.brand ?? "Unknown brand"} · {result.inventoryItem.category}
                       </p>
+                      <div className="mt-3">
+                        <StatusBadge status={result.inventoryItem.status} />
+                      </div>
                     </div>
                   ) : (
                     <p className="mt-4 text-sm leading-6 text-neutral-600">
@@ -829,6 +873,48 @@ export default function SellerWorkbench() {
                   </div>
 
                   <div className="mt-4 flex flex-col gap-4">
+                    <div className="border border-neutral-300 bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <p className="text-sm font-semibold">Item status</p>
+                          <StatusBadge status={result.inventoryItem.status} />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => runLifecycleAction("mark_sold")}
+                            disabled={
+                              isLifecycleRunning ||
+                              !lifecycleState ||
+                              !canTransition(lifecycleState, "sold")
+                            }
+                            className="inline-flex h-9 items-center gap-2 border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-50 disabled:opacity-50"
+                          >
+                            <PackageCheck className="h-4 w-4" />
+                            Mark sold
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => runLifecycleAction("delist")}
+                            disabled={
+                              isLifecycleRunning ||
+                              !lifecycleState ||
+                              !canTransition(lifecycleState, "delisted")
+                            }
+                            className="inline-flex h-9 items-center gap-2 border border-neutral-300 px-3 text-sm font-semibold hover:bg-neutral-50 disabled:opacity-50"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            Delist locally
+                          </button>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs leading-5 text-neutral-600">
+                        {publishingAllowed
+                          ? "Item is ready. Real publishing stays disabled until marketplace adapters exist; nothing is published yet."
+                          : "Publishing stays blocked until the item is ready (required fields complete and approved). No marketplace status is faked."}
+                      </p>
+                    </div>
+
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
                         <p className="font-semibold">Required before approval</p>
@@ -1084,7 +1170,9 @@ export default function SellerWorkbench() {
                               {result.inventoryItem.brand ?? "Unknown"} · {result.inventoryItem.styleCode ?? "No style code"}
                             </p>
                           </td>
-                          <td className="px-4 py-4">{result.inventoryItem.status}</td>
+                          <td className="px-4 py-4">
+                            <StatusBadge status={result.inventoryItem.status} />
+                          </td>
                           <td className="px-4 py-4">{formatPrice(editableDraft?.recommendedPriceCents ?? null)}</td>
                           <td className="px-4 py-4">{editableDraft?.selectedMarketplaces.join(", ")}</td>
                           <td className="px-4 py-4 font-mono text-xs">{result.aiOutput.id.slice(0, 8)}</td>
@@ -1106,7 +1194,10 @@ export default function SellerWorkbench() {
               <section className="flex flex-col gap-5">
                 <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
                   <div className="border border-neutral-300 bg-white p-5">
-                    <h3 className="text-lg font-semibold">Pricing workspace</h3>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="text-lg font-semibold">Pricing workspace</h3>
+                      {result ? <StatusBadge status={result.inventoryItem.status} /> : null}
+                    </div>
                     <p className="mt-1 text-sm text-neutral-600">
                       Add real sold comps to compute guidance prices. The app never invents a
                       resale price without comps.
@@ -1166,7 +1257,25 @@ export default function SellerWorkbench() {
             ) : null}
 
             {activeSection === "channels" ? (
-              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <section className="flex flex-col gap-4">
+                <div className="border border-neutral-300 bg-white p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">Publishing gate</h3>
+                    {result ? (
+                      <StatusBadge status={result.inventoryItem.status} />
+                    ) : (
+                      <span className="text-sm text-neutral-500">No item yet</span>
+                    )}
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-neutral-600">
+                    {!result
+                      ? "Start a draft before any channel work."
+                      : publishingAllowed
+                        ? "Item is ready. Channel publishing will run through real adapters in a later slice. Nothing is published or faked here."
+                        : "Publishing is blocked until the item reaches the ready state. No marketplace status is faked."}
+                  </p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {marketplaces.map((marketplace) => (
                   <div key={marketplace.id} className="border border-neutral-300 bg-white p-5">
                     <div className="flex items-center justify-between gap-3">
@@ -1180,12 +1289,21 @@ export default function SellerWorkbench() {
                     <p className="mt-1 font-medium">Draft only</p>
                   </div>
                 ))}
+                </div>
               </section>
             ) : null}
 
             {activeSection === "jobs" ? (
               <section className="border border-neutral-300 bg-white p-5">
-                <h3 className="text-lg font-semibold">Background jobs</h3>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-lg font-semibold">Background jobs</h3>
+                  {result ? (
+                    <span className="flex items-center gap-2 text-sm text-neutral-600">
+                      Current item
+                      <StatusBadge status={result.inventoryItem.status} />
+                    </span>
+                  ) : null}
+                </div>
                 <div className="mt-5 grid gap-3">
                   {[
                     ["marketplace-publish", "Ready for next slice", "BullMQ schema exists; workers not implemented"],
@@ -1268,7 +1386,15 @@ export default function SellerWorkbench() {
                   </div>
                 </div>
                 <div className="border border-neutral-300 bg-white p-5 lg:col-span-2">
-                  <h3 className="text-lg font-semibold">MVP boundaries</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">MVP boundaries</h3>
+                    {result ? (
+                      <span className="flex items-center gap-2 text-sm text-neutral-600">
+                        Current item
+                        <StatusBadge status={result.inventoryItem.status} />
+                      </span>
+                    ) : null}
+                  </div>
                   <ul className="mt-4 space-y-3 text-sm leading-6 text-neutral-600">
                     <li>Marketplace publishing is not faked.</li>
                     <li>Live resale comps are not connected yet.</li>
