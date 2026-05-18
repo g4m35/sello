@@ -26,10 +26,20 @@ export type InventorySyncJob = z.infer<typeof InventorySyncJobSchema>;
 
 let connection: IORedis | null = null;
 
-function getRedisConnection() {
-  connection ??= new IORedis(getRequiredEnv("REDIS_URL"), {
+function buildRedisConnectionOptions(redisUrl: string) {
+  const url = new URL(redisUrl);
+
+  return {
     maxRetriesPerRequest: null,
-  });
+    connectTimeout: 5_000,
+    commandTimeout: 5_000,
+    ...(url.protocol === "rediss:" ? { tls: {} } : {}),
+  };
+}
+
+function getRedisConnection() {
+  const redisUrl = getRequiredEnv("REDIS_URL");
+  connection ??= new IORedis(redisUrl, buildRedisConnectionOptions(redisUrl));
 
   return connection;
 }
