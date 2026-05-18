@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { MarketplaceSchema } from "./ai/listing-draft";
+import { countMeaningfulBullets, READINESS_THRESHOLDS } from "./lifecycle/readiness";
 
 export const ListingDraftUpdateSchema = z
   .object({
@@ -17,31 +18,31 @@ export const ListingDraftUpdateSchema = z
       return;
     }
 
-    if (update.title.trim().length < 10) {
+    if (update.title.trim().length < READINESS_THRESHOLDS.titleMinLength) {
       context.addIssue({
         code: "custom",
-        message: "Title must be at least 10 characters before approval.",
+        message: `Title must be at least ${READINESS_THRESHOLDS.titleMinLength} characters before approval.`,
         path: ["title"],
       });
     }
 
-    if (update.description.trim().length < 20) {
+    if (update.description.trim().length < READINESS_THRESHOLDS.descriptionMinLength) {
       context.addIssue({
         code: "custom",
-        message: "Description must be at least 20 characters before approval.",
+        message: `Description must be at least ${READINESS_THRESHOLDS.descriptionMinLength} characters before approval.`,
         path: ["description"],
       });
     }
 
-    if (update.bulletPoints.filter((point) => point.trim()).length < 3) {
+    if (countMeaningfulBullets(update.bulletPoints) < READINESS_THRESHOLDS.minBulletPoints) {
       context.addIssue({
         code: "custom",
-        message: "Add at least 3 bullet points before approval.",
+        message: `Add at least ${READINESS_THRESHOLDS.minBulletPoints} bullet points before approval.`,
         path: ["bulletPoints"],
       });
     }
 
-    if (update.selectedMarketplaces.length < 1) {
+    if (update.selectedMarketplaces.length < READINESS_THRESHOLDS.minMarketplaces) {
       context.addIssue({
         code: "custom",
         message: "Select at least one marketplace before approval.",

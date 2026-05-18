@@ -25,6 +25,7 @@ import {
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { InventoryStatus } from "@/generated/prisma/client";
 import { canPublish, canTransition, toLifecycleState } from "@/lib/lifecycle/item-status";
+import { evaluateReadiness } from "@/lib/lifecycle/readiness";
 import CompsPanel from "./comps-panel";
 import StatusBadge from "./status-badge";
 
@@ -146,31 +147,22 @@ function getBulletPoints(draft: EditableDraft) {
     .filter(Boolean);
 }
 
-function getRequiredFieldIssues(draft: EditableDraft | null) {
+function getReadinessMessages(
+  result: DraftApiResponse | null,
+  draft: EditableDraft | null,
+) {
   if (!draft) {
     return ["Generate or load a draft before editing."];
   }
 
-  const issues: string[] = [];
-  const bulletPoints = getBulletPoints(draft);
-
-  if (draft.title.trim().length < 10) {
-    issues.push("Title needs at least 10 characters.");
-  }
-
-  if (draft.description.trim().length < 20) {
-    issues.push("Description needs at least 20 characters.");
-  }
-
-  if (bulletPoints.length < 3) {
-    issues.push("Add at least 3 bullet points.");
-  }
-
-  if (draft.selectedMarketplaces.length < 1) {
-    issues.push("Select at least one marketplace.");
-  }
-
-  return issues;
+  return evaluateReadiness({
+    productName: result?.inventoryItem.productName ?? null,
+    title: draft.title,
+    description: draft.description,
+    bulletPoints: getBulletPoints(draft),
+    selectedMarketplaces: draft.selectedMarketplaces,
+    recommendedPriceCents: draft.recommendedPriceCents,
+  }).issues.map((issue) => issue.message);
 }
 
 function getPlatformWarnings(result: DraftApiResponse | null, draft: EditableDraft | null) {
@@ -406,7 +398,7 @@ export default function SellerWorkbench() {
     const bulletPoints = getBulletPoints(editableDraft);
 
     if (approve) {
-      const issues = getRequiredFieldIssues(editableDraft);
+      const issues = getReadinessMessages(result, editableDraft);
 
       if (issues.length) {
         setSaveState("dirty");
@@ -593,7 +585,10 @@ export default function SellerWorkbench() {
   const hasDraft = Boolean(result && editableDraft);
   const lifecycleState = result ? toLifecycleState(result.inventoryItem.status) : null;
   const publishingAllowed = lifecycleState ? canPublish(lifecycleState) : false;
-  const requiredIssues = useMemo(() => getRequiredFieldIssues(editableDraft), [editableDraft]);
+  const requiredIssues = useMemo(
+    () => getReadinessMessages(result, editableDraft),
+    [result, editableDraft],
+  );
   const platformWarnings = useMemo(() => getPlatformWarnings(result, editableDraft), [result, editableDraft]);
   const canApprove = hasDraft && requiredIssues.length === 0;
   const saveStateLabel =

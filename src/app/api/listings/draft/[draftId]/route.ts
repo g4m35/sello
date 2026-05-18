@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { GeminiListingDraftSchema } from "@/lib/ai/listing-draft";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { ListingDraftUpdateSchema } from "@/lib/listing-draft-update";
+import { evaluateReadiness } from "@/lib/lifecycle/readiness";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -29,11 +30,32 @@ export async function PATCH(
       select: {
         id: true,
         inventoryItemId: true,
+        inventoryItem: {
+          select: { productName: true },
+        },
       },
     });
 
     if (!existingDraft) {
       throw new AppError("Listing draft not found.", 404);
+    }
+
+    if (update.approve) {
+      const readiness = evaluateReadiness({
+        productName: existingDraft.inventoryItem.productName,
+        title: update.title,
+        description: update.description,
+        bulletPoints: update.bulletPoints,
+        selectedMarketplaces: update.selectedMarketplaces,
+        recommendedPriceCents: update.recommendedPriceCents,
+      });
+
+      if (!readiness.ready) {
+        throw new AppError(
+          `Item is not ready: ${readiness.issues.map((issue) => issue.message).join(" ")}`,
+          400,
+        );
+      }
     }
 
     const [draft] = await prisma.$transaction([
