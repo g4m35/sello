@@ -66,6 +66,15 @@ function formatCents(cents: number | null) {
   }).format(cents / 100);
 }
 
+function isHttpUrl(value: string) {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function dollarsToCents(value: string) {
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : null;
@@ -373,7 +382,7 @@ export default function CompsPanel({
                   <tr key={comp.id} className="border-b border-neutral-100">
                     <td className="px-4 py-3">{comp.source}</td>
                     <td className="px-4 py-3">
-                      {comp.url ? (
+                      {comp.url && isHttpUrl(comp.url) ? (
                         <a
                           href={comp.url}
                           target="_blank"
