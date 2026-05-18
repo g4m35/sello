@@ -12,6 +12,52 @@ import { extractListingPhotos } from "@/lib/uploads";
 
 export const runtime = "nodejs";
 
+export async function GET(request: Request) {
+  try {
+    const user = await requireSupabaseUser(request);
+    const prisma = getPrisma();
+
+    const draft = await prisma.listingDraft.findFirst({
+      where: {
+        inventoryItem: {
+          sellerId: user.id,
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      include: {
+        inventoryItem: {
+          include: {
+            aiOutputs: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!draft) {
+      return NextResponse.json({ draft: null });
+    }
+
+    const { inventoryItem, ...listingDraft } = draft;
+    const [aiOutput] = inventoryItem.aiOutputs;
+
+    return NextResponse.json({
+      inventoryItem: {
+        ...inventoryItem,
+        aiOutputs: undefined,
+      },
+      draft: listingDraft,
+      aiOutput: aiOutput ?? { id: "not-recorded" },
+    });
+  } catch (error) {
+    const status = error instanceof AppError ? error.status : 500;
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+  }
+}
+
 export async function POST(request: Request) {
   let inventoryItemId: string | null = null;
   let prisma: ReturnType<typeof getPrisma> | null = null;
@@ -81,6 +127,7 @@ export async function POST(request: Request) {
           pricingRationale: listingDraft.pricingRationale,
           itemSpecifics: listingDraft.itemSpecifics as Prisma.InputJsonValue,
           marketplaceDrafts: gemini.draft.marketplaceDrafts as Prisma.InputJsonValue,
+          selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop"],
         },
       }),
       prisma.aiOutput.create({

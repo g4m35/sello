@@ -28,4 +28,30 @@ describe("ListingDraftUpdateSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("accepts incomplete edits for autosave", () => {
+    const update = ListingDraftUpdateSchema.parse({
+      title: "",
+      description: "",
+      bulletPoints: [],
+      recommendedPriceCents: null,
+      selectedMarketplaces: [],
+    });
+
+    expect(update.approve).toBe(false);
+    expect(update.title).toBe("");
+  });
+
+  it("requires complete fields before approval", () => {
+    expect(() =>
+      ListingDraftUpdateSchema.parse({
+        title: "",
+        description: "",
+        bulletPoints: [],
+        recommendedPriceCents: null,
+        selectedMarketplaces: [],
+        approve: true,
+      }),
+    ).toThrow();
+  });
 });

@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 import { PATCH } from "./[draftId]/route";
+import { POST as ACTION } from "./[draftId]/route";
 
 describe("listing draft API auth boundaries", () => {
   it("rejects draft generation when the seller is not signed in", async () => {
     const response = await POST(new Request("http://localhost/api/listings/draft", { method: "POST" }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({ error: "Sign in before creating a listing draft." });
+  });
+
+  it("rejects latest draft loading when the seller is not signed in", async () => {
+    const response = await GET(new Request("http://localhost/api/listings/draft", { method: "GET" }));
     const payload = await response.json();
 
     expect(response.status).toBe(401);
@@ -17,6 +26,20 @@ describe("listing draft API auth boundaries", () => {
       new Request("http://localhost/api/listings/draft/draft-id", {
         method: "PATCH",
         body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ draftId: "draft-id" }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({ error: "Sign in before creating a listing draft." });
+  });
+
+  it("rejects draft actions when the seller is not signed in", async () => {
+    const response = await ACTION(
+      new Request("http://localhost/api/listings/draft/draft-id", {
+        method: "POST",
+        body: JSON.stringify({ action: "duplicate" }),
       }),
       { params: Promise.resolve({ draftId: "draft-id" }) },
     );
