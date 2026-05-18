@@ -30,7 +30,17 @@ Copy `.env.example` to `.env` and fill in real values:
 cp .env.example .env
 ```
 
-Create a Supabase Storage bucket named by `SUPABASE_STORAGE_BUCKET` (`listing-photos` by default). The server uses the service-role key for uploads; do not expose that key to the browser.
+For the current hosted MVP, Supabase project `xkovtxrdxparbkuysunh` has already been created and the initial Prisma schema plus the `listing-photos` storage bucket have been applied. The server uses the service-role key for uploads; do not expose that key to the browser.
+
+Local `.env.local` already contains the Supabase public URL/key, storage bucket, and Gemini model. Fill in the remaining private values:
+
+```bash
+SUPABASE_SERVICE_ROLE_KEY=""
+DATABASE_URL=""
+DIRECT_URL=""
+GEMINI_API_KEY=""
+REDIS_URL=""
+```
 
 Generate Prisma and apply the schema:
 
