@@ -27,6 +27,7 @@ import type { InventoryStatus } from "@/generated/prisma/client";
 import { canPublish, canTransition, toLifecycleState } from "@/lib/lifecycle/item-status";
 import { evaluateReadiness } from "@/lib/lifecycle/readiness";
 import CompsPanel from "./comps-panel";
+import JobsPanel from "./jobs-panel";
 import StatusBadge from "./status-badge";
 
 type Marketplace = "ebay" | "grailed" | "poshmark" | "depop";
@@ -1299,18 +1300,13 @@ export default function SellerWorkbench() {
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-5 grid gap-3">
-                  {[
-                    ["marketplace-publish", "Ready for next slice", "BullMQ schema exists; workers not implemented"],
-                    ["inventory-sync", "Ready for next slice", "Delist-on-sale workflow will run here"],
-                  ].map(([queue, status, note]) => (
-                    <div key={queue} className="grid gap-3 border border-neutral-200 p-4 sm:grid-cols-[220px_180px_minmax(0,1fr)]">
-                      <p className="font-mono text-sm">{queue}</p>
-                      <p className="text-sm font-medium">{status}</p>
-                      <p className="text-sm text-neutral-600">{note}</p>
-                    </div>
-                  ))}
-                </div>
+                {session ? (
+                  <JobsPanel accessToken={session.access_token} />
+                ) : (
+                  <p className="mt-5 text-sm text-neutral-500">
+                    Sign in to view real background job activity.
+                  </p>
+                )}
               </section>
             ) : null}
 
