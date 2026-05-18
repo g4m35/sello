@@ -30,7 +30,15 @@ Do not expand the scope unless explicitly asked.
 - Gemini API
 - Zod
 - BullMQ + Redis
-- Playwright only where official marketplace APIs are unavailable
+- Playwright only where official marketplace APIs are unavailable 
+
+## Database Notes
+
+- DATABASE_URL intentionally uses the Supabase transaction pooler.
+- DIRECT_URL had IPv6/DNS connectivity problems on this machine.
+- A dedicated role named `resale_app` was intentionally created for runtime/app access.
+- Do not switch back to the postgres owner account unless explicitly instructed.
+- Preserve the current Prisma/Supabase role strategy.
 
 ## Current State
 
