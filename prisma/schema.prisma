@@ -1,0 +1,181 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum InventoryStatus {
+  DRAFTING
+  DRAFT_READY
+  AI_FAILED
+  APPROVED
+  LISTING
+  LISTED
+  SOLD
+  DELISTING
+  DELISTED
+  ARCHIVED
+}
+
+enum ProductCategory {
+  sneakers
+  streetwear
+  hype_fashion
+  accessories
+  other
+}
+
+enum ItemCondition {
+  new_with_tags
+  new_without_tags
+  used_excellent
+  used_good
+  used_fair
+  for_parts
+  unknown
+}
+
+enum DraftStatus {
+  DRAFT
+  APPROVED
+}
+
+enum Marketplace {
+  ebay
+  grailed
+  poshmark
+  depop
+}
+
+enum MarketplaceListingStatus {
+  NOT_LISTED
+  QUEUED
+  LISTING
+  LISTED
+  SOLD
+  DELISTING
+  DELISTED
+  FAILED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model InventoryItem {
+  id                    String               @id @default(uuid()) @db.Uuid
+  sellerId              String               @db.Uuid
+  status                InventoryStatus      @default(DRAFTING)
+  productName           String
+  brand                 String?
+  category              ProductCategory      @default(other)
+  condition             ItemCondition        @default(unknown)
+  styleCode             String?
+  colorway              String?
+  size                  String?
+  confidence            Float?
+  recommendedPriceCents Int?
+  pricingRationale      String?
+  soldAt                DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  photos                ItemPhoto[]
+  aiOutputs             AiOutput[]
+  listingDrafts         ListingDraft[]
+  marketplaceListings   MarketplaceListing[]
+  jobLogs               JobLog[]
+
+  @@index([sellerId, status])
+  @@index([createdAt])
+}
+
+model ItemPhoto {
+  id              String        @id @default(uuid()) @db.Uuid
+  inventoryItemId String        @db.Uuid
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  storageBucket   String
+  storagePath     String
+  mimeType        String
+  originalName    String
+  position        Int
+  createdAt       DateTime      @default(now())
+
+  @@unique([storageBucket, storagePath])
+  @@index([inventoryItemId])
+}
+
+model AiOutput {
+  id              String        @id @default(uuid()) @db.Uuid
+  inventoryItemId String        @db.Uuid
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  provider        String
+  model           String
+  kind            String
+  promptVersion   String
+  rawText         String?
+  rawJson         Json?
+  validatedJson   Json?
+  errorMessage    String?
+  createdAt       DateTime      @default(now())
+
+  @@index([inventoryItemId, createdAt])
+}
+
+model ListingDraft {
+  id                    String        @id @default(uuid()) @db.Uuid
+  inventoryItemId       String        @db.Uuid
+  inventoryItem         InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  status                DraftStatus   @default(DRAFT)
+  title                 String
+  description           String
+  bulletPoints          String[]
+  recommendedPriceCents Int?
+  pricingRationale      String?
+  itemSpecifics         Json
+  marketplaceDrafts     Json
+  selectedMarketplaces  Marketplace[] @default([])
+  approvedAt            DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([inventoryItemId, status])
+}
+
+model MarketplaceListing {
+  id                String                   @id @default(uuid()) @db.Uuid
+  inventoryItemId   String                   @db.Uuid
+  inventoryItem     InventoryItem            @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  marketplace       Marketplace
+  status            MarketplaceListingStatus @default(NOT_LISTED)
+  externalListingId String?
+  lastSyncAt        DateTime?
+  lastError         String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@unique([inventoryItemId, marketplace])
+  @@index([marketplace, status])
+}
+
+model JobLog {
+  id              String         @id @default(uuid()) @db.Uuid
+  inventoryItemId String?        @db.Uuid
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  queueName       String
+  jobName         String
+  status          JobStatus
+  payload         Json
+  result          Json?
+  errorMessage    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([inventoryItemId])
+  @@index([queueName, status])
+}
