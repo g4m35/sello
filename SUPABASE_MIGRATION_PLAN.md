@@ -619,7 +619,14 @@ Application result:
 - The first statement (`CREATE TYPE "PublishAttemptStatus"`) failed with `permission denied for schema public`. This is expected: `resale_app` is the intentional runtime role and is not granted DDL privileges on `public`.
 - The transaction was rolled back. A follow-up `to_regclass` / `pg_type` check confirmed that `PublishAttempt`, `MarketplaceEvent`, and `PublishAttemptStatus` are still absent. No application rows were touched.
 
+Follow-up alternate-path probes (same session):
+
+- `DIRECT_URL` (postgres role, port 5432) reattempted: `getaddrinfo ENOTFOUND db.xkovtxrdxparbkuysunh.supabase.co` from Node. `dig AAAA` returns `2600:1f1c:c19:4901:f895:88d5:dc91:72fa`; there is no A (IPv4) record published for this host, which is the Supabase default unless the IPv4 add-on is enabled.
+- Bypassing the Node resolver and connecting directly to the IPv6 literal `[2600:1f1c:c19:4901:f895:88d5:dc91:72fa]:5432` returned `connect EHOSTUNREACH`. The local network cannot route IPv6 to that destination, which matches the `DIRECT_URL had IPv6/DNS connectivity problems on this machine` notes in `CLAUDE.md`.
+- `.env.local` has no `SUPABASE_ACCESS_TOKEN` (Personal Access Token), no `SUPABASE_DB_PASSWORD`, and no separate postgres pooler URL. The only available DB-related credentials are `DATABASE_URL` (pooler / `resale_app`), `DIRECT_URL` (postgres / IPv6-only / unreachable), `SUPABASE_SERVICE_ROLE_KEY` (data API JWT, not a Management API token), and `NEXT_PUBLIC_SUPABASE_*` (anon).
+
 Conclusion:
 
-- Application from this CLI is blocked by design. The migration must be applied through the Supabase SQL Editor (which connects as the `postgres` superuser) using the Preflight / Transaction wrapper / Verification / Role alignment / Prisma reconciliation steps above. After application, the local Prisma client already includes `prisma.publishAttempt` and `prisma.marketplaceEvent`; only the dev server needs a clean restart.
+- There is no DDL-capable path from this CLI in this session: `resale_app` lacks DDL on `public`, `DIRECT_URL` is unreachable over IPv6, and no Management-API or `postgres`-pooler credentials are available. The migration must be applied through the Supabase SQL Editor (which connects as the `postgres` superuser) using the Preflight / Transaction wrapper / Verification / Role alignment / Prisma reconciliation steps above, or by enabling the Supabase IPv4 add-on / providing a `SUPABASE_ACCESS_TOKEN` / providing a `postgres` pooler URL in a future session.
+- After application, the local Prisma client already includes `prisma.publishAttempt` and `prisma.marketplaceEvent`; only the dev server needs a clean restart.
 - Until applied, `POST /api/listings/publish` will fail at runtime against the real database with `relation "PublishAttempt" does not exist`. Runtime QA of the publish persistence flow is intentionally deferred until the SQL Editor application has been completed.
