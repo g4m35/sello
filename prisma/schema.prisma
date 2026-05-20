@@ -68,6 +68,14 @@ enum JobStatus {
   FAILED
 }
 
+enum PublishAttemptStatus {
+  NOT_IMPLEMENTED
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model InventoryItem {
   id                    String               @id @default(uuid()) @db.Uuid
   sellerId              String               @db.Uuid
@@ -177,9 +185,39 @@ model MarketplaceListing {
   lastError         String?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
+  publishAttempts   PublishAttempt[]
+  events            MarketplaceEvent[]
 
   @@unique([inventoryItemId, marketplace])
   @@index([marketplace, status])
+}
+
+model PublishAttempt {
+  id                   String               @id @default(uuid()) @db.Uuid
+  marketplaceListingId String               @db.Uuid
+  marketplaceListing   MarketplaceListing   @relation(fields: [marketplaceListingId], references: [id], onDelete: Cascade)
+  status               PublishAttemptStatus @default(NOT_IMPLEMENTED)
+  code                 String
+  reason               String?
+  adapterResult        Json?
+  requestedBy          String               @db.Uuid
+  startedAt            DateTime             @default(now())
+  completedAt          DateTime?
+  createdAt            DateTime             @default(now())
+
+  @@index([marketplaceListingId, createdAt])
+  @@index([requestedBy, createdAt])
+}
+
+model MarketplaceEvent {
+  id                   String             @id @default(uuid()) @db.Uuid
+  marketplaceListingId String             @db.Uuid
+  marketplaceListing   MarketplaceListing @relation(fields: [marketplaceListingId], references: [id], onDelete: Cascade)
+  kind                 String
+  data                 Json?
+  createdAt            DateTime           @default(now())
+
+  @@index([marketplaceListingId, createdAt])
 }
 
 model JobLog {
