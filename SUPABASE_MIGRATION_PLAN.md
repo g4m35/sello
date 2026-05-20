@@ -273,3 +273,51 @@ commit;
 ## Recommendation
 
 The migration can be safely applied through the Supabase SQL Editor only as a controlled, one-time manual schema change with preflight checks, transaction wrapping, role alignment, post-apply verification, and Prisma migration-history reconciliation. The cleaner path is still `npx prisma migrate deploy` from an environment with a reliable database connection, because it avoids manual drift between SQL state and Prisma migration history.
+
+## Execution Log: 2026-05-20
+
+The PriceComp migration was applied to Supabase project `xkovtxrdxparbkuysunh` after explicit approval.
+
+Preflight findings:
+
+- `PriceComp` did not exist before application.
+- `InventoryItem` existed.
+- `ItemCondition` existed.
+- `_prisma_migrations` did not exist before reconciliation.
+- Existing application tables were owned by `postgres` with RLS enabled.
+- `resale_app` had runtime table privileges and `BYPASSRLS`, so the no-policy RLS pattern matched the existing trusted-server strategy.
+
+Application:
+
+- Applied DDL with Supabase migration name `add_price_comp`.
+- Supabase migration list included:
+  - `20260518165309_init_resale_crosslister_schema`
+  - `20260518174636_create_runtime_app_role`
+  - `20260520202156_add_price_comp`
+
+Post-apply verification:
+
+- `PriceComp` exists.
+- `PriceComp_inventoryItemId_createdAt_idx` exists.
+- `PriceComp_inventoryItemId_fkey` exists with `ON UPDATE CASCADE ON DELETE CASCADE`.
+- RLS is enabled on `PriceComp`.
+- `resale_app` can select, insert, update, and delete `PriceComp`.
+- `resale_app` has `BYPASSRLS`.
+- `PriceComp` row count was `0` immediately after application.
+
+Prisma migration history:
+
+- Prisma CLI `migrate status` timed out through the Supabase transaction pooler.
+- Prisma CLI using `DIRECT_URL` could not reach `db.xkovtxrdxparbkuysunh.supabase.co:5432` from this machine.
+- Because `_prisma_migrations` was absent and the existing init schema had already been applied outside Prisma, migration metadata was reconciled through Supabase SQL without changing application rows.
+- Recorded local Prisma migrations:
+  - `20260518162000_init`
+  - `20260518170000_add_price_comp`
+
+Runtime verification:
+
+- A read-only runtime connection through `DATABASE_URL` queried `PriceComp` successfully.
+- No comp rows were inserted.
+- No production data was modified.
+- No deployment was run.
+- `main` was not pushed.
