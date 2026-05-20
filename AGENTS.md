@@ -134,3 +134,29 @@ npm run build
 - Deploys are not allowed unless explicitly requested.
 - Auto-deploy (including auto-deploy to Vercel) is forbidden.
 - Never expose or hardcode secrets.
+
+# Git Worktree Workflow
+
+Purpose:
+Allow parallel AI-agent development safely.
+
+Rules:
+
+- Use git worktrees for isolated feature development.
+- One agent per worktree.
+- Never run multiple agents in the same worktree simultaneously.
+- Never run migrations simultaneously across worktrees.
+- Feature work should happen in `feature/*` branches.
+- Merge flow:
+  `feature/*` -> `develop` -> `main` -> production
+- `main` is protected production-safe state.
+- `develop` is active integration branch.
+- `main` must never be pushed without explicit approval.
+- Production deploys must never happen automatically.
+- Risky systems must use feature branches.
+- Worktrees should be isolated by feature area.
+- Before pushing:
+  - `npm run lint`
+  - `npm test`
+  - `npx prisma validate`
+  - `npm run build`

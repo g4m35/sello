@@ -89,8 +89,10 @@ Verification already passed:
 
 - Commits are allowed after successful lint/test/Prisma-validate/build verification.
 - Do not push unless explicitly requested.
+- Never push `main` without explicit approval.
 - Do not deploy unless explicitly requested.
 - Auto-deploy (including to Vercel) is forbidden.
+- Production deploys must never happen automatically.
 - Do not print or expose secrets.
 - Do not hardcode secrets.
 - Do not fake marketplace publishing success.
@@ -98,6 +100,20 @@ Verification already passed:
 - Do not invent resale prices with Gemini.
 - Do not build full marketplace publishing yet.
 - Keep publishing draft-only until real adapters/jobs exist.
+
+## Branch And Worktree Rules
+
+- `main` is production-safe only and must be treated as protected.
+- `develop` is the active integration branch.
+- `feature/*` branches are for isolated feature work.
+- AI agents should normally work inside feature branches and their matching worktrees.
+- Risky systems, including publishing, inventory sync, adapter work, auth, billing, migrations, and Playwright automation, must use feature branches.
+- Never deploy automatically from any branch or worktree.
+- Never push `main` without explicit approval.
+- Worktrees should be isolated by feature area.
+- Never let multiple agents edit the same worktree simultaneously.
+- Do not run migrations simultaneously across worktrees.
+- Merge flow is `feature/*` -> `develop` -> `main` -> production.
 
 ## Engineering Rules
 
