@@ -11,13 +11,13 @@ import {
   createEbayOAuthStateCookie,
   createRandomEbayOAuthState,
 } from "@/lib/marketplace/adapters/ebay/oauth";
-import { requireSupabaseUser } from "@/lib/supabase/server";
+import { requireSupabaseUserFromRequestOrCookies } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const user = await requireSupabaseUser(request);
+    const user = await requireSupabaseUserFromRequestOrCookies(request);
     const config = getEbayConfig();
     const state = createRandomEbayOAuthState();
     const authorizationUrl = buildEbayAuthorizationUrl(config, state);

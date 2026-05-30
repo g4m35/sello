@@ -16,7 +16,7 @@ import {
   parseEbayOAuthStateCookie,
 } from "@/lib/marketplace/adapters/ebay/oauth";
 import { encryptEbayToken } from "@/lib/marketplace/adapters/ebay/token-crypto";
-import { requireSupabaseUser } from "@/lib/supabase/server";
+import { requireSupabaseUserFromRequestOrCookies } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     // round trip must be the same user the signed state cookie was issued for.
     // Without this, a valid state cookie captured for user A could attach an
     // eBay connection to user A while user B is the one actually authenticated.
-    const user = await requireSupabaseUser(request);
+    const user = await requireSupabaseUserFromRequestOrCookies(request);
     if (user.id !== oauthState.userId) {
       throw new EbayIntegrationError(
         ebayErrorCodes.oauthStateInvalid,

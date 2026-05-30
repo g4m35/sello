@@ -4,11 +4,12 @@ import { AppError } from "@/lib/errors";
 import { ebayOAuthStateCookieName } from "@/lib/marketplace/adapters/ebay/oauth";
 
 const mocks = vi.hoisted(() => ({
-  requireSupabaseUser: vi.fn(),
+  requireSupabaseUserFromRequestOrCookies: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  requireSupabaseUser: mocks.requireSupabaseUser,
+  requireSupabaseUserFromRequestOrCookies:
+    mocks.requireSupabaseUserFromRequestOrCookies,
 }));
 
 import { GET } from "./route";
@@ -28,7 +29,9 @@ describe("eBay connect route", () => {
   });
 
   it("requires an authenticated seller", async () => {
-    mocks.requireSupabaseUser.mockRejectedValue(new AppError("Sign in.", 401));
+    mocks.requireSupabaseUserFromRequestOrCookies.mockRejectedValue(
+      new AppError("Sign in.", 401),
+    );
 
     const response = await GET(new Request("http://localhost/api/marketplaces/ebay/connect"));
 
@@ -37,7 +40,7 @@ describe("eBay connect route", () => {
   });
 
   it("returns a sandbox authorization URL and an httpOnly state cookie", async () => {
-    mocks.requireSupabaseUser.mockResolvedValue({
+    mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
     });
 

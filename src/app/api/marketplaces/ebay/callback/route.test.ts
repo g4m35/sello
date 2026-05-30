@@ -9,7 +9,7 @@ import { decryptEbayToken } from "@/lib/marketplace/adapters/ebay/token-crypto";
 
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
-  requireSupabaseUser: vi.fn(),
+  requireSupabaseUserFromRequestOrCookies: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -17,7 +17,8 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  requireSupabaseUser: mocks.requireSupabaseUser,
+  requireSupabaseUserFromRequestOrCookies:
+    mocks.requireSupabaseUserFromRequestOrCookies,
 }));
 
 import { GET } from "./route";
@@ -68,7 +69,7 @@ describe("eBay callback route", () => {
     process.env.EBAY_MARKETPLACE_ID = "EBAY_US";
     process.env.EBAY_TOKEN_ENCRYPTION_KEY = key;
     process.env.EBAY_OAUTH_STATE_SECRET = stateSecret;
-    mocks.requireSupabaseUser.mockResolvedValue({ id: userId });
+    mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({ id: userId });
   });
 
   it("rejects missing state", async () => {
@@ -114,7 +115,7 @@ describe("eBay callback route", () => {
   });
 
   it("rejects when there is no session", async () => {
-    mocks.requireSupabaseUser.mockRejectedValue(
+    mocks.requireSupabaseUserFromRequestOrCookies.mockRejectedValue(
       new AppError("Sign in.", 401),
     );
     const upsert = vi.fn();
@@ -134,7 +135,7 @@ describe("eBay callback route", () => {
   });
 
   it("rejects when the session user differs from the state user and does not upsert", async () => {
-    mocks.requireSupabaseUser.mockResolvedValue({ id: otherUserId });
+    mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({ id: otherUserId });
     const upsert = vi.fn();
     mocks.getPrisma.mockReturnValue({ marketplaceConnection: { upsert } });
     const fetchSpy = vi.spyOn(globalThis, "fetch");

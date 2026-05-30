@@ -1,4 +1,6 @@
+import { createServerClient } from "@supabase/ssr";
 import { createClient, type User } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 
 import { AppError, getRequiredEnv } from "../errors";
 
@@ -34,6 +36,49 @@ export function getBearerToken(request: Request) {
   return match?.[1] ?? null;
 }
 
+// Cookie-aware server client. Reads the Supabase session from request cookies
+// and writes refreshed tokens back through the same cookie store. setAll is
+// guarded because cookies() is read-only in some server contexts (e.g. Server
+// Components); route handlers and Server Actions allow writes.
+async function createSupabaseServerClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    getRequiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options);
+            }
+          } catch {
+            // Read-only cookie context; token refresh will be handled by the
+            // browser client instead.
+          }
+        },
+      },
+    },
+  );
+}
+
+async function getSupabaseUserFromCookies(): Promise<User | null> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      return null;
+    }
+    return data.user;
+  } catch {
+    return null;
+  }
+}
+
 export async function requireSupabaseUser(request: Request): Promise<User> {
   const token = getBearerToken(request);
 
@@ -49,4 +94,20 @@ export async function requireSupabaseUser(request: Request): Promise<User> {
   }
 
   return data.user;
+}
+
+// Resolves the authenticated user for browser-driven routes: cookie session
+// first (works on top-level navigations such as the eBay OAuth callback), then
+// the existing Authorization: Bearer flow for in-app fetch callers. The user is
+// always verified by Supabase via getUser; identity is never taken from request
+// bodies, query params, or OAuth state.
+export async function requireSupabaseUserFromRequestOrCookies(
+  request: Request,
+): Promise<User> {
+  const cookieUser = await getSupabaseUserFromCookies();
+  if (cookieUser) {
+    return cookieUser;
+  }
+
+  return requireSupabaseUser(request);
 }

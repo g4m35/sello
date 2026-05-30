@@ -3,13 +3,13 @@ import { NextResponse } from "next/server";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { toEbayErrorPayload } from "@/lib/marketplace/adapters/ebay/errors";
-import { requireSupabaseUser } from "@/lib/supabase/server";
+import { requireSupabaseUserFromRequestOrCookies } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const user = await requireSupabaseUser(request);
+    const user = await requireSupabaseUserFromRequestOrCookies(request);
     await getPrisma().marketplaceConnection.deleteMany({
       where: {
         userId: user.id,

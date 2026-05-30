@@ -4,7 +4,7 @@ import { encryptEbayToken } from "@/lib/marketplace/adapters/ebay/token-crypto";
 
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
-  requireSupabaseUser: vi.fn(),
+  requireSupabaseUserFromRequestOrCookies: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -12,7 +12,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  requireSupabaseUser: mocks.requireSupabaseUser,
+  requireSupabaseUserFromRequestOrCookies: mocks.requireSupabaseUserFromRequestOrCookies,
 }));
 
 import { GET } from "./route";
@@ -30,7 +30,7 @@ describe("eBay readiness route", () => {
   });
 
   it("returns sanitized missing-connection readiness", async () => {
-    mocks.requireSupabaseUser.mockResolvedValue({
+    mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
     });
     mocks.getPrisma.mockReturnValue({
@@ -56,7 +56,7 @@ describe("eBay readiness route", () => {
   it("refreshes readiness through sandbox APIs without exposing tokens", async () => {
     const key = process.env.EBAY_TOKEN_ENCRYPTION_KEY!;
     const upsert = vi.fn().mockImplementation(({ create }) => create);
-    mocks.requireSupabaseUser.mockResolvedValue({
+    mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
     });
     mocks.getPrisma.mockReturnValue({

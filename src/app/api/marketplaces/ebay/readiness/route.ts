@@ -14,13 +14,13 @@ import {
   refreshEbayReadiness,
   type EbayReadinessPrismaLike,
 } from "@/lib/marketplace/adapters/ebay/readiness";
-import { requireSupabaseUser } from "@/lib/supabase/server";
+import { requireSupabaseUserFromRequestOrCookies } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const user = await requireSupabaseUser(request);
+    const user = await requireSupabaseUserFromRequestOrCookies(request);
     const readiness = await getStoredEbayReadiness(getEbayPrisma(), user.id);
     return NextResponse.json(readiness);
   } catch (error) {
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await requireSupabaseUser(request);
+    const user = await requireSupabaseUserFromRequestOrCookies(request);
     const prisma = getEbayPrisma();
     const config = getEbayConfig();
     const connection = await prisma.marketplaceConnection.findUnique({
