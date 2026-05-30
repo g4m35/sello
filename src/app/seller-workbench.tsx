@@ -26,6 +26,7 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { InventoryStatus } from "@/generated/prisma/client";
 import { canPublish, canTransition, toLifecycleState } from "@/lib/lifecycle/item-status";
 import { evaluateReadiness } from "@/lib/lifecycle/readiness";
+import { getErrorMessage } from "@/lib/errors";
 import CompsPanel from "./comps-panel";
 import JobsPanel from "./jobs-panel";
 import StatusBadge from "./status-badge";
@@ -70,6 +71,22 @@ type DraftApiResponse = {
   aiOutput: {
     id: string;
   };
+};
+
+type PublishApiResponse = {
+  code: "NOT_IMPLEMENTED";
+  marketplace: Marketplace;
+  reason: string;
+  marketplaceListingId: string;
+  publishAttemptId: string;
+};
+
+type PublishStatus = {
+  marketplace: Marketplace;
+  kind: "not_implemented" | "error";
+  message: string;
+  code?: string;
+  publishAttemptId?: string;
 };
 
 type EditableDraft = {
@@ -125,6 +142,45 @@ function parsePriceInput(value: string) {
 
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : null;
+}
+
+function isPublishApiResponse(payload: unknown): payload is PublishApiResponse {
+  return (
+    Boolean(payload) &&
+    typeof payload === "object" &&
+    (payload as { code?: unknown }).code === "NOT_IMPLEMENTED" &&
+    typeof (payload as { reason?: unknown }).reason === "string" &&
+    typeof (payload as { publishAttemptId?: unknown }).publishAttemptId === "string"
+  );
+}
+
+function getApiFailure(payload: unknown, status: number) {
+  if (!payload || typeof payload !== "object" || !("error" in payload)) {
+    return { message: `Request failed with status ${status}.` };
+  }
+
+  const error = (payload as { error: unknown }).error;
+
+  if (typeof error === "string") {
+    return { message: error };
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    return {
+      code:
+        "code" in error && typeof (error as { code: unknown }).code === "string"
+          ? (error as { code: string }).code
+          : undefined,
+      message: (error as { message: string }).message,
+    };
+  }
+
+  return { message: `Request failed with status ${status}.` };
 }
 
 function toEditableDraft(payload: DraftApiResponse): EditableDraft {
@@ -215,6 +271,8 @@ export default function SellerWorkbench() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDraftActionRunning, setIsDraftActionRunning] = useState(false);
   const [isLifecycleRunning, setIsLifecycleRunning] = useState(false);
+  const [publishingMarketplace, setPublishingMarketplace] = useState<Marketplace | null>(null);
+  const [publishStatus, setPublishStatus] = useState<PublishStatus | null>(null);
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [activeSection, setActiveSection] = useState<AppSection>("account");
@@ -238,6 +296,8 @@ export default function SellerWorkbench() {
         setResult(null);
         setEditableDraft(null);
         setSaveState("idle");
+        setPublishStatus(null);
+        setPublishingMarketplace(null);
         lastSavedSignature.current = "";
       }
     });
@@ -341,6 +401,7 @@ export default function SellerWorkbench() {
     await supabase?.auth.signOut();
     setResult(null);
     setEditableDraft(null);
+    setPublishStatus(null);
   }
 
   async function generateDraft(event: FormEvent<HTMLFormElement>) {
@@ -361,6 +422,7 @@ export default function SellerWorkbench() {
     setSaveMessage("");
     setResult(null);
     setEditableDraft(null);
+    setPublishStatus(null);
 
     const formData = new FormData();
     for (const file of selectedFiles) {
@@ -563,6 +625,68 @@ export default function SellerWorkbench() {
     setSaveMessage(
       action === "mark_sold" ? "Item marked as sold." : "Item delisted locally.",
     );
+  }
+
+  async function runPublishAttempt(marketplace: Marketplace) {
+    if (!session || !result) {
+      return;
+    }
+
+    setPublishingMarketplace(marketplace);
+    setPublishStatus(null);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const response = await fetch("/api/listings/publish", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inventoryItemId: result.inventoryItem.id,
+          marketplace,
+        }),
+      });
+      const payload: unknown = await response.json();
+
+      if (response.status === 501 && isPublishApiResponse(payload)) {
+        setPublishStatus({
+          marketplace,
+          kind: "not_implemented",
+          code: payload.code,
+          message: payload.reason,
+          publishAttemptId: payload.publishAttemptId,
+        });
+        return;
+      }
+
+      if (!response.ok) {
+        const failure = getApiFailure(payload, response.status);
+        setPublishStatus({
+          marketplace,
+          kind: "error",
+          code: failure.code,
+          message: failure.message,
+        });
+        return;
+      }
+
+      setPublishStatus({
+        marketplace,
+        kind: "not_implemented",
+        message: "Publish attempt recorded without contacting a marketplace.",
+      });
+    } catch (publishError) {
+      setPublishStatus({
+        marketplace,
+        kind: "error",
+        message: getErrorMessage(publishError),
+      });
+    } finally {
+      setPublishingMarketplace(null);
+    }
   }
 
   async function saveDraft(approve: boolean) {
@@ -1272,19 +1396,67 @@ export default function SellerWorkbench() {
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {marketplaces.map((marketplace) => (
-                  <div key={marketplace.id} className="border border-neutral-300 bg-white p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-lg font-semibold">{marketplace.label}</h3>
-                      <Store className="h-5 w-5 text-red-700" />
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-neutral-600">
-                      Draft generation is available. Publishing is intentionally disabled until official/API or Playwright workers are added.
-                    </p>
-                    <p className="mt-4 text-xs uppercase tracking-[0.14em] text-neutral-500">Status</p>
-                    <p className="mt-1 font-medium">Draft only</p>
-                  </div>
-                ))}
+                  {marketplaces.map((marketplace) => {
+                    const isSelected =
+                      editableDraft?.selectedMarketplaces.includes(marketplace.id) ?? false;
+                    const isPublishing = publishingMarketplace === marketplace.id;
+                    const channelStatus =
+                      publishStatus?.marketplace === marketplace.id ? publishStatus : null;
+
+                    return (
+                      <div key={marketplace.id} className="border border-neutral-300 bg-white p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-lg font-semibold">{marketplace.label}</h3>
+                          <Store className="h-5 w-5 text-red-700" />
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-neutral-600">
+                          Draft generation is available. Publishing records a real attempt, then returns the adapter&apos;s honest not-implemented result.
+                        </p>
+                        <p className="mt-4 text-xs uppercase tracking-[0.14em] text-neutral-500">Status</p>
+                        <p className="mt-1 font-medium">
+                          {isSelected ? "Selected draft" : "Draft only"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => runPublishAttempt(marketplace.id)}
+                          disabled={
+                            !session ||
+                            !result ||
+                            !publishingAllowed ||
+                            !isSelected ||
+                            Boolean(publishingMarketplace)
+                          }
+                          className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 bg-neutral-950 px-3 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-300 disabled:text-neutral-600"
+                        >
+                          {isPublishing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Store className="h-4 w-4" />
+                          )}
+                          Publish
+                        </button>
+                        {channelStatus ? (
+                          <div
+                            className={`mt-4 border p-3 text-sm ${
+                              channelStatus.kind === "error"
+                                ? "border-red-300 bg-red-50 text-red-800"
+                                : "border-amber-300 bg-amber-50 text-amber-950"
+                            }`}
+                          >
+                            {channelStatus.code ? (
+                              <p className="mb-1 font-mono text-xs">{channelStatus.code}</p>
+                            ) : null}
+                            <p>{channelStatus.message}</p>
+                            {channelStatus.publishAttemptId ? (
+                              <p className="mt-2 font-mono text-xs">
+                                Attempt {channelStatus.publishAttemptId.slice(0, 8)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             ) : null}

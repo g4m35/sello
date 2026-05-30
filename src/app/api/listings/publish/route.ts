@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
-import { executePublish } from "@/lib/marketplace/publish-handler";
+import {
+  executePublish,
+  PublishingMigrationMissingError,
+} from "@/lib/marketplace/publish-handler";
 import { PublishRequestSchema } from "@/lib/marketplace/publish-request";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -34,6 +37,10 @@ export async function POST(request: Request) {
       { status: result.httpStatus },
     );
   } catch (error) {
+    if (error instanceof PublishingMigrationMissingError) {
+      return NextResponse.json({ error: error.toPayload() }, { status: error.status });
+    }
+
     const status = error instanceof AppError ? error.status : 400;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });
   }

@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { InventoryStatus } from "@/generated/prisma/client";
 
-import { executePublish, type PublishPrismaLike } from "./publish-handler";
+import {
+  executePublish,
+  publishingMigrationMissingCode,
+  type PublishPrismaLike,
+} from "./publish-handler";
 
 type FakeState = {
   listings: Map<string, { id: string; inventoryItemId: string; marketplace: string }>;
@@ -24,6 +28,7 @@ function createFakePrisma(opts: {
   itemStatus: InventoryStatus;
   sellerId?: string;
   itemId?: string;
+  missingTable?: "PublishAttempt" | "MarketplaceEvent";
 }): FakePrisma {
   const sellerId = opts.sellerId ?? "user-1";
   const itemId = opts.itemId ?? "item-1";
@@ -57,6 +62,13 @@ function createFakePrisma(opts: {
     },
     publishAttempt: {
       async create({ data }) {
+        if (opts.missingTable === "PublishAttempt") {
+          throw {
+            code: "P2021",
+            message: 'The table `public.PublishAttempt` does not exist.',
+          };
+        }
+
         const id = `attempt-${state.attempts.length + 1}`;
         state.attempts.push({
           id,
@@ -72,6 +84,13 @@ function createFakePrisma(opts: {
     },
     marketplaceEvent: {
       async create({ data }) {
+        if (opts.missingTable === "MarketplaceEvent") {
+          throw {
+            code: "42P01",
+            message: 'relation "MarketplaceEvent" does not exist',
+          };
+        }
+
         const id = `event-${state.events.length + 1}`;
         state.events.push({
           id,
@@ -166,6 +185,46 @@ describe("executePublish", () => {
     expect(attempt.code).toBe("NOT_IMPLEMENTED");
     expect(attempt.requestedBy).toBe("user-1");
     expect(attempt.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("returns a typed setup error when PublishAttempt is missing in the database", async () => {
+    const prisma = createFakePrisma({
+      itemStatus: "APPROVED",
+      missingTable: "PublishAttempt",
+    });
+
+    await expect(
+      executePublish(prisma, {
+        userId: "user-1",
+        inventoryItemId: "item-1",
+        marketplace: "ebay",
+      }),
+    ).rejects.toMatchObject({
+      code: publishingMigrationMissingCode,
+      status: 503,
+      missingTables: ["PublishAttempt", "MarketplaceEvent"],
+    });
+
+    expect(prisma._state.events).toHaveLength(0);
+  });
+
+  it("returns a typed setup error when MarketplaceEvent is missing in the database", async () => {
+    const prisma = createFakePrisma({
+      itemStatus: "APPROVED",
+      missingTable: "MarketplaceEvent",
+    });
+
+    await expect(
+      executePublish(prisma, {
+        userId: "user-1",
+        inventoryItemId: "item-1",
+        marketplace: "depop",
+      }),
+    ).rejects.toMatchObject({
+      code: publishingMigrationMissingCode,
+      status: 503,
+      missingTables: ["PublishAttempt", "MarketplaceEvent"],
+    });
   });
 
   it("rejects an inventory item that does not belong to the seller (404)", async () => {

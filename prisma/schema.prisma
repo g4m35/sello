@@ -220,6 +220,45 @@ model MarketplaceEvent {
   @@index([marketplaceListingId, createdAt])
 }
 
+model MarketplaceConnection {
+  id                    String             @id @default(uuid()) @db.Uuid
+  userId                String             @db.Uuid
+  marketplace           Marketplace
+  environment           String
+  externalUserId        String?
+  accessTokenEnc        String
+  refreshTokenEnc       String
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+  scopes                String[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  ebaySellerConfigs     EbaySellerConfig[]
+
+  @@unique([userId, marketplace, environment])
+  @@index([userId])
+  @@index([marketplace, environment])
+}
+
+model EbaySellerConfig {
+  id                      String                @id @default(uuid()) @db.Uuid
+  userId                  String                @db.Uuid
+  marketplaceConnectionId String                @db.Uuid
+  marketplaceConnection   MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
+  marketplaceId           String                @default("EBAY_US")
+  paymentPolicyId         String?
+  fulfillmentPolicyId     String?
+  returnPolicyId          String?
+  merchantLocationKey     String?
+  readinessStatus         String?
+  readinessCheckedAt      DateTime?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  @@unique([userId, marketplaceConnectionId])
+  @@index([userId])
+}
+
 model JobLog {
   id              String         @id @default(uuid()) @db.Uuid
   inventoryItemId String?        @db.Uuid
