@@ -1,3 +1,367 @@
-// TODO: Implement sandbox-only eBay publish later: createOrReplaceInventoryItem,
-// createOffer, publishOffer, then persist offerId/listingId/SKU. This file is
-// intentionally not wired into the publish route tonight.
+import type { ItemCondition } from "@/generated/prisma/client";
+import { AppError } from "@/lib/errors";
+
+import { EbaySandboxClient, getUsableEbayAccessToken } from "./client";
+import { getEbayConfig, isEbaySandboxPublishEnabled } from "./config";
+import { EbayIntegrationError, ebayErrorCodes } from "./errors";
+import {
+  validateEbayListingReadiness,
+  type EbayListingReadinessResult,
+} from "./listing-readiness";
+import {
+  buildEbayInventoryItemPayload,
+  buildEbayOfferPayload,
+  resolveEbaySku,
+  type EbayInventoryItemPayload,
+  type EbayOfferPayload,
+} from "./mapper";
+import type { EbayConfig, EbayMarketplaceId } from "./types";
+
+// Sandbox-only publish orchestrator. Real eBay calls are blocked unless
+// EBAY_SANDBOX_PUBLISH_ENABLED === "true". When disabled, this returns a typed
+// "not_enabled" result and makes zero outbound eBay requests. Dependencies are
+// injected so tests run the whole flow without any network access.
+
+type EbayEnv = Record<string, string | undefined>;
+
+type DraftRow = {
+  title: string | null;
+  description: string | null;
+  recommendedPriceCents: number | null;
+  itemSpecifics: unknown;
+  marketplaceDrafts: unknown;
+};
+
+type ItemRow = {
+  id: string;
+  sellerId: string;
+  brand: string | null;
+  condition: ItemCondition;
+  size: string | null;
+  colorway: string | null;
+  listingDrafts: DraftRow[];
+  photos: { storageBucket: string; storagePath: string }[];
+};
+
+type ConnectionRow = {
+  id: string;
+  userId: string;
+  accessTokenEnc: string;
+  refreshTokenEnc: string;
+  accessTokenExpiresAt: Date;
+  refreshTokenExpiresAt: Date | null;
+  scopes: string[];
+};
+
+type SellerConfigRow = {
+  marketplaceId: string;
+  paymentPolicyId: string | null;
+  fulfillmentPolicyId: string | null;
+  returnPolicyId: string | null;
+  merchantLocationKey: string | null;
+} | null;
+
+export type EbayPublishPrismaLike = {
+  inventoryItem: {
+    findFirst(args: {
+      where: { id: string; sellerId: string };
+      include?: unknown;
+      select?: unknown;
+    }): Promise<ItemRow | null>;
+  };
+  marketplaceConnection: {
+    findUnique(args: {
+      where: {
+        userId_marketplace_environment: {
+          userId: string;
+          marketplace: "ebay";
+          environment: "sandbox";
+        };
+      };
+    }): Promise<ConnectionRow | null>;
+    update(args: {
+      where: { id: string };
+      data: Record<string, unknown>;
+    }): Promise<unknown>;
+  };
+  ebaySellerConfig: {
+    findFirst(args: {
+      where: { userId: string; marketplaceConnectionId: string };
+    }): Promise<SellerConfigRow>;
+  };
+};
+
+export type EbayPublishClient = {
+  createOrReplaceInventoryItem(
+    sku: string,
+    payload: EbayInventoryItemPayload,
+  ): Promise<void>;
+  createOffer(payload: EbayOfferPayload): Promise<{ offerId: string }>;
+  publishOffer(offerId: string): Promise<{ listingId: string }>;
+};
+
+export type EbayPublishDeps = {
+  env: EbayEnv;
+  resolveAccessToken: (
+    prisma: EbayPublishPrismaLike,
+    connection: ConnectionRow,
+    config: EbayConfig,
+  ) => Promise<string>;
+  createClient: (
+    accessToken: string,
+    marketplaceId: EbayMarketplaceId,
+  ) => EbayPublishClient;
+};
+
+export type EbayPublishInput = {
+  userId: string;
+  inventoryItemId: string;
+};
+
+export type EbayPublishNotEnabled = {
+  status: "not_enabled";
+  code: "EBAY_PUBLISH_NOT_ENABLED";
+  marketplace: "ebay";
+  environment: "sandbox";
+  message: string;
+};
+
+export type EbayPublishSuccess = {
+  status: "published";
+  code: "EBAY_PUBLISH_SUCCEEDED";
+  marketplace: "ebay";
+  environment: "sandbox";
+  sku: string;
+  offerId: string;
+  listingId: string;
+};
+
+export type EbayPublishResult = EbayPublishNotEnabled | EbayPublishSuccess;
+
+export type EbayPublishStep = "inventory_item" | "offer" | "publish";
+
+export const defaultEbayPublishDeps: EbayPublishDeps = {
+  env: process.env,
+  resolveAccessToken: (prisma, connection, config) =>
+    getUsableEbayAccessToken(prisma, connection, config),
+  createClient: (accessToken, marketplaceId) =>
+    new EbaySandboxClient(accessToken, marketplaceId),
+};
+
+function asStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "string") {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function ebayDraftFields(draft: DraftRow | undefined): {
+  categoryId: string | null;
+  quantity: number | null;
+} {
+  if (
+    !draft ||
+    !draft.marketplaceDrafts ||
+    typeof draft.marketplaceDrafts !== "object"
+  ) {
+    return { categoryId: null, quantity: null };
+  }
+  const ebay = (draft.marketplaceDrafts as Record<string, unknown>).ebay;
+  if (!ebay || typeof ebay !== "object") {
+    return { categoryId: null, quantity: null };
+  }
+  const record = ebay as Record<string, unknown>;
+  return {
+    categoryId: typeof record.categoryId === "string" ? record.categoryId : null,
+    quantity: typeof record.quantity === "number" ? record.quantity : null,
+  };
+}
+
+// Builds a public Supabase storage URL for an item photo. Returns null when the
+// Supabase base URL is unavailable so readiness flags the missing photo rather
+// than emitting a malformed URL to eBay.
+function resolvePhotoUrl(
+  photo: { storageBucket: string; storagePath: string },
+  env: EbayEnv,
+): string | null {
+  const base = env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || base.trim().length === 0) {
+    return null;
+  }
+  const trimmed = base.replace(/\/$/, "");
+  return `${trimmed}/storage/v1/object/public/${photo.storageBucket}/${photo.storagePath}`;
+}
+
+export async function publishEbayListing(
+  prisma: EbayPublishPrismaLike,
+  input: EbayPublishInput,
+  deps: EbayPublishDeps = defaultEbayPublishDeps,
+): Promise<EbayPublishResult> {
+  // Hard gate first: when publishing is disabled, return immediately and make
+  // no eBay API calls of any kind.
+  if (!isEbaySandboxPublishEnabled(deps.env)) {
+    return {
+      status: "not_enabled",
+      code: ebayErrorCodes.publishNotEnabled,
+      marketplace: "ebay",
+      environment: "sandbox",
+      message:
+        "eBay sandbox publishing is disabled. Set EBAY_SANDBOX_PUBLISH_ENABLED=true locally to enable it. Nothing was published.",
+    };
+  }
+
+  const config = getEbayConfig(deps.env);
+
+  const item = await prisma.inventoryItem.findFirst({
+    where: { id: input.inventoryItemId, sellerId: input.userId },
+    include: {
+      listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 },
+      photos: { orderBy: { position: "asc" } },
+    },
+  });
+
+  if (!item) {
+    throw new AppError("Inventory item not found.", 404);
+  }
+
+  const connection = await prisma.marketplaceConnection.findUnique({
+    where: {
+      userId_marketplace_environment: {
+        userId: input.userId,
+        marketplace: "ebay",
+        environment: "sandbox",
+      },
+    },
+  });
+
+  if (!connection) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.notConnected,
+      "Connect eBay sandbox before publishing.",
+      404,
+    );
+  }
+
+  const sellerConfig = await prisma.ebaySellerConfig.findFirst({
+    where: { userId: input.userId, marketplaceConnectionId: connection.id },
+  });
+
+  const draft = item.listingDrafts[0];
+  const { categoryId, quantity } = ebayDraftFields(draft);
+  const photos = item.photos.map((photo) => ({
+    url: resolvePhotoUrl(photo, deps.env),
+  }));
+
+  const readiness: EbayListingReadinessResult = validateEbayListingReadiness({
+    userId: input.userId,
+    item: { id: item.id, sellerId: item.sellerId, condition: item.condition },
+    draft: {
+      title: draft?.title ?? null,
+      description: draft?.description ?? null,
+      priceCents: draft?.recommendedPriceCents ?? null,
+      quantity,
+      categoryId,
+    },
+    photos,
+    connection: { id: connection.id },
+    sellerConfig,
+  });
+
+  if (!readiness.ready) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.readinessFailed,
+      "Listing is not ready for eBay sandbox publish. Nothing was published.",
+      422,
+      { missing: readiness.missing },
+    );
+  }
+
+  // sellerConfig and draft are guaranteed present; readiness would have failed.
+  const checkedConfig = sellerConfig!;
+  const checkedDraft = draft!;
+  const mapperInput = {
+    item: {
+      id: item.id,
+      sellerId: item.sellerId,
+      brand: item.brand,
+      condition: item.condition,
+      size: item.size,
+      colorway: item.colorway,
+      sku: null,
+    },
+    draft: {
+      title: checkedDraft.title!,
+      description: checkedDraft.description!,
+      priceCents: checkedDraft.recommendedPriceCents!,
+      quantity,
+      categoryId,
+      itemSpecifics: asStringRecord(checkedDraft.itemSpecifics),
+    },
+    photos,
+    sellerConfig: {
+      marketplaceId: checkedConfig.marketplaceId as EbayMarketplaceId,
+      paymentPolicyId: checkedConfig.paymentPolicyId,
+      fulfillmentPolicyId: checkedConfig.fulfillmentPolicyId,
+      returnPolicyId: checkedConfig.returnPolicyId,
+      merchantLocationKey: checkedConfig.merchantLocationKey,
+    },
+  };
+
+  const sku = resolveEbaySku(mapperInput.item);
+  const inventoryPayload = buildEbayInventoryItemPayload(mapperInput);
+  const offerPayload = buildEbayOfferPayload(mapperInput);
+
+  const accessToken = await deps.resolveAccessToken(prisma, connection, config);
+  const client = deps.createClient(accessToken, config.marketplaceId);
+
+  await runStep("inventory_item", () =>
+    client.createOrReplaceInventoryItem(sku, inventoryPayload),
+  );
+  const { offerId } = await runStep("offer", () =>
+    client.createOffer(offerPayload),
+  );
+  const { listingId } = await runStep("publish", () =>
+    client.publishOffer(offerId),
+  );
+
+  return {
+    status: "published",
+    code: "EBAY_PUBLISH_SUCCEEDED",
+    marketplace: "ebay",
+    environment: "sandbox",
+    sku,
+    offerId,
+    listingId,
+  };
+}
+
+// Tags the failing external step onto the error so the publish handler can
+// persist a precise failed MarketplaceEvent. Re-throws typed errors with the
+// step detail attached; never swallows.
+async function runStep<T>(
+  step: EbayPublishStep,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof EbayIntegrationError) {
+      throw new EbayIntegrationError(error.code, error.message, error.status, {
+        ...(error.details ?? {}),
+        step,
+      });
+    }
+    throw new EbayIntegrationError(
+      ebayErrorCodes.publishFailed,
+      "eBay sandbox publish step failed.",
+      502,
+      { step },
+    );
+  }
+}

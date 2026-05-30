@@ -10,6 +10,8 @@ export const ebayErrorCodes = {
   locationMissing: "EBAY_LOCATION_MISSING",
   readinessFailed: "EBAY_READINESS_FAILED",
   apiFailed: "EBAY_API_FAILED",
+  publishNotEnabled: "EBAY_PUBLISH_NOT_ENABLED",
+  publishFailed: "EBAY_PUBLISH_FAILED",
 } as const;
 
 export type EbayErrorCode =

@@ -1,16 +1,27 @@
-import type { InventoryStatus, Prisma } from "@/generated/prisma/client";
+import type {
+  InventoryStatus,
+  Prisma,
+  PublishAttemptStatus,
+} from "@/generated/prisma/client";
 import type { Marketplace } from "@/lib/ai/listing-draft";
 import { AppError } from "@/lib/errors";
 import { canPublish, toLifecycleState } from "@/lib/lifecycle/item-status";
 
 import { getMarketplaceAdapter, type PublishOutcome } from "./adapter";
+import { EbayIntegrationError } from "./adapters/ebay/errors";
+import {
+  defaultEbayPublishDeps,
+  publishEbayListing,
+  type EbayPublishPrismaLike,
+  type EbayPublishResult,
+} from "./adapters/ebay/publish";
 
 const publishingPersistenceTables = ["PublishAttempt", "MarketplaceEvent"] as const;
 
 export const publishingMigrationMissingCode = "PUBLISHING_MIGRATION_MISSING";
 
 export class PublishingMigrationMissingError extends AppError {
-  readonly missingTables = publishingPersistenceTables;
+  readonly missingTables: readonly string[];
 
   constructor() {
     super(
@@ -19,6 +30,7 @@ export class PublishingMigrationMissingError extends AppError {
       publishingMigrationMissingCode,
     );
     this.name = "PublishingMigrationMissingError";
+    this.missingTables = publishingPersistenceTables;
   }
 
   toPayload() {
@@ -30,9 +42,9 @@ export class PublishingMigrationMissingError extends AppError {
   }
 }
 
-// Structural subset of the Prisma client this handler needs. Keeping it
-// narrow lets the unit tests use a tiny in-memory fake without dragging in
-// the full client surface.
+// Structural subset of the Prisma client this handler needs. Keeping it narrow
+// lets the unit tests use a tiny in-memory fake without dragging in the full
+// client surface.
 export type PublishPrismaLike = {
   inventoryItem: {
     findFirst(args: {
@@ -56,12 +68,16 @@ export type PublishPrismaLike = {
       update: Record<string, never>;
       select?: { id: true };
     }): Promise<{ id: string }>;
+    update?(args: {
+      where: { id: string };
+      data: Record<string, unknown>;
+    }): Promise<{ id: string }>;
   };
   publishAttempt: {
     create(args: {
       data: {
         marketplaceListingId: string;
-        status: "NOT_IMPLEMENTED";
+        status: PublishAttemptStatus;
         code: string;
         reason: string | null;
         adapterResult: Prisma.InputJsonValue;
@@ -89,23 +105,37 @@ export type ExecutePublishInput = {
 
 export type ExecutePublishResult = {
   ok: true;
-  httpStatus: 501;
-  outcome: PublishOutcome;
+  httpStatus: number;
+  outcome: PublishOutcome | EbayPublishResult;
   marketplaceListingId: string;
   publishAttemptId: string;
+  sku?: string;
+  offerId?: string;
+  listingId?: string;
 };
 
 type AdapterResolver = (marketplace: Marketplace) => {
   publishDraft(args: { inventoryItemId: string }): Promise<PublishOutcome>;
 };
 
-// Persists a single publish attempt for an approved item and returns the
-// honest NOT_IMPLEMENTED outcome. Throws typed AppError for 404/409 so the
-// thin route handler can map them uniformly.
+export type EbayPublishFn = (
+  prisma: EbayPublishPrismaLike,
+  input: { userId: string; inventoryItemId: string },
+) => Promise<EbayPublishResult>;
+
+const defaultEbayPublish: EbayPublishFn = (prisma, input) =>
+  publishEbayListing(prisma, input, defaultEbayPublishDeps);
+
+// Persists a single publish attempt for an approved item. For non-eBay
+// marketplaces it returns the honest NOT_IMPLEMENTED outcome. For eBay it runs
+// the guarded sandbox publish flow (blocked unless the env flag is enabled) and
+// records the typed outcome. Throws typed AppError for 404/409 so the thin
+// route handler can map them uniformly.
 export async function executePublish(
   prisma: PublishPrismaLike,
   input: ExecutePublishInput,
   resolveAdapter: AdapterResolver = getMarketplaceAdapter,
+  ebayPublish: EbayPublishFn = defaultEbayPublish,
 ): Promise<ExecutePublishResult> {
   const item = await prisma.inventoryItem.findFirst({
     where: { id: input.inventoryItemId, sellerId: input.userId },
@@ -141,12 +171,16 @@ export async function executePublish(
     select: { id: true },
   });
 
+  if (input.marketplace === "ebay") {
+    return executeEbayPublish(prisma, input, listing.id, ebayPublish);
+  }
+
   const outcome = await resolveAdapter(input.marketplace).publishDraft({
     inventoryItemId: item.id,
   });
   const completedAt = new Date();
 
-  try {
+  return withMigrationDetection(async () => {
     const attempt = await prisma.publishAttempt.create({
       data: {
         marketplaceListingId: listing.id,
@@ -179,11 +213,178 @@ export async function executePublish(
       marketplaceListingId: listing.id,
       publishAttemptId: attempt.id,
     };
+  });
+}
+
+async function executeEbayPublish(
+  prisma: PublishPrismaLike,
+  input: ExecutePublishInput,
+  marketplaceListingId: string,
+  ebayPublish: EbayPublishFn,
+): Promise<ExecutePublishResult> {
+  let result: EbayPublishResult;
+  try {
+    result = await ebayPublish(prisma as unknown as EbayPublishPrismaLike, {
+      userId: input.userId,
+      inventoryItemId: input.inventoryItemId,
+    });
   } catch (error) {
+    await recordEbayFailure(prisma, input, marketplaceListingId, error);
+    throw error;
+  }
+
+  if (result.status === "not_enabled") {
+    return withMigrationDetection(async () => {
+      const attempt = await prisma.publishAttempt.create({
+        data: {
+          marketplaceListingId,
+          status: "NOT_IMPLEMENTED",
+          code: result.code,
+          reason: result.message,
+          adapterResult: result as unknown as Prisma.InputJsonValue,
+          requestedBy: input.userId,
+          completedAt: new Date(),
+        },
+      });
+
+      await prisma.marketplaceEvent.create({
+        data: {
+          marketplaceListingId,
+          kind: "publish_blocked",
+          data: {
+            code: result.code,
+            attemptId: attempt.id,
+            marketplace: "ebay",
+          },
+        },
+      });
+
+      return {
+        ok: true,
+        httpStatus: 200,
+        outcome: result,
+        marketplaceListingId,
+        publishAttemptId: attempt.id,
+      };
+    });
+  }
+
+  // result.status === "published"
+  return withMigrationDetection(async () => {
+    const attempt = await prisma.publishAttempt.create({
+      data: {
+        marketplaceListingId,
+        status: "SUCCEEDED",
+        code: result.code,
+        reason: null,
+        adapterResult: result as unknown as Prisma.InputJsonValue,
+        requestedBy: input.userId,
+        completedAt: new Date(),
+      },
+    });
+
+    const steps: Array<{ kind: string; data: Prisma.InputJsonValue }> = [
+      {
+        kind: "ebay_inventory_item_created",
+        data: { sku: result.sku, attemptId: attempt.id },
+      },
+      {
+        kind: "ebay_offer_created",
+        data: { offerId: result.offerId, sku: result.sku, attemptId: attempt.id },
+      },
+      {
+        kind: "ebay_offer_published",
+        data: {
+          listingId: result.listingId,
+          offerId: result.offerId,
+          attemptId: attempt.id,
+        },
+      },
+    ];
+    for (const step of steps) {
+      await prisma.marketplaceEvent.create({
+        data: { marketplaceListingId, kind: step.kind, data: step.data },
+      });
+    }
+
+    if (prisma.marketplaceListing.update) {
+      await prisma.marketplaceListing.update({
+        where: { id: marketplaceListingId },
+        data: {
+          status: "LISTED",
+          sku: result.sku,
+          externalOfferId: result.offerId,
+          externalListingId: result.listingId,
+          lastSyncAt: new Date(),
+          lastError: null,
+        },
+      });
+    }
+
+    return {
+      ok: true,
+      httpStatus: 200,
+      outcome: result,
+      marketplaceListingId,
+      publishAttemptId: attempt.id,
+      sku: result.sku,
+      offerId: result.offerId,
+      listingId: result.listingId,
+    };
+  });
+}
+
+async function recordEbayFailure(
+  prisma: PublishPrismaLike,
+  input: ExecutePublishInput,
+  marketplaceListingId: string,
+  error: unknown,
+): Promise<void> {
+  const code =
+    error instanceof EbayIntegrationError ? error.code : "EBAY_PUBLISH_FAILED";
+  const reason = error instanceof Error ? error.message : "eBay publish failed.";
+  const step =
+    error instanceof EbayIntegrationError &&
+    error.details &&
+    typeof error.details.step === "string"
+      ? error.details.step
+      : null;
+
+  await withMigrationDetection(async () => {
+    const attempt = await prisma.publishAttempt.create({
+      data: {
+        marketplaceListingId,
+        status: "FAILED",
+        code,
+        reason,
+        adapterResult: { code, step } as unknown as Prisma.InputJsonValue,
+        requestedBy: input.userId,
+        completedAt: new Date(),
+      },
+    });
+
+    await prisma.marketplaceEvent.create({
+      data: {
+        marketplaceListingId,
+        kind: "publish_failed",
+        data: { code, step, attemptId: attempt.id, marketplace: "ebay" },
+      },
+    });
+
+    return attempt;
+  });
+}
+
+async function withMigrationDetection<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof PublishingMigrationMissingError) {
+      throw error;
+    }
     if (isMissingPublishingPersistenceError(error)) {
       throw new PublishingMigrationMissingError();
     }
-
     throw error;
   }
 }

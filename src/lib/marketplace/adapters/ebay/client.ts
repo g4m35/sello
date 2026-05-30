@@ -1,5 +1,9 @@
 import { getEbayConfig } from "./config";
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
+import type {
+  EbayInventoryItemPayload,
+  EbayOfferPayload,
+} from "./mapper";
 import { decryptEbayToken, encryptEbayToken } from "./token-crypto";
 import type {
   EbayApiClient,
@@ -73,6 +77,48 @@ export class EbaySandboxClient implements EbayApiClient {
     return payload.locations ?? [];
   }
 
+  async createOrReplaceInventoryItem(
+    sku: string,
+    payload: EbayInventoryItemPayload,
+  ): Promise<void> {
+    await this.send<unknown>(
+      "PUT",
+      `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
+      payload,
+    );
+  }
+
+  async createOffer(payload: EbayOfferPayload): Promise<{ offerId: string }> {
+    const result = await this.send<{ offerId?: string }>(
+      "POST",
+      "/sell/inventory/v1/offer",
+      payload,
+    );
+    if (!result?.offerId) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.publishFailed,
+        "eBay sandbox createOffer returned no offerId.",
+        502,
+      );
+    }
+    return { offerId: result.offerId };
+  }
+
+  async publishOffer(offerId: string): Promise<{ listingId: string }> {
+    const result = await this.send<{ listingId?: string }>(
+      "POST",
+      `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}/publish/`,
+    );
+    if (!result?.listingId) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.publishFailed,
+        "eBay sandbox publishOffer returned no listingId.",
+        502,
+      );
+    }
+    return { listingId: result.listingId };
+  }
+
   private async get<T>(path: string): Promise<T> {
     const response = await this.fetchImpl(`${apiBaseUrl}${path}`, {
       headers: {
@@ -91,6 +137,41 @@ export class EbaySandboxClient implements EbayApiClient {
     }
 
     return (await response.json()) as T;
+  }
+
+  // Mutating requests used by the publish flow. Failures normalize to a typed
+  // EBAY_PUBLISH_FAILED error carrying only the HTTP status, never the bearer
+  // token or request body, so error payloads can be surfaced safely.
+  private async send<T>(
+    method: "POST" | "PUT",
+    path: string,
+    body?: unknown,
+  ): Promise<T | null> {
+    const response = await this.fetchImpl(`${apiBaseUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+        "Content-Language": "en-US",
+        Accept: "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+    if (!response.ok) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.publishFailed,
+        "eBay sandbox publish request failed.",
+        502,
+        { status: response.status },
+      );
+    }
+
+    const text = await response.text();
+    if (!text) {
+      return null;
+    }
+    return JSON.parse(text) as T;
   }
 }
 

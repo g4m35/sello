@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { InventoryStatus } from "@/generated/prisma/client";
 
+import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
 import {
   executePublish,
   publishingMigrationMissingCode,
@@ -110,7 +111,7 @@ describe("executePublish", () => {
     const result = await executePublish(prisma, {
       userId: "user-1",
       inventoryItemId: "item-1",
-      marketplace: "ebay",
+      marketplace: "grailed",
     });
 
     expect(result.httpStatus).toBe(501);
@@ -128,12 +129,12 @@ describe("executePublish", () => {
     await executePublish(prisma, {
       userId: "user-1",
       inventoryItemId: "item-1",
-      marketplace: "ebay",
+      marketplace: "grailed",
     });
     await executePublish(prisma, {
       userId: "user-1",
       inventoryItemId: "item-1",
-      marketplace: "ebay",
+      marketplace: "grailed",
     });
 
     expect(prisma._state.listings.size).toBe(1);
@@ -237,5 +238,177 @@ describe("executePublish", () => {
         marketplace: "ebay",
       }),
     ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+type EbayFakeState = {
+  attempts: Array<{ status: string; code: string; reason: string | null }>;
+  events: Array<{ kind: string; data: Record<string, unknown> }>;
+  updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+};
+
+function createEbayFakePrisma() {
+  const state: EbayFakeState = { attempts: [], events: [], updates: [] };
+  const listings = new Map<string, string>();
+
+  const prisma = {
+    _state: state,
+    inventoryItem: {
+      async findFirst({ where }: { where: { id: string; sellerId: string } }) {
+        if (where.id !== "item-1" || where.sellerId !== "user-1") return null;
+        return { id: "item-1", status: "APPROVED" as InventoryStatus };
+      },
+    },
+    marketplaceListing: {
+      async upsert({
+        where,
+      }: {
+        where: { inventoryItemId_marketplace: { inventoryItemId: string; marketplace: string } };
+        create: { inventoryItemId: string; marketplace: string };
+      }) {
+        const k = `${where.inventoryItemId_marketplace.inventoryItemId}|${where.inventoryItemId_marketplace.marketplace}`;
+        if (!listings.has(k)) listings.set(k, `listing-${listings.size + 1}`);
+        return { id: listings.get(k)! };
+      },
+      async update({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: Record<string, unknown>;
+      }) {
+        state.updates.push({ where, data });
+        return { id: where.id };
+      },
+    },
+    publishAttempt: {
+      async create({
+        data,
+      }: {
+        data: { status: string; code: string; reason: string | null };
+      }) {
+        state.attempts.push({
+          status: data.status,
+          code: data.code,
+          reason: data.reason ?? null,
+        });
+        return { id: `attempt-${state.attempts.length}` };
+      },
+    },
+    marketplaceEvent: {
+      async create({
+        data,
+      }: {
+        data: { kind: string; data: Record<string, unknown> };
+      }) {
+        state.events.push({ kind: data.kind, data: data.data });
+        return { id: `event-${state.events.length}` };
+      },
+    },
+  };
+
+  return prisma as unknown as PublishPrismaLike & { _state: EbayFakeState };
+}
+
+describe("executePublish — eBay dispatch", () => {
+  const input = {
+    userId: "user-1",
+    inventoryItemId: "item-1",
+    marketplace: "ebay" as const,
+  };
+
+  it("records EBAY_PUBLISH_NOT_ENABLED without listing the item when publishing is disabled", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockResolvedValue({
+      status: "not_enabled",
+      code: ebayErrorCodes.publishNotEnabled,
+      marketplace: "ebay",
+      environment: "sandbox",
+      message: "disabled",
+    });
+
+    const result = await executePublish(prisma, input, undefined, ebayPublish);
+
+    expect(result.outcome.code).toBe(ebayErrorCodes.publishNotEnabled);
+    expect(prisma._state.attempts[0].code).toBe(ebayErrorCodes.publishNotEnabled);
+    expect(prisma._state.updates).toHaveLength(0);
+  });
+
+  it("persists SKU/offerId/listingId and marks the listing LISTED on success", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockResolvedValue({
+      status: "published",
+      code: "EBAY_PUBLISH_SUCCEEDED",
+      marketplace: "ebay",
+      environment: "sandbox",
+      sku: "percs_item-1",
+      offerId: "offer-1",
+      listingId: "listing-x",
+    });
+
+    const result = await executePublish(prisma, input, undefined, ebayPublish);
+
+    expect(result.outcome.status).toBe("published");
+    expect(result.sku).toBe("percs_item-1");
+    expect(result.offerId).toBe("offer-1");
+    expect(result.listingId).toBe("listing-x");
+
+    expect(prisma._state.attempts[0].status).toBe("SUCCEEDED");
+    const update = prisma._state.updates[0];
+    expect(update.data.sku).toBe("percs_item-1");
+    expect(update.data.externalOfferId).toBe("offer-1");
+    expect(update.data.externalListingId).toBe("listing-x");
+    expect(update.data.status).toBe("LISTED");
+    expect(prisma._state.events.map((e) => e.kind)).toEqual(
+      expect.arrayContaining([
+        "ebay_inventory_item_created",
+        "ebay_offer_created",
+        "ebay_offer_published",
+      ]),
+    );
+  });
+
+  it("persists a FAILED attempt and failed event, then rethrows on readiness failure", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi
+      .fn()
+      .mockRejectedValue(
+        new EbayIntegrationError(
+          ebayErrorCodes.readinessFailed,
+          "not ready",
+          422,
+          { missing: ["title"] },
+        ),
+      );
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.readinessFailed });
+
+    expect(prisma._state.attempts[0].status).toBe("FAILED");
+    expect(prisma._state.attempts[0].code).toBe(ebayErrorCodes.readinessFailed);
+    expect(prisma._state.events.some((e) => e.kind === "publish_failed")).toBe(true);
+    expect(prisma._state.updates).toHaveLength(0);
+  });
+
+  it("tags the failing external step on a mid-flow API failure", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi
+      .fn()
+      .mockRejectedValue(
+        new EbayIntegrationError(
+          ebayErrorCodes.publishFailed,
+          "offer failed",
+          502,
+          { step: "offer" },
+        ),
+      );
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.publishFailed });
+
+    const failed = prisma._state.events.find((e) => e.kind === "publish_failed");
+    expect(failed?.data.step).toBe("offer");
   });
 });

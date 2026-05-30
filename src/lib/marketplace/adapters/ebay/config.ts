@@ -46,6 +46,13 @@ export function getEbayConfig(env: EbayEnv = process.env): EbayConfig {
   };
 }
 
+// Server-side gate for real eBay sandbox publish calls. Defaults to false and
+// only the exact string "true" enables publishing, so a typo or stray value can
+// never accidentally turn on outbound listing creation. Never exposed client-side.
+export function isEbaySandboxPublishEnabled(env: EbayEnv = process.env): boolean {
+  return env.EBAY_SANDBOX_PUBLISH_ENABLED === "true";
+}
+
 function assertEnvValue(value: string | undefined, variable: string) {
   if (!value || value.startsWith("[") || value.includes("[")) {
     throw new EbayIntegrationError(

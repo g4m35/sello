@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getEbayConfig } from "./config";
+import { getEbayConfig, isEbaySandboxPublishEnabled } from "./config";
 import { ebayErrorCodes } from "./errors";
 
 const completeEnv = {
@@ -33,5 +33,22 @@ describe("getEbayConfig", () => {
     expect(() =>
       getEbayConfig({ ...completeEnv, EBAY_CLIENT_SECRET: "" }),
     ).toThrow(expect.objectContaining({ code: ebayErrorCodes.notConfigured }));
+  });
+});
+
+describe("isEbaySandboxPublishEnabled", () => {
+  it("defaults to false when the flag is missing", () => {
+    expect(isEbaySandboxPublishEnabled({})).toBe(false);
+  });
+
+  it("is false when the flag is not exactly 'true'", () => {
+    expect(isEbaySandboxPublishEnabled({ EBAY_SANDBOX_PUBLISH_ENABLED: "false" })).toBe(false);
+    expect(isEbaySandboxPublishEnabled({ EBAY_SANDBOX_PUBLISH_ENABLED: "TRUE" })).toBe(false);
+    expect(isEbaySandboxPublishEnabled({ EBAY_SANDBOX_PUBLISH_ENABLED: "1" })).toBe(false);
+    expect(isEbaySandboxPublishEnabled({ EBAY_SANDBOX_PUBLISH_ENABLED: " true " })).toBe(false);
+  });
+
+  it("is true only when the flag is exactly 'true'", () => {
+    expect(isEbaySandboxPublishEnabled({ EBAY_SANDBOX_PUBLISH_ENABLED: "true" })).toBe(true);
   });
 });
