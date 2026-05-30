@@ -53,6 +53,31 @@ export function isEbaySandboxPublishEnabled(env: EbayEnv = process.env): boolean
   return env.EBAY_SANDBOX_PUBLISH_ENABLED === "true";
 }
 
+const minOAuthStateSecretBytes = 32;
+
+// Dedicated secret for signing the OAuth state cookie (HMAC), kept separate from
+// EBAY_TOKEN_ENCRYPTION_KEY so the two cryptographic purposes never share a key
+// and can be rotated independently. Validated lazily, only when the OAuth
+// connect/callback routes run, so unrelated app paths and builds do not need it.
+export function getEbayOAuthStateSecret(env: EbayEnv = process.env): string {
+  const secret = env.EBAY_OAUTH_STATE_SECRET;
+
+  if (
+    !secret ||
+    secret.includes("[") ||
+    Buffer.byteLength(secret, "utf8") < minOAuthStateSecretBytes
+  ) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.notConfigured,
+      `Missing or weak eBay OAuth state secret. Set EBAY_OAUTH_STATE_SECRET to at least ${minOAuthStateSecretBytes} bytes.`,
+      503,
+      { variable: "EBAY_OAUTH_STATE_SECRET" },
+    );
+  }
+
+  return secret;
+}
+
 function assertEnvValue(value: string | undefined, variable: string) {
   if (!value || value.startsWith("[") || value.includes("[")) {
     throw new EbayIntegrationError(

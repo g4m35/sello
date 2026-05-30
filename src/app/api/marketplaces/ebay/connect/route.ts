@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
-import { getEbayConfig } from "@/lib/marketplace/adapters/ebay/config";
+import {
+  getEbayConfig,
+  getEbayOAuthStateSecret,
+} from "@/lib/marketplace/adapters/ebay/config";
 import { toEbayErrorPayload } from "@/lib/marketplace/adapters/ebay/errors";
 import {
   buildEbayAuthorizationUrl,
@@ -21,7 +24,7 @@ export async function GET(request: Request) {
     const stateCookie = createEbayOAuthStateCookie({
       userId: user.id,
       state,
-      secret: config.tokenEncryptionKey,
+      secret: getEbayOAuthStateSecret(),
     });
 
     const response = wantsJson(request)

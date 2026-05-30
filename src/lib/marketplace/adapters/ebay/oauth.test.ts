@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getEbayConfig } from "./config";
+import { getEbayConfig, getEbayOAuthStateSecret } from "./config";
 import {
   buildEbayAuthorizationUrl,
   createEbayOAuthStateCookie,
@@ -42,6 +42,28 @@ describe("eBay OAuth helpers", () => {
         cookieValue: cookie.value,
         expectedState: "state-1",
         secret: config.tokenEncryptionKey,
+        now: new Date("2026-05-29T12:01:00.000Z"),
+      }),
+    ).toMatchObject({ userId: "user-1" });
+  });
+
+  it("signs and verifies state with a valid EBAY_OAUTH_STATE_SECRET", () => {
+    const secret = getEbayOAuthStateSecret({
+      EBAY_OAUTH_STATE_SECRET:
+        "state-secret-state-secret-state-secret-0123456789",
+    });
+    const cookie = createEbayOAuthStateCookie({
+      userId: "user-1",
+      state: "state-1",
+      secret,
+      now: new Date("2026-05-29T12:00:00.000Z"),
+    });
+
+    expect(
+      parseEbayOAuthStateCookie({
+        cookieValue: cookie.value,
+        expectedState: "state-1",
+        secret,
         now: new Date("2026-05-29T12:01:00.000Z"),
       }),
     ).toMatchObject({ userId: "user-1" });

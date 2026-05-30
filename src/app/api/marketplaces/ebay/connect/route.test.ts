@@ -23,6 +23,8 @@ describe("eBay connect route", () => {
     process.env.EBAY_MARKETPLACE_ID = "EBAY_US";
     process.env.EBAY_TOKEN_ENCRYPTION_KEY =
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    process.env.EBAY_OAUTH_STATE_SECRET =
+      "state-secret-state-secret-state-secret-0123456789";
   });
 
   it("requires an authenticated seller", async () => {

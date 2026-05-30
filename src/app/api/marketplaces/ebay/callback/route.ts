@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { getPrisma } from "@/lib/prisma";
-import { getEbayConfig } from "@/lib/marketplace/adapters/ebay/config";
+import {
+  getEbayConfig,
+  getEbayOAuthStateSecret,
+} from "@/lib/marketplace/adapters/ebay/config";
 import {
   EbayIntegrationError,
   ebayErrorCodes,
@@ -13,6 +16,7 @@ import {
   parseEbayOAuthStateCookie,
 } from "@/lib/marketplace/adapters/ebay/oauth";
 import { encryptEbayToken } from "@/lib/marketplace/adapters/ebay/token-crypto";
+import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -25,8 +29,21 @@ export async function GET(request: Request) {
     const oauthState = parseEbayOAuthStateCookie({
       cookieValue: getCookie(request, ebayOAuthStateCookieName),
       expectedState: state,
-      secret: config.tokenEncryptionKey,
+      secret: getEbayOAuthStateSecret(),
     });
+
+    // Bind the callback to the signed-in account: the user completing the OAuth
+    // round trip must be the same user the signed state cookie was issued for.
+    // Without this, a valid state cookie captured for user A could attach an
+    // eBay connection to user A while user B is the one actually authenticated.
+    const user = await requireSupabaseUser(request);
+    if (user.id !== oauthState.userId) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.oauthStateInvalid,
+        "The eBay sandbox authorization does not match the signed-in account.",
+        403,
+      );
+    }
 
     if (!code) {
       throw new EbayIntegrationError(

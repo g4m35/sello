@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getEbayConfig, isEbaySandboxPublishEnabled } from "./config";
+import {
+  getEbayConfig,
+  getEbayOAuthStateSecret,
+  isEbaySandboxPublishEnabled,
+} from "./config";
 import { ebayErrorCodes } from "./errors";
 
 const completeEnv = {
@@ -33,6 +37,51 @@ describe("getEbayConfig", () => {
     expect(() =>
       getEbayConfig({ ...completeEnv, EBAY_CLIENT_SECRET: "" }),
     ).toThrow(expect.objectContaining({ code: ebayErrorCodes.notConfigured }));
+  });
+
+  it("does not require EBAY_OAUTH_STATE_SECRET (config is independent of it)", () => {
+    // completeEnv has no EBAY_OAUTH_STATE_SECRET, yet getEbayConfig succeeds.
+    expect(() => getEbayConfig(completeEnv)).not.toThrow();
+    expect(getEbayConfig(completeEnv).tokenEncryptionKey).toBe(
+      completeEnv.EBAY_TOKEN_ENCRYPTION_KEY,
+    );
+  });
+});
+
+describe("getEbayOAuthStateSecret", () => {
+  const strongSecret = "this-is-a-sufficiently-long-state-secret-value";
+
+  it("fails when the secret is missing", () => {
+    expect(() => getEbayOAuthStateSecret({})).toThrow(
+      expect.objectContaining({ code: ebayErrorCodes.notConfigured }),
+    );
+  });
+
+  it("fails when the secret is shorter than 32 bytes", () => {
+    expect(() =>
+      getEbayOAuthStateSecret({ EBAY_OAUTH_STATE_SECRET: "too-short" }),
+    ).toThrow(expect.objectContaining({ code: ebayErrorCodes.notConfigured }));
+  });
+
+  it("fails on an unfilled placeholder value", () => {
+    expect(() =>
+      getEbayOAuthStateSecret({
+        EBAY_OAUTH_STATE_SECRET: "[EBAY_OAUTH_STATE_SECRET]",
+      }),
+    ).toThrow(expect.objectContaining({ code: ebayErrorCodes.notConfigured }));
+  });
+
+  it("returns a sufficiently strong secret", () => {
+    expect(
+      getEbayOAuthStateSecret({ EBAY_OAUTH_STATE_SECRET: strongSecret }),
+    ).toBe(strongSecret);
+  });
+
+  it("is independent of the token encryption key", () => {
+    // A valid state secret works even when no token encryption key is present.
+    expect(
+      getEbayOAuthStateSecret({ EBAY_OAUTH_STATE_SECRET: strongSecret }),
+    ).toBe(strongSecret);
   });
 });
 
