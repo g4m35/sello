@@ -79,13 +79,7 @@ async function getSupabaseUserFromCookies(): Promise<User | null> {
   }
 }
 
-export async function requireSupabaseUser(request: Request): Promise<User> {
-  const token = getBearerToken(request);
-
-  if (!token) {
-    throw new AppError("Sign in before creating a listing draft.", 401);
-  }
-
+async function getSupabaseUserFromBearerToken(token: string): Promise<User> {
   const supabase = createSupabaseAuthClient();
   const { data, error } = await supabase.auth.getUser(token);
 
@@ -96,6 +90,16 @@ export async function requireSupabaseUser(request: Request): Promise<User> {
   return data.user;
 }
 
+export async function requireSupabaseUser(request: Request): Promise<User> {
+  const token = getBearerToken(request);
+
+  if (!token) {
+    throw new AppError("Sign in before creating a listing draft.", 401);
+  }
+
+  return getSupabaseUserFromBearerToken(token);
+}
+
 // Resolves the authenticated user for browser-driven routes: cookie session
 // first (works on top-level navigations such as the eBay OAuth callback), then
 // the existing Authorization: Bearer flow for in-app fetch callers. The user is
@@ -104,10 +108,26 @@ export async function requireSupabaseUser(request: Request): Promise<User> {
 export async function requireSupabaseUserFromRequestOrCookies(
   request: Request,
 ): Promise<User> {
+  const token = getBearerToken(request);
   const cookieUser = await getSupabaseUserFromCookies();
+
   if (cookieUser) {
+    if (token) {
+      const bearerUser = await getSupabaseUserFromBearerToken(token);
+      if (bearerUser.id !== cookieUser.id) {
+        throw new AppError(
+          "Authentication contexts do not match.",
+          403,
+          "AUTH_USER_MISMATCH",
+        );
+      }
+    }
     return cookieUser;
   }
 
-  return requireSupabaseUser(request);
+  if (!token) {
+    throw new AppError("Sign in before creating a listing draft.", 401);
+  }
+
+  return getSupabaseUserFromBearerToken(token);
 }

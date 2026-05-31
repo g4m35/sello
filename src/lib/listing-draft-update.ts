@@ -3,12 +3,28 @@ import { z } from "zod";
 import { MarketplaceSchema } from "./ai/listing-draft";
 import { countMeaningfulBullets, READINESS_THRESHOLDS } from "./lifecycle/readiness";
 
+const EbayMarketplaceDraftUpdateSchema = z
+  .object({
+    categoryId: z
+      .string()
+      .trim()
+      .regex(/^\d*$/, "eBay category ID must contain digits only.")
+      .max(32),
+  })
+  .strict();
+
 export const ListingDraftUpdateSchema = z
   .object({
     title: z.string().max(80),
     description: z.string().max(3000),
     bulletPoints: z.array(z.string().max(160)).max(8),
     recommendedPriceCents: z.number().int().positive().nullable(),
+    marketplaceDrafts: z
+      .object({
+        ebay: EbayMarketplaceDraftUpdateSchema.optional(),
+      })
+      .strict()
+      .optional(),
     selectedMarketplaces: z.array(MarketplaceSchema).max(4),
     approve: z.boolean().optional().default(false),
   })

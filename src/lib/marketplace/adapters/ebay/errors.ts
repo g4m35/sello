@@ -11,6 +11,7 @@ export const ebayErrorCodes = {
   readinessFailed: "EBAY_READINESS_FAILED",
   apiFailed: "EBAY_API_FAILED",
   publishNotEnabled: "EBAY_PUBLISH_NOT_ENABLED",
+  alreadyPublished: "EBAY_ALREADY_PUBLISHED",
   publishFailed: "EBAY_PUBLISH_FAILED",
 } as const;
 

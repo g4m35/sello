@@ -49,6 +49,48 @@ describe("requireSupabaseUserFromRequestOrCookies", () => {
     expect(mocks.bearerGetUser).not.toHaveBeenCalled();
   });
 
+  it("allows matching cookie and bearer users", async () => {
+    mocks.serverGetUser.mockResolvedValue({
+      data: { user: { id: "same-user" } },
+      error: null,
+    });
+    mocks.bearerGetUser.mockResolvedValue({
+      data: { user: { id: "same-user" } },
+      error: null,
+    });
+
+    const user = await requireSupabaseUserFromRequestOrCookies(
+      new Request("http://localhost/api/marketplaces/ebay/readiness", {
+        headers: { authorization: "Bearer bearer-token" },
+      }),
+    );
+
+    expect(user.id).toBe("same-user");
+    expect(mocks.bearerGetUser).toHaveBeenCalledWith("bearer-token");
+  });
+
+  it("rejects mismatched cookie and bearer users", async () => {
+    mocks.serverGetUser.mockResolvedValue({
+      data: { user: { id: "cookie-user" } },
+      error: null,
+    });
+    mocks.bearerGetUser.mockResolvedValue({
+      data: { user: { id: "bearer-user" } },
+      error: null,
+    });
+
+    await expect(
+      requireSupabaseUserFromRequestOrCookies(
+        new Request("http://localhost/api/marketplaces/ebay/readiness", {
+          headers: { authorization: "Bearer bearer-token" },
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "AUTH_USER_MISMATCH",
+      status: 403,
+    });
+  });
+
   it("falls back to the bearer token when there is no cookie session", async () => {
     mocks.serverGetUser.mockResolvedValue(noSession);
     mocks.bearerGetUser.mockResolvedValue({

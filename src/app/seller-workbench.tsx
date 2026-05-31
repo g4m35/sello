@@ -37,6 +37,7 @@ type MarketplaceDraft = {
   title: string;
   description: string;
   categoryHint: string;
+  categoryId?: string | null;
   tags: string[];
 };
 
@@ -74,9 +75,10 @@ type DraftApiResponse = {
 };
 
 type PublishApiResponse = {
-  code: "NOT_IMPLEMENTED";
+  code: "NOT_IMPLEMENTED" | "EBAY_PUBLISH_NOT_ENABLED";
   marketplace: Marketplace;
-  reason: string;
+  reason?: string;
+  message?: string;
   marketplaceListingId: string;
   publishAttemptId: string;
 };
@@ -94,6 +96,7 @@ type EditableDraft = {
   description: string;
   bulletText: string;
   recommendedPriceCents: number | null;
+  ebayCategoryId: string;
   selectedMarketplaces: Marketplace[];
 };
 
@@ -144,14 +147,37 @@ function parsePriceInput(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : null;
 }
 
-function isPublishApiResponse(payload: unknown): payload is PublishApiResponse {
+export function isPublishApiResponse(payload: unknown): payload is PublishApiResponse {
   return (
     Boolean(payload) &&
     typeof payload === "object" &&
-    (payload as { code?: unknown }).code === "NOT_IMPLEMENTED" &&
-    typeof (payload as { reason?: unknown }).reason === "string" &&
+    ((payload as { code?: unknown }).code === "NOT_IMPLEMENTED" ||
+      (payload as { code?: unknown }).code === "EBAY_PUBLISH_NOT_ENABLED") &&
     typeof (payload as { publishAttemptId?: unknown }).publishAttemptId === "string"
   );
+}
+
+export function getPublishStatusFromApiResult(
+  marketplace: Marketplace,
+  payload: PublishApiResponse,
+): PublishStatus {
+  if (payload.code === "EBAY_PUBLISH_NOT_ENABLED") {
+    return {
+      marketplace,
+      kind: "not_implemented",
+      code: payload.code,
+      message: "Sandbox publish is disabled by server flag. No eBay API calls were made.",
+      publishAttemptId: payload.publishAttemptId,
+    };
+  }
+
+  return {
+    marketplace,
+    kind: "not_implemented",
+    code: payload.code,
+    message: payload.reason ?? "Marketplace publishing is not implemented.",
+    publishAttemptId: payload.publishAttemptId,
+  };
 }
 
 function getApiFailure(payload: unknown, status: number) {
@@ -189,6 +215,7 @@ function toEditableDraft(payload: DraftApiResponse): EditableDraft {
     description: payload.draft.description,
     bulletText: payload.draft.bulletPoints.join("\n"),
     recommendedPriceCents: payload.draft.recommendedPriceCents,
+    ebayCategoryId: payload.draft.marketplaceDrafts.ebay?.categoryId ?? "",
     selectedMarketplaces: payload.draft.selectedMarketplaces,
   };
 }
@@ -236,6 +263,7 @@ function getPlatformWarnings(result: DraftApiResponse | null, draft: EditableDra
     if (draft.title.trim().length > 80) warnings.push("eBay title must stay under 80 characters.");
     if (priceMissing) warnings.push("eBay needs a seller price before publishing.");
     if (sizeMissing) warnings.push("eBay sneaker listings usually need size.");
+    if (!draft.ebayCategoryId.trim()) warnings.push("eBay needs a manual category ID before sandbox publish.");
   }
 
   if (selected.has("grailed")) {
@@ -497,6 +525,11 @@ export default function SellerWorkbench() {
           description: draftToSave.description,
           bulletPoints,
           recommendedPriceCents: draftToSave.recommendedPriceCents,
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: draftToSave.ebayCategoryId,
+            },
+          },
           selectedMarketplaces: draftToSave.selectedMarketplaces,
           approve,
         }),
@@ -652,13 +685,7 @@ export default function SellerWorkbench() {
       const payload: unknown = await response.json();
 
       if (response.status === 501 && isPublishApiResponse(payload)) {
-        setPublishStatus({
-          marketplace,
-          kind: "not_implemented",
-          code: payload.code,
-          message: payload.reason,
-          publishAttemptId: payload.publishAttemptId,
-        });
+        setPublishStatus(getPublishStatusFromApiResult(marketplace, payload));
         return;
       }
 
@@ -670,6 +697,11 @@ export default function SellerWorkbench() {
           code: failure.code,
           message: failure.message,
         });
+        return;
+      }
+
+      if (isPublishApiResponse(payload)) {
+        setPublishStatus(getPublishStatusFromApiResult(marketplace, payload));
         return;
       }
 
@@ -1153,6 +1185,29 @@ export default function SellerWorkbench() {
                         ))}
                       </div>
                     </div>
+
+                    <label className="flex max-w-sm flex-col gap-2" htmlFor="ebay-category-id">
+                      <span className="text-sm font-semibold">eBay category ID</span>
+                      <input
+                        id="ebay-category-id"
+                        inputMode="numeric"
+                        value={editableDraft.ebayCategoryId}
+                        onChange={(event) =>
+                          setEditableDraft((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  ebayCategoryId: event.target.value.replace(/\D/g, ""),
+                                }
+                              : current,
+                          )
+                        }
+                        className="border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-red-700"
+                      />
+                      <span className="text-xs leading-5 text-neutral-500">
+                        Manual for now. Category search will be added later.
+                      </span>
+                    </label>
 
                     <div className="border-t border-neutral-100 pt-4">
                       <p className="text-sm font-semibold">Pricing comps</p>

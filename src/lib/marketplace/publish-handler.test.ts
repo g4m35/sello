@@ -241,15 +241,27 @@ describe("executePublish", () => {
   });
 });
 
+type EbayFakeListing = {
+  id: string;
+  externalListingId: string | null;
+  externalOfferId: string | null;
+  sku: string | null;
+};
+
 type EbayFakeState = {
   attempts: Array<{ status: string; code: string; reason: string | null }>;
   events: Array<{ kind: string; data: Record<string, unknown> }>;
   updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  listings: Map<string, EbayFakeListing>;
 };
 
-function createEbayFakePrisma() {
-  const state: EbayFakeState = { attempts: [], events: [], updates: [] };
-  const listings = new Map<string, string>();
+function createEbayFakePrisma(opts?: { existingListing?: Partial<EbayFakeListing> }) {
+  const state: EbayFakeState = {
+    attempts: [],
+    events: [],
+    updates: [],
+    listings: new Map(),
+  };
 
   const prisma = {
     _state: state,
@@ -267,8 +279,15 @@ function createEbayFakePrisma() {
         create: { inventoryItemId: string; marketplace: string };
       }) {
         const k = `${where.inventoryItemId_marketplace.inventoryItemId}|${where.inventoryItemId_marketplace.marketplace}`;
-        if (!listings.has(k)) listings.set(k, `listing-${listings.size + 1}`);
-        return { id: listings.get(k)! };
+        if (!state.listings.has(k)) {
+          state.listings.set(k, {
+            id: opts?.existingListing?.id ?? `listing-${state.listings.size + 1}`,
+            externalListingId: opts?.existingListing?.externalListingId ?? null,
+            externalOfferId: opts?.existingListing?.externalOfferId ?? null,
+            sku: opts?.existingListing?.sku ?? null,
+          });
+        }
+        return state.listings.get(k)!;
       },
       async update({
         where,
@@ -278,6 +297,19 @@ function createEbayFakePrisma() {
         data: Record<string, unknown>;
       }) {
         state.updates.push({ where, data });
+        for (const listing of state.listings.values()) {
+          if (listing.id === where.id) {
+            listing.externalListingId =
+              typeof data.externalListingId === "string"
+                ? data.externalListingId
+                : listing.externalListingId;
+            listing.externalOfferId =
+              typeof data.externalOfferId === "string"
+                ? data.externalOfferId
+                : listing.externalOfferId;
+            listing.sku = typeof data.sku === "string" ? data.sku : listing.sku;
+          }
+        }
         return { id: where.id };
       },
     },
@@ -366,6 +398,98 @@ describe("executePublish — eBay dispatch", () => {
         "ebay_offer_published",
       ]),
     );
+  });
+
+  it("blocks duplicate eBay publish when a listing ID already exists", async () => {
+    const prisma = createEbayFakePrisma({
+      existingListing: {
+        id: "listing-1",
+        externalListingId: "ebay-listing-1",
+        externalOfferId: "offer-1",
+        sku: "percs_item-1",
+      },
+    });
+    const ebayPublish = vi.fn();
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({
+      code: ebayErrorCodes.alreadyPublished,
+      status: 409,
+    });
+
+    expect(ebayPublish).not.toHaveBeenCalled();
+    expect(prisma._state.updates).toHaveLength(0);
+  });
+
+  it("blocks duplicate eBay publish when an offer ID already exists", async () => {
+    const prisma = createEbayFakePrisma({
+      existingListing: {
+        id: "listing-1",
+        externalListingId: null,
+        externalOfferId: "offer-1",
+        sku: "percs_item-1",
+      },
+    });
+    const ebayPublish = vi.fn();
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({
+      code: ebayErrorCodes.alreadyPublished,
+      status: 409,
+    });
+
+    expect(ebayPublish).not.toHaveBeenCalled();
+  });
+
+  it("allows retry after a pre-API readiness failure when no external IDs exist", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new EbayIntegrationError(
+          ebayErrorCodes.readinessFailed,
+          "not ready",
+          422,
+        ),
+      )
+      .mockResolvedValueOnce({
+        status: "not_enabled",
+        code: ebayErrorCodes.publishNotEnabled,
+        marketplace: "ebay",
+        environment: "sandbox",
+        message: "disabled",
+      });
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.readinessFailed });
+
+    const retry = await executePublish(prisma, input, undefined, ebayPublish);
+
+    expect(retry.outcome.code).toBe(ebayErrorCodes.publishNotEnabled);
+    expect(ebayPublish).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not create a second mocked eBay listing after one successful publish", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockResolvedValue({
+      status: "published",
+      code: "EBAY_PUBLISH_SUCCEEDED",
+      marketplace: "ebay",
+      environment: "sandbox",
+      sku: "percs_item-1",
+      offerId: "offer-1",
+      listingId: "listing-x",
+    });
+
+    await executePublish(prisma, input, undefined, ebayPublish);
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.alreadyPublished });
+
+    expect(ebayPublish).toHaveBeenCalledTimes(1);
   });
 
   it("persists a FAILED attempt and failed event, then rethrows on readiness failure", async () => {

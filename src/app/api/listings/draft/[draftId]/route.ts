@@ -30,6 +30,7 @@ export async function PATCH(
       select: {
         id: true,
         inventoryItemId: true,
+        marketplaceDrafts: true,
         inventoryItem: {
           select: { productName: true },
         },
@@ -66,6 +67,10 @@ export async function PATCH(
           description: update.description,
           bulletPoints: update.bulletPoints,
           recommendedPriceCents: update.recommendedPriceCents,
+          marketplaceDrafts: mergeMarketplaceDrafts(
+            existingDraft.marketplaceDrafts,
+            update.marketplaceDrafts,
+          ) as Prisma.InputJsonValue,
           selectedMarketplaces: update.selectedMarketplaces,
           status: update.approve ? "APPROVED" : "DRAFT",
           approvedAt: update.approve ? new Date() : null,
@@ -85,6 +90,33 @@ export async function PATCH(
     const status = error instanceof AppError ? error.status : 400;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });
   }
+}
+
+function mergeMarketplaceDrafts(
+  existing: Prisma.JsonValue,
+  update: { ebay?: { categoryId: string } } | undefined,
+) {
+  const current =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? (existing as Record<string, unknown>)
+      : {};
+
+  if (!update?.ebay) {
+    return current;
+  }
+
+  const ebay =
+    current.ebay && typeof current.ebay === "object" && !Array.isArray(current.ebay)
+      ? (current.ebay as Record<string, unknown>)
+      : {};
+
+  return {
+    ...current,
+    ebay: {
+      ...ebay,
+      categoryId: update.ebay.categoryId.trim(),
+    },
+  };
 }
 
 export async function POST(

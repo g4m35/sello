@@ -180,6 +180,8 @@ model MarketplaceListing {
   inventoryItem     InventoryItem            @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
   marketplace       Marketplace
   status            MarketplaceListingStatus @default(NOT_LISTED)
+  sku               String?
+  externalOfferId   String?
   externalListingId String?
   lastSyncAt        DateTime?
   lastError         String?

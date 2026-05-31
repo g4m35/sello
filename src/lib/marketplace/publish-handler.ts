@@ -8,7 +8,7 @@ import { AppError } from "@/lib/errors";
 import { canPublish, toLifecycleState } from "@/lib/lifecycle/item-status";
 
 import { getMarketplaceAdapter, type PublishOutcome } from "./adapter";
-import { EbayIntegrationError } from "./adapters/ebay/errors";
+import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
 import {
   defaultEbayPublishDeps,
   publishEbayListing,
@@ -66,8 +66,18 @@ export type PublishPrismaLike = {
         status?: "NOT_LISTED";
       };
       update: Record<string, never>;
-      select?: { id: true };
-    }): Promise<{ id: string }>;
+      select?: {
+        id: true;
+        sku?: true;
+        externalOfferId?: true;
+        externalListingId?: true;
+      };
+    }): Promise<{
+      id: string;
+      sku?: string | null;
+      externalOfferId?: string | null;
+      externalListingId?: string | null;
+    }>;
     update?(args: {
       where: { id: string };
       data: Record<string, unknown>;
@@ -168,11 +178,16 @@ export async function executePublish(
       status: "NOT_LISTED",
     },
     update: {},
-    select: { id: true },
+    select: {
+      id: true,
+      sku: true,
+      externalOfferId: true,
+      externalListingId: true,
+    },
   });
 
   if (input.marketplace === "ebay") {
-    return executeEbayPublish(prisma, input, listing.id, ebayPublish);
+    return executeEbayPublish(prisma, input, listing, ebayPublish);
   }
 
   const outcome = await resolveAdapter(input.marketplace).publishDraft({
@@ -219,9 +234,16 @@ export async function executePublish(
 async function executeEbayPublish(
   prisma: PublishPrismaLike,
   input: ExecutePublishInput,
-  marketplaceListingId: string,
+  listing: {
+    id: string;
+    sku?: string | null;
+    externalOfferId?: string | null;
+    externalListingId?: string | null;
+  },
   ebayPublish: EbayPublishFn,
 ): Promise<ExecutePublishResult> {
+  assertEbayPublishNotDuplicate(listing);
+
   let result: EbayPublishResult;
   try {
     result = await ebayPublish(prisma as unknown as EbayPublishPrismaLike, {
@@ -229,7 +251,7 @@ async function executeEbayPublish(
       inventoryItemId: input.inventoryItemId,
     });
   } catch (error) {
-    await recordEbayFailure(prisma, input, marketplaceListingId, error);
+    await recordEbayFailure(prisma, input, listing.id, error);
     throw error;
   }
 
@@ -237,7 +259,7 @@ async function executeEbayPublish(
     return withMigrationDetection(async () => {
       const attempt = await prisma.publishAttempt.create({
         data: {
-          marketplaceListingId,
+          marketplaceListingId: listing.id,
           status: "NOT_IMPLEMENTED",
           code: result.code,
           reason: result.message,
@@ -249,7 +271,7 @@ async function executeEbayPublish(
 
       await prisma.marketplaceEvent.create({
         data: {
-          marketplaceListingId,
+          marketplaceListingId: listing.id,
           kind: "publish_blocked",
           data: {
             code: result.code,
@@ -263,7 +285,7 @@ async function executeEbayPublish(
         ok: true,
         httpStatus: 200,
         outcome: result,
-        marketplaceListingId,
+        marketplaceListingId: listing.id,
         publishAttemptId: attempt.id,
       };
     });
@@ -273,7 +295,7 @@ async function executeEbayPublish(
   return withMigrationDetection(async () => {
     const attempt = await prisma.publishAttempt.create({
       data: {
-        marketplaceListingId,
+        marketplaceListingId: listing.id,
         status: "SUCCEEDED",
         code: result.code,
         reason: null,
@@ -303,13 +325,13 @@ async function executeEbayPublish(
     ];
     for (const step of steps) {
       await prisma.marketplaceEvent.create({
-        data: { marketplaceListingId, kind: step.kind, data: step.data },
+        data: { marketplaceListingId: listing.id, kind: step.kind, data: step.data },
       });
     }
 
     if (prisma.marketplaceListing.update) {
       await prisma.marketplaceListing.update({
-        where: { id: marketplaceListingId },
+        where: { id: listing.id },
         data: {
           status: "LISTED",
           sku: result.sku,
@@ -325,13 +347,38 @@ async function executeEbayPublish(
       ok: true,
       httpStatus: 200,
       outcome: result,
-      marketplaceListingId,
+      marketplaceListingId: listing.id,
       publishAttemptId: attempt.id,
       sku: result.sku,
       offerId: result.offerId,
       listingId: result.listingId,
     };
   });
+}
+
+function assertEbayPublishNotDuplicate(listing: {
+  id: string;
+  sku?: string | null;
+  externalOfferId?: string | null;
+  externalListingId?: string | null;
+}) {
+  if (!listing.externalListingId && !listing.externalOfferId) {
+    return;
+  }
+
+  throw new EbayIntegrationError(
+    ebayErrorCodes.alreadyPublished,
+    listing.externalListingId
+      ? "This item already has an eBay sandbox listing. Revise/relist is not implemented yet."
+      : "This item already has an eBay sandbox offer. Refusing to create a duplicate offer.",
+    409,
+    {
+      marketplaceListingId: listing.id,
+      hasExternalListingId: Boolean(listing.externalListingId),
+      hasExternalOfferId: Boolean(listing.externalOfferId),
+      hasSku: Boolean(listing.sku),
+    },
+  );
 }
 
 async function recordEbayFailure(

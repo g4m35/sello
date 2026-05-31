@@ -10,6 +10,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate"
   },
   "dependencies": {
