@@ -1,0 +1,15 @@
+# Gitleaks configuration.
+# Extends the default ruleset and allowlists deterministic fake-key fixtures used
+# only in eBay adapter unit tests. These are NOT real secrets; the project forbids
+# committing real credentials anywhere (see docs/SECURITY.md). Scope is limited to
+# eBay *.test.ts files so real source code is still scanned.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "eBay adapter/route unit-test crypto fixtures (deterministic fake keys)"
+paths = [
+  '''src/lib/marketplace/adapters/ebay/.*\.test\.ts$''',
+  '''src/app/api/marketplaces/ebay/.*\.test\.ts$''',
+]
