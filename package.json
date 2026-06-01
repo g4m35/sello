@@ -17,6 +17,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@supabase/supabase-js": "^2.105.4",
+    "@vercel/analytics": "^2.0.1",
     "bullmq": "^5.76.10",
     "ioredis": "^5.10.1",
     "lucide-react": "^1.16.0",
