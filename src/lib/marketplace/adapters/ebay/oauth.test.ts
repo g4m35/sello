@@ -26,6 +26,8 @@ describe("eBay OAuth helpers", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("redirect-uri-name");
     expect(url.searchParams.get("scope")).toContain("sell.inventory");
     expect(url.searchParams.get("scope")).toContain("sell.account");
+    expect(url.toString()).toContain("sell.inventory%20https");
+    expect(url.toString()).not.toContain("sell.inventory+https");
   });
 
   it("roundtrips signed state without exposing tokens", () => {

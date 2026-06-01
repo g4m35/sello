@@ -29,6 +29,7 @@ export function buildEbayAuthorizationUrl(config: EbayConfig, state: string) {
   url.searchParams.set("response_type", "code");
   url.searchParams.set("state", state);
   url.searchParams.set("scope", requiredScopes.join(" "));
+  url.search = url.search.replace(/\+/g, "%20");
   return url;
 }
 
