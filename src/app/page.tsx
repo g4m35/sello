@@ -1,5 +1,5 @@
-import SellerWorkbench from "./seller-workbench";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <SellerWorkbench />;
+  redirect("/dashboard");
 }
