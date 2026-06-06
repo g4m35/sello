@@ -22,7 +22,10 @@ import {
   UploadCloud,
 } from "lucide-react";
 
-import { getBrowserSupabase } from "@/lib/supabase/browser";
+import {
+  consumeSupabaseImplicitSessionFromUrl,
+  getBrowserSupabase,
+} from "@/lib/supabase/browser";
 import type { InventoryStatus } from "@/generated/prisma/client";
 import { canPublish, canTransition, toLifecycleState } from "@/lib/lifecycle/item-status";
 import { evaluateReadiness } from "@/lib/lifecycle/readiness";
@@ -312,13 +315,21 @@ export default function SellerWorkbench() {
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    const browserSupabase = supabase;
+
+    async function loadSession() {
+      const consumedSession = await consumeSupabaseImplicitSessionFromUrl(browserSupabase);
+      const { data } = consumedSession
+        ? { data: { session: consumedSession } }
+        : await browserSupabase.auth.getSession();
       setSession(data.session);
-    });
+    }
+
+    void loadSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = browserSupabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       if (!nextSession) {
         setResult(null);

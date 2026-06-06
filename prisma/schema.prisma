@@ -259,6 +259,7 @@ model EbaySellerConfig {
 
   @@unique([userId, marketplaceConnectionId])
   @@index([userId])
+  @@index([marketplaceConnectionId])
 }
 
 model JobLog {

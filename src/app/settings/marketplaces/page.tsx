@@ -14,7 +14,10 @@ import {
 
 import { getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
-import { getBrowserSupabase } from "@/lib/supabase/browser";
+import {
+  consumeSupabaseImplicitSessionFromUrl,
+  getBrowserSupabase,
+} from "@/lib/supabase/browser";
 import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
@@ -80,14 +83,22 @@ export default function MarketplaceSettingsPage() {
       };
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    const browserSupabase = supabase;
+
+    async function loadSession() {
+      const consumedSession = await consumeSupabaseImplicitSessionFromUrl(browserSupabase);
+      const { data } = consumedSession
+        ? { data: { session: consumedSession } }
+        : await browserSupabase.auth.getSession();
       if (!mounted) return;
       setSession(data.session);
-    });
+    }
+
+    void loadSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = browserSupabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
     });
 
