@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
+import { coverOrder } from "@/lib/photo-order";
 import { prepareListingPhotos, uploadListingPhotos } from "@/lib/storage/listing-photos";
 import { createSupabaseServiceClient, requireSupabaseUser } from "@/lib/supabase/server";
 import { extractListingPhotos } from "@/lib/uploads";
@@ -62,6 +63,51 @@ export async function POST(
     });
 
     return NextResponse.json({ added: uploaded.length });
+  } catch (error) {
+    const status = error instanceof AppError ? error.status : 500;
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+  }
+}
+
+// Sets a photo as the cover (position 0), re-sequencing the rest. Body: { photoId }.
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireSupabaseUser(request);
+    const { id } = await params;
+    const body = await request.json();
+    const photoId: unknown = body?.photoId;
+    if (typeof photoId !== "string" || !photoId) {
+      throw new AppError("photoId is required", 400);
+    }
+
+    const prisma = getPrisma();
+    const item = await prisma.inventoryItem.findFirst({
+      where: { id, sellerId: user.id },
+      select: { id: true },
+    });
+    if (!item) {
+      throw new AppError("Item not found", 404);
+    }
+
+    const photos = await prisma.itemPhoto.findMany({
+      where: { inventoryItemId: id },
+      orderBy: { position: "asc" },
+    });
+    const order = coverOrder(photos.map((p) => p.id), photoId);
+    if (order[0] !== photoId) {
+      throw new AppError("Photo not found", 404);
+    }
+
+    await prisma.$transaction(
+      order.map((pid, index) =>
+        prisma.itemPhoto.update({ where: { id: pid }, data: { position: index } }),
+      ),
+    );
+
+    return NextResponse.json({ ok: true });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });

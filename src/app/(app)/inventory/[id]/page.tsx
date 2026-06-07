@@ -168,6 +168,22 @@ export default function ListingDetailPage() {
     [token, id, reload],
   );
 
+  const setCoverPhoto = useCallback(
+    async (photoId: string) => {
+      setRemovingPhotoId(photoId);
+      setPhotoError(null);
+      try {
+        await api.setCoverPhoto(token, id, photoId);
+        reload();
+      } catch (e) {
+        setPhotoError((e as { error?: string })?.error ?? "Could not set cover.");
+      } finally {
+        setRemovingPhotoId(null);
+      }
+    },
+    [token, id, reload],
+  );
+
   useEffect(() => {
     let active = true;
     async function run() {
@@ -544,6 +560,17 @@ export default function ListingDetailPage() {
                         disabled={removingPhotoId === photo.id}
                       >
                         <Icon name="x" size={12} />
+                      </button>
+                    )}
+                    {editable && idx !== 0 && (
+                      <button
+                        type="button"
+                        className="image-tile__cover"
+                        title="Set as cover"
+                        onClick={() => void setCoverPhoto(photo.id)}
+                        disabled={removingPhotoId === photo.id}
+                      >
+                        <Icon name="arrow-up" size={12} /> Cover
                       </button>
                     )}
                   </div>
