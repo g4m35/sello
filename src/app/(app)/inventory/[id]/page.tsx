@@ -361,9 +361,31 @@ export default function ListingDetailPage() {
     [token, id, reload],
   );
 
-  if (loading) return <PageSkeleton />;
-  if (error && !item) return <ErrorState message={error} onRetry={reload} />;
-  if (!item || !edits || !itemEdits) return <ErrorState message="Listing not found." />;
+  if (loading)
+    return (
+      <>
+        <Topbar crumbs={["Inventory"]} />
+        <PageSkeleton />
+      </>
+    );
+  if (error && !item)
+    return (
+      <>
+        <Topbar crumbs={["Inventory"]} />
+        <main className="page">
+          <ErrorState message={error} onRetry={reload} />
+        </main>
+      </>
+    );
+  if (!item || !edits || !itemEdits)
+    return (
+      <>
+        <Topbar crumbs={["Inventory"]} />
+        <main className="page">
+          <ErrorState message="Listing not found." />
+        </main>
+      </>
+    );
 
   const editable = draftId != null;
   const shortId = item.id.slice(0, 8);
