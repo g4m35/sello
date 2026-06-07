@@ -90,6 +90,15 @@ export const api = {
     );
   },
 
+  addPhotos: (token: string, itemId: string, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append("photos", file);
+    return request<{ added: number }>(`/api/listings/${itemId}/photos`, token, {
+      method: "POST",
+      body: form,
+    });
+  },
+
   updateDraft: (
     token: string,
     draftId: string,

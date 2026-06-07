@@ -84,12 +84,32 @@ export default function ListingDetailPage() {
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [publishOpen, setPublishOpen] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = useRef(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  const uploadPhotos = useCallback(
+    async (files: File[]) => {
+      setUploadingPhotos(true);
+      setPhotoError(null);
+      try {
+        await api.addPhotos(token, id, files);
+        reload();
+      } catch (e) {
+        setPhotoError((e as { error?: string })?.error ?? "Could not upload photos.");
+      } finally {
+        setUploadingPhotos(false);
+      }
+    },
+    [token, id, reload],
+  );
 
   useEffect(() => {
     let active = true;
@@ -183,6 +203,38 @@ export default function ListingDetailPage() {
     }
   }, [token, draftId, router]);
 
+  // Approve the draft (move it to the ready lifecycle state) before opening the
+  // publish modal, so publishing is not rejected with a 409 "not ready" error.
+  const requestPublish = useCallback(async () => {
+    if (
+      !draftId ||
+      !edits ||
+      item?.lifecycleState === "ready" ||
+      item?.lifecycleState === "active"
+    ) {
+      setPublishOpen(true);
+      return;
+    }
+    setApproving(true);
+    try {
+      await api.updateDraft(token, draftId, {
+        title: edits.title,
+        description: edits.description,
+        bulletPoints: edits.bulletPoints,
+        recommendedPriceCents: edits.recommendedPriceCents,
+        selectedMarketplaces: edits.selectedMarketplaces,
+        approve: true,
+      });
+      reload();
+      setPublishOpen(true);
+    } catch (e) {
+      setSaveState("error");
+      setPhotoError((e as { error?: string })?.error ?? "Could not mark the item ready to publish.");
+    } finally {
+      setApproving(false);
+    }
+  }, [token, draftId, edits, item, reload]);
+
   if (loading) return <PageSkeleton />;
   if (error && !item) return <ErrorState message={error} onRetry={reload} />;
   if (!item || !edits) return <ErrorState message="Listing not found." />;
@@ -274,8 +326,8 @@ export default function ListingDetailPage() {
               size="sm"
               icon="send"
               kbd="⌘↵"
-              disabled={!item.readiness.ready}
-              onClick={() => setPublishOpen(true)}
+              disabled={!item.readiness.ready || approving}
+              onClick={requestPublish}
             >
               Publish
             </Btn>
@@ -303,18 +355,42 @@ export default function ListingDetailPage() {
                     className={`image-tile ${idx === 0 ? "image-tile--primary" : ""}`}
                   >
                     {idx === 0 && <span className="image-tile__badge">Cover</span>}
-                    <Thumb seed={photo.id} size={120} />
+                    {photo.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={photo.url} alt={`Photo ${idx + 1}`} />
+                    ) : (
+                      <Thumb seed={photo.id} size={120} />
+                    )}
                   </div>
                 ))}
                 <button
                   type="button"
                   className="image-tile image-tile--add"
-                  title="Upload coming soon"
-                  disabled
+                  title="Add photos"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadingPhotos}
                 >
-                  <Icon name="plus" size={20} />
+                  <Icon name={uploadingPhotos ? "clock" : "plus"} size={20} />
+                  {uploadingPhotos ? "Uploading…" : "Add"}
                 </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    const files = e.target.files ? Array.from(e.target.files) : [];
+                    if (files.length) void uploadPhotos(files);
+                    e.target.value = "";
+                  }}
+                />
               </div>
+              {photoError && (
+                <div className="field__error" style={{ marginTop: 8 }}>
+                  {photoError}
+                </div>
+              )}
               {togglePhotoWarn && (
                 <div style={{ marginTop: 12 }}>
                   <Banner
@@ -473,10 +549,10 @@ export default function ListingDetailPage() {
                   variant="accent"
                   size="sm"
                   icon="send"
-                  disabled={!item.readiness.ready}
-                  onClick={() => setPublishOpen(true)}
+                  disabled={!item.readiness.ready || approving}
+                  onClick={requestPublish}
                 >
-                  Publish
+                  {approving ? "Preparing…" : "Publish"}
                 </Btn>
               </div>
               <ul className="readiness__list">

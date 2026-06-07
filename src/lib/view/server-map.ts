@@ -101,12 +101,13 @@ export function mapItem(item: ItemWithRelations): ItemView {
 export function mapItemDetail(
   item: ItemWithRelations & { photos: ItemPhoto[] },
   attempts: AttemptView[],
+  photoUrls: Map<string, string | null> = new Map(),
 ): ItemDetailView {
   const base = mapItem(item);
   const draft = latestDraft(item);
   const photos = [...item.photos]
     .sort((a, b) => a.position - b.position)
-    .map((p) => ({ id: p.id, position: p.position }));
+    .map((p) => ({ id: p.id, position: p.position, url: photoUrls.get(p.id) ?? null }));
 
   const readiness = buildReadinessView({
     productName: item.productName,
