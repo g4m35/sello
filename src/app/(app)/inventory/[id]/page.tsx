@@ -12,7 +12,7 @@ import { FormSection, Field } from "@/components/ui/form";
 import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
-import CompsPanel from "@/app/comps-panel";
+import { AutoPricing } from "@/components/app/auto-pricing";
 import {
   formatMoneyCents,
   estPayoutCents,
@@ -245,46 +245,41 @@ export default function ListingDetailPage() {
                 {shortId} · {item.sku ?? "no SKU"}
               </span>
             </div>
-            <div className="page__actions">
-              <Btn
-                variant="ghost"
-                size="sm"
-                icon="x"
-                onClick={() => router.back()}
-              >
-                Discard
-              </Btn>
-              <Btn
-                variant="secondary"
-                size="sm"
-                icon="check"
-                disabled={!editable}
-                onClick={forceSave}
-              >
-                Save draft
-              </Btn>
-              <Btn
-                variant="accent"
-                size="sm"
-                icon="send"
-                kbd="⌘↵"
-                disabled={!item.readiness.ready}
-                onClick={() => setPublishOpen(true)}
-              >
-                Publish
-              </Btn>
-            </div>
+            <h1 className="page__title" style={{ marginTop: 4 }}>
+              {head}
+              {tail && (
+                <>
+                  {" "}
+                  <em>{tail}</em>
+                </>
+              )}
+            </h1>
+            <div className="page__title-meta">{metaParts.join(" · ")}</div>
           </div>
-          <h1 className="page__title" style={{ marginTop: 10 }}>
-            {head}
-            {tail && (
-              <>
-                {" "}
-                <em>{tail}</em>
-              </>
-            )}
-          </h1>
-          <div className="page__title-meta">{metaParts.join(" · ")}</div>
+          <div className="page__actions">
+            <Btn variant="ghost" size="sm" icon="x" onClick={() => router.back()}>
+              Discard
+            </Btn>
+            <Btn
+              variant="secondary"
+              size="sm"
+              icon="check"
+              disabled={!editable}
+              onClick={forceSave}
+            >
+              Save draft
+            </Btn>
+            <Btn
+              variant="accent"
+              size="sm"
+              icon="send"
+              kbd="⌘↵"
+              disabled={!item.readiness.ready}
+              onClick={() => setPublishOpen(true)}
+            >
+              Publish
+            </Btn>
+          </div>
         </div>
 
         {!editable && (
@@ -456,7 +451,7 @@ export default function ListingDetailPage() {
                 </Field>
               </div>
               <div className="divider" />
-              <CompsPanel accessToken={token} inventoryItemId={id} />
+              <AutoPricing itemId={id} />
             </FormSection>
           </div>
 
@@ -523,18 +518,22 @@ export default function ListingDetailPage() {
                         : "Draft preview only";
                   const selected = edits.selectedMarketplaces.includes(channel.marketplace);
                   return (
-                    <div key={channel.marketplace} className="mp-row">
+                    <div
+                      key={channel.marketplace}
+                      className="row"
+                      style={{ gap: 12 }}
+                    >
                       <Check
                         checked={selected}
                         disabled={!editable}
                         onChange={() => toggleMarketplace(channel.marketplace)}
                       />
                       <MpLogo id={channel.marketplace} size={28} />
-                      <div className="mp-row__name">{channel.name}</div>
-                      <div className="mp-row__meta">{meta}</div>
-                      <div className="mp-row__action">
-                        <Badge status={channel.status} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="mp-row__name">{channel.name}</div>
+                        <div className="mp-row__meta">{meta}</div>
                       </div>
+                      <Badge status={channel.status} />
                     </div>
                   );
                 })}

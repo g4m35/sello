@@ -37,16 +37,14 @@ function greetingForHour(hour: number): string {
   return "evening";
 }
 
-function firstNameFromEmail(email: string): string {
-  const local = email.split("@")[0] ?? "";
-  const cleaned = local.split(/[.\-_+]/)[0] ?? local;
-  if (!cleaned) return "there";
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+function firstWord(name: string): string {
+  const first = name.trim().split(/\s+/)[0];
+  return first || "there";
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { token, session } = useSession();
+  const { token, name } = useSession();
 
   const [items, setItems] = useState<ItemView[]>([]);
   const [attempts, setAttempts] = useState<AttemptView[]>([]);
@@ -151,7 +149,7 @@ export default function DashboardPage() {
   if (loading) return <PageSkeleton />;
   if (error) return <ErrorState message={error} onRetry={reload} />;
 
-  const firstName = firstNameFromEmail(session.user.email ?? "");
+  const firstName = firstWord(name);
   const timeofday = greetingForHour(new Date().getHours());
   const pickedReadyCount = readyItems.filter((i) => picked.has(i.id)).length;
 

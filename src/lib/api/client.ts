@@ -46,6 +46,23 @@ export const api = {
   getHistory: (token: string) =>
     request<{ attempts: AttemptView[] }>("/api/history", token),
 
+  getComps: (token: string, itemId: string) =>
+    request<{
+      inventoryItemId: string | null;
+      comps: unknown[];
+      summary: {
+        status: string;
+        totalComps: number;
+        validComps: number;
+        lowCents: number | null;
+        averageCents: number | null;
+        highCents: number | null;
+        quickSaleCents: number | null;
+        recommendedListCents: number | null;
+        confidence: string;
+      };
+    }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token),
+
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{
       adapters: {

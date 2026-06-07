@@ -12,7 +12,7 @@ type NavItem = { href: string; label: string; icon: IconName; count?: number };
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { session, token, signOut } = useSession();
+  const { session, token, signOut, name, requestNameEdit } = useSession();
   const [search, setSearch] = useState("");
   const [counts, setCounts] = useState<{ items?: number; channels?: number }>({});
 
@@ -43,7 +43,7 @@ export function Sidebar() {
   ];
 
   const email = session.user.email ?? "you";
-  const initials = email.slice(0, 2).toUpperCase();
+  const initials = (name || email).slice(0, 2).toUpperCase();
 
   function go(href: string) {
     router.push(href);
@@ -111,7 +111,20 @@ export function Sidebar() {
 
       <div className="sidebar__footer">
         <div className="avatar">{initials}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <button
+          type="button"
+          onClick={requestNameEdit}
+          title="Edit your name"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            border: 0,
+            background: "transparent",
+            padding: 0,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
           <div
             style={{
               fontSize: 13,
@@ -121,12 +134,12 @@ export function Sidebar() {
               whiteSpace: "nowrap",
             }}
           >
-            {email}
+            {name || email}
           </div>
           <div className="t-small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Resale workspace
+            {email}
           </div>
-        </div>
+        </button>
         <button className="btn btn--ghost btn--icon btn--sm" title="Sign out" onClick={() => signOut()}>
           <Icon name="settings" size={14} />
         </button>

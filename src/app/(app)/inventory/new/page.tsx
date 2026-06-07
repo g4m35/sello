@@ -272,9 +272,13 @@ export default function NewListingPage() {
               >
                 <div className="liston">
                   {channels.map((ch) => (
-                    <div key={ch.marketplace} className="liston__row liston__row--on">
+                    <div
+                      key={ch.marketplace}
+                      className="row"
+                      style={{ gap: 12, padding: "10px 10px" }}
+                    >
                       <MpLogo id={ch.marketplace} size={28} />
-                      <div style={{ minWidth: 0 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="mp-row__name">{ch.name}</div>
                         <div className="mp-row__meta">
                           {ch.capabilities.publish

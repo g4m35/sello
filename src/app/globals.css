@@ -404,7 +404,7 @@ img { display: block; max-width: 100%; }
 .readiness__ring { display: flex; align-items: center; gap: 12px; }
 .ring { --p: 50; --c: var(--accent); width: 48px; height: 48px; border-radius: 50%; background: conic-gradient(var(--c) calc(var(--p) * 1%), var(--line) 0); display: grid; place-items: center; position: relative; }
 .ring::after { content: ""; position: absolute; inset: 4px; background: var(--surface); border-radius: 50%; }
-.ring__label { position: relative; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ring__label { position: relative; z-index: 1; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .readiness__list { padding: 8px 0; }
 .readiness__item { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: flex-start; padding: 9px 18px; border-bottom: 1px solid transparent; transition: background var(--dur-1) var(--ease); }
 .readiness__item:hover { background: var(--surface-sunk); cursor: pointer; }
