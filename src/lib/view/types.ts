@@ -1,0 +1,99 @@
+import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
+
+/**
+ * Design-language status used by the Counter UI badges/dots. These are the six
+ * visual states from the design system. They are DERIVED from the real backend
+ * enums (InventoryStatus, MarketplaceListingStatus, PublishAttemptStatus) — see
+ * lib/view/status.ts. "noimpl" reflects an adapter whose publish capability is
+ * false (publishing is intentionally not implemented yet).
+ */
+export type DesignStatus =
+  | "draft"
+  | "ready"
+  | "publishing"
+  | "published"
+  | "failed"
+  | "noimpl";
+
+export type ChannelStateView = {
+  marketplace: string;
+  name: string;
+  status: DesignStatus;
+  publishImplemented: boolean;
+  externalListingId: string | null;
+  lastError: string | null;
+};
+
+export type ReadinessCheckView = {
+  id: string;
+  title: string;
+  sub: string;
+  state: "done" | "warn" | "miss";
+  blocking: boolean;
+};
+
+export type ItemView = {
+  id: string;
+  title: string;
+  productName: string;
+  brand: string | null;
+  category: string;
+  condition: string;
+  size: string | null;
+  colorway: string | null;
+  priceCents: number | null;
+  status: DesignStatus;
+  lifecycleState: ItemLifecycleState;
+  statusLabel: string;
+  photoCount: number;
+  updatedAt: string;
+  draftId: string | null;
+  channels: ChannelStateView[];
+};
+
+export type AttemptView = {
+  id: string;
+  itemId: string;
+  itemTitle: string;
+  marketplace: string;
+  marketplaceName: string;
+  status: DesignStatus;
+  rawStatus: string;
+  time: string;
+  durationMs: number | null;
+  reason: string | null;
+  code: string | null;
+};
+
+export type ReadinessView = {
+  ready: boolean;
+  pct: number;
+  doneCount: number;
+  totalCount: number;
+  checks: ReadinessCheckView[];
+};
+
+export type ItemDetailView = ItemView & {
+  sku: string | null;
+  description: string;
+  bulletPoints: string[];
+  pricingRationale: string | null;
+  selectedMarketplaces: string[];
+  readiness: ReadinessView;
+  attempts: AttemptView[];
+  photos: { id: string; position: number }[];
+};
+
+export type ChannelView = {
+  marketplace: string;
+  name: string;
+  capabilities: { draftPreview: boolean; publish: boolean; inventorySync: boolean };
+  listedCount: number;
+};
+
+export type KpiView = {
+  label: string;
+  value: string;
+  sub: string;
+  delta: "up" | "down" | null;
+};

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { AppError } from "./errors";
 import { readJsonResponse } from "./http";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -38,7 +37,7 @@ describe("readJsonResponse", () => {
           503,
         ),
       ),
-    ).rejects.toMatchObject<AppError>({
+    ).rejects.toMatchObject({
       code: "PUBLISHING_MIGRATION_MISSING",
       status: 503,
       message: "Publish persistence tables are not available.",

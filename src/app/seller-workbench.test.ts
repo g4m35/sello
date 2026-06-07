@@ -15,7 +15,7 @@ describe("seller workbench publish status copy", () => {
       message: "server flag off",
       marketplaceListingId: "listing-1",
       publishAttemptId: "attempt-1",
-    };
+    } as const;
 
     expect(isPublishApiResponse(payload)).toBe(true);
     expect(getPublishStatusFromApiResult("ebay", payload)).toMatchObject({
@@ -33,7 +33,7 @@ describe("seller workbench publish status copy", () => {
       reason: "Grailed publishing is not implemented.",
       marketplaceListingId: "listing-1",
       publishAttemptId: "attempt-1",
-    };
+    } as const;
 
     expect(isPublishApiResponse(payload)).toBe(true);
     expect(getPublishStatusFromApiResult("grailed", payload)).toMatchObject({

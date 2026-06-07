@@ -26,7 +26,7 @@ describe("eBay token crypto", () => {
   });
 
   it("fails safely for malformed ciphertext without leaking token data", () => {
-    const error = normalizeTokenCryptoError("not-a-valid-token");
+    const error = normalizeTokenCryptoError();
 
     expect(error.code).toBe("EBAY_NOT_CONFIGURED");
     expect(error.message).not.toContain("refresh-token-secret");
