@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Banner } from "@/components/ui/primitives";
+import { Banner, Btn } from "@/components/ui/primitives";
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
 import { formatMoneyCents } from "@/lib/view/format";
@@ -20,12 +20,15 @@ type Summary = {
 };
 
 // Read-only automatic pricing. Comps are gathered for the seller, not entered by
-// hand. Pricing is computed from real comps only; nothing is invented. When no
-// comp source has produced data yet, we say so honestly instead of faking a price.
+// hand. Pricing is computed from real comps only; nothing is invented. A
+// "Refresh comps" action runs the configured comp sources on demand.
 export function AutoPricing({ itemId }: { itemId: string }) {
   const { token } = useSession();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -44,7 +47,31 @@ export function AutoPricing({ itemId }: { itemId: string }) {
     return () => {
       active = false;
     };
-  }, [token, itemId]);
+  }, [token, itemId, reloadKey]);
+
+  async function refresh() {
+    setRefreshing(true);
+    setNote(null);
+    try {
+      const res = await api.refreshComps(token, itemId);
+      setReloadKey((k) => k + 1);
+      setNote(
+        res.enabled === 0
+          ? "No comp source is connected yet. Add a source to gather comps automatically."
+          : `Fetched ${res.fetched} comp${res.fetched === 1 ? "" : "s"} from ${res.sources.join(", ")}.`,
+      );
+    } catch (e) {
+      setNote((e as { error?: string })?.error ?? "Could not refresh comps.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  const refreshBtn = (
+    <Btn variant="secondary" size="sm" icon="refresh" onClick={refresh} disabled={refreshing}>
+      {refreshing ? "Fetching…" : "Refresh comps"}
+    </Btn>
+  );
 
   if (error) return <div className="t-small danger">{error}</div>;
   if (!summary) return <div className="t-small muted">Loading pricing…</div>;
@@ -53,12 +80,19 @@ export function AutoPricing({ itemId }: { itemId: string }) {
 
   if (!hasData) {
     return (
-      <Banner
-        variant="info"
-        icon="spark"
-        title="Comps are gathered automatically"
-        desc="We price from real sold comps, never invented numbers. A live comp source is not connected yet, so there is nothing to price from. Recommended price stays blank until comps arrive."
-      />
+      <div className="stack-3">
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span className="t-micro">Automatic pricing</span>
+          {refreshBtn}
+        </div>
+        <Banner
+          variant="info"
+          icon="spark"
+          title="Comps are gathered automatically"
+          desc="We price from real sold comps, never invented numbers. No comp source is connected yet, so there is nothing to price from. Recommended price stays blank until comps arrive."
+        />
+        {note && <div className="t-small muted">{note}</div>}
+      </div>
     );
   }
 
@@ -74,11 +108,14 @@ export function AutoPricing({ itemId }: { itemId: string }) {
     <div className="stack-3">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <span className="t-small muted">
-          From {summary.validComps} sold comp{summary.validComps === 1 ? "" : "s"}
+          From {summary.validComps} comp{summary.validComps === 1 ? "" : "s"}
         </span>
-        <span className="badge badge--ready" style={{ textTransform: "capitalize" }}>
-          {summary.confidence} confidence
-        </span>
+        <div className="row" style={{ gap: 8 }}>
+          <span className="badge badge--ready" style={{ textTransform: "capitalize" }}>
+            {summary.confidence} confidence
+          </span>
+          {refreshBtn}
+        </div>
       </div>
       <div className="form-grid form-grid--3" style={{ gap: 12 }}>
         {stats.map((s) => (
@@ -90,6 +127,7 @@ export function AutoPricing({ itemId }: { itemId: string }) {
           </div>
         ))}
       </div>
+      {note && <div className="t-small muted">{note}</div>}
     </div>
   );
 }
