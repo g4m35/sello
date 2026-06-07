@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
-import { requireSupabaseUser } from "@/lib/supabase/server";
+import { createSupabaseServiceClient, requireSupabaseUser } from "@/lib/supabase/server";
 import { mapAttempt, mapItemDetail } from "@/lib/view/server-map";
 
 export const runtime = "nodejs";
@@ -46,8 +46,22 @@ export async function GET(
       },
     });
 
+    // Signed URLs so the UI can render the real uploaded photos (private bucket).
+    const photoUrls = new Map<string, string | null>();
+    if (item.photos.length > 0) {
+      const storage = createSupabaseServiceClient().storage;
+      await Promise.all(
+        item.photos.map(async (photo) => {
+          const { data } = await storage
+            .from(photo.storageBucket)
+            .createSignedUrl(photo.storagePath, 60 * 60);
+          photoUrls.set(photo.id, data?.signedUrl ?? null);
+        }),
+      );
+    }
+
     return NextResponse.json({
-      item: mapItemDetail(item, attempts.map(mapAttempt)),
+      item: mapItemDetail(item, attempts.map(mapAttempt), photoUrls),
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
