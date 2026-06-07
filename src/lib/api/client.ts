@@ -75,6 +75,13 @@ export const api = {
       };
     }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token),
 
+  refreshComps: (token: string, inventoryItemId: string) =>
+    request<{ fetched: number; sources: string[]; enabled: number }>(
+      "/api/listings/comps/refresh",
+      token,
+      { method: "POST", body: JSON.stringify({ inventoryItemId }) },
+    ),
+
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{
       adapters: {
