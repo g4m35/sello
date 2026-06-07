@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { Prisma } from "@/generated/prisma/client";
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { ItemUpdateSchema } from "@/lib/listing-item-update";
 import { getPrisma } from "@/lib/prisma";
 import { createSupabaseServiceClient, requireSupabaseUser } from "@/lib/supabase/server";
 import { mapAttempt, mapItemDetail } from "@/lib/view/server-map";
@@ -63,6 +65,47 @@ export async function GET(
     return NextResponse.json({
       item: mapItemDetail(item, attempts.map(mapAttempt), photoUrls),
     });
+  } catch (error) {
+    const status = error instanceof AppError ? error.status : 500;
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+  }
+}
+
+// Updates item-level identification fields (brand, category, condition, size,
+// colorway, style code, product name). Draft text lives on a separate endpoint.
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireSupabaseUser(request);
+    const { id } = await params;
+    const parsed = ItemUpdateSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      throw new AppError(parsed.error.issues[0]?.message ?? "Invalid item update", 400);
+    }
+
+    const prisma = getPrisma();
+    const existing = await prisma.inventoryItem.findFirst({
+      where: { id, sellerId: user.id },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new AppError("Item not found", 404);
+    }
+
+    const data: Prisma.InventoryItemUpdateInput = {};
+    const u = parsed.data;
+    if (u.productName !== undefined) data.productName = u.productName;
+    if (u.brand !== undefined) data.brand = u.brand;
+    if (u.category !== undefined) data.category = u.category;
+    if (u.condition !== undefined) data.condition = u.condition;
+    if (u.size !== undefined) data.size = u.size;
+    if (u.colorway !== undefined) data.colorway = u.colorway;
+    if (u.styleCode !== undefined) data.styleCode = u.styleCode;
+
+    await prisma.inventoryItem.update({ where: { id }, data });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });
