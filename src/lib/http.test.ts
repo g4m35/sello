@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { AppError } from "./errors";
 import { readJsonResponse } from "./http";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -22,6 +23,26 @@ describe("readJsonResponse", () => {
     await expect(
       readJsonResponse(jsonResponse({ error: "Item not found." }, 404)),
     ).rejects.toThrow("Item not found.");
+  });
+
+  it("preserves typed server error codes on failed responses", async () => {
+    await expect(
+      readJsonResponse(
+        jsonResponse(
+          {
+            error: {
+              code: "PUBLISHING_MIGRATION_MISSING",
+              message: "Publish persistence tables are not available.",
+            },
+          },
+          503,
+        ),
+      ),
+    ).rejects.toMatchObject<AppError>({
+      code: "PUBLISHING_MIGRATION_MISSING",
+      status: 503,
+      message: "Publish persistence tables are not available.",
+    });
   });
 
   it("fails loudly on a non-JSON body instead of returning undefined", async () => {
