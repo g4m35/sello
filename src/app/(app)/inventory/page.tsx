@@ -17,6 +17,7 @@ import {
   formatMoneyCents,
   relativeTime,
 } from "@/lib/view/format";
+import { SORT_OPTIONS, sortItems, type SortValue } from "@/lib/view/sort-items";
 import type { ItemView } from "@/lib/view/types";
 
 type TabValue = "all" | "draft" | "ready" | "active" | "sold" | "error";
@@ -63,40 +64,7 @@ function matchesSearch(item: ItemView, q: string): boolean {
     .some((field) => field.toLowerCase().includes(needle));
 }
 
-type SortValue =
-  | "updated_desc"
-  | "updated_asc"
-  | "price_desc"
-  | "price_asc"
-  | "title_asc";
-
-const SORT_OPTIONS: { value: SortValue; label: string }[] = [
-  { value: "updated_desc", label: "Recently updated" },
-  { value: "updated_asc", label: "Oldest updated" },
-  { value: "price_desc", label: "Price: high to low" },
-  { value: "price_asc", label: "Price: low to high" },
-  { value: "title_asc", label: "Title: A to Z" },
-];
-
 const PAGE_SIZE = 24;
-
-function sortItems(list: ItemView[], sort: SortValue): ItemView[] {
-  const price = (i: ItemView) => i.priceCents ?? -1;
-  const copy = [...list];
-  switch (sort) {
-    case "updated_asc":
-      return copy.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
-    case "price_desc":
-      return copy.sort((a, b) => price(b) - price(a));
-    case "price_asc":
-      return copy.sort((a, b) => price(a) - price(b));
-    case "title_asc":
-      return copy.sort((a, b) => a.title.localeCompare(b.title));
-    case "updated_desc":
-    default:
-      return copy.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }
-}
 
 export default function InventoryPage() {
   const router = useRouter();
