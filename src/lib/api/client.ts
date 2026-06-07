@@ -136,6 +136,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  setCoverPhoto: (token: string, itemId: string, photoId: string) =>
+    request<{ ok: true }>(`/api/listings/${itemId}/photos`, token, {
+      method: "PATCH",
+      body: JSON.stringify({ photoId }),
+    }),
+
   deletePhoto: (token: string, itemId: string, photoId: string) =>
     request<{ deleted: number; remaining: number }>(
       `/api/listings/${itemId}/photos?photoId=${encodeURIComponent(photoId)}`,
