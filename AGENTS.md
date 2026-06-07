@@ -153,10 +153,156 @@ Rules:
 - `develop` is active integration branch.
 - `main` must never be pushed without explicit approval.
 - Production deploys must never happen automatically.
-- Risky systems must use feature branches.
+- Risky systems must use feature branches, except database migrations which route through `develop` unless explicitly assigned otherwise.
 - Worktrees should be isolated by feature area.
 - Before pushing:
   - `npm run lint`
   - `npm test`
   - `npx prisma validate`
   - `npm run build`
+
+## Worktree Router Skill
+
+Purpose:
+Choose the safest worktree/branch for each task before coding.
+
+Before starting any task, the agent must classify the task into one of these areas:
+
+### 1. develop/main repo
+
+Use for:
+
+- migration verification
+- docs
+- small fixes
+- dependency cleanup
+- final integration testing
+- merging feature branches
+- branch/worktree maintenance
+
+Path:
+`/Users/jheller/Desktop/perc 30/resale-crosslister`
+
+Branch:
+`develop`
+
+### 2. lifecycle
+
+Use for:
+
+- item states
+- draft/ready/active/sold/delisted/error logic
+- readiness validation
+- lifecycle tests
+- status badges
+
+Path:
+`/Users/jheller/Desktop/perc 30/worktrees/lifecycle`
+
+Branch:
+`feature/lifecycle`
+
+### 3. adapters
+
+Use for:
+
+- marketplace adapter interfaces
+- eBay/Grailed/Poshmark/Depop field mapping
+- typed NOT_IMPLEMENTED responses
+- platform validation
+- marketplace account placeholders
+
+Path:
+`/Users/jheller/Desktop/perc 30/worktrees/adapters`
+
+Branch:
+`feature/adapters`
+
+### 4. publishing
+
+Use for:
+
+- real eBay publishing later
+- OAuth
+- publish jobs
+- listing creation
+- confirmation modal
+- publish queue wiring
+
+Path:
+`/Users/jheller/Desktop/perc 30/worktrees/publishing`
+
+Branch:
+`feature/publishing`
+
+### 5. inventory-sync
+
+Use for:
+
+- sold detection
+- delisting logic
+- double-sell prevention
+- inventory reconciliation
+- sync jobs
+- idempotent inventory state transitions
+
+Path:
+`/Users/jheller/Desktop/perc 30/worktrees/inventory-sync`
+
+Branch:
+`feature/inventory-sync`
+
+### 6. playwright
+
+Use for:
+
+- browser automation scaffolding
+- session handling
+- screenshot-on-failure
+- manual_action_required flows
+- automation guardrails
+
+Path:
+`/Users/jheller/Desktop/perc 30/worktrees/playwright`
+
+Branch:
+`feature/playwright`
+
+### 7. ui
+
+Use for:
+
+- dashboard polish
+- mobile layout
+- empty/loading/error states
+- navigation
+- editor UX
+- inventory/pricing page visuals
+
+Path:
+`/Users/jheller/Desktop/perc 30/worktrees/ui`
+
+Branch:
+`feature/ui`
+
+### Routing rules
+
+- If task is ambiguous, stop and recommend the safest worktree.
+- If task touches multiple areas, split it into separate worktree tasks.
+- If task touches database migrations, use `develop` unless explicitly assigned otherwise.
+- If task touches real publishing, OAuth, Playwright, or inventory sync, never work on `develop` directly.
+- If currently in the wrong worktree, stop and tell the user the correct path/branch.
+- Never switch branches with uncommitted work.
+- Never delete a worktree with uncommitted work.
+- Never push `main`.
+- Never deploy.
+- Always report selected worktree and reason before coding.
+
+### Verification
+
+Run:
+
+- `npm run lint`
+- `npm test`
+- `npx prisma validate`
+- `npm run build`
