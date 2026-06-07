@@ -81,7 +81,7 @@ export type ItemDetailView = ItemView & {
   selectedMarketplaces: string[];
   readiness: ReadinessView;
   attempts: AttemptView[];
-  photos: { id: string; position: number }[];
+  photos: { id: string; position: number; url: string | null }[];
 };
 
 export type ChannelView = {
