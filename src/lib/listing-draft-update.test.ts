@@ -9,13 +9,47 @@ describe("ListingDraftUpdateSchema", () => {
       description: "A careful buyer-facing listing description.",
       bulletPoints: ["Nike SB Dunk", "Chicago colorway", "US 10"],
       recommendedPriceCents: 42500,
+      marketplaceDrafts: {
+        ebay: { categoryId: "15709" },
+      },
       selectedMarketplaces: ["ebay", "grailed"],
       approve: true,
     });
 
     expect(update.approve).toBe(true);
     expect(update.recommendedPriceCents).toBe(42500);
+    expect(update.marketplaceDrafts?.ebay?.categoryId).toBe("15709");
     expect(update.selectedMarketplaces).toEqual(["ebay", "grailed"]);
+  });
+
+  it("accepts a blank eBay category ID for autosave", () => {
+    const update = ListingDraftUpdateSchema.parse({
+      title: "",
+      description: "",
+      bulletPoints: [],
+      recommendedPriceCents: null,
+      marketplaceDrafts: {
+        ebay: { categoryId: "" },
+      },
+      selectedMarketplaces: [],
+    });
+
+    expect(update.marketplaceDrafts?.ebay?.categoryId).toBe("");
+  });
+
+  it("rejects malformed eBay category IDs", () => {
+    expect(() =>
+      ListingDraftUpdateSchema.parse({
+        title: "",
+        description: "",
+        bulletPoints: [],
+        recommendedPriceCents: null,
+        marketplaceDrafts: {
+          ebay: { categoryId: "abc-123" },
+        },
+        selectedMarketplaces: [],
+      }),
+    ).toThrow();
   });
 
   it("rejects unsupported marketplace selections", () => {
@@ -25,6 +59,32 @@ describe("ListingDraftUpdateSchema", () => {
         description: "A careful buyer-facing listing description.",
         bulletPoints: ["Nike SB Dunk", "Chicago colorway", "US 10"],
         selectedMarketplaces: ["ebay", "stockx"],
+      }),
+    ).toThrow();
+  });
+
+  it("accepts incomplete edits for autosave", () => {
+    const update = ListingDraftUpdateSchema.parse({
+      title: "",
+      description: "",
+      bulletPoints: [],
+      recommendedPriceCents: null,
+      selectedMarketplaces: [],
+    });
+
+    expect(update.approve).toBe(false);
+    expect(update.title).toBe("");
+  });
+
+  it("requires complete fields before approval", () => {
+    expect(() =>
+      ListingDraftUpdateSchema.parse({
+        title: "",
+        description: "",
+        bulletPoints: [],
+        recommendedPriceCents: null,
+        selectedMarketplaces: [],
+        approve: true,
       }),
     ).toThrow();
   });

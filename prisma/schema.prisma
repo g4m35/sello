@@ -68,6 +68,14 @@ enum JobStatus {
   FAILED
 }
 
+enum PublishAttemptStatus {
+  NOT_IMPLEMENTED
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
 model InventoryItem {
   id                    String               @id @default(uuid()) @db.Uuid
   sellerId              String               @db.Uuid
@@ -90,6 +98,7 @@ model InventoryItem {
   listingDrafts         ListingDraft[]
   marketplaceListings   MarketplaceListing[]
   jobLogs               JobLog[]
+  priceComps            PriceComp[]
 
   @@index([sellerId, status])
   @@index([createdAt])
@@ -147,20 +156,110 @@ model ListingDraft {
   @@index([inventoryItemId, status])
 }
 
+model PriceComp {
+  id              String        @id @default(uuid()) @db.Uuid
+  inventoryItemId String        @db.Uuid
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  source          String
+  title           String
+  priceCents      Int
+  shippingCents   Int           @default(0)
+  soldDate        DateTime?
+  url             String?
+  condition       ItemCondition @default(unknown)
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([inventoryItemId, createdAt])
+}
+
 model MarketplaceListing {
   id                String                   @id @default(uuid()) @db.Uuid
   inventoryItemId   String                   @db.Uuid
   inventoryItem     InventoryItem            @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
   marketplace       Marketplace
   status            MarketplaceListingStatus @default(NOT_LISTED)
+  sku               String?
+  externalOfferId   String?
   externalListingId String?
   lastSyncAt        DateTime?
   lastError         String?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
+  publishAttempts   PublishAttempt[]
+  events            MarketplaceEvent[]
 
   @@unique([inventoryItemId, marketplace])
   @@index([marketplace, status])
+}
+
+model PublishAttempt {
+  id                   String               @id @default(uuid()) @db.Uuid
+  marketplaceListingId String               @db.Uuid
+  marketplaceListing   MarketplaceListing   @relation(fields: [marketplaceListingId], references: [id], onDelete: Cascade)
+  status               PublishAttemptStatus @default(NOT_IMPLEMENTED)
+  code                 String
+  reason               String?
+  adapterResult        Json?
+  requestedBy          String               @db.Uuid
+  startedAt            DateTime             @default(now())
+  completedAt          DateTime?
+  createdAt            DateTime             @default(now())
+
+  @@index([marketplaceListingId, createdAt])
+  @@index([requestedBy, createdAt])
+}
+
+model MarketplaceEvent {
+  id                   String             @id @default(uuid()) @db.Uuid
+  marketplaceListingId String             @db.Uuid
+  marketplaceListing   MarketplaceListing @relation(fields: [marketplaceListingId], references: [id], onDelete: Cascade)
+  kind                 String
+  data                 Json?
+  createdAt            DateTime           @default(now())
+
+  @@index([marketplaceListingId, createdAt])
+}
+
+model MarketplaceConnection {
+  id                    String             @id @default(uuid()) @db.Uuid
+  userId                String             @db.Uuid
+  marketplace           Marketplace
+  environment           String
+  externalUserId        String?
+  accessTokenEnc        String
+  refreshTokenEnc       String
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+  scopes                String[]
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  ebaySellerConfigs     EbaySellerConfig[]
+
+  @@unique([userId, marketplace, environment])
+  @@index([userId])
+  @@index([marketplace, environment])
+}
+
+model EbaySellerConfig {
+  id                      String                @id @default(uuid()) @db.Uuid
+  userId                  String                @db.Uuid
+  marketplaceConnectionId String                @db.Uuid
+  marketplaceConnection   MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
+  marketplaceId           String                @default("EBAY_US")
+  paymentPolicyId         String?
+  fulfillmentPolicyId     String?
+  returnPolicyId          String?
+  merchantLocationKey     String?
+  readinessStatus         String?
+  readinessCheckedAt      DateTime?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  @@unique([userId, marketplaceConnectionId])
+  @@index([userId])
+  @@index([marketplaceConnectionId])
 }
 
 model JobLog {

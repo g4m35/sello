@@ -39,6 +39,14 @@ SUPABASE_SERVICE_ROLE_KEY=""
 DATABASE_URL=""
 DIRECT_URL=""
 GEMINI_API_KEY=""
+EBAY_ENV="sandbox"
+EBAY_CLIENT_ID=""
+EBAY_CLIENT_SECRET=""
+EBAY_REDIRECT_URI_NAME=""
+EBAY_MARKETPLACE_ID="EBAY_US"
+EBAY_TOKEN_ENCRYPTION_KEY=""
+EBAY_OAUTH_STATE_SECRET=""
+EBAY_SANDBOX_PUBLISH_ENABLED="false"
 ```
 
 Generate Prisma and apply the schema:
@@ -48,6 +56,12 @@ npm run db:generate
 npm run db:migrate
 ```
 
+Use `npm run db:deploy` for a production-style migration apply step from a
+controlled environment. Do not run destructive resets against shared Supabase
+data. `DATABASE_URL` and `DIRECT_URL` must both come from Supabase Dashboard →
+Connect; local migration status remains blocked while either value is a
+placeholder or points at the wrong pooler/user.
+
 Start the app:
 
 ```bash
@@ -55,6 +69,23 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:3000`.
+
+## eBay Sandbox Setup
+
+Production eBay is not supported yet. Keep `EBAY_ENV=sandbox` and keep
+`EBAY_SANDBOX_PUBLISH_ENABLED=false` unless a tester explicitly chooses to run a
+guarded sandbox publish. `EBAY_REDIRECT_URI_NAME` is the eBay RuName from the
+Sandbox OAuth settings, not a callback URL.
+
+Local browser OAuth needs an HTTPS tunnel. Save the tunnel privacy, accepted,
+and declined URLs in the eBay Developer Portal Sandbox OAuth/RuName settings,
+then open the app through that same tunnel domain so Supabase cookies are scoped
+to the callback domain.
+
+The eBay sandbox publish path uses a deterministic SKU and refuses to publish
+again once an eBay offer ID or listing ID is stored for the item. If a network or
+API failure happens after an external eBay call but before IDs are persisted,
+retry carefully and inspect eBay sandbox state first.
 
 ## Quality Checks
 
@@ -68,5 +99,5 @@ npm run build
 
 - Gemini responses must be JSON only and must pass `GeminiListingDraftSchema`.
 - Live resale comps are not fetched yet. Gemini may suggest comp search queries and a tentative price, but the UI labels pricing as something to verify before publishing.
-- eBay, Grailed, Poshmark, and Depop publishing workers are not built yet.
+- eBay is sandbox-only and guarded by server flags. Grailed, Poshmark, and Depop remain `NOT_IMPLEMENTED`.
 - `src/lib/queues/marketplace-jobs.ts` only defines validated BullMQ job payloads and queue factories for the next slice.
