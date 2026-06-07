@@ -30,3 +30,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: getErrorMessage(error) }, { status });
   }
 }
+
+function parseIds(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 200) {
+    throw new AppError("Provide 1 to 200 item ids.", 400);
+  }
+  const ids = value.filter((v): v is string => typeof v === "string" && v.length > 0);
+  if (ids.length !== value.length) throw new AppError("Invalid item ids.", 400);
+  return ids;
+}
+
+// Bulk-deletes the seller's items (cascades to drafts, photos, listings, etc.).
+export async function DELETE(request: Request) {
+  try {
+    const user = await requireSupabaseUser(request);
+    const body = await request.json();
+    const ids = parseIds(body?.ids);
+    const prisma = getPrisma();
+
+    const result = await prisma.inventoryItem.deleteMany({
+      where: { id: { in: ids }, sellerId: user.id },
+    });
+
+    return NextResponse.json({ deleted: result.count });
+  } catch (error) {
+    const status = error instanceof AppError ? error.status : 500;
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+  }
+}

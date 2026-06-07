@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { prepareListingPhotos, uploadListingPhotos } from "@/lib/storage/listing-photos";
-import { requireSupabaseUser } from "@/lib/supabase/server";
+import { createSupabaseServiceClient, requireSupabaseUser } from "@/lib/supabase/server";
 import { extractListingPhotos } from "@/lib/uploads";
 
 export const runtime = "nodejs";
@@ -62,6 +62,55 @@ export async function POST(
     });
 
     return NextResponse.json({ added: uploaded.length });
+  } catch (error) {
+    const status = error instanceof AppError ? error.status : 500;
+    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+  }
+}
+
+// Removes a single photo (Storage object + row) and re-sequences positions so
+// the first photo stays the cover. Pass ?photoId=...
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireSupabaseUser(request);
+    const { id } = await params;
+    const photoId = new URL(request.url).searchParams.get("photoId");
+    if (!photoId) {
+      throw new AppError("photoId is required", 400);
+    }
+
+    const prisma = getPrisma();
+    const photo = await prisma.itemPhoto.findFirst({
+      where: { id: photoId, inventoryItem: { id, sellerId: user.id } },
+    });
+    if (!photo) {
+      throw new AppError("Photo not found", 404);
+    }
+
+    await createSupabaseServiceClient()
+      .storage.from(photo.storageBucket)
+      .remove([photo.storagePath])
+      .catch(() => undefined);
+
+    await prisma.itemPhoto.delete({ where: { id: photo.id } });
+
+    const remaining = await prisma.itemPhoto.findMany({
+      where: { inventoryItemId: id },
+      orderBy: { position: "asc" },
+    });
+    await Promise.all(
+      remaining
+        .map((p, index) => ({ p, index }))
+        .filter(({ p, index }) => p.position !== index)
+        .map(({ p, index }) =>
+          prisma.itemPhoto.update({ where: { id: p.id }, data: { position: index } }),
+        ),
+    );
+
+    return NextResponse.json({ deleted: 1, remaining: remaining.length });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });

@@ -46,6 +46,18 @@ export const api = {
   getHistory: (token: string) =>
     request<{ attempts: AttemptView[] }>("/api/history", token),
 
+  deleteItems: (token: string, ids: string[]) =>
+    request<{ deleted: number }>("/api/listings", token, {
+      method: "DELETE",
+      body: JSON.stringify({ ids }),
+    }),
+
+  setBulkPrice: (token: string, ids: string[], priceCents: number) =>
+    request<{ updated: number }>("/api/listings/price", token, {
+      method: "POST",
+      body: JSON.stringify({ ids, priceCents }),
+    }),
+
   getComps: (token: string, itemId: string) =>
     request<{
       inventoryItemId: string | null;
@@ -62,6 +74,13 @@ export const api = {
         confidence: string;
       };
     }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token),
+
+  refreshComps: (token: string, inventoryItemId: string) =>
+    request<{ fetched: number; sources: string[]; enabled: number }>(
+      "/api/listings/comps/refresh",
+      token,
+      { method: "POST", body: JSON.stringify({ inventoryItemId }) },
+    ),
 
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{
@@ -98,6 +117,31 @@ export const api = {
       body: form,
     });
   },
+
+  updateItem: (
+    token: string,
+    itemId: string,
+    body: {
+      productName?: string;
+      brand?: string | null;
+      category?: string;
+      condition?: string;
+      size?: string | null;
+      colorway?: string | null;
+      styleCode?: string | null;
+    },
+  ) =>
+    request<{ ok: true }>(`/api/listings/${itemId}`, token, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deletePhoto: (token: string, itemId: string, photoId: string) =>
+    request<{ deleted: number; remaining: number }>(
+      `/api/listings/${itemId}/photos?photoId=${encodeURIComponent(photoId)}`,
+      token,
+      { method: "DELETE" },
+    ),
 
   updateDraft: (
     token: string,
