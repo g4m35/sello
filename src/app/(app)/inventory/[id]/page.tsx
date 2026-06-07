@@ -35,7 +35,32 @@ type DraftEdits = {
   selectedMarketplaces: string[];
 };
 
+type ItemEdits = {
+  brand: string;
+  category: string;
+  condition: string;
+  size: string;
+  colorway: string;
+};
+
 const AUTOSAVE_MS = 800;
+
+const CATEGORY_OPTIONS = [
+  "sneakers",
+  "streetwear",
+  "hype_fashion",
+  "accessories",
+  "other",
+] as const;
+const CONDITION_OPTIONS = [
+  "new_with_tags",
+  "new_without_tags",
+  "used_excellent",
+  "used_good",
+  "used_fair",
+  "for_parts",
+  "unknown",
+] as const;
 
 function editsFrom(item: ItemDetailView): DraftEdits {
   return {
@@ -44,6 +69,16 @@ function editsFrom(item: ItemDetailView): DraftEdits {
     bulletPoints: item.bulletPoints,
     recommendedPriceCents: item.priceCents,
     selectedMarketplaces: item.selectedMarketplaces,
+  };
+}
+
+function itemEditsFrom(item: ItemDetailView): ItemEdits {
+  return {
+    brand: item.brand ?? "",
+    category: item.category,
+    condition: item.condition,
+    size: item.size ?? "",
+    colorway: item.colorway ?? "",
   };
 }
 
@@ -79,16 +114,19 @@ export default function ListingDetailPage() {
 
   const [item, setItem] = useState<ItemDetailView | null>(null);
   const [edits, setEdits] = useState<DraftEdits | null>(null);
+  const [itemEdits, setItemEdits] = useState<ItemEdits | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [publishOpen, setPublishOpen] = useState(false);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const itemDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = useRef(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -111,6 +149,22 @@ export default function ListingDetailPage() {
     [token, id, reload],
   );
 
+  const removePhoto = useCallback(
+    async (photoId: string) => {
+      setRemovingPhotoId(photoId);
+      setPhotoError(null);
+      try {
+        await api.deletePhoto(token, id, photoId);
+        reload();
+      } catch (e) {
+        setPhotoError((e as { error?: string })?.error ?? "Could not remove photo.");
+      } finally {
+        setRemovingPhotoId(null);
+      }
+    },
+    [token, id, reload],
+  );
+
   useEffect(() => {
     let active = true;
     async function run() {
@@ -119,6 +173,7 @@ export default function ListingDetailPage() {
         if (!active) return;
         setItem(res.item);
         setEdits(editsFrom(res.item));
+        setItemEdits(itemEditsFrom(res.item));
         setError(null);
       } catch (e) {
         if (active) {
@@ -187,9 +242,42 @@ export default function ListingDetailPage() {
     void save(edits);
   }, [edits, draftId, save]);
 
+  const saveItem = useCallback(
+    async (next: ItemEdits) => {
+      setSaveState("saving");
+      try {
+        await api.updateItem(token, id, {
+          brand: next.brand.trim() || null,
+          category: next.category,
+          condition: next.condition,
+          size: next.size.trim() || null,
+          colorway: next.colorway.trim() || null,
+        });
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    },
+    [token, id],
+  );
+
+  const patchItem = useCallback(
+    (changes: Partial<ItemEdits>) => {
+      setItemEdits((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, ...changes };
+        if (itemDebounceRef.current) clearTimeout(itemDebounceRef.current);
+        itemDebounceRef.current = setTimeout(() => void saveItem(next), AUTOSAVE_MS);
+        return next;
+      });
+    },
+    [saveItem],
+  );
+
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (itemDebounceRef.current) clearTimeout(itemDebounceRef.current);
     };
   }, []);
 
@@ -237,7 +325,7 @@ export default function ListingDetailPage() {
 
   if (loading) return <PageSkeleton />;
   if (error && !item) return <ErrorState message={error} onRetry={reload} />;
-  if (!item || !edits) return <ErrorState message="Listing not found." />;
+  if (!item || !edits || !itemEdits) return <ErrorState message="Listing not found." />;
 
   const editable = draftId != null;
   const shortId = item.id.slice(0, 8);
@@ -361,6 +449,17 @@ export default function ListingDetailPage() {
                     ) : (
                       <Thumb seed={photo.id} size={120} />
                     )}
+                    {editable && (
+                      <button
+                        type="button"
+                        className="image-tile__remove"
+                        title="Remove photo"
+                        onClick={() => void removePhoto(photo.id)}
+                        disabled={removingPhotoId === photo.id}
+                      >
+                        <Icon name="x" size={12} />
+                      </button>
+                    )}
                   </div>
                 ))}
                 <button
@@ -415,29 +514,54 @@ export default function ListingDetailPage() {
 
               <div className="form-grid form-grid--3">
                 <Field label="Brand">
-                  <input className="input" value={item.brand ?? "—"} disabled readOnly />
+                  <input
+                    className="input"
+                    value={itemEdits.brand}
+                    placeholder="Brand"
+                    onChange={(e) => patchItem({ brand: e.target.value })}
+                  />
                 </Field>
                 <Field label="Category">
-                  <input
-                    className="input"
-                    value={categoryLabel(item.category)}
-                    disabled
-                    readOnly
-                  />
+                  <select
+                    className="select"
+                    value={itemEdits.category}
+                    onChange={(e) => patchItem({ category: e.target.value })}
+                  >
+                    {CATEGORY_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {categoryLabel(c)}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Condition">
-                  <input
-                    className="input"
-                    value={conditionLabel(item.condition)}
-                    disabled
-                    readOnly
-                  />
+                  <select
+                    className="select"
+                    value={itemEdits.condition}
+                    onChange={(e) => patchItem({ condition: e.target.value })}
+                  >
+                    {CONDITION_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {conditionLabel(c)}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="Size">
-                  <input className="input" value={item.size ?? "—"} disabled readOnly />
+                  <input
+                    className="input"
+                    value={itemEdits.size}
+                    placeholder="Size"
+                    onChange={(e) => patchItem({ size: e.target.value })}
+                  />
                 </Field>
                 <Field label="Color">
-                  <input className="input" value={item.colorway ?? "—"} disabled readOnly />
+                  <input
+                    className="input"
+                    value={itemEdits.colorway}
+                    placeholder="Color"
+                    onChange={(e) => patchItem({ colorway: e.target.value })}
+                  />
                 </Field>
               </div>
 
