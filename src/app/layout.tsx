@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope, Instrument_Serif, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -37,7 +38,10 @@ export default function RootLayout({
       data-density="regular"
       className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full`}
     >
-      <body className="min-h-full">{children}</body>
+      <body className="min-h-full">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }

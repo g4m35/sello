@@ -22,10 +22,14 @@ import {
   UploadCloud,
 } from "lucide-react";
 
-import { getBrowserSupabase } from "@/lib/supabase/browser";
+import {
+  consumeSupabaseImplicitSessionFromUrl,
+  getBrowserSupabase,
+} from "@/lib/supabase/browser";
 import type { InventoryStatus } from "@/generated/prisma/client";
 import { canPublish, canTransition, toLifecycleState } from "@/lib/lifecycle/item-status";
 import { evaluateReadiness } from "@/lib/lifecycle/readiness";
+import { getErrorMessage } from "@/lib/errors";
 import CompsPanel from "./comps-panel";
 import JobsPanel from "./jobs-panel";
 import StatusBadge from "./status-badge";
@@ -36,6 +40,7 @@ type MarketplaceDraft = {
   title: string;
   description: string;
   categoryHint: string;
+  categoryId?: string | null;
   tags: string[];
 };
 
@@ -72,11 +77,29 @@ type DraftApiResponse = {
   };
 };
 
+type PublishApiResponse = {
+  code: "NOT_IMPLEMENTED" | "EBAY_PUBLISH_NOT_ENABLED";
+  marketplace: Marketplace;
+  reason?: string;
+  message?: string;
+  marketplaceListingId: string;
+  publishAttemptId: string;
+};
+
+type PublishStatus = {
+  marketplace: Marketplace;
+  kind: "not_implemented" | "error";
+  message: string;
+  code?: string;
+  publishAttemptId?: string;
+};
+
 type EditableDraft = {
   title: string;
   description: string;
   bulletText: string;
   recommendedPriceCents: number | null;
+  ebayCategoryId: string;
   selectedMarketplaces: Marketplace[];
 };
 
@@ -127,12 +150,75 @@ function parsePriceInput(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : null;
 }
 
+export function isPublishApiResponse(payload: unknown): payload is PublishApiResponse {
+  return (
+    Boolean(payload) &&
+    typeof payload === "object" &&
+    ((payload as { code?: unknown }).code === "NOT_IMPLEMENTED" ||
+      (payload as { code?: unknown }).code === "EBAY_PUBLISH_NOT_ENABLED") &&
+    typeof (payload as { publishAttemptId?: unknown }).publishAttemptId === "string"
+  );
+}
+
+export function getPublishStatusFromApiResult(
+  marketplace: Marketplace,
+  payload: PublishApiResponse,
+): PublishStatus {
+  if (payload.code === "EBAY_PUBLISH_NOT_ENABLED") {
+    return {
+      marketplace,
+      kind: "not_implemented",
+      code: payload.code,
+      message: "Sandbox publish is disabled by server flag. No eBay API calls were made.",
+      publishAttemptId: payload.publishAttemptId,
+    };
+  }
+
+  return {
+    marketplace,
+    kind: "not_implemented",
+    code: payload.code,
+    message: payload.reason ?? "Marketplace publishing is not implemented.",
+    publishAttemptId: payload.publishAttemptId,
+  };
+}
+
+function getApiFailure(payload: unknown, status: number) {
+  if (!payload || typeof payload !== "object" || !("error" in payload)) {
+    return { message: `Request failed with status ${status}.` };
+  }
+
+  const error = (payload as { error: unknown }).error;
+
+  if (typeof error === "string") {
+    return { message: error };
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message: unknown }).message === "string"
+  ) {
+    return {
+      code:
+        "code" in error && typeof (error as { code: unknown }).code === "string"
+          ? (error as { code: string }).code
+          : undefined,
+      message: (error as { message: string }).message,
+    };
+  }
+
+  return { message: `Request failed with status ${status}.` };
+}
+
 function toEditableDraft(payload: DraftApiResponse): EditableDraft {
   return {
     title: payload.draft.title,
     description: payload.draft.description,
     bulletText: payload.draft.bulletPoints.join("\n"),
     recommendedPriceCents: payload.draft.recommendedPriceCents,
+    ebayCategoryId: payload.draft.marketplaceDrafts.ebay?.categoryId ?? "",
     selectedMarketplaces: payload.draft.selectedMarketplaces,
   };
 }
@@ -180,6 +266,7 @@ function getPlatformWarnings(result: DraftApiResponse | null, draft: EditableDra
     if (draft.title.trim().length > 80) warnings.push("eBay title must stay under 80 characters.");
     if (priceMissing) warnings.push("eBay needs a seller price before publishing.");
     if (sizeMissing) warnings.push("eBay sneaker listings usually need size.");
+    if (!draft.ebayCategoryId.trim()) warnings.push("eBay needs a manual category ID before sandbox publish.");
   }
 
   if (selected.has("grailed")) {
@@ -215,6 +302,8 @@ export default function SellerWorkbench() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDraftActionRunning, setIsDraftActionRunning] = useState(false);
   const [isLifecycleRunning, setIsLifecycleRunning] = useState(false);
+  const [publishingMarketplace, setPublishingMarketplace] = useState<Marketplace | null>(null);
+  const [publishStatus, setPublishStatus] = useState<PublishStatus | null>(null);
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [activeSection, setActiveSection] = useState<AppSection>("account");
@@ -226,18 +315,28 @@ export default function SellerWorkbench() {
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    const browserSupabase = supabase;
+
+    async function loadSession() {
+      const consumedSession = await consumeSupabaseImplicitSessionFromUrl(browserSupabase);
+      const { data } = consumedSession
+        ? { data: { session: consumedSession } }
+        : await browserSupabase.auth.getSession();
       setSession(data.session);
-    });
+    }
+
+    void loadSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = browserSupabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       if (!nextSession) {
         setResult(null);
         setEditableDraft(null);
         setSaveState("idle");
+        setPublishStatus(null);
+        setPublishingMarketplace(null);
         lastSavedSignature.current = "";
       }
     });
@@ -341,6 +440,7 @@ export default function SellerWorkbench() {
     await supabase?.auth.signOut();
     setResult(null);
     setEditableDraft(null);
+    setPublishStatus(null);
   }
 
   async function generateDraft(event: FormEvent<HTMLFormElement>) {
@@ -361,6 +461,7 @@ export default function SellerWorkbench() {
     setSaveMessage("");
     setResult(null);
     setEditableDraft(null);
+    setPublishStatus(null);
 
     const formData = new FormData();
     for (const file of selectedFiles) {
@@ -435,6 +536,11 @@ export default function SellerWorkbench() {
           description: draftToSave.description,
           bulletPoints,
           recommendedPriceCents: draftToSave.recommendedPriceCents,
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: draftToSave.ebayCategoryId,
+            },
+          },
           selectedMarketplaces: draftToSave.selectedMarketplaces,
           approve,
         }),
@@ -563,6 +669,67 @@ export default function SellerWorkbench() {
     setSaveMessage(
       action === "mark_sold" ? "Item marked as sold." : "Item delisted locally.",
     );
+  }
+
+  async function runPublishAttempt(marketplace: Marketplace) {
+    if (!session || !result) {
+      return;
+    }
+
+    setPublishingMarketplace(marketplace);
+    setPublishStatus(null);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const response = await fetch("/api/listings/publish", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inventoryItemId: result.inventoryItem.id,
+          marketplace,
+        }),
+      });
+      const payload: unknown = await response.json();
+
+      if (response.status === 501 && isPublishApiResponse(payload)) {
+        setPublishStatus(getPublishStatusFromApiResult(marketplace, payload));
+        return;
+      }
+
+      if (!response.ok) {
+        const failure = getApiFailure(payload, response.status);
+        setPublishStatus({
+          marketplace,
+          kind: "error",
+          code: failure.code,
+          message: failure.message,
+        });
+        return;
+      }
+
+      if (isPublishApiResponse(payload)) {
+        setPublishStatus(getPublishStatusFromApiResult(marketplace, payload));
+        return;
+      }
+
+      setPublishStatus({
+        marketplace,
+        kind: "not_implemented",
+        message: "Publish attempt recorded without contacting a marketplace.",
+      });
+    } catch (publishError) {
+      setPublishStatus({
+        marketplace,
+        kind: "error",
+        message: getErrorMessage(publishError),
+      });
+    } finally {
+      setPublishingMarketplace(null);
+    }
   }
 
   async function saveDraft(approve: boolean) {
@@ -1030,6 +1197,29 @@ export default function SellerWorkbench() {
                       </div>
                     </div>
 
+                    <label className="flex max-w-sm flex-col gap-2" htmlFor="ebay-category-id">
+                      <span className="text-sm font-semibold">eBay category ID</span>
+                      <input
+                        id="ebay-category-id"
+                        inputMode="numeric"
+                        value={editableDraft.ebayCategoryId}
+                        onChange={(event) =>
+                          setEditableDraft((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  ebayCategoryId: event.target.value.replace(/\D/g, ""),
+                                }
+                              : current,
+                          )
+                        }
+                        className="border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-red-700"
+                      />
+                      <span className="text-xs leading-5 text-neutral-500">
+                        Manual for now. Category search will be added later.
+                      </span>
+                    </label>
+
                     <div className="border-t border-neutral-100 pt-4">
                       <p className="text-sm font-semibold">Pricing comps</p>
                       <p className="mt-1 text-xs text-neutral-500">
@@ -1272,19 +1462,67 @@ export default function SellerWorkbench() {
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {marketplaces.map((marketplace) => (
-                  <div key={marketplace.id} className="border border-neutral-300 bg-white p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-lg font-semibold">{marketplace.label}</h3>
-                      <Store className="h-5 w-5 text-red-700" />
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-neutral-600">
-                      Draft generation is available. Publishing is intentionally disabled until official/API or Playwright workers are added.
-                    </p>
-                    <p className="mt-4 text-xs uppercase tracking-[0.14em] text-neutral-500">Status</p>
-                    <p className="mt-1 font-medium">Draft only</p>
-                  </div>
-                ))}
+                  {marketplaces.map((marketplace) => {
+                    const isSelected =
+                      editableDraft?.selectedMarketplaces.includes(marketplace.id) ?? false;
+                    const isPublishing = publishingMarketplace === marketplace.id;
+                    const channelStatus =
+                      publishStatus?.marketplace === marketplace.id ? publishStatus : null;
+
+                    return (
+                      <div key={marketplace.id} className="border border-neutral-300 bg-white p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-lg font-semibold">{marketplace.label}</h3>
+                          <Store className="h-5 w-5 text-red-700" />
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-neutral-600">
+                          Draft generation is available. Publishing records a real attempt, then returns the adapter&apos;s honest not-implemented result.
+                        </p>
+                        <p className="mt-4 text-xs uppercase tracking-[0.14em] text-neutral-500">Status</p>
+                        <p className="mt-1 font-medium">
+                          {isSelected ? "Selected draft" : "Draft only"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => runPublishAttempt(marketplace.id)}
+                          disabled={
+                            !session ||
+                            !result ||
+                            !publishingAllowed ||
+                            !isSelected ||
+                            Boolean(publishingMarketplace)
+                          }
+                          className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 bg-neutral-950 px-3 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-300 disabled:text-neutral-600"
+                        >
+                          {isPublishing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Store className="h-4 w-4" />
+                          )}
+                          Publish
+                        </button>
+                        {channelStatus ? (
+                          <div
+                            className={`mt-4 border p-3 text-sm ${
+                              channelStatus.kind === "error"
+                                ? "border-red-300 bg-red-50 text-red-800"
+                                : "border-amber-300 bg-amber-50 text-amber-950"
+                            }`}
+                          >
+                            {channelStatus.code ? (
+                              <p className="mb-1 font-mono text-xs">{channelStatus.code}</p>
+                            ) : null}
+                            <p>{channelStatus.message}</p>
+                            {channelStatus.publishAttemptId ? (
+                              <p className="mt-2 font-mono text-xs">
+                                Attempt {channelStatus.publishAttemptId.slice(0, 8)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </section>
             ) : null}

@@ -2,16 +2,20 @@ import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
-import { executePublish } from "@/lib/marketplace/publish-handler";
+import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
+import {
+  executePublish,
+  PublishingMigrationMissingError,
+} from "@/lib/marketplace/publish-handler";
 import { PublishRequestSchema } from "@/lib/marketplace/publish-request";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// Publishing is intentionally NOT implemented. This route persists the
-// attempt (MarketplaceListing + PublishAttempt + MarketplaceEvent) for audit
-// and returns the adapter's typed NOT_IMPLEMENTED outcome. It never contacts
-// a marketplace and never reports success.
+// Non-eBay marketplaces remain draft-only and return a typed NOT_IMPLEMENTED
+// outcome. eBay runs the guarded sandbox publish flow: blocked (typed
+// EBAY_PUBLISH_NOT_ENABLED) unless EBAY_SANDBOX_PUBLISH_ENABLED=true. Every
+// attempt is persisted for audit; the route never fakes a success.
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
@@ -34,6 +38,14 @@ export async function POST(request: Request) {
       { status: result.httpStatus },
     );
   } catch (error) {
+    if (error instanceof PublishingMigrationMissingError) {
+      return NextResponse.json({ error: error.toPayload() }, { status: error.status });
+    }
+
+    if (error instanceof EbayIntegrationError) {
+      return NextResponse.json({ error: error.toPayload() }, { status: error.status });
+    }
+
     const status = error instanceof AppError ? error.status : 400;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });
   }

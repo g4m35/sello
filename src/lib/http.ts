@@ -17,16 +17,46 @@ export async function readJsonResponse<T>(response: Response): Promise<T> {
   }
 
   if (!response.ok) {
-    const message =
+    const errorPayload =
       parsed &&
       typeof parsed === "object" &&
       "error" in parsed &&
-      typeof (parsed as { error: unknown }).error === "string"
-        ? (parsed as { error: string }).error
+      (typeof (parsed as { error: unknown }).error === "string" ||
+        isTypedErrorPayload((parsed as { error: unknown }).error))
+        ? (parsed as { error: string | TypedErrorPayload }).error
+        : null;
+
+    if (isTypedErrorPayload(errorPayload)) {
+      throw new AppError(
+        errorPayload.message,
+        response.status || 500,
+        errorPayload.code,
+      );
+    }
+
+    const message =
+      typeof errorPayload === "string"
+        ? errorPayload
         : `Request failed with status ${response.status}.`;
 
     throw new AppError(message, response.status || 500);
   }
 
   return parsed as T;
+}
+
+type TypedErrorPayload = {
+  code: string;
+  message: string;
+};
+
+function isTypedErrorPayload(value: unknown): value is TypedErrorPayload {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "code" in value &&
+    "message" in value &&
+    typeof (value as { code: unknown }).code === "string" &&
+    typeof (value as { message: unknown }).message === "string"
+  );
 }
