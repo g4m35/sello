@@ -73,8 +73,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
+        // Land on a real page (not the "/" -> "/dashboard" server redirect, which
+        // would drop the auth token/code from the URL before the client reads it).
         emailRedirectTo:
-          typeof window !== "undefined" ? window.location.origin : undefined,
+          typeof window !== "undefined"
+            ? `${window.location.origin}/dashboard`
+            : undefined,
       },
     });
     setLoading(false);
