@@ -121,6 +121,20 @@ describe("publishEbayListing — guard", () => {
     expect(deps.createClient).not.toHaveBeenCalled();
   });
 
+  it("never publishes in production, even with the sandbox flag set", async () => {
+    const prisma = createPrisma();
+    const deps = createDeps();
+    deps.env = { ...enabledEnv, EBAY_ENV: "production" };
+
+    const result = await publishEbayListing(prisma, { userId: "user-1", inventoryItemId: "item-1" }, deps);
+
+    expect(result.status).toBe("not_enabled");
+    expect(result.code).toBe("EBAY_PUBLISH_NOT_ENABLED");
+    expect(result).toMatchObject({ environment: "production" });
+    expect(deps.resolveAccessToken).not.toHaveBeenCalled();
+    expect(deps.createClient).not.toHaveBeenCalled();
+  });
+
   it("defaults to blocked when the flag is missing entirely", async () => {
     const prisma = createPrisma();
     const deps = createDeps();

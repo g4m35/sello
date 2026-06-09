@@ -1,5 +1,5 @@
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
-import type { EbayConfig, EbayMarketplaceId } from "./types";
+import type { EbayConfig, EbayEnvironment, EbayMarketplaceId } from "./types";
 
 type EbayEnv = Record<string, string | undefined>;
 
@@ -10,17 +10,26 @@ const requiredEnv = [
   "EBAY_TOKEN_ENCRYPTION_KEY",
 ] as const;
 
-export function getEbayConfig(env: EbayEnv = process.env): EbayConfig {
+// Resolves just the eBay environment. Routes that only need to scope a DB
+// query (disconnect, stored readiness) use this so they keep working even
+// when the full credential config is absent or invalid.
+export function getEbayEnvironment(env: EbayEnv = process.env): EbayEnvironment {
   const environment = env.EBAY_ENV ?? "sandbox";
 
-  if (environment !== "sandbox") {
+  if (environment !== "sandbox" && environment !== "production") {
     throw new EbayIntegrationError(
       ebayErrorCodes.notConfigured,
-      "Only eBay sandbox mode is enabled. Production eBay APIs are disabled.",
+      'EBAY_ENV must be "sandbox" or "production".',
       503,
       { variable: "EBAY_ENV" },
     );
   }
+
+  return environment;
+}
+
+export function getEbayConfig(env: EbayEnv = process.env): EbayConfig {
+  const environment = getEbayEnvironment(env);
 
   for (const variable of requiredEnv) {
     assertEnvValue(env[variable], variable);
@@ -30,7 +39,7 @@ export function getEbayConfig(env: EbayEnv = process.env): EbayConfig {
   if (marketplaceId !== "EBAY_US") {
     throw new EbayIntegrationError(
       ebayErrorCodes.notConfigured,
-      "Only EBAY_US is supported for eBay sandbox readiness checks.",
+      "Only EBAY_US is supported for eBay readiness checks.",
       503,
       { variable: "EBAY_MARKETPLACE_ID" },
     );
@@ -82,7 +91,7 @@ function assertEnvValue(value: string | undefined, variable: string) {
   if (!value || value.startsWith("[") || value.includes("[")) {
     throw new EbayIntegrationError(
       ebayErrorCodes.notConfigured,
-      `Missing required eBay sandbox environment variable: ${variable}`,
+      `Missing required eBay environment variable: ${variable}`,
       503,
       { variable },
     );

@@ -46,13 +46,35 @@ function createPrisma(connection: null | { id: string } = { id: "connection-1" }
 
 describe("eBay readiness", () => {
   it("reports a missing connection without requiring eBay config", async () => {
-    await expect(getStoredEbayReadiness(createPrisma(null), "user-1")).resolves.toMatchObject({
+    await expect(
+      getStoredEbayReadiness(createPrisma(null), "user-1", "sandbox"),
+    ).resolves.toMatchObject({
       marketplace: "ebay",
       environment: "sandbox",
       connected: false,
       ready: false,
       missing: ["oauth_connection"],
     });
+  });
+
+  it("scopes the connection lookup to the requested environment", async () => {
+    const environments: string[] = [];
+    const prisma = createPrisma(null);
+    const findUnique = prisma.marketplaceConnection.findUnique.bind(
+      prisma.marketplaceConnection,
+    );
+    prisma.marketplaceConnection.findUnique = async (args) => {
+      environments.push(args.where.userId_marketplace_environment.environment);
+      return findUnique(args);
+    };
+
+    await expect(
+      getStoredEbayReadiness(prisma, "user-1", "production"),
+    ).resolves.toMatchObject({
+      environment: "production",
+      connected: false,
+    });
+    expect(environments).toEqual(["production"]);
   });
 
   it("reports missing payment policies as a typed readiness gap", async () => {
@@ -69,7 +91,7 @@ describe("eBay readiness", () => {
       async listInventoryLocations() {
         return [{ merchantLocationKey: "warehouse-1", merchantLocationStatus: "ENABLED" }];
       },
-    });
+    }, "sandbox");
 
     expect(result.ready).toBe(false);
     expect(result.missing).toContain("payment_policy");
@@ -91,7 +113,7 @@ describe("eBay readiness", () => {
       async listInventoryLocations() {
         return [{ merchantLocationKey: "warehouse-1", merchantLocationStatus: "ENABLED" }];
       },
-    });
+    }, "sandbox");
 
     expect(result.ready).toBe(true);
     expect(result.missing).toEqual([]);

@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     if (user.id !== oauthState.userId) {
       throw new EbayIntegrationError(
         ebayErrorCodes.oauthStateInvalid,
-        "The eBay sandbox authorization does not match the signed-in account.",
+        "The eBay authorization does not match the signed-in account.",
         403,
       );
     }
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
     if (!code) {
       throw new EbayIntegrationError(
         ebayErrorCodes.tokenExchangeFailed,
-        "eBay sandbox authorization code is missing.",
+        "eBay authorization code is missing.",
         400,
       );
     }
@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     if (!token.refresh_token) {
       throw new EbayIntegrationError(
         ebayErrorCodes.tokenExchangeFailed,
-        "eBay sandbox did not return a refresh token.",
+        "eBay did not return a refresh token.",
         502,
       );
     }
@@ -68,13 +68,13 @@ export async function GET(request: Request) {
         userId_marketplace_environment: {
           userId: oauthState.userId,
           marketplace: "ebay",
-          environment: "sandbox",
+          environment: config.environment,
         },
       },
       create: {
         userId: oauthState.userId,
         marketplace: "ebay",
-        environment: "sandbox",
+        environment: config.environment,
         accessTokenEnc: encryptEbayToken(
           token.access_token,
           config.tokenEncryptionKey,

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
-import { getEbayConfig } from "@/lib/marketplace/adapters/ebay/config";
+import {
+  getEbayConfig,
+  getEbayEnvironment,
+} from "@/lib/marketplace/adapters/ebay/config";
 import {
   EbaySandboxClient,
   getUsableEbayAccessToken,
@@ -21,7 +24,11 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
-    const readiness = await getStoredEbayReadiness(getEbayPrisma(), user.id);
+    const readiness = await getStoredEbayReadiness(
+      getEbayPrisma(),
+      user.id,
+      getEbayEnvironment(),
+    );
     return NextResponse.json(readiness);
   } catch (error) {
     if (error instanceof AppError && !(error as { code?: string }).code?.startsWith("EBAY_")) {
@@ -43,13 +50,17 @@ export async function POST(request: Request) {
         userId_marketplace_environment: {
           userId: user.id,
           marketplace: "ebay",
-          environment: "sandbox",
+          environment: config.environment,
         },
       },
     });
 
     if (!connection) {
-      const readiness = await getStoredEbayReadiness(prisma, user.id);
+      const readiness = await getStoredEbayReadiness(
+        prisma,
+        user.id,
+        config.environment,
+      );
       return NextResponse.json(readiness, { status: 404 });
     }
 
@@ -57,7 +68,13 @@ export async function POST(request: Request) {
     const readiness = await refreshEbayReadiness(
       prisma,
       user.id,
-      new EbaySandboxClient(accessToken, config.marketplaceId),
+      new EbaySandboxClient(
+        accessToken,
+        config.marketplaceId,
+        fetch,
+        config.environment,
+      ),
+      config.environment,
     );
 
     return NextResponse.json(readiness);

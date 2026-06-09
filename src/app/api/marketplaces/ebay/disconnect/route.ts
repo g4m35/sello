@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
+import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
 import { toEbayErrorPayload } from "@/lib/marketplace/adapters/ebay/errors";
 import { requireSupabaseUserFromRequestOrCookies } from "@/lib/supabase/server";
 
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
       where: {
         userId: user.id,
         marketplace: "ebay",
-        environment: "sandbox",
+        environment: getEbayEnvironment(),
       },
     });
 
