@@ -6,6 +6,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Agent Operating Rules
 
+## Session Handoff (read first, update last)
+
+This project alternates between Codex and Claude agents (the owner switches due to
+usage limits), so you start with no memory of the previous session. **Read
+`HANDOFF.md` at the start of every session** for the live state, and **update
+`HANDOFF.md` before finishing** (Last updated, a dated Recent-work bullet, Current
+state, Blocked-on-owner, Next up). Keep it accurate; never put secrets in it.
+
 ## Mission
 
 Build a production-grade AI resale cross-listing SaaS toward launch. The core
