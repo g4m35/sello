@@ -12,10 +12,12 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-09 — Claude. Promoted `develop → main` (PR #25) and **deployed to
-production**. Everything below (T1–T7, doc reframe, Insights removal, eBay
-account-deletion endpoint, this handoff) is now LIVE on sello.wtf. Prod health +
-authed reads verified green.
+2026-06-09 — Claude. Built the copy/paste listing export feature (Depop,
+Poshmark, Grailed) on `feature/ui`: pure formatters, seller-scoped
+`GET /api/listings/[id]/export?marketplace=…`, a "Copy listing text" card on the
+listing detail page, 19 new tests. Gate green (232 tests, lint, tsc, prisma
+validate, build). Committed on `feature/ui`; **not pushed, no PR opened** (owner
+decides when to push/merge).
 
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `27b7151`.
@@ -32,6 +34,7 @@ authed reads verified green.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-09 (Claude): copy/paste listing export for Depop/Poshmark/Grailed on `feature/ui` (unpushed). Pure formatters in `src/lib/marketplace/export-formatters.ts`, route `GET /api/listings/[id]/export?marketplace=…` (typed `{marketplace, title, body, warnings}`; 400 bad marketplace, 401, 404 cross-seller), "Copy listing text" card on `/inventory/[id]` with per-marketplace copy buttons + warning banner. Honest copy-only: no publishing claimed. Measurements/flaws come from draft `itemSpecifics` key matching (no structured fields exist yet — see Next up).
 - 2026-06-09 (Claude): promoted develop -> main (PR #25) and deployed to production (main @ 27b7151, sello.wtf). All prior develop work now live. Account-deletion GET still returns 500 in prod until its env vars are set.
 - 2026-06-09 (Claude): eBay account-deletion compliance endpoint `/api/marketplaces/ebay/account-deletion` (GET challenge hash, POST ack + best-effort connection purge + JobLog audit) + tests.
 - 2026-06-09 (Claude): removed eBay Marketplace Insights source (eBay restricted access); StockX is now primary sold-comp path.
@@ -48,6 +51,7 @@ authed reads verified green.
 - **Account-deletion go-live**: set `EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN` (owner-chosen, 32–80 chars) and `EBAY_MARKETPLACE_DELETION_ENDPOINT` (= `https://sello.wtf/api/marketplaces/ebay/account-deletion`) in Vercel Production, deploy, then register URL + token in the eBay developer portal.
 
 ## Next up (priority order)
+0. Push `feature/ui` + PR to `develop` for the copy-export feature (when owner asks). Consider adding structured `measurements`/`flaws` fields to the draft model later so exports stop relying on `itemSpecifics` key heuristics.
 1. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
 2. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
 3. **Stripe subscriptions** (gated on Stripe keys).

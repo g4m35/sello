@@ -200,6 +200,23 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  // Copy/paste export text for marketplaces without a publish adapter. The
+  // server only formats text; nothing is published.
+  exportListing: (
+    token: string,
+    itemId: string,
+    marketplace: "depop" | "poshmark" | "grailed",
+  ) =>
+    request<{
+      marketplace: "depop" | "poshmark" | "grailed";
+      title: string;
+      body: string;
+      warnings: string[];
+    }>(
+      `/api/listings/${itemId}/export?marketplace=${encodeURIComponent(marketplace)}`,
+      token,
+    ),
+
   // Honest publish: the server returns 501 NOT_IMPLEMENTED. We surface the
   // outcome rather than treating it as an error toast.
   publish: async (
