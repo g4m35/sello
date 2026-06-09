@@ -2,163 +2,109 @@
 
 ## Product
 
-We are building an MVP for an AI-powered resale cross-listing SaaS focused on streetwear, sneakers, and hype-fashion sellers.
+An AI-powered resale cross-listing SaaS for streetwear, sneakers, and hype-fashion
+sellers. This is a real product being built out toward launch — not a throwaway
+MVP. Expanding scope is expected; build complete, production-grade features.
 
-The app is a Next.js web app, not a mobile-native app.
+Next.js web app (not mobile-native).
 
-Core MVP workflow:
+Core workflow (the spine; everything else hangs off it):
 
-1. User uploads 1–3 item photos.
+1. User uploads item photos.
 2. Gemini identifies the product.
-3. Gemini generates structured marketplace listing drafts.
-4. AI outputs are validated with Zod.
-5. Outputs and job logs are stored for debugging.
-6. User edits and approves the master listing.
-7. Marketplace publishing and inventory sync happen later through background jobs.
+3. Gemini generates structured marketplace listing drafts (Zod-validated).
+4. User edits and approves the master listing.
+5. Automatic pricing from real sold/active comps.
+6. Cross-list to marketplaces and keep inventory in sync.
 
-Do not expand the scope unless explicitly asked.
+All of cross-listing, real marketplace publishing, automatic comps, inventory
+sync, and monetization are now in scope. Build them properly (gated, tested,
+honest) rather than stubbing them out.
 
 ## Tech Stack
 
-- Next.js
-- TypeScript
-- Tailwind
-- Supabase Auth
-- Supabase Postgres
-- Supabase Storage
+- Next.js (App Router) + TypeScript (strict) + Tailwind v4
+- Supabase Auth / Postgres / Storage
 - Prisma
-- Gemini API
-- Zod
-- BullMQ + Redis
-- Playwright only where official marketplace APIs are unavailable 
+- Gemini API (structured JSON output only)
+- Zod (validate all external + AI data at boundaries)
+- BullMQ + Redis / Upstash (background jobs)
+- Marketplace APIs (eBay, StockX, etc.); Playwright only where no official API exists
+- Stripe (subscriptions / billing)
+- Vercel (hosting)
 
 ## Database Notes
 
 - DATABASE_URL intentionally uses the Supabase transaction pooler.
 - DIRECT_URL had IPv6/DNS connectivity problems on this machine.
-- A dedicated role named `resale_app` was intentionally created for runtime/app access.
-- Do not switch back to the postgres owner account unless explicitly instructed.
+- A dedicated role `resale_app` was created for runtime/app access. Do not switch
+  back to the postgres owner account unless explicitly instructed.
 - Preserve the current Prisma/Supabase role strategy.
+- Runtime reads `DATABASE_URL`; the Vercel/Supabase integration also provides
+  `POSTGRES_*` names — keep `DATABASE_URL` set explicitly to the `resale_app` URL.
 
-## Current State
+## Integrity Rules (never violate)
 
-Completed:
+These are about honesty and safety, not scope — they stay no matter how big we get:
 
-- Next.js app with TypeScript and Tailwind
-- Supabase Auth
-- Supabase Postgres schema through Prisma
-- Supabase Storage bucket for listing photos
-- Gemini integration using structured JSON output only
-- Zod validation for AI outputs
-- AI output and draft record storage
-- BullMQ/Redis infrastructure for future background jobs
-- Local environment variables for Supabase, Gemini, Redis, and database access
-- Dedicated Supabase DB role for local/runtime access
-- Confirmed local Redis works
-- Confirmed Gemini API works locally
-- Confirmed Supabase Storage works locally
-- Upload → Gemini identification → editable draft workflow
-- App-style navigation:
-  - Dashboard
-  - Workbench
-  - Inventory
-  - Pricing
-  - Channels
-  - Jobs
-  - Settings
-- Marketplace draft previews for eBay, Grailed, Poshmark, and Depop
-- Queue/job status UI placeholders
-- Editable draft persistence
-- Autosave
-- Reset to AI draft
-- Duplicate draft
-- Required-field validation
-- Platform-specific warnings
+- Never fake successful marketplace publishing. A channel with no real adapter
+  returns a typed NOT_IMPLEMENTED outcome; it does not pretend to succeed.
+- Real publishing must actually call the marketplace API and reflect the true
+  result. No simulated "live" states.
+- Never invent prices with Gemini. Pricing comes only from real comp data; show
+  "Needs comps" when there is none.
+- Never fake or hand-fabricate comps as if they were real sales.
+- Never publish or take destructive marketplace actions without explicit user intent.
+- Never expose, log, or hardcode secrets/keys. Use environment variables.
+- Never allow one user to access another user's data (scope every query to the seller).
+- Never silently swallow failed validation or failed jobs — fail loudly and visibly.
 
-Verification already passed:
+## Deploy & Branch Safety (keep)
 
-- `npm run lint`
-- `npm test`
-- `npx prisma validate`
-- `npm run build`
-- Desktop browser QA
-- Mobile browser QA
-
-## Hard Rules
-
-
-- Commits are allowed after successful lint/test/Prisma-validate/build verification.
-- Do not push unless explicitly requested.
-- Never push `main` without explicit approval.
-- Do not deploy unless explicitly requested.
-- Auto-deploy (including to Vercel) is forbidden.
-- Production deploys must never happen automatically.
-- Do not print or expose secrets.
-- Do not hardcode secrets.
-- Do not fake marketplace publishing success.
-- Do not fake pricing comps.
-- Do not invent resale prices with Gemini.
-- Do not build full marketplace publishing yet.
-- Keep publishing draft-only until real adapters/jobs exist.
-
-## Branch And Worktree Rules
-
-- `main` is production-safe only and must be treated as protected.
-- `develop` is the active integration branch.
-- `feature/*` branches are for isolated feature work.
-- AI agents should normally work inside feature branches and their matching worktrees.
-- Risky systems, including publishing, inventory sync, adapter work, auth, billing, migrations, and Playwright automation, must use feature branches.
-- Never deploy automatically from any branch or worktree.
-- Never push `main` without explicit approval.
-- Worktrees should be isolated by feature area.
-- Never let multiple agents edit the same worktree simultaneously.
-- Do not run migrations simultaneously across worktrees.
-- Merge flow is `feature/*` -> `develop` -> `main` -> production.
+- `main` is production-safe and protected. Never push `main` without explicit approval.
+- Merge flow: `feature/*` -> `develop` -> `main` -> production.
+- No automatic deploys. Production deploys happen only when explicitly requested.
+  Preview deploys are fine on request.
+- Commit after the verification gate passes. Push only when asked.
 
 ## Engineering Rules
 
-- Use strict TypeScript.
-- Use Zod for external data validation.
-- Validate all AI outputs.
-- Store raw and parsed AI outputs.
-- Use Prisma for database access.
-- Use background jobs for slow or unreliable operations.
-- Use adapter pattern for marketplace integrations.
-- Make jobs idempotent.
-- Prefer reliable state management over UI polish.
-- Add tests for core business logic.
-- Run validation before finishing:
-  - `npm run lint`
-  - `npm test`
-  - `npx prisma validate`
-  - `npm run build`
+- Strict TypeScript; Zod at all external/AI boundaries; store raw + parsed AI output.
+- Prisma for DB access; migrations are reviewed and routed through `develop`.
+- Marketplace logic lives in adapters with explicit capability flags; UI branches
+  on capabilities, never on a hardcoded marketplace id.
+- Slow/unreliable work runs in idempotent background jobs.
+- Pricing/business logic lives in pure, testable utilities; add tests for it.
+- Prefer clear loading/empty/error states over decoration.
+- Run the gate before finishing: `npm run lint`, `npm test`, `npx prisma validate`,
+  `npm run build`.
 
-## Immediate Next Task
+## Current State
 
-Implement manual price comps v1.
+Shipped and verified (Phase 0 + Phase 1 live; T1–T7 on `develop`):
 
-Requirements:
+- Full app UI: dashboard, inventory (list/grid, sort, pagination, bulk
+  delete/price/CSV), listing detail/editor (autosave, editable fields, photo
+  add/remove/reorder/cover), publish history, marketplaces, new listing
+  (photo -> Gemini), responsive layout, consistent states.
+- Seller-scoped API: listings, listing detail, history, CSV import, item update,
+  bulk price/delete, photos, comps + comps refresh.
+- Honest publish flow (records real attempts; returns 501 NOT_IMPLEMENTED).
+- Automatic comps pipeline (sources, dedupe/outlier, fetch job, refresh,
+  auto-fetch on identify/load). Dormant until a comp source key is configured.
+- Lifecycle actions (mark sold / delist).
 
-- On the Pricing page and item editor, allow users to manually add comps.
-- Fields:
-  - source
-  - title
-  - price
-  - shipping
-  - sold_date
-  - url
-  - condition
-  - notes
-- Store comps in the `PriceComp` table.
-- Calculate:
-  - low comp
-  - average comp
-  - high comp
-  - quick-sale price
-  - recommended list price
-- Mark confidence as low, medium, or high based on comp count and similarity.
-- Do not use Gemini to invent prices.
-- If no comps exist, show “Needs comps.”
-- Add tests for pricing calculations.
-- Run lint, tests, Prisma validation, and build.
-- Commit locally after verification passes. Do not push. Do not deploy.
+Dormant/blocked on credentials or decisions (not on more code):
+
+- Real comp data (needs eBay Browse prod / Marketplace Insights / StockX keys).
+- Real eBay publishing (needs eBay production keyset + OAuth).
+- Stripe monetization (needs Stripe keys).
+- Always-on background worker host for queues.
+
+## Next Up
+
+1. Light up automatic pricing with a real comp source.
+2. Real eBay publishing (production keyset + OAuth + Sell APIs), then expand to
+   other channels behind capability-gated adapters.
+3. Stripe subscriptions.
+4. Background worker host + inventory sync.
