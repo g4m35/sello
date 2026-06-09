@@ -28,6 +28,7 @@ import {
   ExportMarketplaceSchema,
   type ExportMarketplace,
 } from "@/lib/marketplace/export-formatters";
+import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { ItemDetailView } from "@/lib/view/types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -38,6 +39,8 @@ type DraftEdits = {
   bulletPoints: string[];
   recommendedPriceCents: number | null;
   selectedMarketplaces: string[];
+  measurements: Measurement[];
+  flaws: Flaw[];
 };
 
 type ItemEdits = {
@@ -74,7 +77,27 @@ function editsFrom(item: ItemDetailView): DraftEdits {
     bulletPoints: item.bulletPoints,
     recommendedPriceCents: item.priceCents,
     selectedMarketplaces: item.selectedMarketplaces,
+    measurements: item.measurements,
+    flaws: item.flaws,
   };
+}
+
+// Rows the seller is still typing (no label yet) are kept in local state but
+// excluded from saves, since the draft schema requires non-empty labels.
+function savableMeasurements(rows: Measurement[]): Measurement[] {
+  return rows
+    .filter((m) => m.label.trim() !== "")
+    .map((m) => ({
+      ...m,
+      label: m.label.trim(),
+      value: m.value && m.value.trim() ? m.value.trim() : null,
+    }));
+}
+
+function savableFlaws(rows: Flaw[]): Flaw[] {
+  return rows
+    .filter((f) => f.label.trim() !== "" && f.description.trim() !== "")
+    .map((f) => ({ ...f, label: f.label.trim(), description: f.description.trim() }));
 }
 
 function itemEditsFrom(item: ItemDetailView): ItemEdits {
@@ -232,6 +255,8 @@ export default function ListingDetailPage() {
           bulletPoints: next.bulletPoints,
           recommendedPriceCents: next.recommendedPriceCents,
           selectedMarketplaces: next.selectedMarketplaces,
+          measurements: savableMeasurements(next.measurements),
+          flaws: savableFlaws(next.flaws),
         });
         setSaveState("saved");
         dirtyRef.current = false;
@@ -341,6 +366,8 @@ export default function ListingDetailPage() {
         bulletPoints: edits.bulletPoints,
         recommendedPriceCents: edits.recommendedPriceCents,
         selectedMarketplaces: edits.selectedMarketplaces,
+        measurements: savableMeasurements(edits.measurements),
+        flaws: savableFlaws(edits.flaws),
         approve: true,
       });
       reload();
@@ -785,6 +812,184 @@ export default function ListingDetailPage() {
                   </div>
                 </div>
               </Field>
+            </FormSection>
+
+            <FormSection
+              title="Measurements"
+              desc="Exports include these; blank values become [measure] placeholders"
+            >
+              <div className="stack-4">
+                {edits.measurements.map((m, idx) => (
+                  <div key={idx} className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      style={{ flex: 2 }}
+                      value={m.label}
+                      placeholder="Label (e.g. Pit to pit)"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.measurements];
+                        next[idx] = { ...m, label: e.target.value, source: "seller" };
+                        patch({ measurements: next });
+                      }}
+                    />
+                    <input
+                      className="input"
+                      style={{ flex: 1 }}
+                      value={m.value ?? ""}
+                      placeholder="Value"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.measurements];
+                        next[idx] = {
+                          ...m,
+                          value: e.target.value.trim() === "" ? null : e.target.value,
+                          source: "seller",
+                        };
+                        patch({ measurements: next });
+                      }}
+                    />
+                    <select
+                      className="select"
+                      style={{ width: 96 }}
+                      value={m.unit}
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.measurements];
+                        next[idx] = {
+                          ...m,
+                          unit: e.target.value as Measurement["unit"],
+                          source: "seller",
+                        };
+                        patch({ measurements: next });
+                      }}
+                    >
+                      <option value="in">in</option>
+                      <option value="cm">cm</option>
+                      <option value="unknown">unit?</option>
+                    </select>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="trash"
+                      title="Remove measurement"
+                      disabled={!editable}
+                      onClick={() =>
+                        patch({
+                          measurements: edits.measurements.filter((_, i) => i !== idx),
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+                <div>
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    icon="plus"
+                    disabled={!editable}
+                    onClick={() =>
+                      patch({
+                        measurements: [
+                          ...edits.measurements,
+                          { label: "", value: null, unit: "in", source: "seller" },
+                        ],
+                      })
+                    }
+                  >
+                    Add measurement
+                  </Btn>
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Flaws"
+              desc="Only listed flaws are exported; an empty list never claims flawless"
+            >
+              <div className="stack-4">
+                {edits.flaws.map((f, idx) => (
+                  <div key={idx} className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      style={{ flex: 1 }}
+                      value={f.label}
+                      placeholder="Flaw (e.g. Cuff stain)"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.flaws];
+                        next[idx] = { ...f, label: e.target.value, source: "seller" };
+                        patch({ flaws: next });
+                      }}
+                    />
+                    <input
+                      className="input"
+                      style={{ flex: 2 }}
+                      value={f.description}
+                      placeholder="Description"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.flaws];
+                        next[idx] = { ...f, description: e.target.value, source: "seller" };
+                        patch({ flaws: next });
+                      }}
+                    />
+                    <select
+                      className="select"
+                      style={{ width: 120 }}
+                      value={f.severity ?? "unknown"}
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.flaws];
+                        next[idx] = {
+                          ...f,
+                          severity: e.target.value as Flaw["severity"],
+                          source: "seller",
+                        };
+                        patch({ flaws: next });
+                      }}
+                    >
+                      <option value="minor">Minor</option>
+                      <option value="moderate">Moderate</option>
+                      <option value="major">Major</option>
+                      <option value="unknown">Severity?</option>
+                    </select>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="trash"
+                      title="Remove flaw"
+                      disabled={!editable}
+                      onClick={() =>
+                        patch({ flaws: edits.flaws.filter((_, i) => i !== idx) })
+                      }
+                    />
+                  </div>
+                ))}
+                <div>
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    icon="plus"
+                    disabled={!editable}
+                    onClick={() =>
+                      patch({
+                        flaws: [
+                          ...edits.flaws,
+                          {
+                            label: "",
+                            description: "",
+                            severity: "unknown",
+                            source: "seller",
+                          },
+                        ],
+                      })
+                    }
+                  >
+                    Add flaw
+                  </Btn>
+                </div>
+              </div>
             </FormSection>
 
             <FormSection

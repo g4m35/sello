@@ -25,9 +25,94 @@ function input(overrides: Partial<ListingExportInput> = {}): ListingExportInput 
       Flaws: "Small stain on left cuff",
     },
     tags: ["supreme", "box logo", "streetwear"],
+    measurements: [],
+    flaws: [],
     ...overrides,
   };
 }
+
+describe("structured measurements and flaws", () => {
+  it("prefers structured measurements over itemSpecifics heuristics", () => {
+    const result = buildListingExport(
+      "grailed",
+      input({
+        measurements: [
+          { label: "Pit to pit", value: "21.5", unit: "in" },
+          { label: "Length", value: "27", unit: "in" },
+        ],
+      }),
+    );
+
+    expect(result.body).toContain("Pit to pit: 21.5 in");
+    expect(result.body).toContain("Length: 27 in");
+    expect(result.body).not.toContain("22 in");
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("renders unmeasured structured rows as placeholders and warns when nothing is measured", () => {
+    const result = buildListingExport(
+      "depop",
+      input({
+        measurements: [
+          { label: "Sleeve", value: null, unit: "unknown" },
+          { label: "Shoulder", value: null, unit: "unknown" },
+        ],
+        itemSpecifics: {},
+      }),
+    );
+
+    expect(result.body).toContain("Sleeve: [measure]");
+    expect(result.body).toContain("Shoulder: [measure]");
+    expect(result.warnings).toContain("Missing measurements (placeholders added)");
+  });
+
+  it("does not warn about measurements when at least one structured value exists", () => {
+    const result = buildListingExport(
+      "poshmark",
+      input({
+        measurements: [
+          { label: "Chest", value: "22", unit: "in" },
+          { label: "Sleeve", value: null, unit: "unknown" },
+        ],
+        itemSpecifics: {},
+      }),
+    );
+
+    expect(result.body).toContain("Chest: 22 in");
+    expect(result.body).toContain("Sleeve: [measure]");
+    expect(result.warnings).not.toContain("Missing measurements (placeholders added)");
+  });
+
+  it("prefers structured flaws with severity over itemSpecifics heuristics", () => {
+    const result = buildListingExport(
+      "grailed",
+      input({
+        flaws: [
+          {
+            label: "Cuff stain",
+            description: "Light stain on the left cuff",
+            severity: "minor",
+          },
+          { label: "Pilling", description: "Pilling around the hem" },
+        ],
+        itemSpecifics: {},
+      }),
+    );
+
+    expect(result.body).toContain("Flaws:");
+    expect(result.body).toContain("- Cuff stain: Light stain on the left cuff (minor)");
+    expect(result.body).toContain("- Pilling: Pilling around the hem");
+  });
+
+  it("never claims the item has no flaws when none are recorded", () => {
+    const result = buildListingExport(
+      "depop",
+      input({ flaws: [], itemSpecifics: { "Pit to Pit": "22 in" } }),
+    );
+    expect(result.body.toLowerCase()).not.toContain("no flaws");
+    expect(result.body).not.toContain("Flaws:");
+  });
+})
 
 describe("ExportMarketplaceSchema", () => {
   it("accepts only the copy-export marketplaces", () => {

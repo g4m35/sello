@@ -3,6 +3,7 @@
 // listing form — it never publishes anything.
 import { z } from "zod";
 
+import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import { conditionLabel, formatMoneyCents } from "@/lib/view/format";
 
 export const ExportMarketplaceSchema = z.enum(["depop", "poshmark", "grailed"]);
@@ -22,6 +23,8 @@ export type ListingExportInput = {
   priceCents: number | null;
   itemSpecifics: Record<string, string>;
   tags: string[];
+  measurements: Measurement[];
+  flaws: Flaw[];
 };
 
 export type ListingExport = {
@@ -92,11 +95,22 @@ type ResolvedFields = {
   title: string;
   conditionText: string | null;
   priceText: string | null;
-  flaws: [string, string][];
-  measurements: [string, string][];
+  flawSection: string | null;
   measurementSection: string | null;
   warnings: string[];
 };
+
+function measurementLine(measurement: Measurement): string {
+  if (measurement.value == null) return `${measurement.label}: [measure]`;
+  const unit = measurement.unit === "unknown" ? "" : ` ${measurement.unit}`;
+  return `${measurement.label}: ${measurement.value}${unit}`;
+}
+
+function flawLine(flaw: Flaw): string {
+  const severity =
+    flaw.severity && flaw.severity !== "unknown" ? ` (${flaw.severity})` : "";
+  return `- ${flaw.label}: ${flaw.description}${severity}`;
+}
 
 function resolveFields(input: ListingExportInput): ResolvedFields {
   const warnings: string[] = [];
@@ -111,40 +125,56 @@ function resolveFields(input: ListingExportInput): ResolvedFields {
 
   if (!input.description.trim()) warnings.push("Missing description");
 
-  const flaws = matchSpecifics(input.itemSpecifics, FLAW_KEY_HINTS);
-  const measurements = matchSpecifics(input.itemSpecifics, MEASUREMENT_KEY_HINTS).filter(
-    ([key]) => !flaws.some(([flawKey]) => flawKey === key),
-  );
+  const legacyFlaws = matchSpecifics(input.itemSpecifics, FLAW_KEY_HINTS);
+
+  // Structured flaws (AI-extracted or seller-entered) win; the itemSpecifics
+  // key heuristic only covers drafts created before structured fields existed.
+  // No flaws recorded means exactly that — never claim "no flaws".
+  let flawSection: string | null = null;
+  if (input.flaws.length > 0) {
+    flawSection = ["Flaws:", ...input.flaws.map(flawLine)].join("\n");
+  } else if (legacyFlaws.length > 0) {
+    flawSection = legacyFlaws.map(([, value]) => `Flaws: ${value}`).join("\n");
+  }
 
   let measurementSection: string | null = null;
-  if (measurements.length > 0) {
+  if (input.measurements.length > 0) {
     measurementSection = [
       "Measurements:",
-      ...measurements.map(([key, value]) => `${key}: ${value}`),
+      ...input.measurements.map(measurementLine),
     ].join("\n");
-  } else if (MEASURED_CATEGORIES.has(input.category)) {
-    warnings.push("Missing measurements (placeholders added)");
-    measurementSection = [
-      "Measurements:",
-      "Pit to pit: [measure]",
-      "Length: [measure]",
-    ].join("\n");
+    if (!input.measurements.some((m) => m.value != null)) {
+      warnings.push("Missing measurements (placeholders added)");
+    }
+  } else {
+    const legacyMeasurements = matchSpecifics(
+      input.itemSpecifics,
+      MEASUREMENT_KEY_HINTS,
+    ).filter(([key]) => !legacyFlaws.some(([flawKey]) => flawKey === key));
+
+    if (legacyMeasurements.length > 0) {
+      measurementSection = [
+        "Measurements:",
+        ...legacyMeasurements.map(([key, value]) => `${key}: ${value}`),
+      ].join("\n");
+    } else if (MEASURED_CATEGORIES.has(input.category)) {
+      warnings.push("Missing measurements (placeholders added)");
+      measurementSection = [
+        "Measurements:",
+        "Pit to pit: [measure]",
+        "Length: [measure]",
+      ].join("\n");
+    }
   }
 
   return {
     title,
     conditionText: hasCondition ? conditionLabel(input.condition) : null,
     priceText: input.priceCents != null ? formatMoneyCents(input.priceCents) : null,
-    flaws,
-    measurements,
+    flawSection,
     measurementSection,
     warnings,
   };
-}
-
-function flawsLine(flaws: [string, string][]): string | null {
-  if (flaws.length === 0) return null;
-  return flaws.map(([, value]) => `Flaws: ${value}`).join("\n");
 }
 
 function formatDepop(input: ListingExportInput, fields: ResolvedFields): string {
@@ -161,7 +191,7 @@ function formatDepop(input: ListingExportInput, fields: ResolvedFields): string 
   return joinSections([
     input.description.trim() || null,
     facts,
-    flawsLine(fields.flaws),
+    fields.flawSection,
     fields.measurementSection,
     hashtagLine(input),
   ]);
@@ -188,7 +218,7 @@ function formatPoshmark(input: ListingExportInput, fields: ResolvedFields): stri
     facts,
     fields.measurementSection,
     details.length > 1 ? details.join("\n") : null,
-    flawsLine(fields.flaws),
+    fields.flawSection,
   ]);
 }
 
@@ -207,7 +237,7 @@ function formatGrailed(input: ListingExportInput, fields: ResolvedFields): strin
   return joinSections([
     facts,
     input.description.trim() || null,
-    flawsLine(fields.flaws),
+    fields.flawSection,
     fields.measurementSection,
   ]);
 }

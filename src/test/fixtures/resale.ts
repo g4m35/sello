@@ -37,6 +37,18 @@ export const geminiDraftFixture: GeminiListingDraft = {
     pricingRationale:
       "Pricing intentionally left for manual comps; no resale price invented.",
     compSearchQueries: ["nike sb dunk low chicago us 10 sold"],
+    measurements: [
+      { label: "Insole length", value: null, unit: "unknown", source: "ai" },
+    ],
+    flaws: [
+      {
+        label: "Sole yellowing",
+        description: "Slight yellowing on the midsole edges",
+        severity: "minor",
+        confidence: 0.7,
+        source: "ai",
+      },
+    ],
   },
   marketplaceDrafts: {
     ebay: {

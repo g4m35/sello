@@ -72,6 +72,12 @@ export async function PATCH(
             update.marketplaceDrafts,
           ) as Prisma.InputJsonValue,
           selectedMarketplaces: update.selectedMarketplaces,
+          ...(update.measurements !== undefined
+            ? { measurements: update.measurements as Prisma.InputJsonValue }
+            : {}),
+          ...(update.flaws !== undefined
+            ? { flaws: update.flaws as Prisma.InputJsonValue }
+            : {}),
           status: update.approve ? "APPROVED" : "DRAFT",
           approvedAt: update.approve ? new Date() : null,
         },
@@ -176,6 +182,10 @@ export async function POST(
           pricingRationale: existingDraft.pricingRationale,
           itemSpecifics: existingDraft.itemSpecifics as Prisma.InputJsonValue,
           marketplaceDrafts: existingDraft.marketplaceDrafts as Prisma.InputJsonValue,
+          measurements: (existingDraft.measurements ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
+          flaws: (existingDraft.flaws ?? undefined) as Prisma.InputJsonValue | undefined,
           selectedMarketplaces: existingDraft.selectedMarketplaces,
           status: "DRAFT",
           approvedAt: null,
@@ -214,6 +224,14 @@ export async function POST(
           pricingRationale: original.listingDraft.pricingRationale,
           itemSpecifics: original.listingDraft.itemSpecifics as Prisma.InputJsonValue,
           marketplaceDrafts: original.marketplaceDrafts as Prisma.InputJsonValue,
+          measurements: original.listingDraft.measurements.map((m) => ({
+            ...m,
+            source: m.source ?? "ai",
+          })) as Prisma.InputJsonValue,
+          flaws: original.listingDraft.flaws.map((f) => ({
+            ...f,
+            source: f.source ?? "ai",
+          })) as Prisma.InputJsonValue,
           selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop"],
         },
       }),

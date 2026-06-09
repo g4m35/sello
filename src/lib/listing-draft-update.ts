@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { MarketplaceSchema } from "./ai/listing-draft";
+import { FlawSchema, MarketplaceSchema, MeasurementSchema } from "./ai/listing-draft";
 import { countMeaningfulBullets, READINESS_THRESHOLDS } from "./lifecycle/readiness";
 
 const EbayMarketplaceDraftUpdateSchema = z
@@ -26,6 +26,10 @@ export const ListingDraftUpdateSchema = z
       .strict()
       .optional(),
     selectedMarketplaces: z.array(MarketplaceSchema).max(4),
+    // Optional so pre-existing clients that do not send them keep working;
+    // when omitted the stored values are left untouched.
+    measurements: z.array(MeasurementSchema).max(12).optional(),
+    flaws: z.array(FlawSchema).max(12).optional(),
     approve: z.boolean().optional().default(false),
   })
   .strict()

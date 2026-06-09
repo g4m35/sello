@@ -1,3 +1,4 @@
+import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type {
   AttemptView,
   ChannelView,
@@ -158,6 +159,8 @@ export const api = {
       bulletPoints?: string[];
       recommendedPriceCents?: number | null;
       selectedMarketplaces?: string[];
+      measurements?: Measurement[];
+      flaws?: Flaw[];
       approve?: boolean;
     },
   ) =>

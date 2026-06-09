@@ -12,12 +12,13 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-09 — Claude. Built the copy/paste listing export feature (Depop,
-Poshmark, Grailed) on `feature/ui`: pure formatters, seller-scoped
-`GET /api/listings/[id]/export?marketplace=…`, a "Copy listing text" card on the
-listing detail page, 19 new tests. Gate green (232 tests, lint, tsc, prisma
-validate, build). Committed on `feature/ui`; **not pushed, no PR opened** (owner
-decides when to push/merge).
+2026-06-09 — Claude. Added structured measurements/flaws across the draft flow
+(Gemini schema v2, new nullable `ListingDraft.measurements`/`flaws` JSONB
+columns + migration `20260609120000_add_draft_measurements_flaws`, editor
+sections, exports prefer structured data). Gate green (245 tests, lint, tsc,
+prisma validate, build). Committed on `feature/ui`; **not pushed, no PR**.
+⚠️ Deploy ordering: apply the migration (`npm run db:deploy`) before/with the
+deploy — Prisma selects all model columns, so draft reads 500 without it.
 
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `27b7151`.
@@ -34,6 +35,7 @@ decides when to push/merge).
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-09 (Claude): structured measurements + flaws (unpushed, `feature/ui`). `MeasurementSchema`/`FlawSchema` in `src/lib/ai/listing-draft.ts` (defaulted `[]` so old `validatedJson` still parses; reset/duplicate preserve them), Gemini prompt v2 (never invent measurements; placeholders with `value: null`; only visible flaws; never claim "no flaws"), nullable JSONB columns on `ListingDraft` (additive migration), editable Measurements/Flaws sections on `/inventory/[id]` (rows the seller edits get `source: "seller"`), exports prefer structured data with itemSpecifics-heuristic fallback for old drafts.
 - 2026-06-09 (Claude): copy/paste listing export for Depop/Poshmark/Grailed on `feature/ui` (unpushed). Pure formatters in `src/lib/marketplace/export-formatters.ts`, route `GET /api/listings/[id]/export?marketplace=…` (typed `{marketplace, title, body, warnings}`; 400 bad marketplace, 401, 404 cross-seller), "Copy listing text" card on `/inventory/[id]` with per-marketplace copy buttons + warning banner. Honest copy-only: no publishing claimed. Measurements/flaws come from draft `itemSpecifics` key matching (no structured fields exist yet — see Next up).
 - 2026-06-09 (Claude): promoted develop -> main (PR #25) and deployed to production (main @ 27b7151, sello.wtf). All prior develop work now live. Account-deletion GET still returns 500 in prod until its env vars are set.
 - 2026-06-09 (Claude): eBay account-deletion compliance endpoint `/api/marketplaces/ebay/account-deletion` (GET challenge hash, POST ack + best-effort connection purge + JobLog audit) + tests.
@@ -51,7 +53,7 @@ decides when to push/merge).
 - **Account-deletion go-live**: set `EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN` (owner-chosen, 32–80 chars) and `EBAY_MARKETPLACE_DELETION_ENDPOINT` (= `https://sello.wtf/api/marketplaces/ebay/account-deletion`) in Vercel Production, deploy, then register URL + token in the eBay developer portal.
 
 ## Next up (priority order)
-0. Push `feature/ui` + PR to `develop` for the copy-export feature (when owner asks). Consider adding structured `measurements`/`flaws` fields to the draft model later so exports stop relying on `itemSpecifics` key heuristics.
+0. Push `feature/ui` + PR to `develop` for copy-export + structured measurements/flaws (when owner asks). Remember the migration deploy-ordering note above.
 1. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
 2. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
 3. **Stripe subscriptions** (gated on Stripe keys).

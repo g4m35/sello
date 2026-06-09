@@ -157,6 +157,50 @@ describe("listing export API", () => {
     expect(payload.warnings).toContain("Draft has not been approved yet");
   });
 
+  it("uses structured measurements and flaws from the draft when present", async () => {
+    mockItem(
+      itemRow({
+        listingDrafts: [
+          draftRow({
+            measurements: [
+              { label: "Pit to pit", value: "21.5", unit: "in", source: "seller" },
+              { label: "Sleeve", value: null, unit: "unknown" },
+            ],
+            flaws: [
+              {
+                label: "Cuff stain",
+                description: "Light stain on the left cuff",
+                severity: "minor",
+                source: "ai",
+              },
+            ],
+            itemSpecifics: {},
+          }),
+        ],
+      }),
+    );
+
+    const response = await getRequest("grailed");
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.body).toContain("Pit to pit: 21.5 in");
+    expect(payload.body).toContain("Sleeve: [measure]");
+    expect(payload.body).toContain("- Cuff stain: Light stain on the left cuff (minor)");
+    expect(payload.warnings).toEqual([]);
+  });
+
+  it("falls back to itemSpecifics heuristics for drafts without structured fields", async () => {
+    mockItem(itemRow());
+
+    const response = await getRequest("poshmark");
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.body).toContain("Pit to Pit: 22 in");
+    expect(payload.body).toContain("Flaws: Small stain on left cuff");
+  });
+
   it("still exports with warnings when the item has no draft at all", async () => {
     mockItem(itemRow({ listingDrafts: [] }));
 

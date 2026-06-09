@@ -7,6 +7,7 @@ import type {
   MarketplaceListing,
   PublishAttempt,
 } from "@/generated/prisma/client";
+import { parseFlaws, parseMeasurements } from "@/lib/ai/listing-draft";
 import { describeState, toLifecycleState } from "@/lib/lifecycle/item-status";
 import { listMarketplaceAdapters } from "@/lib/marketplace/adapter";
 import { marketplaceName } from "@/lib/view/marketplaces";
@@ -125,6 +126,8 @@ export function mapItemDetail(
     description: draft?.description ?? "",
     bulletPoints: draft?.bulletPoints ?? [],
     pricingRationale: draft?.pricingRationale ?? item.pricingRationale ?? null,
+    measurements: parseMeasurements(draft?.measurements),
+    flaws: parseFlaws(draft?.flaws),
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     readiness,
     attempts,

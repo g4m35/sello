@@ -148,6 +148,8 @@ model ListingDraft {
   pricingRationale      String?
   itemSpecifics         Json
   marketplaceDrafts     Json
+  measurements          Json?
+  flaws                 Json?
   selectedMarketplaces  Marketplace[] @default([])
   approvedAt            DateTime?
   createdAt             DateTime      @default(now())

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { parseFlaws, parseMeasurements } from "@/lib/ai/listing-draft";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import {
   buildListingExport,
@@ -68,6 +69,8 @@ export async function GET(
       priceCents: draft?.recommendedPriceCents ?? item.recommendedPriceCents ?? null,
       itemSpecifics: specificsOf(draft?.itemSpecifics),
       tags: tagsOf(draft?.marketplaceDrafts, marketplace),
+      measurements: parseMeasurements(draft?.measurements),
+      flaws: parseFlaws(draft?.flaws),
     });
 
     const warnings = [...exported.warnings];
