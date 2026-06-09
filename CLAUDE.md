@@ -96,7 +96,8 @@ Shipped and verified (Phase 0 + Phase 1 live; T1–T7 on `develop`):
 
 Dormant/blocked on credentials or decisions (not on more code):
 
-- Real comp data (needs eBay Browse prod / Marketplace Insights / StockX keys).
+- Real comp data (needs StockX partner access, an eBay Browse prod keyset, or a
+  third-party aggregator key — eBay Marketplace Insights is no longer available).
 - Real eBay publishing (needs eBay production keyset + OAuth).
 - Stripe monetization (needs Stripe keys).
 - Always-on background worker host for queues.
