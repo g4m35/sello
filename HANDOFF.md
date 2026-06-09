@@ -12,13 +12,17 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-09 — Claude. Promoted `develop → main` (PR #25) and **deployed to
-production**. Everything below (T1–T7, doc reframe, Insights removal, eBay
-account-deletion endpoint, this handoff) is now LIVE on sello.wtf. Prod health +
-authed reads verified green.
+2026-06-09 — Claude. **Production eBay OAuth enabled and deployed** (main @
+`1892879`, sello.wtf). EBAY_ENV now accepts "production"; publishing stays hard
+sandbox-locked. All production eBay env vars are set in Vercel (this project
+forces env vars to Sensitive, so values are write-only; EBAY_TOKEN_ENCRYPTION_KEY
+and EBAY_OAUTH_STATE_SECRET were generated fresh, EBAY_ENV=production set via CLI).
+Owner's next step: sign in on sello.wtf → Settings → Marketplaces → Connect eBay
+and complete consent on auth.ebay.com.
 
 ## Current state
-- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `27b7151`.
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `1892879`.
+- Production eBay OAuth/readiness live; publishing remains sandbox-only by design (hard gate in `publish.ts`). Production publish is the next deliberate build, not a flag flip.
 - `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
 - Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
 - Open PR **#1** (pre-existing "chore: optimize repo workflow") into `develop`.
@@ -32,6 +36,7 @@ authed reads verified green.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-09 (Claude): production eBay OAuth enablement (feature/ebay-production-oauth -> develop -> main @ 1892879, deployed). EBAY_ENV="production" accepted; env-keyed auth/token/API URLs; connection scoping by config environment in callback/readiness/disconnect; new getEbayEnvironment() so disconnect/stored-readiness work without full credentials; publish hard-locked to sandbox (typed not_enabled in production, zero outbound calls, regression-tested). Set Vercel Production env: EBAY_TOKEN_ENCRYPTION_KEY + EBAY_OAUTH_STATE_SECRET (freshly generated), EBAY_ENV=production. EBAY_CLIENT_ID/SECRET/REDIRECT_URI_NAME were added by owner. Stray empty vars EBAY_RU_NAME / EBAY_PRODUCTION_RU_NAME remain in Vercel; safe to delete.
 - 2026-06-09 (Claude): promoted develop -> main (PR #25) and deployed to production (main @ 27b7151, sello.wtf). All prior develop work now live. Account-deletion GET still returns 500 in prod until its env vars are set.
 - 2026-06-09 (Claude): eBay account-deletion compliance endpoint `/api/marketplaces/ebay/account-deletion` (GET challenge hash, POST ack + best-effort connection purge + JobLog audit) + tests.
 - 2026-06-09 (Claude): removed eBay Marketplace Insights source (eBay restricted access); StockX is now primary sold-comp path.
@@ -41,7 +46,8 @@ authed reads verified green.
 
 ## Blocked on owner (credentials / decisions — not code)
 - **Comp source key** (to light up automatic pricing): `STOCKX_API_KEY` (primary sold, needs partner approval), or `EBAY_BROWSE_CLIENT_ID`/`EBAY_BROWSE_CLIENT_SECRET` (interim active, prod keyset), or a third-party aggregator key. Add in Vercel env.
-- **eBay production publishing access** (keyset + RuName/OAuth) for real publishing.
+- **eBay production OAuth consent**: owner must connect their real eBay account on sello.wtf (Settings -> Marketplaces -> Connect eBay) to validate the flow end to end.
+- **eBay production publishing**: code decision + build (OAuth is done; publish gate stays locked until built and approved).
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **`.env.example`**: still needs the two `EBAY_MARKETPLACE_DELETION_*` lines (agents are sandbox-blocked from editing env files; owner adds them).
