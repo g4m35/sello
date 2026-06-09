@@ -1,12 +1,18 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
-import type { EbayConfig, EbayTokenResponse } from "./types";
+import type { EbayConfig, EbayEnvironment, EbayTokenResponse } from "./types";
 
 export const ebayOAuthStateCookieName = "ebay_oauth_state";
 
-const authBaseUrl = "https://auth.sandbox.ebay.com/oauth2/authorize";
-const tokenUrl = "https://api.sandbox.ebay.com/identity/v1/oauth2/token";
+const authBaseUrls: Record<EbayEnvironment, string> = {
+  sandbox: "https://auth.sandbox.ebay.com/oauth2/authorize",
+  production: "https://auth.ebay.com/oauth2/authorize",
+};
+const tokenUrls: Record<EbayEnvironment, string> = {
+  sandbox: "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
+  production: "https://api.ebay.com/identity/v1/oauth2/token",
+};
 const requiredScopes = [
   "https://api.ebay.com/oauth/api_scope/sell.inventory",
   "https://api.ebay.com/oauth/api_scope/sell.account",
@@ -23,7 +29,7 @@ export function createRandomEbayOAuthState() {
 }
 
 export function buildEbayAuthorizationUrl(config: EbayConfig, state: string) {
-  const url = new URL(authBaseUrl);
+  const url = new URL(authBaseUrls[config.environment]);
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", config.redirectUriName);
   url.searchParams.set("response_type", "code");
@@ -100,7 +106,7 @@ export async function exchangeAuthorizationCode(
   code: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<EbayTokenResponse> {
-  const response = await fetchImpl(tokenUrl, {
+  const response = await fetchImpl(tokenUrls[config.environment], {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
@@ -116,7 +122,7 @@ export async function exchangeAuthorizationCode(
   if (!response.ok) {
     throw new EbayIntegrationError(
       ebayErrorCodes.tokenExchangeFailed,
-      "eBay sandbox token exchange failed.",
+      "eBay token exchange failed.",
       502,
       { status: response.status },
     );
@@ -138,7 +144,7 @@ function safeEqual(a: string, b: string) {
 function invalidState() {
   return new EbayIntegrationError(
     ebayErrorCodes.oauthStateInvalid,
-    "The eBay sandbox authorization state is invalid or expired.",
+    "The eBay authorization state is invalid or expired.",
     400,
   );
 }

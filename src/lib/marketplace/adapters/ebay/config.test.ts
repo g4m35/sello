@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getEbayConfig,
+  getEbayEnvironment,
   getEbayOAuthStateSecret,
   isEbaySandboxPublishEnabled,
 } from "./config";
@@ -27,9 +28,16 @@ describe("getEbayConfig", () => {
     });
   });
 
-  it("rejects production mode for now", () => {
+  it("accepts production mode with complete config", () => {
+    expect(getEbayConfig({ ...completeEnv, EBAY_ENV: "production" })).toMatchObject({
+      environment: "production",
+      marketplaceId: "EBAY_US",
+    });
+  });
+
+  it("rejects unknown EBAY_ENV values", () => {
     expect(() =>
-      getEbayConfig({ ...completeEnv, EBAY_ENV: "production" }),
+      getEbayConfig({ ...completeEnv, EBAY_ENV: "staging" }),
     ).toThrow(expect.objectContaining({ code: ebayErrorCodes.notConfigured }));
   });
 
@@ -44,6 +52,22 @@ describe("getEbayConfig", () => {
     expect(() => getEbayConfig(completeEnv)).not.toThrow();
     expect(getEbayConfig(completeEnv).tokenEncryptionKey).toBe(
       completeEnv.EBAY_TOKEN_ENCRYPTION_KEY,
+    );
+  });
+});
+
+describe("getEbayEnvironment", () => {
+  it("defaults to sandbox and never requires credentials", () => {
+    expect(getEbayEnvironment({})).toBe("sandbox");
+  });
+
+  it("resolves production without requiring credentials", () => {
+    expect(getEbayEnvironment({ EBAY_ENV: "production" })).toBe("production");
+  });
+
+  it("rejects unknown values", () => {
+    expect(() => getEbayEnvironment({ EBAY_ENV: "prod" })).toThrow(
+      expect.objectContaining({ code: ebayErrorCodes.notConfigured }),
     );
   });
 });

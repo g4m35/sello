@@ -1,4 +1,4 @@
-export type EbayEnvironment = "sandbox";
+export type EbayEnvironment = "sandbox" | "production";
 export type EbayMarketplaceId = "EBAY_US";
 
 export type EbayConfig = {
@@ -12,7 +12,7 @@ export type EbayConfig = {
 
 export type EbayReadinessResponse = {
   marketplace: "ebay";
-  environment: "sandbox";
+  environment: EbayEnvironment;
   connected: boolean;
   ready: boolean;
   missing: string[];

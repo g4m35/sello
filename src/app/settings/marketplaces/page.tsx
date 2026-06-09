@@ -180,11 +180,14 @@ export default function MarketplaceSettingsPage() {
   const missing = new Set(readiness?.missing ?? readinessItems);
   const connected = Boolean(readiness?.connected);
   const ready = Boolean(readiness?.ready);
+  const environment = readiness?.environment ?? "sandbox";
   const statusLabel = !connected
     ? "Not connected"
-    : ready
-      ? "Connected, ready for sandbox publish"
-      : "Connected, setup incomplete";
+    : !ready
+      ? "Connected, setup incomplete"
+      : environment === "production"
+        ? "Connected, account ready (publishing not enabled yet)"
+        : "Connected, ready for sandbox publish";
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -193,7 +196,9 @@ export default function MarketplaceSettingsPage() {
           <p className="text-sm font-medium uppercase tracking-wide text-emerald-300">
             Marketplace Settings
           </p>
-          <h1 className="text-3xl font-semibold">eBay Sandbox</h1>
+          <h1 className="text-3xl font-semibold">
+            {environment === "production" ? "eBay" : "eBay Sandbox"}
+          </h1>
         </header>
 
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/70">
@@ -264,7 +269,7 @@ export default function MarketplaceSettingsPage() {
           {(loadState === "loading" || actionState === "loading") && (
             <div className="flex items-center gap-2 border-t border-zinc-800 px-5 py-3 text-sm text-zinc-400">
               <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-              Syncing eBay sandbox state
+              Syncing eBay state
             </div>
           )}
 

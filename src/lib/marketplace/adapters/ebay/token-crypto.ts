@@ -51,7 +51,7 @@ export function decryptEbayToken(ciphertext: string, keyHex: string): string {
 export function normalizeTokenCryptoError() {
   return new EbayIntegrationError(
     ebayErrorCodes.notConfigured,
-    "Unable to decrypt the stored eBay sandbox token. Reconnect eBay sandbox.",
+    "Unable to decrypt the stored eBay token. Reconnect eBay.",
     503,
   );
 }

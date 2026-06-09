@@ -56,7 +56,7 @@ export function toEbayErrorPayload(error: unknown) {
   return {
     payload: {
       code: ebayErrorCodes.apiFailed,
-      message: "eBay sandbox request failed.",
+      message: "eBay request failed.",
     },
     status: 500,
   };
