@@ -30,6 +30,23 @@ describe("eBay OAuth helpers", () => {
     expect(url.toString()).not.toContain("sell.inventory+https");
   });
 
+  it("builds production authorization URLs when EBAY_ENV is production", () => {
+    const productionConfig = getEbayConfig({
+      EBAY_ENV: "production",
+      EBAY_CLIENT_ID: "client-id",
+      EBAY_CLIENT_SECRET: "client-secret",
+      EBAY_REDIRECT_URI_NAME: "redirect-uri-name",
+      EBAY_MARKETPLACE_ID: "EBAY_US",
+      EBAY_TOKEN_ENCRYPTION_KEY:
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    });
+    const url = buildEbayAuthorizationUrl(productionConfig, "state-1");
+
+    expect(url.origin).toBe("https://auth.ebay.com");
+    expect(url.searchParams.get("client_id")).toBe("client-id");
+    expect(url.searchParams.get("redirect_uri")).toBe("redirect-uri-name");
+  });
+
   it("roundtrips signed state without exposing tokens", () => {
     const cookie = createEbayOAuthStateCookie({
       userId: "user-1",

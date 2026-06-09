@@ -33,6 +33,37 @@ describe("eBay sandbox client", () => {
     );
   });
 
+  it("targets the production API host when constructed for production", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ paymentPolicies: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = new EbaySandboxClient(
+      "secret-access-token",
+      "EBAY_US",
+      fetchImpl,
+      "production",
+    );
+
+    await client.listPaymentPolicies();
+
+    expect(urls[0].startsWith("https://api.ebay.com/")).toBe(true);
+  });
+
+  it("defaults to the sandbox API host", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ paymentPolicies: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = new EbaySandboxClient("secret-access-token", "EBAY_US", fetchImpl);
+
+    await client.listPaymentPolicies();
+
+    expect(urls[0].startsWith("https://api.sandbox.ebay.com/")).toBe(true);
+  });
+
   it("refreshes expired access tokens and stores encrypted replacement tokens", async () => {
     const update = vi.fn().mockResolvedValue({});
     const prisma: EbayTokenPrismaLike = {

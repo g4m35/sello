@@ -12,28 +12,27 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-09 — Claude. Added the eBay Marketplace Account Deletion compliance
-endpoint + tests; reframed CLAUDE.md/AGENTS.md off the MVP caps; removed eBay
-Marketplace Insights (access restricted); created this handoff doc.
+2026-06-09 — Claude. Promoted `develop → main` (PR #25) and **deployed to
+production**. Everything below (T1–T7, doc reframe, Insights removal, eBay
+account-deletion endpoint, this handoff) is now LIVE on sello.wtf. Prod health +
+authed reads verified green.
 
 ## Current state
-- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`).
-- `develop` @ `68b9d64` is **~20 commits ahead of `main`**, verified green, **NOT deployed to prod**.
-- `main` @ `e07025e` (CodeRabbit auto-review config). Production still serves the
-  earlier **Phase 0 + Phase 1** build (`2be2951`).
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `27b7151`.
+- `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
 - Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
 - Open PR **#1** (pre-existing "chore: optimize repo workflow") into `develop`.
-- CodeRabbit auto-reviews are enabled on `develop`.
-- Gate on `develop`: `lint`, `tsc`, `vitest` (213 tests), `prisma validate`, `build` all green.
+- CodeRabbit auto-reviews enabled on `develop`.
+- Gate on `develop`/`main`: `lint`, `tsc`, `vitest` (213 tests), `prisma validate`, `build` all green.
 
-## Shipped to prod vs sitting on develop
-- **Prod (sello.wtf):** full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
-- **On `develop`, undeployed (awaiting owner `develop → main` approval):** T1–T7
-  (lifecycle mark-sold/delist, responsive layout, auto-fetch comps, inventory
-  grid/sort/pagination, photo set-cover, consistent loading/error states, tests),
-  the CLAUDE/AGENTS reframe, the Insights removal, and the eBay account-deletion endpoint.
+## Shipped to prod (all live now)
+- Full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
+- T1–T7 (lifecycle mark-sold/delist, responsive layout, auto-fetch comps, inventory
+  grid/sort/pagination, photo set-cover, consistent loading/error states, tests).
+- eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-09 (Claude): promoted develop -> main (PR #25) and deployed to production (main @ 27b7151, sello.wtf). All prior develop work now live. Account-deletion GET still returns 500 in prod until its env vars are set.
 - 2026-06-09 (Claude): eBay account-deletion compliance endpoint `/api/marketplaces/ebay/account-deletion` (GET challenge hash, POST ack + best-effort connection purge + JobLog audit) + tests.
 - 2026-06-09 (Claude): removed eBay Marketplace Insights source (eBay restricted access); StockX is now primary sold-comp path.
 - 2026-06-09 (Claude): reframed CLAUDE.md/AGENTS.md for the full product (dropped MVP scope caps; kept integrity + deploy-safety).

@@ -8,6 +8,7 @@ import { decryptEbayToken, encryptEbayToken } from "./token-crypto";
 import type {
   EbayApiClient,
   EbayConfig,
+  EbayEnvironment,
   EbayFulfillmentPolicy,
   EbayInventoryLocation,
   EbayPaymentPolicy,
@@ -15,8 +16,14 @@ import type {
   EbayTokenResponse,
 } from "./types";
 
-const apiBaseUrl = "https://api.sandbox.ebay.com";
-const tokenUrl = "https://api.sandbox.ebay.com/identity/v1/oauth2/token";
+const apiBaseUrls: Record<EbayEnvironment, string> = {
+  sandbox: "https://api.sandbox.ebay.com",
+  production: "https://api.ebay.com",
+};
+const tokenUrls: Record<EbayEnvironment, string> = {
+  sandbox: "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
+  production: "https://api.ebay.com/identity/v1/oauth2/token",
+};
 
 type EbayTokenConnection = {
   id: string;
@@ -40,12 +47,20 @@ export type EbayTokenPrismaLike = {
   };
 };
 
+// Environment-aware eBay REST client (the name predates production support;
+// it serves both sandbox and production based on the environment it is given).
 export class EbaySandboxClient implements EbayApiClient {
   constructor(
     private readonly accessToken: string,
     private readonly marketplaceId = getEbayConfig().marketplaceId,
     private readonly fetchImpl: typeof fetch = fetch,
+    // Sandbox by default: production must always be requested explicitly.
+    private readonly environment: EbayEnvironment = "sandbox",
   ) {}
+
+  private get apiBaseUrl() {
+    return apiBaseUrls[this.environment];
+  }
 
   async listPaymentPolicies() {
     const payload = await this.get<{ paymentPolicies?: EbayPaymentPolicy[] }>(
@@ -120,7 +135,7 @@ export class EbaySandboxClient implements EbayApiClient {
   }
 
   private async get<T>(path: string): Promise<T> {
-    const response = await this.fetchImpl(`${apiBaseUrl}${path}`, {
+    const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -130,7 +145,7 @@ export class EbaySandboxClient implements EbayApiClient {
     if (!response.ok) {
       throw new EbayIntegrationError(
         ebayErrorCodes.apiFailed,
-        "eBay sandbox API request failed.",
+        "eBay API request failed.",
         502,
         { status: response.status },
       );
@@ -147,7 +162,7 @@ export class EbaySandboxClient implements EbayApiClient {
     path: string,
     body?: unknown,
   ): Promise<T | null> {
-    const response = await this.fetchImpl(`${apiBaseUrl}${path}`, {
+    const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -189,7 +204,7 @@ export async function getUsableEbayAccessToken(
     connection.refreshTokenEnc,
     config.tokenEncryptionKey,
   );
-  const response = await fetchImpl(tokenUrl, {
+  const response = await fetchImpl(tokenUrls[config.environment], {
     method: "POST",
     headers: {
       Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
@@ -208,7 +223,7 @@ export async function getUsableEbayAccessToken(
   if (!response.ok) {
     throw new EbayIntegrationError(
       ebayErrorCodes.tokenRefreshFailed,
-      "eBay sandbox token refresh failed.",
+      "eBay token refresh failed.",
       502,
       { status: response.status },
     );

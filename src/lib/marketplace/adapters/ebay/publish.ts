@@ -18,9 +18,11 @@ import {
 import type { EbayConfig, EbayMarketplaceId } from "./types";
 
 // Sandbox-only publish orchestrator. Real eBay calls are blocked unless
-// EBAY_SANDBOX_PUBLISH_ENABLED === "true". When disabled, this returns a typed
-// "not_enabled" result and makes zero outbound eBay requests. Dependencies are
-// injected so tests run the whole flow without any network access.
+// EBAY_SANDBOX_PUBLISH_ENABLED === "true" AND EBAY_ENV is sandbox. Production
+// OAuth/readiness are allowed elsewhere, but production publishing stays hard
+// disabled until it is deliberately built and approved. When disabled, this
+// returns a typed "not_enabled" result and makes zero outbound eBay requests.
+// Dependencies are injected so tests run the whole flow without network access.
 
 type EbayEnv = Record<string, string | undefined>;
 
@@ -122,7 +124,7 @@ export type EbayPublishNotEnabled = {
   status: "not_enabled";
   code: "EBAY_PUBLISH_NOT_ENABLED";
   marketplace: "ebay";
-  environment: "sandbox";
+  environment: "sandbox" | "production";
   message: string;
 };
 
@@ -203,8 +205,20 @@ export async function publishEbayListing(
   input: EbayPublishInput,
   deps: EbayPublishDeps = defaultEbayPublishDeps,
 ): Promise<EbayPublishResult> {
-  // Hard gate first: when publishing is disabled, return immediately and make
-  // no eBay API calls of any kind.
+  // Hard gates first: when publishing is disabled, return immediately and make
+  // no eBay API calls of any kind. Production publishing is always disabled,
+  // regardless of the sandbox flag; only OAuth/readiness run in production.
+  if (deps.env.EBAY_ENV === "production") {
+    return {
+      status: "not_enabled",
+      code: ebayErrorCodes.publishNotEnabled,
+      marketplace: "ebay",
+      environment: "production",
+      message:
+        "Production eBay publishing is not enabled yet. Nothing was published.",
+    };
+  }
+
   if (!isEbaySandboxPublishEnabled(deps.env)) {
     return {
       status: "not_enabled",

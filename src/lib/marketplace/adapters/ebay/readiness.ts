@@ -3,6 +3,7 @@ import type { Marketplace } from "@/generated/prisma/client";
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
 import type {
   EbayApiClient,
+  EbayEnvironment,
   EbayFulfillmentPolicy,
   EbayInventoryLocation,
   EbayPaymentPolicy,
@@ -39,7 +40,7 @@ export type EbayReadinessPrismaLike = {
         userId_marketplace_environment: {
           userId: string;
           marketplace: "ebay";
-          environment: "sandbox";
+          environment: EbayEnvironment;
         };
       };
     }): Promise<EbayConnection | null>;
@@ -71,14 +72,16 @@ const missingInventoryLocation = "inventory_location";
 export async function getStoredEbayReadiness(
   prisma: EbayReadinessPrismaLike,
   userId: string,
+  environment: EbayEnvironment,
 ): Promise<EbayReadinessResponse> {
-  const connection = await findConnection(prisma, userId);
+  const connection = await findConnection(prisma, userId, environment);
 
   if (!connection) {
     return toResponse({
       connected: false,
       missing: [missingConnection],
       row: null,
+      environment,
     });
   }
 
@@ -90,6 +93,7 @@ export async function getStoredEbayReadiness(
     connected: true,
     missing: getMissingFromRow(row),
     row,
+    environment,
   });
 }
 
@@ -97,12 +101,13 @@ export async function refreshEbayReadiness(
   prisma: EbayReadinessPrismaLike,
   userId: string,
   client: EbayApiClient,
+  environment: EbayEnvironment,
 ): Promise<EbayReadinessResponse> {
-  const connection = await findConnection(prisma, userId);
+  const connection = await findConnection(prisma, userId, environment);
   if (!connection) {
     throw new EbayIntegrationError(
       ebayErrorCodes.notConnected,
-      "Connect eBay sandbox before checking readiness.",
+      "Connect eBay before checking readiness.",
       404,
     );
   }
@@ -152,16 +157,20 @@ export async function refreshEbayReadiness(
     update: row,
   });
 
-  return toResponse({ connected: true, missing, row });
+  return toResponse({ connected: true, missing, row, environment });
 }
 
-async function findConnection(prisma: EbayReadinessPrismaLike, userId: string) {
+async function findConnection(
+  prisma: EbayReadinessPrismaLike,
+  userId: string,
+  environment: EbayEnvironment,
+) {
   return prisma.marketplaceConnection.findUnique({
     where: {
       userId_marketplace_environment: {
         userId,
         marketplace: "ebay",
-        environment: "sandbox",
+        environment,
       },
     },
   });
@@ -171,10 +180,11 @@ function toResponse(args: {
   connected: boolean;
   missing: string[];
   row: EbaySellerConfigRow;
+  environment: EbayEnvironment;
 }): EbayReadinessResponse {
   return {
     marketplace: "ebay",
-    environment: "sandbox",
+    environment: args.environment,
     connected: args.connected,
     ready: args.connected && args.missing.length === 0,
     missing: args.missing,
