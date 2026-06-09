@@ -1,0 +1,67 @@
+# HANDOFF
+
+Living handoff doc. This project alternates between **Claude** and **Codex**
+agents (the owner switches due to usage limits), so the next agent has no memory
+of the last session. **Every agent MUST read this at session start and update it
+before finishing.**
+
+## How to use this file
+- **Start of session:** read this top-to-bottom, plus `AGENTS.md` and `CLAUDE.md`.
+- **End of session (required):** update `Last updated`, prepend a dated bullet to
+  `Recent work`, refresh `Current state`, `Blocked on owner`, and `Next up`. Keep
+  it accurate over exhaustive. Never put secrets here.
+
+## Last updated
+2026-06-09 — Claude. Added the eBay Marketplace Account Deletion compliance
+endpoint + tests; reframed CLAUDE.md/AGENTS.md off the MVP caps; removed eBay
+Marketplace Insights (access restricted); created this handoff doc.
+
+## Current state
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`).
+- `develop` @ `68b9d64` is **~20 commits ahead of `main`**, verified green, **NOT deployed to prod**.
+- `main` @ `e07025e` (CodeRabbit auto-review config). Production still serves the
+  earlier **Phase 0 + Phase 1** build (`2be2951`).
+- Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
+- Open PR **#1** (pre-existing "chore: optimize repo workflow") into `develop`.
+- CodeRabbit auto-reviews are enabled on `develop`.
+- Gate on `develop`: `lint`, `tsc`, `vitest` (213 tests), `prisma validate`, `build` all green.
+
+## Shipped to prod vs sitting on develop
+- **Prod (sello.wtf):** full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
+- **On `develop`, undeployed (awaiting owner `develop → main` approval):** T1–T7
+  (lifecycle mark-sold/delist, responsive layout, auto-fetch comps, inventory
+  grid/sort/pagination, photo set-cover, consistent loading/error states, tests),
+  the CLAUDE/AGENTS reframe, the Insights removal, and the eBay account-deletion endpoint.
+
+## Recent work (newest first)
+- 2026-06-09 (Claude): eBay account-deletion compliance endpoint `/api/marketplaces/ebay/account-deletion` (GET challenge hash, POST ack + best-effort connection purge + JobLog audit) + tests.
+- 2026-06-09 (Claude): removed eBay Marketplace Insights source (eBay restricted access); StockX is now primary sold-comp path.
+- 2026-06-09 (Claude): reframed CLAUDE.md/AGENTS.md for the full product (dropped MVP scope caps; kept integrity + deploy-safety).
+- 2026-06-09 (Claude): T1–T7 autonomous batch on develop (see above).
+- 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
+
+## Blocked on owner (credentials / decisions — not code)
+- **Comp source key** (to light up automatic pricing): `STOCKX_API_KEY` (primary sold, needs partner approval), or `EBAY_BROWSE_CLIENT_ID`/`EBAY_BROWSE_CLIENT_SECRET` (interim active, prod keyset), or a third-party aggregator key. Add in Vercel env.
+- **eBay production publishing access** (keyset + RuName/OAuth) for real publishing.
+- **Stripe keys** for monetization.
+- **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
+- **`.env.example`**: still needs the two `EBAY_MARKETPLACE_DELETION_*` lines (agents are sandbox-blocked from editing env files; owner adds them).
+- **Account-deletion go-live**: set `EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN` (owner-chosen, 32–80 chars) and `EBAY_MARKETPLACE_DELETION_ENDPOINT` (= `https://sello.wtf/api/marketplaces/ebay/account-deletion`) in Vercel Production, deploy, then register URL + token in the eBay developer portal.
+
+## Next up (priority order)
+1. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
+2. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
+3. **Stripe subscriptions** (gated on Stripe keys).
+4. **Background worker host** + inventory sync (sold detection, double-sell prevention).
+
+## Resume checklist
+1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).
+2. `git fetch && git merge origin/develop` (stay current); `npm install`; `npx prisma generate`.
+3. Gate: `npm run lint && npx tsc --noEmit && npm test && npm run build`.
+4. Flow: `feature/* → develop → main → production`. Commit + merge to `develop`. **Never push `main` or deploy to production without explicit owner approval.** Preview deploys are fine on request.
+
+## Key gotchas
+- **Next.js 16**: read `node_modules/next/dist/docs/` before writing Next code; `params`/`searchParams` are async; use `next/font`.
+- **ESLint `react-hooks/set-state-in-effect` is an error**: do data fetching in an async function defined *inside* the effect; trigger refetches via a `reloadKey` state, not by calling a setState-bearing `useCallback` in the effect.
+- **DB env**: runtime reads `DATABASE_URL` (the `resale_app` pooler role); don't switch to the postgres owner. Vercel also injects `POSTGRES_*` — keep `DATABASE_URL` set explicitly. `getRequiredEnv()` rejects any value containing `[`.
+- **Integrity**: never fake publishing/comps; never invent prices; no secrets in code/logs/this file; scope every query to the seller.

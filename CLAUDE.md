@@ -1,5 +1,12 @@
 # Claude Project Instructions
 
+## Session Handoff (read first, update last)
+
+This project alternates between Claude and Codex agents (the owner switches due to
+usage limits). **At the start of every session, read `HANDOFF.md`** for the live
+state. **Before finishing any session, update `HANDOFF.md`** (Last updated, a dated
+Recent-work bullet, Current state, Blocked-on-owner, Next up). Never put secrets in it.
+
 ## Product
 
 An AI-powered resale cross-listing SaaS for streetwear, sneakers, and hype-fashion
