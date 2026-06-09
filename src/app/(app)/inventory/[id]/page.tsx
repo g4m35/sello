@@ -124,6 +124,9 @@ export default function ListingDetailPage() {
   const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -158,6 +161,22 @@ export default function ListingDetailPage() {
         reload();
       } catch (e) {
         setPhotoError((e as { error?: string })?.error ?? "Could not remove photo.");
+      } finally {
+        setRemovingPhotoId(null);
+      }
+    },
+    [token, id, reload],
+  );
+
+  const setCoverPhoto = useCallback(
+    async (photoId: string) => {
+      setRemovingPhotoId(photoId);
+      setPhotoError(null);
+      try {
+        await api.setCoverPhoto(token, id, photoId);
+        reload();
+      } catch (e) {
+        setPhotoError((e as { error?: string })?.error ?? "Could not set cover.");
       } finally {
         setRemovingPhotoId(null);
       }
@@ -323,12 +342,59 @@ export default function ListingDetailPage() {
     }
   }, [token, draftId, edits, item, reload]);
 
-  if (loading) return <PageSkeleton />;
-  if (error && !item) return <ErrorState message={error} onRetry={reload} />;
-  if (!item || !edits || !itemEdits) return <ErrorState message="Listing not found." />;
+  const runLifecycle = useCallback(
+    async (action: "mark_sold" | "delist") => {
+      const label = action === "mark_sold" ? "mark this item as sold" : "delist this item";
+      if (!window.confirm(`Are you sure you want to ${label}?`)) return;
+      setMenuOpen(false);
+      setLifecycleBusy(true);
+      setNotice(null);
+      try {
+        await api.lifecycle(token, { inventoryItemId: id, action });
+        reload();
+      } catch (e) {
+        setNotice((e as { error?: string })?.error ?? "Could not update the item.");
+      } finally {
+        setLifecycleBusy(false);
+      }
+    },
+    [token, id, reload],
+  );
+
+  if (loading)
+    return (
+      <>
+        <Topbar crumbs={["Inventory"]} />
+        <PageSkeleton />
+      </>
+    );
+  if (error && !item)
+    return (
+      <>
+        <Topbar crumbs={["Inventory"]} />
+        <main className="page">
+          <ErrorState message={error} onRetry={reload} />
+        </main>
+      </>
+    );
+  if (!item || !edits || !itemEdits)
+    return (
+      <>
+        <Topbar crumbs={["Inventory"]} />
+        <main className="page">
+          <ErrorState message="Listing not found." />
+        </main>
+      </>
+    );
 
   const editable = draftId != null;
   const shortId = item.id.slice(0, 8);
+  const canMarkSold = item.lifecycleState === "ready" || item.lifecycleState === "active";
+  const canDelist =
+    item.lifecycleState === "draft" ||
+    item.lifecycleState === "ready" ||
+    item.lifecycleState === "active";
+  const hasLifecycleActions = canMarkSold || canDelist;
   const { head, tail } = splitTitle(item.title);
   const metaParts = [
     item.brand,
@@ -372,11 +438,69 @@ export default function ListingDetailPage() {
             >
               Duplicate
             </Btn>
+            {hasLifecycleActions && (
+              <div style={{ position: "relative" }}>
+                <Btn
+                  variant="ghost"
+                  size="sm"
+                  icon="more"
+                  title="More actions"
+                  disabled={lifecycleBusy}
+                  onClick={() => setMenuOpen((o) => !o)}
+                />
+                {menuOpen && (
+                  <>
+                    <div
+                      style={{ position: "fixed", inset: 0, zIndex: 30 }}
+                      onClick={() => setMenuOpen(false)}
+                    />
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        top: "calc(100% + 4px)",
+                        zIndex: 31,
+                        background: "var(--surface)",
+                        border: "1px solid var(--line)",
+                        borderRadius: "var(--r-3)",
+                        boxShadow: "var(--shadow-3)",
+                        padding: 4,
+                        minWidth: 160,
+                      }}
+                    >
+                      {canMarkSold && (
+                        <button
+                          type="button"
+                          className="nav-item"
+                          onClick={() => void runLifecycle("mark_sold")}
+                        >
+                          <Icon name="tag" size={14} /> Mark sold
+                        </button>
+                      )}
+                      {canDelist && (
+                        <button
+                          type="button"
+                          className="nav-item"
+                          onClick={() => void runLifecycle("delist")}
+                        >
+                          <Icon name="x-c" size={14} /> Delist
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </>
         }
       />
 
       <main className="page">
+        {notice && (
+          <div style={{ marginBottom: "var(--s-4)" }}>
+            <Banner variant="warn" title={notice} />
+          </div>
+        )}
         <div className="page__head">
           <div className="page__title-row">
             <div className="row" style={{ gap: 10 }}>
@@ -458,6 +582,17 @@ export default function ListingDetailPage() {
                         disabled={removingPhotoId === photo.id}
                       >
                         <Icon name="x" size={12} />
+                      </button>
+                    )}
+                    {editable && idx !== 0 && (
+                      <button
+                        type="button"
+                        className="image-tile__cover"
+                        title="Set as cover"
+                        onClick={() => void setCoverPhoto(photo.id)}
+                        disabled={removingPhotoId === photo.id}
+                      >
+                        <Icon name="arrow-up" size={12} /> Cover
                       </button>
                     )}
                   </div>

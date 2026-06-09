@@ -146,8 +146,22 @@ export default function DashboardPage() {
     setPublishOpen(true);
   };
 
-  if (loading) return <PageSkeleton />;
-  if (error) return <ErrorState message={error} onRetry={reload} />;
+  if (loading)
+    return (
+      <>
+        <Topbar crumbs={["Dashboard"]} />
+        <PageSkeleton />
+      </>
+    );
+  if (error)
+    return (
+      <>
+        <Topbar crumbs={["Dashboard"]} />
+        <main className="page">
+          <ErrorState message={error} onRetry={reload} />
+        </main>
+      </>
+    );
 
   const firstName = firstWord(name);
   const timeofday = greetingForHour(new Date().getHours());

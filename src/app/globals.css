@@ -444,6 +444,8 @@ img { display: block; max-width: 100%; }
 .image-tile img { width: 100%; height: 100%; object-fit: cover; }
 .image-tile__remove { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: var(--r-2); border: 0; background: rgba(11,11,10,.6); color: #fff; display: grid; place-items: center; cursor: pointer; }
 .image-tile__remove:hover { background: var(--accent); }
+.image-tile__cover { position: absolute; bottom: 6px; left: 6px; display: inline-flex; align-items: center; gap: 3px; border: 0; background: rgba(11,11,10,.6); color: #fff; font-size: 10px; padding: 2px 6px; border-radius: var(--r-2); cursor: pointer; }
+.image-tile__cover:hover { background: var(--ink); }
 
 /* ============================================================
    Modal
@@ -570,3 +572,42 @@ img { display: block; max-width: 100%; }
 [data-density="comfy"] .table th, [data-density="comfy"] .table td { padding: 16px; }
 [data-density="comfy"] .attn-row, [data-density="comfy"] .health-row, [data-density="comfy"] .mp-row, [data-density="comfy"] .log-line, [data-density="comfy"] .readiness__item { padding-top: 14px; padding-bottom: 14px; }
 [data-density="comfy"] .kpi { padding: 24px 26px; }
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+/* Channels page grid (used in place of an inline style so it can collapse). */
+.channels-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
+/* Tablet and below: collapse the two-pane content layouts to one column. */
+@media (max-width: 1024px) {
+  .dash-grid { grid-template-columns: 1fr; }
+  .detail { grid-template-columns: 1fr; }
+  .readiness { position: static; top: auto; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .channels-grid { grid-template-columns: 1fr; }
+}
+
+/* Narrow tablet / large phone. */
+@media (max-width: 760px) {
+  .form-grid, .form-grid--3 { grid-template-columns: 1fr; }
+  .images { grid-template-columns: repeat(3, 1fr); }
+  .page { padding: var(--s-5) var(--s-4); }
+  .topbar { padding: 0 var(--s-4); }
+  .page__title { font-size: 30px; }
+  .page__head { flex-wrap: wrap; }
+}
+
+/* Phone: stack the app shell so the sidebar sits above the content. */
+@media (max-width: 640px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    flex-direction: column;
+  }
+  .kpis { grid-template-columns: 1fr; }
+  .modal__foot { flex-wrap: wrap; }
+}

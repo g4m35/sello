@@ -17,6 +17,7 @@ import {
   formatMoneyCents,
   relativeTime,
 } from "@/lib/view/format";
+import { SORT_OPTIONS, sortItems, type SortValue } from "@/lib/view/sort-items";
 import type { ItemView } from "@/lib/view/types";
 
 type TabValue = "all" | "draft" | "ready" | "active" | "sold" | "error";
@@ -63,6 +64,8 @@ function matchesSearch(item: ItemView, q: string): boolean {
     .some((field) => field.toLowerCase().includes(needle));
 }
 
+const PAGE_SIZE = 24;
+
 export default function InventoryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -74,6 +77,9 @@ export default function InventoryPage() {
   const [tab, setTab] = useState<TabValue>("all");
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<SortValue>("updated_desc");
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [page, setPage] = useState(1);
 
   const [importOpen, setImportOpen] = useState(false);
   const [publishItem, setPublishItem] = useState<ItemView | null>(null);
@@ -137,8 +143,18 @@ export default function InventoryPage() {
     const list = items ?? [];
     const byTab =
       tab === "all" ? list : list.filter((it) => it.lifecycleState === tab);
-    return byTab.filter((it) => matchesSearch(it, search.trim()));
-  }, [items, tab, search]);
+    const matched = byTab.filter((it) => matchesSearch(it, search.trim()));
+    return sortItems(matched, sort);
+  }, [items, tab, search, sort]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Clamp the page when the result set shrinks (render-phase derived state).
+  const safePage = Math.min(page, pageCount);
+  if (safePage !== page) setPage(safePage);
+  const paged = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
+  );
 
   const filteredIds = useMemo(
     () => new Set(filtered.map((it) => it.id)),
@@ -240,7 +256,13 @@ export default function InventoryPage() {
     );
   }
 
-  if (items === null) return <PageSkeleton />;
+  if (items === null)
+    return (
+      <>
+        <Topbar crumbs={["Inventory"]} />
+        <PageSkeleton />
+      </>
+    );
 
   const total = items.length;
   const selectionCount = selectedInView.length;
@@ -320,6 +342,54 @@ export default function InventoryPage() {
       );
     }
 
+    if (view === "grid") {
+      return (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: 12,
+          }}
+        >
+          {paged.map((item) => {
+            const isSelected = selected.has(item.id);
+            return (
+              <div
+                key={item.id}
+                className="card"
+                style={{ padding: 14, cursor: "pointer", position: "relative" }}
+                onClick={() => router.push(`/inventory/${item.id}`)}
+              >
+                <div
+                  style={{ position: "absolute", top: 10, left: 10 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Check checked={isSelected} onChange={() => toggleRow(item.id)} />
+                </div>
+                <Thumb seed={item.id} size={88} className="" />
+                <div className="table__product-title" style={{ marginTop: 10 }}>
+                  {item.title}
+                </div>
+                <div className="table__product-meta">
+                  {[item.brand, item.size].filter(Boolean).join(" · ")}
+                </div>
+                <div
+                  className="row"
+                  style={{ justifyContent: "space-between", marginTop: 10 }}
+                >
+                  <Badge status={item.status} label={item.statusLabel} />
+                  <span className="t-num">{formatMoneyCents(item.priceCents)}</span>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <MpDots channels={item.channels} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
     return (
       <div className="table-wrap">
         <table className="table">
@@ -337,7 +407,7 @@ export default function InventoryPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((item) => {
+            {paged.map((item) => {
               const isSelected = selected.has(item.id);
               return (
                 <tr
@@ -410,7 +480,10 @@ export default function InventoryPage() {
           <Tabs
             items={tabItems}
             value={tab}
-            onChange={(v) => setTab(v as TabValue)}
+            onChange={(v) => {
+              setTab(v as TabValue);
+              setPage(1);
+            }}
           />
           <div className="spacer" />
           <input
@@ -418,7 +491,34 @@ export default function InventoryPage() {
             type="search"
             placeholder="Search title or brand…"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
+          <select
+            className="select"
+            style={{ width: "auto" }}
+            value={sort}
+            onChange={(e) => {
+              setSort(e.target.value as SortValue);
+              setPage(1);
+            }}
+            aria-label="Sort"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <Tabs
+            items={[
+              { value: "list", label: "List" },
+              { value: "grid", label: "Grid" },
+            ]}
+            value={view}
+            onChange={(v) => setView(v as "list" | "grid")}
           />
         </div>
 
@@ -465,6 +565,36 @@ export default function InventoryPage() {
         </div>
 
         {renderBody()}
+
+        {filtered.length > PAGE_SIZE && (
+          <div className="row" style={{ justifyContent: "space-between", marginTop: 16 }}>
+            <span className="t-small muted">
+              Showing {(safePage - 1) * PAGE_SIZE + 1}–
+              {Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="row" style={{ gap: 8 }}>
+              <Btn
+                variant="secondary"
+                size="sm"
+                disabled={safePage <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Btn>
+              <span className="t-small muted">
+                Page {safePage} of {pageCount}
+              </span>
+              <Btn
+                variant="secondary"
+                size="sm"
+                disabled={safePage >= pageCount}
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              >
+                Next
+              </Btn>
+            </div>
+          </div>
+        )}
       </main>
 
       <PublishModal

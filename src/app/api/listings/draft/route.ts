@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
+import { runCompFetch } from "@/lib/comps/fetch";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { prepareListingPhotos, uploadListingPhotos } from "@/lib/storage/listing-photos";
@@ -143,6 +144,10 @@ export async function POST(request: Request) {
         },
       }),
     ]);
+
+    // Best-effort: gather automatic comps now that the item is identified.
+    // No-op (and fast) when no comp source is configured; never blocks the draft.
+    await runCompFetch(prisma, createdInventoryItemId).catch(() => undefined);
 
     return NextResponse.json({
       inventoryItem,

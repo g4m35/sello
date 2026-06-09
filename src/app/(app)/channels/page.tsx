@@ -96,7 +96,13 @@ export default function ChannelsPage() {
     );
   }
 
-  if (channels === null) return <PageSkeleton />;
+  if (channels === null)
+    return (
+      <>
+        <Topbar crumbs={["Marketplaces"]} />
+        <PageSkeleton />
+      </>
+    );
 
   return (
     <>
@@ -133,15 +139,7 @@ export default function ChannelsPage() {
           desc="Adapters are in draft-preview mode. Publishing and inventory sync arrive when real marketplace integrations ship. Every publish attempt is logged."
         />
 
-        <div
-          className="stack-4"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, 1fr)",
-            gap: 12,
-            marginTop: 16,
-          }}
-        >
+        <div className="channels-grid" style={{ marginTop: 16 }}>
           {channels.map((c) => {
             const count = targetCounts[c.marketplace] ?? 0;
             return (

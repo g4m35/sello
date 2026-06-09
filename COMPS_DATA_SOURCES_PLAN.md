@@ -30,8 +30,8 @@ src/lib/comps/
   normalize.ts              # NormalizedComp -> PriceComp mapping, condition/currency/outlier rules
   match.ts                  # build a query key from an item (styleCode + size, or brand + title + size)
   sources/
-    ebay-insights.ts        # official eBay sold comps (gated access)
-    stockx.ts               # official StockX market data (partner access)
+    ebay-browse.ts          # eBay Browse: active asking prices (interim, implemented)
+    stockx.ts               # StockX market data: sold sneaker/streetwear (partner access)
     thirdparty.ts           # aggregator API (interim, lower confidence)
 src/lib/queues/comp-jobs.ts # BullMQ "comp-fetch" queue (alongside existing queues)
 src/app/api/listings/comps/refresh/route.ts  # manual "refresh comps" trigger (seller-scoped)
@@ -65,37 +65,41 @@ src/app/api/listings/comps/refresh/route.ts  # manual "refresh comps" trigger (s
 
 | Source | Data | Access | Use |
 |---|---|---|---|
-| eBay Marketplace Insights API | True sold comps (~last 90 days) | Official, gated, requires application/approval | Primary general source once approved |
-| eBay Browse API | Active listings only | Official, standard keys | Active-listing signal only. Must be labeled "active," never presented as sold |
-| StockX API | Sneaker/streetwear last sale, bid/ask | Official partner program, requires approval | Primary sneaker source once approved, keyed by style code |
-| Third-party sneaker aggregators | Sneaker market data | Quick keys, unofficial | Interim only, lower confidence, verify terms, expect breakage |
+| ~~eBay Marketplace Insights API~~ | ~~True sold comps~~ | **Unavailable — eBay restricted access** | Not a path anymore |
+| StockX API | Sneaker/streetwear last sale, bid/ask | Official partner program, requires approval | **Primary sold source** (sneakers/streetwear), keyed by style code |
+| eBay Browse API | Active listings only | Official, standard keys (prod keyset) | Interim active-price signal. Must be labeled "active," never presented as sold. Implemented. |
+| Third-party sneaker aggregators | Sneaker sold/market data | Quick keys, unofficial | Interim, lower confidence, verify terms, expect breakage |
+| First-party sales | Real sales from our own published items | Built-in, accrues over time | Highest-trust comps once publishing + sold detection ship; a proprietary dataset |
 | GOAT / Grailed / Poshmark | Sold/active | No official API | Last resort only, scraping off by default, ToS-reviewed and rate-limited |
 
 Notes:
-- The legacy eBay Finding `findCompletedItems` endpoint is retired, so sold
-  comps require Marketplace Insights access.
+- eBay Marketplace Insights (the former primary for sold comps) is no longer
+  available — eBay restricted access. The legacy Finding `findCompletedItems`
+  endpoint is also retired. So sold comps now come from StockX, third-party
+  aggregators, or our own first-party sales.
 - eBay Browse returns asking prices, not sales. It can seed a low-confidence
   signal while sold-data access is pending, but it must never be stored or shown
   as a sold comp.
 
 ## Phased rollout
 
-**Phase 0 - unblock long-lead items (do first, in parallel)**
-- Apply for eBay Marketplace Insights API access and StockX API partner access.
-  Approvals are the critical path for official data.
-- Land the `CompSource` interface, `NormalizedComp` type, and the `comp-fetch`
-  queue scaffold. No real keys, no source logic yet.
+**Phase 0 - unblock long-lead items (do first)** — DONE for the architecture
+- Apply for StockX API partner access (the critical path for official sold data,
+  now that Marketplace Insights is gone).
+- `CompSource` interface, `NormalizedComp`, the fetch pipeline, the refresh
+  endpoint, and auto-fetch are already implemented.
 
-**Phase 1 - first real data (interim)**
-- Implement one source behind the adapter: eBay Browse (clearly labeled active)
-  and/or a third-party sneaker API (lower confidence).
-- Wire the `comp-fetch` job into the post-identification flow. Write `PriceComp`
-  rows; pricing recomputes automatically. Add source + recency labels in
-  `AutoPricing`.
+**Phase 1 - first real data (interim)** — implemented, awaiting a key
+- eBay Browse source is built (active asking prices, labeled "active"); enable it
+  with a production eBay keyset. Optionally add a third-party sneaker aggregator
+  (lower confidence) for a sold-ish signal while StockX approval pends.
+- The `comp-fetch` job already runs post-identification and on detail load.
 
 **Phase 2 - official sold data**
-- Drop in eBay Marketplace Insights (sold) and StockX once approved. The adapter
+- Wire StockX once partner access is granted (primary sold source). The adapter
   interface stays stable so this is a swap, not a rewrite.
+- Begin recording **first-party sales** as comps once publishing + sold detection
+  ship — over time this becomes the highest-trust, proprietary comp dataset.
 
 **Phase 3 - matching and quality**
 - Sneakers keyed on `styleCode` + `size`; apparel on `brand` + normalized title
@@ -121,17 +125,20 @@ Notes:
 
 ## Critical path / immediate next actions
 
-1. Submit the eBay Marketplace Insights and StockX API access requests. They
-   gate everything official.
-2. Scaffold `CompSource` + the `comp-fetch` job (no keys) as the first reviewable
-   step.
-3. Integrate the first available source for an end-to-end demo while approvals
-   pend.
+1. Add a **production eBay keyset** (`EBAY_BROWSE_CLIENT_ID/SECRET`) to light up
+   the already-built Browse source (interim active prices).
+2. Submit the **StockX API** partner request for official sold data.
+3. Optionally add a **third-party sneaker aggregator** key for an interim sold
+   signal while StockX pends.
+4. Plan **first-party sales-as-comps** for once publishing + sold detection ship.
+(The architecture, fetch job, and refresh are already built — these are keys and
+provider choices, not new scaffolding.)
 
 ## To confirm before building
 
-Current access terms, quotas, and ToS for eBay Marketplace Insights and the
-StockX API change over time and should be verified before committing to a source.
+Current access terms, quotas, and ToS for the StockX API and any third-party
+aggregator change over time and should be verified before committing to a source.
+(eBay Marketplace Insights is no longer available.)
 
 ## Out of scope for this document
 
