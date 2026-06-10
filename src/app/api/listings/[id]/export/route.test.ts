@@ -185,7 +185,7 @@ describe("listing export API", () => {
 
     expect(response.status).toBe(200);
     expect(payload.body).toContain("Pit to pit: 21.5 in");
-    expect(payload.body).toContain("Sleeve: [measure]");
+    expect(payload.body).not.toContain("[measure]");
     expect(payload.body).toContain("- Cuff stain: Light stain on the left cuff (minor)");
     expect(payload.warnings).toEqual([]);
   });

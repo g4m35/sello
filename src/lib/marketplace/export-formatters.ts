@@ -4,6 +4,10 @@
 import { z } from "zod";
 
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
+import {
+  profileUsesClothingMeasurements,
+  type MeasurementProfile,
+} from "@/lib/listing/intelligence";
 import { conditionLabel, formatMoneyCents } from "@/lib/view/format";
 
 export const ExportMarketplaceSchema = z.enum(["depop", "poshmark", "grailed"]);
@@ -25,6 +29,8 @@ export type ListingExportInput = {
   tags: string[];
   measurements: Measurement[];
   flaws: Flaw[];
+  /** From listing intelligence: decides whether garment measurements belong in the copy. */
+  measurementProfile: MeasurementProfile;
 };
 
 export type ListingExport = {
@@ -36,10 +42,6 @@ export type ListingExport = {
 
 const POSHMARK_TITLE_MAX = 80;
 const DEPOP_HASHTAG_MAX = 8;
-
-// Categories where buyers expect garment measurements. Sneakers and
-// accessories are sized by their tag alone.
-const MEASURED_CATEGORIES = new Set(["streetwear", "hype_fashion", "other"]);
 
 const FLAW_KEY_HINTS = ["flaw", "defect", "damage", "stain", "hole", "repair"];
 const MEASUREMENT_KEY_HINTS = [
@@ -101,7 +103,6 @@ type ResolvedFields = {
 };
 
 function measurementLine(measurement: Measurement): string {
-  if (measurement.value == null) return `${measurement.label}: [measure]`;
   const unit = measurement.unit === "unknown" ? "" : ` ${measurement.unit}`;
   return `${measurement.label}: ${measurement.value}${unit}`;
 }
@@ -137,16 +138,18 @@ function resolveFields(input: ListingExportInput): ResolvedFields {
     flawSection = legacyFlaws.map(([, value]) => `Flaws: ${value}`).join("\n");
   }
 
+  // Only real, filled-in measurements ever appear in buyer-facing copy.
+  // Placeholder rows (value null) live in the editor, not in the listing.
+  const valuedMeasurements = input.measurements.filter((m) => m.value != null);
+  const isApparel = profileUsesClothingMeasurements(input.measurementProfile);
+
   let measurementSection: string | null = null;
-  if (input.measurements.length > 0) {
+  if (valuedMeasurements.length > 0) {
     measurementSection = [
       "Measurements:",
-      ...input.measurements.map(measurementLine),
+      ...valuedMeasurements.map(measurementLine),
     ].join("\n");
-    if (!input.measurements.some((m) => m.value != null)) {
-      warnings.push("Missing measurements (placeholders added)");
-    }
-  } else {
+  } else if (isApparel) {
     const legacyMeasurements = matchSpecifics(
       input.itemSpecifics,
       MEASUREMENT_KEY_HINTS,
@@ -157,13 +160,11 @@ function resolveFields(input: ListingExportInput): ResolvedFields {
         "Measurements:",
         ...legacyMeasurements.map(([key, value]) => `${key}: ${value}`),
       ].join("\n");
-    } else if (MEASURED_CATEGORIES.has(input.category)) {
-      warnings.push("Missing measurements (placeholders added)");
-      measurementSection = [
-        "Measurements:",
-        "Pit to pit: [measure]",
-        "Length: [measure]",
-      ].join("\n");
+    } else {
+      // Apparel buyers expect measurements; be honest that they are pending.
+      // Shoes, bags, and accessories never get garment measurement filler.
+      warnings.push("No measurements saved yet");
+      measurementSection = "Measurements available upon request.";
     }
   }
 
@@ -200,7 +201,7 @@ function formatDepop(input: ListingExportInput, fields: ResolvedFields): string 
 function formatPoshmark(input: ListingExportInput, fields: ResolvedFields): string {
   const facts = [
     `Brand: ${input.brand ?? "—"}`,
-    `Size: ${input.size ?? "—"}`,
+    `Size: ${input.size?.trim() || "Not specified"}`,
     `Condition: ${fields.conditionText ?? "—"}`,
     fields.priceText ? `Price: ${fields.priceText}` : null,
     input.colorway ? `Color: ${input.colorway}` : null,
@@ -225,7 +226,7 @@ function formatPoshmark(input: ListingExportInput, fields: ResolvedFields): stri
 function formatGrailed(input: ListingExportInput, fields: ResolvedFields): string {
   const facts = [
     `Brand: ${input.brand ?? "—"}`,
-    `Tagged size: ${input.size ?? "—"}`,
+    input.size?.trim() ? `Tagged size: ${input.size}` : null,
     `Condition: ${fields.conditionText ?? "—"}`,
     fields.priceText ? `Price: ${fields.priceText}` : null,
     input.colorway ? `Color: ${input.colorway}` : null,

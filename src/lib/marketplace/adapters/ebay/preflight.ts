@@ -1,5 +1,10 @@
 import type { ItemCondition } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
+import {
+  analyzeListing,
+  type EbayCategoryResolution,
+  type ListingIntelligence,
+} from "@/lib/listing/intelligence";
 
 import { getEbayEnvironment, isEbaySandboxPublishEnabled } from "./config";
 import {
@@ -36,7 +41,9 @@ type DraftRow = {
 type ItemRow = {
   id: string;
   sellerId: string;
+  productName?: string;
   brand: string | null;
+  category?: string;
   condition: ItemCondition;
   size: string | null;
   colorway: string | null;
@@ -85,6 +92,10 @@ export type EbayPreflightResult = {
   ready: boolean;
   missing: string[];
   warnings: string[];
+  /** How the eBay category was resolved (saved override, inference, or open choice). */
+  category: EbayCategoryResolution;
+  itemType: ListingIntelligence["itemType"];
+  measurementProfile: ListingIntelligence["measurementProfile"];
   preview: {
     sku: string;
     steps: ["createOrReplaceInventoryItem", "createOffer", "publishOffer"];
@@ -180,10 +191,25 @@ export async function preflightEbayListing(
     : null;
 
   const draft = item.listingDrafts[0];
-  const { categoryId, quantity } = ebayDraftFields(draft);
+  const { categoryId: savedCategoryId, quantity } = ebayDraftFields(draft);
   const photos = item.photos.map((photo) => ({
     url: resolvePhotoUrl(photo, env),
   }));
+
+  // Listing intelligence: sellers should never need raw eBay category IDs.
+  // A saved override always wins; otherwise a high-confidence inference is
+  // used; otherwise the dry run blocks with suggestions to choose from.
+  const intelligence = analyzeListing({
+    title: draft?.title ?? item.productName ?? null,
+    brand: item.brand,
+    description: draft?.description ?? null,
+    productCategory: item.category ?? null,
+    size: item.size,
+    itemSpecifics: asStringRecord(draft?.itemSpecifics),
+    tags: [],
+    savedEbayCategoryId: savedCategoryId,
+  });
+  const categoryId = intelligence.ebayCategory.resolvedId;
 
   const readiness: EbayListingReadinessResult = validateEbayListingReadiness({
     userId: input.userId,
@@ -208,8 +234,15 @@ export async function preflightEbayListing(
       publishingEnabled,
       connected: Boolean(connection),
       ready: false,
-      missing: readiness.missing,
+      // "categoryId" is the validator's internal id; sellers see a category
+      // CHOICE (with suggestions), not a raw marketplace ID problem.
+      missing: readiness.missing.map((id) =>
+        id === "categoryId" ? "ebay_category" : id,
+      ),
       warnings: readiness.warnings,
+      category: intelligence.ebayCategory,
+      itemType: intelligence.itemType,
+      measurementProfile: intelligence.measurementProfile,
       preview: null,
     };
   }
@@ -254,6 +287,9 @@ export async function preflightEbayListing(
     ready: true,
     missing: [],
     warnings: readiness.warnings,
+    category: intelligence.ebayCategory,
+    itemType: intelligence.itemType,
+    measurementProfile: intelligence.measurementProfile,
     preview: {
       sku: resolveEbaySku(mapperInput.item),
       steps: ["createOrReplaceInventoryItem", "createOffer", "publishOffer"],

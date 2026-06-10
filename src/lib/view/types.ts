@@ -81,6 +81,8 @@ export type ItemDetailView = ItemView & {
   pricingRationale: string | null;
   measurements: Measurement[];
   flaws: Flaw[];
+  /** Seller-saved eBay category override (marketplaceDrafts.ebay.categoryId). */
+  ebayCategoryId: string | null;
   selectedMarketplaces: string[];
   readiness: ReadinessView;
   attempts: AttemptView[];
