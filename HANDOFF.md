@@ -12,6 +12,18 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Claude. **In-app eBay inventory location setup shipped** (main @
+`d2b2241`, deployed to sello.wtf). Owner's readiness refresh showed only
+`inventory_location` missing (policies ready). eBay has no Seller Hub UI for
+Inventory API locations, so /settings/marketplaces now shows a setup form
+(US address, Zod-validated) that POSTs /api/marketplaces/ebay/locations →
+eBay POST /sell/inventory/v1/location/sello-default-location, then auto
+re-runs readiness. eBay 4xx → actionable 422 with eBay's message. Dead
+"Seller Hub settings" link replaced with /sh/ovw. Publishing still
+hard-disabled. 286 tests green. Owner next: fill in the ship-from address
+form on sello.wtf/settings/marketplaces; expect readiness to flip to Ready.
+
+## Previous update
 2026-06-10 — Claude. **Readiness 502 hotfix deployed** (main @ `33f1bde`).
 Root cause: eBay Account API answers 4xx for sellers not opted into business
 policies; the client converted every non-OK response into EBAY_API_FAILED 502,
