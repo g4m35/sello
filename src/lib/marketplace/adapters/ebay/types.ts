@@ -15,6 +15,8 @@ export type EbayReadinessResponse = {
   environment: EbayEnvironment;
   connected: boolean;
   ready: boolean;
+  /** The stored eBay token is expired/revoked; the seller must reconnect. */
+  reconnectRequired?: boolean;
   missing: string[];
   config: {
     marketplaceId: EbayMarketplaceId;

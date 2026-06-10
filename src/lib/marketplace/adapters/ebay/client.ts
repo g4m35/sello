@@ -142,10 +142,21 @@ export class EbaySandboxClient implements EbayApiClient {
       },
     });
 
+    if (response.status === 401) {
+      // eBay no longer accepts the stored token (expired/revoked). This is a
+      // reconnect situation for the seller, never a server fault.
+      throw new EbayIntegrationError(
+        ebayErrorCodes.reconnectRequired,
+        "eBay rejected the stored connection. Reconnect your eBay account.",
+        409,
+        { status: response.status },
+      );
+    }
+
     if (!response.ok) {
       throw new EbayIntegrationError(
         ebayErrorCodes.apiFailed,
-        "eBay API request failed.",
+        `eBay API request failed (HTTP ${response.status}).`,
         502,
         { status: response.status },
       );
@@ -220,10 +231,21 @@ export async function getUsableEbayAccessToken(
     }),
   });
 
+  if (response.status === 400 || response.status === 401) {
+    // invalid_grant / unauthorized: the refresh token is expired or revoked.
+    // The seller must reauthorize; retrying server-side can never succeed.
+    throw new EbayIntegrationError(
+      ebayErrorCodes.reconnectRequired,
+      "Your eBay connection has expired or was revoked. Reconnect your eBay account.",
+      409,
+      { status: response.status },
+    );
+  }
+
   if (!response.ok) {
     throw new EbayIntegrationError(
       ebayErrorCodes.tokenRefreshFailed,
-      "eBay token refresh failed.",
+      `eBay token refresh failed (HTTP ${response.status}).`,
       502,
       { status: response.status },
     );

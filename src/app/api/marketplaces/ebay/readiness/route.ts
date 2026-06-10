@@ -11,8 +11,13 @@ import {
   getUsableEbayAccessToken,
   type EbayTokenPrismaLike,
 } from "@/lib/marketplace/adapters/ebay/client";
-import { toEbayErrorPayload } from "@/lib/marketplace/adapters/ebay/errors";
 import {
+  EbayIntegrationError,
+  ebayErrorCodes,
+  toEbayErrorPayload,
+} from "@/lib/marketplace/adapters/ebay/errors";
+import {
+  ebayReconnectRequiredResponse,
   getStoredEbayReadiness,
   refreshEbayReadiness,
   type EbayReadinessPrismaLike,
@@ -64,20 +69,34 @@ export async function POST(request: Request) {
       return NextResponse.json(readiness, { status: 404 });
     }
 
-    const accessToken = await getUsableEbayAccessToken(prisma, connection, config);
-    const readiness = await refreshEbayReadiness(
-      prisma,
-      user.id,
-      new EbaySandboxClient(
-        accessToken,
-        config.marketplaceId,
-        fetch,
+    try {
+      const accessToken = await getUsableEbayAccessToken(prisma, connection, config);
+      const readiness = await refreshEbayReadiness(
+        prisma,
+        user.id,
+        new EbaySandboxClient(
+          accessToken,
+          config.marketplaceId,
+          fetch,
+          config.environment,
+        ),
         config.environment,
-      ),
-      config.environment,
-    );
+      );
 
-    return NextResponse.json(readiness);
+      return NextResponse.json(readiness);
+    } catch (error) {
+      // Expired/revoked eBay tokens are an expected seller state, not a
+      // server fault: answer 200 with a structured reconnect-required result.
+      if (
+        error instanceof EbayIntegrationError &&
+        error.code === ebayErrorCodes.reconnectRequired
+      ) {
+        return NextResponse.json(
+          ebayReconnectRequiredResponse(config.environment),
+        );
+      }
+      throw error;
+    }
   } catch (error) {
     if (error instanceof AppError && !(error as { code?: string }).code?.startsWith("EBAY_")) {
       return NextResponse.json({ error: getErrorMessage(error) }, { status: error.status });

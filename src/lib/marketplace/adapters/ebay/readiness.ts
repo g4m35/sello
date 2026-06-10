@@ -64,6 +64,34 @@ export type EbayReadinessPrismaLike = {
 };
 
 const missingConnection = "oauth_connection";
+
+// Structured "reconnect required" readiness result: the seller's eBay token is
+// expired or revoked. Returned with HTTP 200 so the UI can render an
+// actionable state instead of a generic API failure.
+export function ebayReconnectRequiredResponse(
+  environment: EbayEnvironment,
+): EbayReadinessResponse {
+  return {
+    marketplace: "ebay",
+    environment,
+    connected: false,
+    ready: false,
+    reconnectRequired: true,
+    missing: [missingConnection],
+    config: {
+      marketplaceId: "EBAY_US",
+      hasPaymentPolicy: false,
+      hasFulfillmentPolicy: false,
+      hasReturnPolicy: false,
+      hasInventoryLocation: false,
+    },
+    error: {
+      code: ebayErrorCodes.reconnectRequired,
+      message:
+        "Your eBay connection has expired or was revoked. Reconnect your eBay account.",
+    },
+  };
+}
 const missingPaymentPolicy = "payment_policy";
 const missingFulfillmentPolicy = "fulfillment_policy";
 const missingReturnPolicy = "return_policy";
@@ -114,10 +142,10 @@ export async function refreshEbayReadiness(
 
   const [paymentPolicies, fulfillmentPolicies, returnPolicies, locations] =
     await Promise.all([
-      client.listPaymentPolicies(),
-      client.listFulfillmentPolicies(),
-      client.listReturnPolicies(),
-      client.listInventoryLocations(),
+      listOrEmpty(() => client.listPaymentPolicies()),
+      listOrEmpty(() => client.listFulfillmentPolicies()),
+      listOrEmpty(() => client.listReturnPolicies()),
+      listOrEmpty(() => client.listInventoryLocations()),
     ]);
 
   const paymentPolicyId = firstId(paymentPolicies, "paymentPolicyId");
@@ -158,6 +186,27 @@ export async function refreshEbayReadiness(
   });
 
   return toResponse({ connected: true, missing, row, environment });
+}
+
+// eBay's Account API answers 4xx (typically 403/404) for sellers who have not
+// opted into business policies yet. That is an expected setup gap, so it maps
+// to "missing", never to a 502. Reconnect-required (revoked token) and eBay
+// 5xx errors still propagate: those are not setup gaps.
+async function listOrEmpty<T>(list: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await list();
+  } catch (error) {
+    if (
+      error instanceof EbayIntegrationError &&
+      error.code === ebayErrorCodes.apiFailed &&
+      typeof error.details?.status === "number" &&
+      error.details.status >= 400 &&
+      error.details.status < 500
+    ) {
+      return [];
+    }
+    throw error;
+  }
 }
 
 async function findConnection(
