@@ -13,6 +13,7 @@ import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
 import { AutoPricing } from "@/components/app/auto-pricing";
+import { EbayPreflightCard } from "@/components/app/ebay-preflight-card";
 import {
   formatMoneyCents,
   estPayoutCents,
@@ -1119,6 +1120,8 @@ export default function ListingDetailPage() {
                 )}
               </div>
             </section>
+
+            <EbayPreflightCard itemId={id} token={token} />
 
             <section className="card">
               <div className="card__head">
