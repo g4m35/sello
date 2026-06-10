@@ -61,6 +61,25 @@ export type EbayInventoryLocation = {
   name?: string;
 };
 
+// Request body for createInventoryLocation
+// (POST /sell/inventory/v1/location/{merchantLocationKey}).
+export type EbayInventoryLocationPayload = {
+  name: string;
+  location: {
+    address: {
+      addressLine1: string;
+      addressLine2?: string;
+      city: string;
+      stateOrProvince: string;
+      postalCode: string;
+      country: string;
+    };
+  };
+  locationTypes: ["WAREHOUSE"];
+  merchantLocationStatus: "ENABLED";
+  phone?: string;
+};
+
 export type EbayApiClient = {
   listPaymentPolicies(): Promise<EbayPaymentPolicy[]>;
   listFulfillmentPolicies(): Promise<EbayFulfillmentPolicy[]>;

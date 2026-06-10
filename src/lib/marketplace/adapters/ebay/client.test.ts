@@ -33,6 +33,65 @@ describe("eBay sandbox client", () => {
     );
   });
 
+  it("creates inventory locations via POST to the location endpoint", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return new Response(null, { status: 204 });
+    }) as unknown as typeof fetch;
+    const client = new EbaySandboxClient("secret-access-token", "EBAY_US", fetchImpl, "production");
+
+    await client.createInventoryLocation("sello-default-location", {
+      name: "Default location",
+      location: {
+        address: {
+          addressLine1: "123 Main St",
+          city: "San Francisco",
+          stateOrProvince: "CA",
+          postalCode: "94103",
+          country: "US",
+        },
+      },
+      locationTypes: ["WAREHOUSE"],
+      merchantLocationStatus: "ENABLED",
+    });
+
+    expect(calls[0].url).toBe(
+      "https://api.ebay.com/sell/inventory/v1/location/sello-default-location",
+    );
+    expect(calls[0].init?.method).toBe("POST");
+  });
+
+  it("surfaces eBay's own message when location creation fails with 4xx", async () => {
+    const client = new EbaySandboxClient("secret-access-token", "EBAY_US", async () =>
+      new Response(
+        JSON.stringify({ errors: [{ message: "Invalid postal code." }] }),
+        { status: 400 },
+      ),
+    );
+
+    await expect(
+      client.createInventoryLocation("sello-default-location", {
+        name: "x",
+        location: {
+          address: {
+            addressLine1: "1",
+            city: "c",
+            stateOrProvince: "CA",
+            postalCode: "00000",
+            country: "US",
+          },
+        },
+        locationTypes: ["WAREHOUSE"],
+        merchantLocationStatus: "ENABLED",
+      }),
+    ).rejects.toMatchObject({
+      code: "EBAY_LOCATION_CREATE_FAILED",
+      status: 422,
+      message: expect.stringContaining("Invalid postal code."),
+    });
+  });
+
   it("maps eBay 401 responses to a reconnect-required error", async () => {
     const client = new EbaySandboxClient("secret-access-token", "EBAY_US", async () =>
       new Response(JSON.stringify({ errors: [{ errorId: 1001 }] }), { status: 401 }),
