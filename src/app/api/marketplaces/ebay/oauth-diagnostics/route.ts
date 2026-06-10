@@ -25,6 +25,9 @@ export async function GET() {
       authorizeOrigin: url.origin,
       authorizePath: url.pathname,
       clientId: {
+        // The App ID is public (it appears verbatim in every OAuth redirect);
+        // exposing it here is approved for debugging. Secrets stay out.
+        value: config.clientId,
         masked: mask(config.clientId),
         length: config.clientId.length,
         hasWhitespace: /\s/.test(config.clientId),
