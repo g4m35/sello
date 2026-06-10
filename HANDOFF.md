@@ -19,14 +19,15 @@ EBAY_TOKEN_ENCRYPTION_KEY and EBAY_OAUTH_STATE_SECRET generated fresh,
 EBAY_ENV=production via CLI). Then merged feature/ui (copy-text export +
 structured measurements/flaws, incl. migration
 `20260609120000_add_draft_measurements_flaws`) and feature/settings-landing
-(settings landing page; sidebar gear no longer signs users out) into develop
-for the next prod deploy. ⚠️ Deploy ordering: apply the migration
-(`npm run db:deploy`) before/with the deploy — Prisma selects all model
-columns, so draft reads 500 without it. Owner's next step: sign in on
-sello.wtf → Settings → Connect eBay and complete consent on auth.ebay.com.
+(settings landing page; sidebar gear no longer signs users out) into develop,
+promoted to **main @ `f9930f7` and deployed to production** (sello.wtf, all
+routes verified live). Migration `add_draft_measurements_flaws` was applied to
+the prod DB via `npm run db:deploy` BEFORE the deploy, as required. Owner's
+next step: sign in on sello.wtf → Settings → Connect eBay and complete consent
+on auth.ebay.com.
 
 ## Current state
-- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `1892879`.
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `f9930f7`.
 - Production eBay OAuth/readiness live; publishing remains sandbox-only by design (hard gate in `publish.ts`). Production publish is the next deliberate build, not a flag flip.
 - `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
 - Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
@@ -62,7 +63,6 @@ sello.wtf → Settings → Connect eBay and complete consent on auth.ebay.com.
 - **Account-deletion go-live**: set `EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN` (owner-chosen, 32–80 chars) and `EBAY_MARKETPLACE_DELETION_ENDPOINT` (= `https://sello.wtf/api/marketplaces/ebay/account-deletion`) in Vercel Production, deploy, then register URL + token in the eBay developer portal.
 
 ## Next up (priority order)
-0. Push `feature/ui` + PR to `develop` for copy-export + structured measurements/flaws (when owner asks). Remember the migration deploy-ordering note above.
 1. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
 2. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
 3. **Stripe subscriptions** (gated on Stripe keys).
