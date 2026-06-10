@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EbayIntegrationError, ebayErrorCodes } from "./errors";
 import {
   getStoredEbayReadiness,
   refreshEbayReadiness,
@@ -75,6 +76,74 @@ describe("eBay readiness", () => {
       connected: false,
     });
     expect(environments).toEqual(["production"]);
+  });
+
+  it("maps eBay 4xx policy errors to missing items instead of failing", async () => {
+    const fourOhThree = () =>
+      Promise.reject(
+        new EbayIntegrationError(ebayErrorCodes.apiFailed, "eBay API request failed (HTTP 403).", 502, {
+          status: 403,
+        }),
+      );
+    const result = await refreshEbayReadiness(createPrisma(), "user-1", {
+      listPaymentPolicies: fourOhThree,
+      listFulfillmentPolicies: fourOhThree,
+      listReturnPolicies: fourOhThree,
+      async listInventoryLocations() {
+        return [{ merchantLocationKey: "warehouse-1", merchantLocationStatus: "ENABLED" }];
+      },
+    }, "sandbox");
+
+    expect(result.ready).toBe(false);
+    expect(result.missing).toEqual([
+      "payment_policy",
+      "fulfillment_policy",
+      "return_policy",
+    ]);
+    expect(result.config.hasInventoryLocation).toBe(true);
+  });
+
+  it("propagates eBay 5xx failures as typed errors", async () => {
+    const fiveHundred = () =>
+      Promise.reject(
+        new EbayIntegrationError(ebayErrorCodes.apiFailed, "eBay API request failed (HTTP 500).", 502, {
+          status: 500,
+        }),
+      );
+
+    await expect(
+      refreshEbayReadiness(createPrisma(), "user-1", {
+        listPaymentPolicies: fiveHundred,
+        listFulfillmentPolicies: fiveHundred,
+        listReturnPolicies: fiveHundred,
+        async listInventoryLocations() {
+          return [];
+        },
+      }, "sandbox"),
+    ).rejects.toMatchObject({ code: "EBAY_API_FAILED" });
+  });
+
+  it("propagates reconnect-required errors untouched", async () => {
+    const reconnect = () =>
+      Promise.reject(
+        new EbayIntegrationError(
+          ebayErrorCodes.reconnectRequired,
+          "Reconnect your eBay account.",
+          409,
+          { status: 401 },
+        ),
+      );
+
+    await expect(
+      refreshEbayReadiness(createPrisma(), "user-1", {
+        listPaymentPolicies: reconnect,
+        listFulfillmentPolicies: reconnect,
+        listReturnPolicies: reconnect,
+        async listInventoryLocations() {
+          return [];
+        },
+      }, "sandbox"),
+    ).rejects.toMatchObject({ code: "EBAY_RECONNECT_REQUIRED" });
   });
 
   it("reports missing payment policies as a typed readiness gap", async () => {
