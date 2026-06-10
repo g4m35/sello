@@ -40,6 +40,7 @@ export function Sidebar() {
   const config: NavItem[] = [
     { href: "/history", label: "Publish history", icon: "history" },
     { href: "/channels", label: "Marketplaces", icon: "store", count: counts.channels },
+    { href: "/settings", label: "Settings", icon: "settings" },
   ];
 
   const email = session.user.email ?? "you";
@@ -141,7 +142,7 @@ export function Sidebar() {
           </div>
         </button>
         <button className="btn btn--ghost btn--icon btn--sm" title="Sign out" onClick={() => signOut()}>
-          <Icon name="settings" size={14} />
+          <Icon name="logout" size={14} />
         </button>
       </div>
     </aside>
