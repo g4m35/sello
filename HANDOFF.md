@@ -12,6 +12,44 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Claude. **Production eBay OAuth invalid_request RESOLVED.** Root
+cause: `EBAY_REDIRECT_URI_NAME` held a truncated RuName missing the
+eBay-username prefix (`JacobHel-sello--zdvqgoeck` instead of
+`Jacob_Heller-JacobHel-sello--zdvqgoeck`). Owner supplied the exact portal
+value; env var updated in Vercel Production, redeployed, and the server-built
+authorize URL verified to land on signin.ebay.com (consent flow) instead of
+errorOauth. Temporary diagnostics route removed. Also committed the Codex
+README refresh that was left uncommitted on develop. Owner's next step:
+sign in on sello.wtf → Settings → Connect eBay → complete eBay consent.
+
+## Previous update
+2026-06-10 — Codex. Replaced `README.md` on `develop` with the owner-provided
+`/Users/jheller/Downloads/README_new.md` draft, reframing the project as Sello
+and documenting current product status, setup, eBay guardrails, deployment,
+security, roadmap, and development rules. Docs-only change; no commit, push, or
+deploy. Verification gate passed after the README update: `npm run lint`
+(2 existing warnings in `src/app/api/listings/draft/draft-actions.test.ts`),
+`npx tsc --noEmit`, `npm test` (260 passed), `npx prisma validate`,
+`npm run build`.
+
+## Previous update
+2026-06-10 — Claude. **Production Connect eBay fails with invalid_request: root
+cause is the RuName value.** Evidence (via temporary masked diagnostics route
+`/api/marketplaces/ebay/oauth-diagnostics` + direct probes of auth.ebay.com):
+authorize URL structure is correct; a bogus client_id yields
+`unauthorized_client` while the real one yields `invalid_request`, so the App
+ID is valid; the configured `EBAY_REDIRECT_URI_NAME`
+(`JacobHel-sello--zdvqgoeck`, note the double dash) errors identically to a
+nonexistent RuName → it does not match any RuName on the production keyset.
+**Blocked on owner:** copy the exact production RuName from developer.ebay.com
+(User Tokens → "Get a Token from eBay via Your Application" → eBay Redirect URL
+name), confirm its "auth accepted URL" is
+`https://sello.wtf/api/marketplaces/ebay/callback`, update
+`EBAY_REDIRECT_URI_NAME` in Vercel Production, redeploy. Also shipped:
+env-aware labels on /settings/marketplaces ("Production account"/"Connect eBay"
+in production; sandbox wording only in sandbox), main @ `ea2d10a` deployed.
+Remove the diagnostics route once connect reaches eBay login.
+
 2026-06-09 — Claude. **Production eBay OAuth enabled and deployed** (main @
 `1892879`, sello.wtf); EBAY_ENV accepts "production", publishing stays hard
 sandbox-locked, all production eBay env vars set in Vercel (Sensitive/write-only;
@@ -31,9 +69,10 @@ on auth.ebay.com.
 - Production eBay OAuth/readiness live; publishing remains sandbox-only by design (hard gate in `publish.ts`). Production publish is the next deliberate build, not a flag flip.
 - `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
 - Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
+- README on `develop` has been refreshed from the owner-provided Sello draft.
 - Open PR **#1** (pre-existing "chore: optimize repo workflow") into `develop`.
 - CodeRabbit auto-reviews enabled on `develop`.
-- Gate on `develop`/`main`: `lint`, `tsc`, `vitest` (213 tests), `prisma validate`, `build` all green.
+- Gate on `develop`/`main`: `lint`, `tsc`, `vitest` (260 tests), `prisma validate`, `build` all green.
 
 ## Shipped to prod (all live now)
 - Full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
@@ -42,6 +81,7 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-10 (Codex): replaced `README.md` from `/Users/jheller/Downloads/README_new.md`; verified exact file match and ran `npm run lint`, `npx tsc --noEmit`, `npm test`, `npx prisma validate`, and `npm run build` (pass; lint still has 2 existing warnings in `draft-actions.test.ts`, tests now 260 passed).
 - 2026-06-09 (Claude): merge-readiness review of the two feature/ui commits (merged). Verified migration safety, legacy-draft compat (new reset/duplicate tests), seller scoping, no eBay coupling. Fixed: editor let sellers exceed the draft schema's row/length caps (12 rows; label 80 / value 40 / description 400), making autosave 400 with only a generic "Save failed".
 - 2026-06-09 (Claude): settings landing page at `/settings` inside the app shell (eBay connection status + manage, account name/email/sign-out, privacy link); sidebar gets a real Settings nav item and the footer gear (which silently called signOut and bounced users to login) now uses a logout icon. `feature/settings-landing` -> develop.
 - 2026-06-09 (Claude): structured measurements + flaws (merged from `feature/ui`). `MeasurementSchema`/`FlawSchema` in `src/lib/ai/listing-draft.ts` (defaulted `[]` so old `validatedJson` still parses; reset/duplicate preserve them), Gemini prompt v2 (never invent measurements; placeholders with `value: null`; only visible flaws; never claim "no flaws"), nullable JSONB columns on `ListingDraft` (additive migration), editable Measurements/Flaws sections on `/inventory/[id]` (rows the seller edits get `source: "seller"`), exports prefer structured data with itemSpecifics-heuristic fallback for old drafts.
@@ -56,7 +96,7 @@ on auth.ebay.com.
 
 ## Blocked on owner (credentials / decisions — not code)
 - **Comp source key** (to light up automatic pricing): `STOCKX_API_KEY` (primary sold, needs partner approval), or `EBAY_BROWSE_CLIENT_ID`/`EBAY_BROWSE_CLIENT_SECRET` (interim active, prod keyset), or a third-party aggregator key. Add in Vercel env.
-- **eBay production OAuth consent**: owner must connect their real eBay account on sello.wtf (Settings -> Marketplaces -> Connect eBay) to validate the flow end to end.
+- **eBay production OAuth consent / RuName**: current Connect eBay flow fails before login with `invalid_request`; evidence points to `EBAY_REDIRECT_URI_NAME` not matching the production keyset's exact RuName. Owner must copy the exact production RuName from developer.ebay.com, confirm the accepted URL is `https://sello.wtf/api/marketplaces/ebay/callback`, update Vercel Production, and redeploy before testing consent again.
 - **eBay production publishing**: code decision + build (OAuth is done; publish gate stays locked until built and approved).
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
