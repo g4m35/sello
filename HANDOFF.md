@@ -12,6 +12,20 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Claude. **eBay production publish preflight (dry run) shipped**
+(main @ `7f7a2ac`, deployed to sello.wtf). Production readiness is fully green
+(owner created the ship-from location). New `preflight.ts` validates a listing
+with the same readiness rules + payload mappers as the real publish flow and
+returns a payload preview (SKU, inventoryItem, offer, step order) with ZERO
+outbound calls (no token, no client, no fetch — test-asserted). New route
+`POST /api/listings/[id]/ebay-preflight`; listing editor gets an "eBay publish
+dry run" card (connection state, "production publishing disabled" notice,
+plain-language blockers, payload preview). publish.ts untouched; production
+publish hard-lock intact; sandbox unchanged. 297 tests green. Owner next: run
+the dry run on a real listing; the result tells us what production publish
+needs before we deliberately unlock it.
+
+## Previous update
 2026-06-10 — Claude. **In-app eBay inventory location setup shipped** (main @
 `d2b2241`, deployed to sello.wtf). Owner's readiness refresh showed only
 `inventory_location` missing (policies ready). eBay has no Seller Hub UI for

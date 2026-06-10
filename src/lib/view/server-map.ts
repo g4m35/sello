@@ -128,11 +128,20 @@ export function mapItemDetail(
     pricingRationale: draft?.pricingRationale ?? item.pricingRationale ?? null,
     measurements: parseMeasurements(draft?.measurements),
     flaws: parseFlaws(draft?.flaws),
+    ebayCategoryId: ebayCategoryIdOf(draft?.marketplaceDrafts),
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     readiness,
     attempts,
     photos,
   };
+}
+
+function ebayCategoryIdOf(marketplaceDrafts: unknown): string | null {
+  if (!marketplaceDrafts || typeof marketplaceDrafts !== "object") return null;
+  const ebay = (marketplaceDrafts as Record<string, unknown>).ebay;
+  if (!ebay || typeof ebay !== "object") return null;
+  const categoryId = (ebay as Record<string, unknown>).categoryId;
+  return typeof categoryId === "string" && categoryId.length > 0 ? categoryId : null;
 }
 
 type AttemptWithRelations = PublishAttempt & {

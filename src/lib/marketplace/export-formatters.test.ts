@@ -27,6 +27,7 @@ function input(overrides: Partial<ListingExportInput> = {}): ListingExportInput 
     tags: ["supreme", "box logo", "streetwear"],
     measurements: [],
     flaws: [],
+    measurementProfile: "apparel_top",
     ...overrides,
   };
 }
@@ -49,7 +50,7 @@ describe("structured measurements and flaws", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("renders unmeasured structured rows as placeholders and warns when nothing is measured", () => {
+  it("never renders [measure] placeholders; apparel without values says available upon request", () => {
     const result = buildListingExport(
       "depop",
       input({
@@ -61,12 +62,12 @@ describe("structured measurements and flaws", () => {
       }),
     );
 
-    expect(result.body).toContain("Sleeve: [measure]");
-    expect(result.body).toContain("Shoulder: [measure]");
-    expect(result.warnings).toContain("Missing measurements (placeholders added)");
+    expect(result.body).not.toContain("[measure]");
+    expect(result.body).toContain("Measurements available upon request.");
+    expect(result.warnings).toContain("No measurements saved yet");
   });
 
-  it("does not warn about measurements when at least one structured value exists", () => {
+  it("renders only filled-in measurement values", () => {
     const result = buildListingExport(
       "poshmark",
       input({
@@ -79,8 +80,9 @@ describe("structured measurements and flaws", () => {
     );
 
     expect(result.body).toContain("Chest: 22 in");
-    expect(result.body).toContain("Sleeve: [measure]");
-    expect(result.warnings).not.toContain("Missing measurements (placeholders added)");
+    expect(result.body).not.toContain("Sleeve");
+    expect(result.body).not.toContain("[measure]");
+    expect(result.warnings).not.toContain("No measurements saved yet");
   });
 
   it("prefers structured flaws with severity over itemSpecifics heuristics", () => {
@@ -202,7 +204,7 @@ describe("buildListingExport grailed", () => {
 });
 
 describe("missing-field warnings", () => {
-  it("warns about each missing key field and adds measurement placeholders", () => {
+  it("warns about each missing key field and notes apparel measurements are pending", () => {
     const result = buildListingExport(
       "depop",
       input({
@@ -218,18 +220,39 @@ describe("missing-field warnings", () => {
     expect(result.warnings).toContain("Missing size");
     expect(result.warnings).toContain("Missing price");
     expect(result.warnings).toContain("Missing condition");
-    expect(result.warnings).toContain("Missing measurements (placeholders added)");
-    expect(result.body).toContain("Pit to pit: [measure]");
-    expect(result.body).toContain("Length: [measure]");
+    expect(result.warnings).toContain("No measurements saved yet");
+    expect(result.body).not.toContain("[measure]");
+    expect(result.body).toContain("Measurements available upon request.");
   });
 
   it("does not demand garment measurements for sneakers", () => {
     const result = buildListingExport(
       "grailed",
-      input({ category: "sneakers", itemSpecifics: {} }),
+      input({ category: "sneakers", measurementProfile: "shoes", itemSpecifics: {} }),
     );
-    expect(result.warnings).not.toContain("Missing measurements (placeholders added)");
+    expect(result.warnings).not.toContain("No measurements saved yet");
     expect(result.body).not.toContain("[measure]");
+    expect(result.body).not.toContain("Measurements");
+  });
+
+  it("does not add measurement filler for bags and accessories", () => {
+    for (const profile of ["bag", "accessory"] as const) {
+      const result = buildListingExport(
+        "depop",
+        input({ measurementProfile: profile, itemSpecifics: {} }),
+      );
+      expect(result.body).not.toContain("Measurements");
+      expect(result.warnings).not.toContain("No measurements saved yet");
+    }
+  });
+
+  it("never renders a missing size as a raw dash", () => {
+    const poshmark = buildListingExport("poshmark", input({ size: null }));
+    expect(poshmark.body).toContain("Size: Not specified");
+    expect(poshmark.body).not.toContain("Size: —");
+
+    const grailed = buildListingExport("grailed", input({ size: null }));
+    expect(grailed.body).not.toContain("Tagged size");
   });
 
   it("warns when the description is empty", () => {

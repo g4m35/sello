@@ -24,6 +24,7 @@ import {
   durationLabel,
 } from "@/lib/view/format";
 import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
+import { analyzeListing } from "@/lib/listing/intelligence";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import {
   ExportMarketplaceSchema,
@@ -40,6 +41,7 @@ type DraftEdits = {
   bulletPoints: string[];
   recommendedPriceCents: number | null;
   selectedMarketplaces: string[];
+  ebayCategoryId: string;
   measurements: Measurement[];
   flaws: Flaw[];
 };
@@ -80,6 +82,7 @@ function editsFrom(item: ItemDetailView): DraftEdits {
     bulletPoints: item.bulletPoints,
     recommendedPriceCents: item.priceCents,
     selectedMarketplaces: item.selectedMarketplaces,
+    ebayCategoryId: item.ebayCategoryId ?? "",
     measurements: item.measurements,
     flaws: item.flaws,
   };
@@ -258,6 +261,7 @@ export default function ListingDetailPage() {
           bulletPoints: next.bulletPoints,
           recommendedPriceCents: next.recommendedPriceCents,
           selectedMarketplaces: next.selectedMarketplaces,
+          marketplaceDrafts: { ebay: { categoryId: next.ebayCategoryId.trim() } },
           measurements: savableMeasurements(next.measurements),
           flaws: savableFlaws(next.flaws),
         });
@@ -369,6 +373,7 @@ export default function ListingDetailPage() {
         bulletPoints: edits.bulletPoints,
         recommendedPriceCents: edits.recommendedPriceCents,
         selectedMarketplaces: edits.selectedMarketplaces,
+        marketplaceDrafts: { ebay: { categoryId: edits.ebayCategoryId.trim() } },
         measurements: savableMeasurements(edits.measurements),
         flaws: savableFlaws(edits.flaws),
         approve: true,
@@ -449,6 +454,25 @@ export default function ListingDetailPage() {
     );
 
   const editable = draftId != null;
+  // Listing intelligence: tells the editor what this item is, which
+  // measurements matter, and how the eBay category resolves. Pure local
+  // inference; uncertain values surface as suggestions, never silent guesses.
+  const intelligence = analyzeListing({
+    title: edits.title || item.title,
+    brand: item.brand,
+    description: edits.description,
+    productCategory: item.category,
+    size: item.size,
+    itemSpecifics: {},
+    tags: [],
+    savedEbayCategoryId: edits.ebayCategoryId.trim() || null,
+  });
+  const missingRecommendedMeasurements = intelligence.recommendedMeasurements.filter(
+    (rec) =>
+      !edits.measurements.some(
+        (m) => m.label.trim().toLowerCase() === rec.label.toLowerCase(),
+      ),
+  );
   const shortId = item.id.slice(0, 8);
   const canMarkSold = item.lifecycleState === "ready" || item.lifecycleState === "active";
   const canDelist =
@@ -819,9 +843,51 @@ export default function ListingDetailPage() {
 
             <FormSection
               title="Measurements"
-              desc="Exports include these; blank values become [measure] placeholders"
+              desc="Exports include filled values; apparel without any says measurements are available upon request"
             >
               <div className="stack-4">
+                {intelligence.measurementProfile === "shoes" ? (
+                  <div className="t-small muted">
+                    Sello identified this as footwear: the shoe size is the
+                    size, no clothing measurements needed.
+                  </div>
+                ) : missingRecommendedMeasurements.length > 0 ? (
+                  <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <span className="t-small muted">
+                      Recommended for this item:{" "}
+                      {missingRecommendedMeasurements.map((m) => m.label).join(", ")}
+                    </span>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="plus"
+                      disabled={!editable}
+                      onClick={() =>
+                        patch({
+                          measurements: [
+                            ...edits.measurements,
+                            ...missingRecommendedMeasurements
+                              .slice(
+                                0,
+                                Math.max(
+                                  0,
+                                  MAX_STRUCTURED_ROWS - edits.measurements.length,
+                                ),
+                              )
+                              .map((rec) => ({
+                                label: rec.label,
+                                value: null,
+                                unit: rec.unit,
+                                source: "seller" as const,
+                              })),
+                          ],
+                        })
+                      }
+                    >
+                      Add recommended fields
+                    </Btn>
+                  </div>
+                ) : null}
                 {edits.measurements.map((m, idx) => (
                   <div key={idx} className="row" style={{ gap: 8 }}>
                     <input
@@ -1121,7 +1187,12 @@ export default function ListingDetailPage() {
               </div>
             </section>
 
-            <EbayPreflightCard itemId={id} token={token} />
+            <EbayPreflightCard
+              itemId={id}
+              token={token}
+              savedCategoryId={edits.ebayCategoryId}
+              onSelectCategory={(categoryId) => patch({ ebayCategoryId: categoryId })}
+            />
 
             <section className="card">
               <div className="card__head">

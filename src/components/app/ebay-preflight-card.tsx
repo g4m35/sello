@@ -1,11 +1,12 @@
-"use client";
-
+// Client-only component: imported exclusively from the (client) listing
+// editor page, so it inherits the client boundary and may take callbacks.
 import { useState } from "react";
 
 import { readJsonResponse } from "@/lib/http";
 import { getErrorMessage } from "@/lib/errors";
 import { Badge, Btn } from "@/components/ui/primitives";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
+import type { EbayCategoryResolution } from "@/lib/listing/intelligence";
 
 // Human wording for the listing-readiness ids the preflight returns.
 export const ebayPreflightMissingLabels: Record<string, string> = {
@@ -14,7 +15,7 @@ export const ebayPreflightMissingLabels: Record<string, string> = {
   description: "Description",
   price: "Price",
   condition: "Condition",
-  categoryId: "eBay category ID",
+  ebay_category: "Choose an eBay category",
   photo: "At least one photo",
   quantity: "Valid quantity",
   ebay_connection: "eBay connection (connect in Settings)",
@@ -29,16 +30,30 @@ const warningLabels: Record<string, string> = {
   quantity_defaulted_to_1: "No quantity set; the dry run assumes 1.",
 };
 
+const confidenceLabels: Record<EbayCategoryResolution["confidence"], string> = {
+  high: "high confidence",
+  medium: "needs review",
+  low: "needs your choice",
+  none: "no suggestion",
+};
+
 export function EbayPreflightCard({
   itemId,
   token,
+  savedCategoryId,
+  onSelectCategory,
 }: {
   itemId: string;
   token: string;
+  /** Seller-saved eBay category override from the draft (empty when unset). */
+  savedCategoryId: string;
+  /** Persists a category choice through the editor's normal save flow. */
+  onSelectCategory: (categoryId: string) => void;
 }) {
   const [result, setResult] = useState<EbayPreflightResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advancedId, setAdvancedId] = useState("");
 
   async function runPreflight() {
     setRunning(true);
@@ -58,6 +73,11 @@ export function EbayPreflightCard({
     }
   }
 
+  const category = result?.category ?? null;
+  const needsCategoryChoice = Boolean(
+    result && result.missing.includes("ebay_category"),
+  );
+
   return (
     <section className="card">
       <div className="card__head">
@@ -65,7 +85,7 @@ export function EbayPreflightCard({
         {result && (
           <Badge
             status={result.ready ? "ready" : "draft"}
-            label={result.ready ? "Dry run passed" : "Blocked"}
+            label={result.ready ? "Dry run passed" : "Needs review"}
           />
         )}
       </div>
@@ -93,16 +113,72 @@ export function EbayPreflightCard({
           )}
         </div>
 
+        {category?.resolvedId && (
+          <div className="t-small muted">
+            eBay category:{" "}
+            <span style={{ fontWeight: 500 }}>
+              {category.resolvedName ?? "Custom"} · {category.resolvedId}
+            </span>{" "}
+            ({category.source === "saved" ? "your choice" : "inferred, "}
+            {category.source === "saved" ? "" : confidenceLabels[category.confidence]})
+          </div>
+        )}
+
         {result && !result.ready && (
           <div className="stack-4">
             <div className="t-small" style={{ fontWeight: 500 }}>
-              Blocking eBay publish:
+              Needed before eBay publish:
             </div>
             <ul className="t-small muted" style={{ paddingLeft: 18, margin: 0 }}>
               {result.missing.map((id) => (
                 <li key={id}>{ebayPreflightMissingLabels[id] ?? id}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {needsCategoryChoice && category && category.suggestions.length > 0 && (
+          <div className="stack-4">
+            <div className="t-small" style={{ fontWeight: 500 }}>
+              Choose an eBay category:
+            </div>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {category.suggestions.map((suggestion) => (
+                <Btn
+                  key={suggestion.id}
+                  variant={savedCategoryId === suggestion.id ? "accent" : "secondary"}
+                  size="sm"
+                  onClick={() => onSelectCategory(suggestion.id)}
+                >
+                  {suggestion.name} · {suggestion.id}
+                </Btn>
+              ))}
+            </div>
+            <div className="t-small muted">
+              Your choice saves with the draft; re-run the dry run after picking.
+            </div>
+          </div>
+        )}
+
+        {needsCategoryChoice && category && category.suggestions.length === 0 && (
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <span className="t-small muted">Advanced: eBay category ID</span>
+            <input
+              className="input"
+              style={{ width: 120 }}
+              inputMode="numeric"
+              placeholder="e.g. 15709"
+              value={advancedId}
+              onChange={(e) => setAdvancedId(e.target.value)}
+            />
+            <Btn
+              variant="secondary"
+              size="sm"
+              disabled={!/^\d{1,32}$/.test(advancedId.trim())}
+              onClick={() => onSelectCategory(advancedId.trim())}
+            >
+              Use ID
+            </Btn>
           </div>
         )}
 
