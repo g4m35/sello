@@ -52,6 +52,8 @@ type ItemEdits = {
 };
 
 const AUTOSAVE_MS = 800;
+// Mirrors the draft update schema's max(12) so autosave can't hit a 400.
+const MAX_STRUCTURED_ROWS = 12;
 
 const CATEGORY_OPTIONS = [
   "sneakers",
@@ -825,6 +827,7 @@ export default function ListingDetailPage() {
                       className="input"
                       style={{ flex: 2 }}
                       value={m.label}
+                      maxLength={80}
                       placeholder="Label (e.g. Pit to pit)"
                       disabled={!editable}
                       onChange={(e) => {
@@ -837,6 +840,7 @@ export default function ListingDetailPage() {
                       className="input"
                       style={{ flex: 1 }}
                       value={m.value ?? ""}
+                      maxLength={40}
                       placeholder="Value"
                       disabled={!editable}
                       onChange={(e) => {
@@ -887,7 +891,7 @@ export default function ListingDetailPage() {
                     variant="secondary"
                     size="sm"
                     icon="plus"
-                    disabled={!editable}
+                    disabled={!editable || edits.measurements.length >= MAX_STRUCTURED_ROWS}
                     onClick={() =>
                       patch({
                         measurements: [
@@ -914,6 +918,7 @@ export default function ListingDetailPage() {
                       className="input"
                       style={{ flex: 1 }}
                       value={f.label}
+                      maxLength={80}
                       placeholder="Flaw (e.g. Cuff stain)"
                       disabled={!editable}
                       onChange={(e) => {
@@ -926,6 +931,7 @@ export default function ListingDetailPage() {
                       className="input"
                       style={{ flex: 2 }}
                       value={f.description}
+                      maxLength={400}
                       placeholder="Description"
                       disabled={!editable}
                       onChange={(e) => {
@@ -971,7 +977,7 @@ export default function ListingDetailPage() {
                     variant="secondary"
                     size="sm"
                     icon="plus"
-                    disabled={!editable}
+                    disabled={!editable || edits.flaws.length >= MAX_STRUCTURED_ROWS}
                     onClick={() =>
                       patch({
                         flaws: [
