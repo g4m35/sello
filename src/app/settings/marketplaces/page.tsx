@@ -20,6 +20,8 @@ import {
 } from "@/lib/supabase/browser";
 import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
 
+import { ebayMarketplaceLabels } from "./labels";
+
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 const readinessLabels: Record<string, string> = {
@@ -180,7 +182,8 @@ export default function MarketplaceSettingsPage() {
   const missing = new Set(readiness?.missing ?? readinessItems);
   const connected = Boolean(readiness?.connected);
   const ready = Boolean(readiness?.ready);
-  const environment = readiness?.environment ?? "sandbox";
+  const environment = readiness?.environment ?? null;
+  const labels = ebayMarketplaceLabels(environment);
   const statusLabel = !connected
     ? "Not connected"
     : !ready
@@ -196,9 +199,7 @@ export default function MarketplaceSettingsPage() {
           <p className="text-sm font-medium uppercase tracking-wide text-emerald-300">
             Marketplace Settings
           </p>
-          <h1 className="text-3xl font-semibold">
-            {environment === "production" ? "eBay" : "eBay Sandbox"}
-          </h1>
+          <h1 className="text-3xl font-semibold">{labels.heading}</h1>
         </header>
 
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/70">
@@ -208,7 +209,7 @@ export default function MarketplaceSettingsPage() {
                 <ShieldCheck size={22} aria-hidden="true" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold">Sandbox account</h2>
+                <h2 className="text-lg font-semibold">{labels.account}</h2>
                 <p className="text-sm text-zinc-400">{statusLabel}</p>
               </div>
             </div>
@@ -221,7 +222,7 @@ export default function MarketplaceSettingsPage() {
                 className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-400 px-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plug size={16} aria-hidden="true" />
-                Connect eBay Sandbox
+                {labels.connect}
               </button>
               <button
                 type="button"
