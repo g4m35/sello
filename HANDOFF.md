@@ -12,6 +12,24 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Claude. **Production Connect eBay fails with invalid_request: root
+cause is the RuName value.** Evidence (via temporary masked diagnostics route
+`/api/marketplaces/ebay/oauth-diagnostics` + direct probes of auth.ebay.com):
+authorize URL structure is correct; a bogus client_id yields
+`unauthorized_client` while the real one yields `invalid_request`, so the App
+ID is valid; the configured `EBAY_REDIRECT_URI_NAME`
+(`JacobHel-sello--zdvqgoeck`, note the double dash) errors identically to a
+nonexistent RuName → it does not match any RuName on the production keyset.
+**Blocked on owner:** copy the exact production RuName from
+developer.ebay.com (User Tokens → "Get a Token from eBay via Your
+Application" → eBay Redirect URL name), confirm its "auth accepted URL" is
+`https://sello.wtf/api/marketplaces/ebay/callback`, update
+`EBAY_REDIRECT_URI_NAME` in Vercel Production, redeploy. Also shipped:
+env-aware labels on /settings/marketplaces ("Production account"/"Connect
+eBay" in production; sandbox wording only in sandbox), main @ `ea2d10a`
+deployed. Remove the diagnostics route once connect reaches eBay login.
+
+## Previous update
 2026-06-09 — Claude. **Production eBay OAuth enabled and deployed** (main @
 `1892879`, sello.wtf); EBAY_ENV accepts "production", publishing stays hard
 sandbox-locked, all production eBay env vars set in Vercel (Sensitive/write-only;
