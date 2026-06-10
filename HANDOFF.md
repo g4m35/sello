@@ -12,6 +12,17 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Claude. **Production eBay OAuth invalid_request RESOLVED.** Root
+cause: `EBAY_REDIRECT_URI_NAME` held a truncated RuName missing the
+eBay-username prefix (`JacobHel-sello--zdvqgoeck` instead of
+`Jacob_Heller-JacobHel-sello--zdvqgoeck`). Owner supplied the exact portal
+value; env var updated in Vercel Production, redeployed, and the server-built
+authorize URL verified to land on signin.ebay.com (consent flow) instead of
+errorOauth. Temporary diagnostics route removed. Also committed the Codex
+README refresh that was left uncommitted on develop. Owner's next step:
+sign in on sello.wtf → Settings → Connect eBay → complete eBay consent.
+
+## Previous update
 2026-06-10 — Codex. Replaced `README.md` on `develop` with the owner-provided
 `/Users/jheller/Downloads/README_new.md` draft, reframing the project as Sello
 and documenting current product status, setup, eBay guardrails, deployment,
