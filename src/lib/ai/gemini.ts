@@ -9,7 +9,7 @@ import {
   type GeminiListingDraft,
 } from "./listing-draft";
 
-export const GEMINI_PROMPT_VERSION = "listing-draft-v1";
+export const GEMINI_PROMPT_VERSION = "listing-draft-v2";
 
 const listingDraftPrompt = `
 You are an expert resale listing assistant for streetwear, sneakers, and hype-fashion sellers.
@@ -23,6 +23,8 @@ Rules:
 - Do not invent live sold comp data. If pricing needs live comps, explain that in pricingRationale and provide compSearchQueries the seller can run.
 - Be conservative about authenticity and condition. Add warnings when photos are insufficient.
 - Keep titles buyer-search-friendly and within marketplace title limits.
+- Measurements: never estimate or invent exact measurements from photos. Only fill a measurement value when it is clearly legible in a photo (size tag, ruler, or measuring tape). Otherwise, list the measurement labels a buyer would expect for this category (for example pit to pit and length for tops, insole length for sneakers) with value null and unit "unknown" so the seller can measure.
+- Flaws: list only flaws that are visible in the photos, each with a short label, a factual description, and a severity. If no flaws are visible, return an empty flaws array. Never state that the item has no flaws; absence from the list only means none were visible.
 `;
 
 export type GeminiDraftResult = {

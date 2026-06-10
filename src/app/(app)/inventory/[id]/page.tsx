@@ -23,6 +23,12 @@ import {
   durationLabel,
 } from "@/lib/view/format";
 import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
+import { marketplaceName } from "@/lib/view/marketplaces";
+import {
+  ExportMarketplaceSchema,
+  type ExportMarketplace,
+} from "@/lib/marketplace/export-formatters";
+import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { ItemDetailView } from "@/lib/view/types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -33,6 +39,8 @@ type DraftEdits = {
   bulletPoints: string[];
   recommendedPriceCents: number | null;
   selectedMarketplaces: string[];
+  measurements: Measurement[];
+  flaws: Flaw[];
 };
 
 type ItemEdits = {
@@ -69,7 +77,27 @@ function editsFrom(item: ItemDetailView): DraftEdits {
     bulletPoints: item.bulletPoints,
     recommendedPriceCents: item.priceCents,
     selectedMarketplaces: item.selectedMarketplaces,
+    measurements: item.measurements,
+    flaws: item.flaws,
   };
+}
+
+// Rows the seller is still typing (no label yet) are kept in local state but
+// excluded from saves, since the draft schema requires non-empty labels.
+function savableMeasurements(rows: Measurement[]): Measurement[] {
+  return rows
+    .filter((m) => m.label.trim() !== "")
+    .map((m) => ({
+      ...m,
+      label: m.label.trim(),
+      value: m.value && m.value.trim() ? m.value.trim() : null,
+    }));
+}
+
+function savableFlaws(rows: Flaw[]): Flaw[] {
+  return rows
+    .filter((f) => f.label.trim() !== "" && f.description.trim() !== "")
+    .map((f) => ({ ...f, label: f.label.trim(), description: f.description.trim() }));
 }
 
 function itemEditsFrom(item: ItemDetailView): ItemEdits {
@@ -127,6 +155,12 @@ export default function ListingDetailPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState<ExportMarketplace | null>(null);
+  const [exportResult, setExportResult] = useState<{
+    marketplace: ExportMarketplace;
+    warnings: string[];
+  } | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -221,6 +255,8 @@ export default function ListingDetailPage() {
           bulletPoints: next.bulletPoints,
           recommendedPriceCents: next.recommendedPriceCents,
           selectedMarketplaces: next.selectedMarketplaces,
+          measurements: savableMeasurements(next.measurements),
+          flaws: savableFlaws(next.flaws),
         });
         setSaveState("saved");
         dirtyRef.current = false;
@@ -330,6 +366,8 @@ export default function ListingDetailPage() {
         bulletPoints: edits.bulletPoints,
         recommendedPriceCents: edits.recommendedPriceCents,
         selectedMarketplaces: edits.selectedMarketplaces,
+        measurements: savableMeasurements(edits.measurements),
+        flaws: savableFlaws(edits.flaws),
         approve: true,
       });
       reload();
@@ -341,6 +379,26 @@ export default function ListingDetailPage() {
       setApproving(false);
     }
   }, [token, draftId, edits, item, reload]);
+
+  const copyExport = useCallback(
+    async (marketplace: ExportMarketplace) => {
+      setExportBusy(marketplace);
+      setExportError(null);
+      setExportResult(null);
+      try {
+        const res = await api.exportListing(token, id, marketplace);
+        await navigator.clipboard.writeText(`${res.title}\n\n${res.body}`);
+        setExportResult({ marketplace, warnings: res.warnings });
+      } catch (e) {
+        setExportError(
+          (e as { error?: string })?.error ?? "Could not copy the listing text.",
+        );
+      } finally {
+        setExportBusy(null);
+      }
+    },
+    [token, id],
+  );
 
   const runLifecycle = useCallback(
     async (action: "mark_sold" | "delist") => {
@@ -757,6 +815,184 @@ export default function ListingDetailPage() {
             </FormSection>
 
             <FormSection
+              title="Measurements"
+              desc="Exports include these; blank values become [measure] placeholders"
+            >
+              <div className="stack-4">
+                {edits.measurements.map((m, idx) => (
+                  <div key={idx} className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      style={{ flex: 2 }}
+                      value={m.label}
+                      placeholder="Label (e.g. Pit to pit)"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.measurements];
+                        next[idx] = { ...m, label: e.target.value, source: "seller" };
+                        patch({ measurements: next });
+                      }}
+                    />
+                    <input
+                      className="input"
+                      style={{ flex: 1 }}
+                      value={m.value ?? ""}
+                      placeholder="Value"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.measurements];
+                        next[idx] = {
+                          ...m,
+                          value: e.target.value.trim() === "" ? null : e.target.value,
+                          source: "seller",
+                        };
+                        patch({ measurements: next });
+                      }}
+                    />
+                    <select
+                      className="select"
+                      style={{ width: 96 }}
+                      value={m.unit}
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.measurements];
+                        next[idx] = {
+                          ...m,
+                          unit: e.target.value as Measurement["unit"],
+                          source: "seller",
+                        };
+                        patch({ measurements: next });
+                      }}
+                    >
+                      <option value="in">in</option>
+                      <option value="cm">cm</option>
+                      <option value="unknown">unit?</option>
+                    </select>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="trash"
+                      title="Remove measurement"
+                      disabled={!editable}
+                      onClick={() =>
+                        patch({
+                          measurements: edits.measurements.filter((_, i) => i !== idx),
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+                <div>
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    icon="plus"
+                    disabled={!editable}
+                    onClick={() =>
+                      patch({
+                        measurements: [
+                          ...edits.measurements,
+                          { label: "", value: null, unit: "in", source: "seller" },
+                        ],
+                      })
+                    }
+                  >
+                    Add measurement
+                  </Btn>
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Flaws"
+              desc="Only listed flaws are exported; an empty list never claims flawless"
+            >
+              <div className="stack-4">
+                {edits.flaws.map((f, idx) => (
+                  <div key={idx} className="row" style={{ gap: 8 }}>
+                    <input
+                      className="input"
+                      style={{ flex: 1 }}
+                      value={f.label}
+                      placeholder="Flaw (e.g. Cuff stain)"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.flaws];
+                        next[idx] = { ...f, label: e.target.value, source: "seller" };
+                        patch({ flaws: next });
+                      }}
+                    />
+                    <input
+                      className="input"
+                      style={{ flex: 2 }}
+                      value={f.description}
+                      placeholder="Description"
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.flaws];
+                        next[idx] = { ...f, description: e.target.value, source: "seller" };
+                        patch({ flaws: next });
+                      }}
+                    />
+                    <select
+                      className="select"
+                      style={{ width: 120 }}
+                      value={f.severity ?? "unknown"}
+                      disabled={!editable}
+                      onChange={(e) => {
+                        const next = [...edits.flaws];
+                        next[idx] = {
+                          ...f,
+                          severity: e.target.value as Flaw["severity"],
+                          source: "seller",
+                        };
+                        patch({ flaws: next });
+                      }}
+                    >
+                      <option value="minor">Minor</option>
+                      <option value="moderate">Moderate</option>
+                      <option value="major">Major</option>
+                      <option value="unknown">Severity?</option>
+                    </select>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon="trash"
+                      title="Remove flaw"
+                      disabled={!editable}
+                      onClick={() =>
+                        patch({ flaws: edits.flaws.filter((_, i) => i !== idx) })
+                      }
+                    />
+                  </div>
+                ))}
+                <div>
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    icon="plus"
+                    disabled={!editable}
+                    onClick={() =>
+                      patch({
+                        flaws: [
+                          ...edits.flaws,
+                          {
+                            label: "",
+                            description: "",
+                            severity: "unknown",
+                            source: "seller",
+                          },
+                        ],
+                      })
+                    }
+                  >
+                    Add flaw
+                  </Btn>
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection
               title="Pricing"
               desc={
                 edits.recommendedPriceCents != null
@@ -874,6 +1110,50 @@ export default function ListingDetailPage() {
                 })}
                 {item.channels.length === 0 && (
                   <div className="t-small muted">No channels configured.</div>
+                )}
+              </div>
+            </section>
+
+            <section className="card">
+              <div className="card__head">
+                <span className="card__title">Copy listing text</span>
+              </div>
+              <div className="card__body stack-4">
+                <div className="t-small muted">
+                  Copies paste-ready listing text to your clipboard for manual
+                  posting. Nothing is published automatically.
+                </div>
+                {ExportMarketplaceSchema.options.map((mp) => (
+                  <div key={mp} className="row" style={{ gap: 12 }}>
+                    <MpLogo id={mp} size={28} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="mp-row__name">{marketplaceName(mp)}</div>
+                    </div>
+                    <Btn
+                      variant="secondary"
+                      size="sm"
+                      icon="copy"
+                      disabled={exportBusy != null}
+                      onClick={() => void copyExport(mp)}
+                    >
+                      {exportBusy === mp ? "Copying…" : `Copy for ${marketplaceName(mp)}`}
+                    </Btn>
+                  </div>
+                ))}
+                {exportError && <div className="field__error">{exportError}</div>}
+                {exportResult && exportResult.warnings.length === 0 && (
+                  <Banner
+                    variant="info"
+                    title={`Copied ${marketplaceName(exportResult.marketplace)} listing text`}
+                    desc={`Paste it into the ${marketplaceName(exportResult.marketplace)} listing form.`}
+                  />
+                )}
+                {exportResult && exportResult.warnings.length > 0 && (
+                  <Banner
+                    variant="warn"
+                    title={`Copied ${marketplaceName(exportResult.marketplace)} listing text with gaps`}
+                    desc={exportResult.warnings.join(" · ")}
+                  />
                 )}
               </div>
             </section>

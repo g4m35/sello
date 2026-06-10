@@ -1,3 +1,4 @@
+import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type {
   AttemptView,
   ChannelView,
@@ -158,6 +159,8 @@ export const api = {
       bulletPoints?: string[];
       recommendedPriceCents?: number | null;
       selectedMarketplaces?: string[];
+      measurements?: Measurement[];
+      flaws?: Flaw[];
       approve?: boolean;
     },
   ) =>
@@ -199,6 +202,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // Copy/paste export text for marketplaces without a publish adapter. The
+  // server only formats text; nothing is published.
+  exportListing: (
+    token: string,
+    itemId: string,
+    marketplace: "depop" | "poshmark" | "grailed",
+  ) =>
+    request<{
+      marketplace: "depop" | "poshmark" | "grailed";
+      title: string;
+      body: string;
+      warnings: string[];
+    }>(
+      `/api/listings/${itemId}/export?marketplace=${encodeURIComponent(marketplace)}`,
+      token,
+    ),
 
   // Honest publish: the server returns 501 NOT_IMPLEMENTED. We surface the
   // outcome rather than treating it as an error toast.

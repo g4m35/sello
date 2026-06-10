@@ -128,6 +128,14 @@ export async function POST(request: Request) {
           pricingRationale: listingDraft.pricingRationale,
           itemSpecifics: listingDraft.itemSpecifics as Prisma.InputJsonValue,
           marketplaceDrafts: gemini.draft.marketplaceDrafts as Prisma.InputJsonValue,
+          measurements: listingDraft.measurements.map((m) => ({
+            ...m,
+            source: m.source ?? "ai",
+          })) as Prisma.InputJsonValue,
+          flaws: listingDraft.flaws.map((f) => ({
+            ...f,
+            source: f.source ?? "ai",
+          })) as Prisma.InputJsonValue,
           selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop"],
         },
       }),

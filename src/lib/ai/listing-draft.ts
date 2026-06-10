@@ -21,6 +21,47 @@ export const ProductCategorySchema = z.enum([
   "other",
 ]);
 
+export const MeasurementUnitSchema = z.enum(["in", "cm", "unknown"]);
+export const FlawSeveritySchema = z.enum(["minor", "moderate", "major", "unknown"]);
+const FieldSourceSchema = z.enum(["ai", "seller"]);
+
+// Structured measurements/flaws. `value: null` means "seller still needs to
+// measure"; Gemini must never invent exact numbers from photos.
+export const MeasurementSchema = z
+  .object({
+    label: z.string().min(1).max(80),
+    value: z.string().min(1).max(40).nullable(),
+    unit: MeasurementUnitSchema,
+    confidence: z.number().min(0).max(1).optional(),
+    source: FieldSourceSchema.optional(),
+  })
+  .strict();
+
+export const FlawSchema = z
+  .object({
+    label: z.string().min(1).max(80),
+    description: z.string().min(1).max(400),
+    severity: FlawSeveritySchema.optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    source: FieldSourceSchema.optional(),
+  })
+  .strict();
+
+export type Measurement = z.infer<typeof MeasurementSchema>;
+export type Flaw = z.infer<typeof FlawSchema>;
+
+// Lenient readers for stored draft JSON columns: older drafts have no
+// measurements/flaws, and malformed data degrades to "none" rather than 500s.
+export function parseMeasurements(value: unknown): Measurement[] {
+  const parsed = z.array(MeasurementSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
+export function parseFlaws(value: unknown): Flaw[] {
+  const parsed = z.array(FlawSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
 const MarketplaceListingSchema = z
   .object({
     title: z.string().min(10).max(80),
@@ -55,6 +96,9 @@ export const GeminiListingDraftSchema = z
         recommendedPriceCents: z.number().int().positive().nullable(),
         pricingRationale: z.string().min(10).max(600),
         compSearchQueries: z.array(z.string().min(8).max(180)).min(1).max(6),
+        // Defaulted so drafts stored before these fields existed still parse.
+        measurements: z.array(MeasurementSchema).max(12).default([]),
+        flaws: z.array(FlawSchema).max(12).default([]),
       })
       .strict(),
     marketplaceDrafts: z
@@ -152,6 +196,40 @@ export const geminiListingDraftResponseSchema = {
         recommendedPriceCents: { type: Type.INTEGER, nullable: true },
         pricingRationale: { type: Type.STRING },
         compSearchQueries: { type: Type.ARRAY, items: { type: Type.STRING } },
+        measurements: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              label: { type: Type.STRING },
+              value: { type: Type.STRING, nullable: true },
+              unit: {
+                type: Type.STRING,
+                format: "enum",
+                enum: MeasurementUnitSchema.options,
+              },
+              confidence: { type: Type.NUMBER },
+            },
+            required: ["label", "value", "unit"],
+          },
+        },
+        flaws: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              label: { type: Type.STRING },
+              description: { type: Type.STRING },
+              severity: {
+                type: Type.STRING,
+                format: "enum",
+                enum: FlawSeveritySchema.options,
+              },
+              confidence: { type: Type.NUMBER },
+            },
+            required: ["label", "description", "severity"],
+          },
+        },
       },
       required: [
         "title",
@@ -161,6 +239,8 @@ export const geminiListingDraftResponseSchema = {
         "recommendedPriceCents",
         "pricingRationale",
         "compSearchQueries",
+        "measurements",
+        "flaws",
       ],
     },
     marketplaceDrafts: {

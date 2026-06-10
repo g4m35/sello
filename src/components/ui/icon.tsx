@@ -10,7 +10,7 @@ export type IconName =
   | "package" | "box" | "list" | "grid" | "history" | "settings" | "store"
   | "tag" | "image" | "send" | "refresh" | "play" | "pause" | "link" | "copy"
   | "bell" | "user" | "help" | "tags" | "lock" | "dot" | "arrow-up"
-  | "arrow-dn" | "arrow-r" | "spark" | "csv" | "doc" | "flame";
+  | "arrow-dn" | "arrow-r" | "spark" | "csv" | "doc" | "flame" | "logout";
 
 type IconProps = {
   name: IconName;
@@ -77,6 +77,7 @@ export function Icon({ name, size = 16, strokeWidth = 1.6, className = "", style
     case "help": return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M9.1 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>;
     case "tags": return <svg {...common}><path d="M9 5H5a2 2 0 0 0-2 2v4a2 2 0 0 0 .59 1.41l8 8a2 2 0 0 0 2.82 0l4-4a2 2 0 0 0 0-2.82l-8-8A2 2 0 0 0 9 5z" /><path d="M6 9h.01" /></svg>;
     case "lock": return <svg {...common}><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>;
+    case "logout": return <svg {...common}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>;
     case "dot": return <svg {...common}><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" /></svg>;
     case "arrow-up": return <svg {...common}><path d="M12 19V5M5 12l7-7 7 7" /></svg>;
     case "arrow-dn": return <svg {...common}><path d="M12 5v14M5 12l7 7 7-7" /></svg>;
