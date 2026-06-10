@@ -20,14 +20,14 @@ EBAY_ENV=production via CLI). Then merged feature/ui (copy-text export +
 structured measurements/flaws, incl. migration
 `20260609120000_add_draft_measurements_flaws`) and feature/settings-landing
 (settings landing page; sidebar gear no longer signs users out) into develop,
-promoted to **main @ `f9930f7` and deployed to production** (sello.wtf, all
+promoted to **main @ `0991f08` and deployed to production** (sello.wtf, all
 routes verified live). Migration `add_draft_measurements_flaws` was applied to
 the prod DB via `npm run db:deploy` BEFORE the deploy, as required. Owner's
 next step: sign in on sello.wtf → Settings → Connect eBay and complete consent
 on auth.ebay.com.
 
 ## Current state
-- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `f9930f7`.
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `0991f08`.
 - Production eBay OAuth/readiness live; publishing remains sandbox-only by design (hard gate in `publish.ts`). Production publish is the next deliberate build, not a flag flip.
 - `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
 - Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
