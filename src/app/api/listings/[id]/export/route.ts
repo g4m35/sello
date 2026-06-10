@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { parseFlaws, parseMeasurements } from "@/lib/ai/listing-draft";
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { analyzeListing } from "@/lib/listing/intelligence";
 import {
   buildListingExport,
   ExportMarketplaceSchema,
@@ -55,6 +56,16 @@ export async function GET(
     }
 
     const draft = item.listingDrafts[0] ?? null;
+    const intelligence = analyzeListing({
+      title: draft?.title ?? item.productName,
+      brand: item.brand,
+      description: draft?.description ?? null,
+      productCategory: item.category,
+      size: item.size,
+      itemSpecifics: specificsOf(draft?.itemSpecifics),
+      tags: [],
+      savedEbayCategoryId: null,
+    });
     const exported = buildListingExport(marketplace, {
       productName: item.productName,
       brand: item.brand,
@@ -71,6 +82,7 @@ export async function GET(
       tags: tagsOf(draft?.marketplaceDrafts, marketplace),
       measurements: parseMeasurements(draft?.measurements),
       flaws: parseFlaws(draft?.flaws),
+      measurementProfile: intelligence.measurementProfile,
     });
 
     const warnings = [...exported.warnings];
