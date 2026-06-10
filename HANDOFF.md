@@ -12,6 +12,26 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Claude. **Listing intelligence milestone shipped** (main @
+`2a829f2`, deployed to sello.wtf). New `src/lib/listing/intelligence.ts`:
+item-type + department detection, deterministic eBay category inference
+(9 EBAY_US fashion categories, honest high/medium/low/none confidence; saved
+override always wins; ambiguity yields suggestions, never auto-fill),
+measurement profiles (shoes/tops/bottoms/outerwear/dress/bag/accessory/other).
+Dry run now resolves the category itself and blocks with "Choose an eBay
+category" + clickable suggestions (persisted via marketplaceDrafts.ebay.
+categoryId through the normal draft save flow) instead of a raw ID error;
+still zero outbound calls; production publish still hard-locked. Editor
+measurements section gives profile-aware guidance ("Add recommended fields";
+footwear: shoe size is the size). Copy/export: only filled measurements
+render; apparel without them says "Measurements available upon request.";
+shoes/bags/accessories get no garment filler; missing size never renders as
+a dash. `docs/SELLO_ROADMAP.md` added (completed-product architecture +
+fewest-possible-questions principle). 319 tests green. Next per roadmap:
+eBay required aspects in preflight, then the deliberate production publish
+unlock.
+
+## Previous update
 2026-06-10 — Claude. **eBay production publish preflight (dry run) shipped**
 (main @ `7f7a2ac`, deployed to sello.wtf). Production readiness is fully green
 (owner created the ship-from location). New `preflight.ts` validates a listing
