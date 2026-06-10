@@ -8,6 +8,7 @@ import {
   getEbayActionModel,
   getEbaySetupMessage,
   shouldAutoRefreshEbayReadiness,
+  shouldOfferEbayLocationSetup,
 } from "./view-model";
 
 function readiness(
@@ -99,6 +100,28 @@ describe("eBay marketplace settings view model", () => {
     );
 
     expect(actions.showPrimaryConnect).toBe(true);
+  });
+
+  it("offers the location setup form only when the location is missing on a live connection", () => {
+    expect(
+      shouldOfferEbayLocationSetup(readiness({ missing: ["inventory_location"] })),
+    ).toBe(true);
+    expect(shouldOfferEbayLocationSetup(readiness({ missing: [] }))).toBe(false);
+    expect(
+      shouldOfferEbayLocationSetup(
+        readiness({ connected: false, missing: ["oauth_connection"] }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldOfferEbayLocationSetup(
+        readiness({
+          connected: false,
+          reconnectRequired: true,
+          missing: ["oauth_connection", "inventory_location"],
+        }),
+      ),
+    ).toBe(false);
+    expect(shouldOfferEbayLocationSetup(null)).toBe(false);
   });
 
   it("auto-refreshes once after OAuth when no live readiness check has run", () => {

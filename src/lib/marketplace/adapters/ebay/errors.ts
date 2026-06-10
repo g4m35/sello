@@ -9,6 +9,7 @@ export const ebayErrorCodes = {
   tokenRefreshFailed: "EBAY_TOKEN_REFRESH_FAILED",
   policyMissing: "EBAY_POLICY_MISSING",
   locationMissing: "EBAY_LOCATION_MISSING",
+  locationCreateFailed: "EBAY_LOCATION_CREATE_FAILED",
   readinessFailed: "EBAY_READINESS_FAILED",
   apiFailed: "EBAY_API_FAILED",
   publishNotEnabled: "EBAY_PUBLISH_NOT_ENABLED",
