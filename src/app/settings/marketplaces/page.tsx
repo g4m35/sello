@@ -194,13 +194,15 @@ export default function MarketplaceSettingsPage() {
   const labels = ebayMarketplaceLabels(environment);
   const setupMessage = getEbaySetupMessage(readiness);
   const actionModel = getEbayActionModel(readiness, labels.connect);
-  const statusLabel = !connected
-    ? "Not connected"
-    : !ready
-      ? "Connected, setup incomplete"
-      : environment === "production"
-        ? "Connected, account ready (publishing not enabled yet)"
-        : "Connected, ready for sandbox publish";
+  const statusLabel = readiness?.reconnectRequired
+    ? "Connection expired, reconnect your eBay account"
+    : !connected
+      ? "Not connected"
+      : !ready
+        ? "Connected, setup incomplete"
+        : environment === "production"
+          ? "Connected, account ready (publishing not enabled yet)"
+          : "Connected, ready for sandbox publish";
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">

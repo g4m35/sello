@@ -3,6 +3,7 @@ import { AppError } from "@/lib/errors";
 export const ebayErrorCodes = {
   notConfigured: "EBAY_NOT_CONFIGURED",
   notConnected: "EBAY_NOT_CONNECTED",
+  reconnectRequired: "EBAY_RECONNECT_REQUIRED",
   oauthStateInvalid: "EBAY_OAUTH_STATE_INVALID",
   tokenExchangeFailed: "EBAY_TOKEN_EXCHANGE_FAILED",
   tokenRefreshFailed: "EBAY_TOKEN_REFRESH_FAILED",

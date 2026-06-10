@@ -31,6 +31,13 @@ export const ebayReadinessItems = [
 export type EbayReadinessItem = (typeof ebayReadinessItems)[number];
 
 export function getEbaySetupMessage(readiness: EbayReadinessResponse | null) {
+  if (readiness?.reconnectRequired) {
+    return {
+      heading: "Reconnect eBay",
+      body: "Your eBay connection has expired or was revoked. Reconnect your eBay account to continue.",
+    };
+  }
+
   if (!readiness?.connected) {
     return {
       heading: "Connect eBay",

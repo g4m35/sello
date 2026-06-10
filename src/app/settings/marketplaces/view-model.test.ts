@@ -75,6 +75,32 @@ describe("eBay marketplace settings view model", () => {
     expect(actions.showSecondaryReconnect).toBe(false);
   });
 
+  it("renders reconnect-required as an actionable reconnect message, not a generic failure", () => {
+    const model = getEbaySetupMessage(
+      readiness({
+        connected: false,
+        reconnectRequired: true,
+        missing: ["oauth_connection"],
+      }),
+    );
+
+    expect(model.heading).toBe("Reconnect eBay");
+    expect(model.body).toContain("expired or was revoked");
+    expect(model.body.toLowerCase()).not.toContain("failed");
+  });
+
+  it("offers the primary connect action when reconnect is required", () => {
+    const actions = getEbayActionModel(
+      readiness({
+        connected: false,
+        reconnectRequired: true,
+        missing: ["oauth_connection"],
+      }),
+    );
+
+    expect(actions.showPrimaryConnect).toBe(true);
+  });
+
   it("auto-refreshes once after OAuth when no live readiness check has run", () => {
     expect(shouldAutoRefreshEbayReadiness(readiness(), false)).toBe(true);
     expect(shouldAutoRefreshEbayReadiness(readiness(), true)).toBe(false);

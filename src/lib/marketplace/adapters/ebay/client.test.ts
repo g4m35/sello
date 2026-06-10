@@ -33,6 +33,68 @@ describe("eBay sandbox client", () => {
     );
   });
 
+  it("maps eBay 401 responses to a reconnect-required error", async () => {
+    const client = new EbaySandboxClient("secret-access-token", "EBAY_US", async () =>
+      new Response(JSON.stringify({ errors: [{ errorId: 1001 }] }), { status: 401 }),
+    );
+
+    await expect(client.listPaymentPolicies()).rejects.toMatchObject({
+      code: "EBAY_RECONNECT_REQUIRED",
+    });
+  });
+
+  it("includes the upstream status in API failure messages", async () => {
+    const client = new EbaySandboxClient("secret-access-token", "EBAY_US", async () =>
+      new Response(JSON.stringify({ errors: [{ errorId: 20403 }] }), { status: 403 }),
+    );
+
+    await expect(client.listPaymentPolicies()).rejects.toMatchObject({
+      code: "EBAY_API_FAILED",
+      details: { status: 403 },
+    });
+  });
+
+  it("maps revoked refresh tokens to a reconnect-required error", async () => {
+    const prisma: EbayTokenPrismaLike = {
+      marketplaceConnection: { update: vi.fn() },
+    };
+
+    await expect(
+      getUsableEbayAccessToken(
+        prisma,
+        {
+          id: "connection-1",
+          accessTokenEnc: encryptEbayToken("expired-access-token", key),
+          refreshTokenEnc: encryptEbayToken("revoked-refresh-token", key),
+          accessTokenExpiresAt: new Date(Date.now() - 60_000),
+        },
+        config,
+        async () =>
+          new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 }),
+      ),
+    ).rejects.toMatchObject({ code: "EBAY_RECONNECT_REQUIRED" });
+  });
+
+  it("keeps eBay 5xx refresh failures as typed refresh errors", async () => {
+    const prisma: EbayTokenPrismaLike = {
+      marketplaceConnection: { update: vi.fn() },
+    };
+
+    await expect(
+      getUsableEbayAccessToken(
+        prisma,
+        {
+          id: "connection-1",
+          accessTokenEnc: encryptEbayToken("expired-access-token", key),
+          refreshTokenEnc: encryptEbayToken("refresh-token", key),
+          accessTokenExpiresAt: new Date(Date.now() - 60_000),
+        },
+        config,
+        async () => new Response(JSON.stringify({}), { status: 503 }),
+      ),
+    ).rejects.toMatchObject({ code: "EBAY_TOKEN_REFRESH_FAILED" });
+  });
+
   it("targets the production API host when constructed for production", async () => {
     const urls: string[] = [];
     const fetchImpl = (async (url: string | URL) => {

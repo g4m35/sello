@@ -12,6 +12,24 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Codex. Completed authenticated production smoke on
+https://sello.wtf with the owner's signed-in Chrome session. Dashboard and
+Inventory rendered; visible Inventory showed one real ready item. Listing editor
+rendered photos, Basics, Measurements, Flaws, Pricing, readiness, Marketplaces,
+and copy-only export card. Temporary "Smoke test" measurement and flaw rows each
+autosaved, survived reload, were deleted, autosaved again, and were absent after
+final reload. Copy buttons for Depop/Poshmark/Grailed all copied text and showed
+warning banners, but the only visible item is a sneaker with no size and no
+measurements; exports warned `Missing size` / `Draft has not been approved yet`,
+had no Measurements section, and Poshmark therefore did not satisfy the requested
+Measurements section check. Depop ended in hashtags; Poshmark had no hashtags.
+Settings rendered, but Settings -> Marketplaces auto-refresh produced a
+production `POST /api/marketplaces/ebay/readiness` 502 and inline
+`Error: eBay API request failed.` No Sello-origin browser console errors were
+seen; only an unrelated Chrome extension `ethereum` injection error appeared.
+No app code changed; HANDOFF only.
+
+## Previous update
 2026-06-10 — Codex. Production eBay OAuth now returns to Sello, but the
 settings page was showing all readiness items as missing from stored/default
 readiness only: production Vercel logs after callback showed
@@ -25,7 +43,6 @@ passed: `npm run lint` (2 existing warnings in
 `src/app/api/listings/draft/draft-actions.test.ts`), `npx tsc --noEmit`, `npm
 test` (266 passed), `npx prisma validate`, `npm run build`.
 
-## Previous update
 2026-06-10 — Claude. **Production eBay OAuth invalid_request RESOLVED.** Root
 cause: `EBAY_REDIRECT_URI_NAME` held a truncated RuName missing the
 eBay-username prefix (`JacobHel-sello--zdvqgoeck` instead of
@@ -78,9 +95,9 @@ next step: sign in on sello.wtf → Settings → Connect eBay and complete conse
 on auth.ebay.com.
 
 ## Current state
-- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `0991f08`.
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `origin/main` @ `a45294a`; `origin/develop` @ `d7ad958`.
 - Production eBay OAuth/readiness live; publishing remains sandbox-only by design (hard gate in `publish.ts`). Production publish is the next deliberate build, not a flag flip.
-- Latest readiness diagnosis: OAuth is connected, but prior UI did not POST-refresh readiness after consent; production policy/location missing state is not proven real until the deployed auto-refresh calls eBay and updates stored readiness.
+- Latest readiness diagnosis: OAuth is connected, but the deployed auto-refresh now returns `POST /api/marketplaces/ebay/readiness` 502 with `eBay API request failed`; production policy/location missing state is still not proven real until the eBay Account/Inventory API call succeeds.
 - `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
 - Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
 - README on `develop` has been refreshed from the owner-provided Sello draft.
@@ -95,6 +112,7 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-10 (Codex): authenticated production smoke with owner's signed-in Chrome session. Pass: dashboard, Inventory list, listing editor panels/photos, measurement add-save-reload-delete, flaw add-save-reload-delete, copy-only language, no published claims, Settings shell. Partial/fail: Depop/Poshmark/Grailed copy worked and warned, but the only visible sneaker item has no size/measurements, so exports lacked a Measurements section and warned `Missing size`; Poshmark had Brand/Size/Condition/Details and no hashtags but no Measurements section. Settings -> Marketplaces rendered connected/setup-incomplete state but auto-refresh produced a Vercel prod `POST /api/marketplaces/ebay/readiness` 502 and inline `Error: eBay API request failed.` Browser console had only unrelated Chrome extension `ethereum` injection errors. No app code changed; HANDOFF only.
 - 2026-06-10 (Claude): production smoke test (read-only). Verified on sello.wtf: `/` 307→`/dashboard`, app shells render (client-side auth gate by design), `/privacy` 200, all data APIs 401 unauthenticated (export route included; auth checked before marketplace validation), no secrets in responses, **zero error/fatal/5xx Vercel production logs in 24h**. Local `develop` synced to `6faaf77` (prod `main @ a45294a` contains it). Authenticated UI flows (measurements/flaws editors, copy exports, eBay settings) not exercised: browser access was declined this session; owner should click through them once or grant browser access next time. No regression found; no code changed. Note: the 2 lint warnings are unused `_m`/`_f` in `draft-actions.test.ts` (cosmetic, fold into the next feature branch).
 - 2026-06-10 (Codex): diagnosed production eBay readiness display after successful OAuth. Confirmed code uses production eBay base URLs/token rows for `EBAY_ENV=production`, and Vercel logs showed only GET readiness after callback, no POST refresh. Added auto-refresh after connected/no-checkedAt readiness, clearer setup-required copy and Seller Hub links, secondary Reconnect behavior, production readiness route test, and view-model tests.
 - 2026-06-10 (Codex): replaced `README.md` from `/Users/jheller/Downloads/README_new.md`; verified exact file match and ran `npm run lint`, `npx tsc --noEmit`, `npm test`, `npx prisma validate`, and `npm run build` (pass; lint still has 2 existing warnings in `draft-actions.test.ts`, tests now 260 passed).
@@ -112,7 +130,7 @@ on auth.ebay.com.
 
 ## Blocked on owner (credentials / decisions — not code)
 - **Comp source key** (to light up automatic pricing): `STOCKX_API_KEY` (primary sold, needs partner approval), or `EBAY_BROWSE_CLIENT_ID`/`EBAY_BROWSE_CLIENT_SECRET` (interim active, prod keyset), or a third-party aggregator key. Add in Vercel env.
-- **eBay production seller setup**: after the deployed auto-refresh, if payment, fulfillment, return policy, or inventory location remain missing, the owner needs to create them in eBay Seller Hub for the connected production seller account, then click Refresh Readiness.
+- **eBay production seller setup / readiness refresh**: auto-refresh currently fails against eBay with a production 502 (`eBay API request failed`) before Sello can prove which policy/location items are missing. Investigate the eBay API response/status, scopes, and seller-account readiness; once refresh succeeds, if payment, fulfillment, return policy, or inventory location remain missing, the owner needs to create them in eBay Seller Hub for the connected production seller account, then click Refresh Readiness.
 - **eBay production publishing**: code decision + build (OAuth is done; publish gate stays locked until built and approved).
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
@@ -120,10 +138,11 @@ on auth.ebay.com.
 - **Account-deletion go-live**: set `EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN` (owner-chosen, 32–80 chars) and `EBAY_MARKETPLACE_DELETION_ENDPOINT` (= `https://sello.wtf/api/marketplaces/ebay/account-deletion`) in Vercel Production, deploy, then register URL + token in the eBay developer portal.
 
 ## Next up (priority order)
-1. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
-2. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
-3. **Stripe subscriptions** (gated on Stripe keys).
-4. **Background worker host** + inventory sync (sold detection, double-sell prevention).
+1. Investigate authenticated smoke findings: eBay readiness refresh 502 on `POST /api/marketplaces/ebay/readiness`, and decide whether copy exports should always include a Measurements section even for sneaker items with no measurements.
+2. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
+3. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
+4. **Stripe subscriptions** (gated on Stripe keys).
+5. **Background worker host** + inventory sync (sold detection, double-sell prevention).
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).
