@@ -28,10 +28,31 @@ import {
   getEbayActionModel,
   getEbaySetupMessage,
   shouldAutoRefreshEbayReadiness,
+  shouldOfferEbayLocationSetup,
   type EbayReadinessItem,
 } from "./view-model";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
+
+type LocationForm = {
+  name: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  stateOrProvince: string;
+  postalCode: string;
+  phone: string;
+};
+
+const emptyLocationForm: LocationForm = {
+  name: "Default location",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  stateOrProvince: "",
+  postalCode: "",
+  phone: "",
+};
 
 export default function MarketplaceSettingsPage() {
   const [session, setSession] = useState<Session | null>(null);
@@ -39,6 +60,7 @@ export default function MarketplaceSettingsPage() {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [actionState, setActionState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [locationForm, setLocationForm] = useState<LocationForm>(emptyLocationForm);
   const autoRefreshAttemptedRef = useRef(false);
   const supabase = useMemo(() => getBrowserSupabase(), []);
 
@@ -106,6 +128,48 @@ export default function MarketplaceSettingsPage() {
       setActionState("error");
     }
   }, [authHeaders, session?.access_token, supabase]);
+
+  const createInventoryLocation = useCallback(async () => {
+    if (!supabase || !session?.access_token) return;
+
+    setActionState("loading");
+    setError(null);
+    try {
+      await readJsonResponse<{ ok: true }>(
+        await fetch("/api/marketplaces/ebay/locations", {
+          method: "POST",
+          headers: {
+            ...authHeaders(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: locationForm.name,
+            addressLine1: locationForm.addressLine1,
+            ...(locationForm.addressLine2.trim()
+              ? { addressLine2: locationForm.addressLine2 }
+              : {}),
+            city: locationForm.city,
+            stateOrProvince: locationForm.stateOrProvince,
+            postalCode: locationForm.postalCode,
+            country: "US",
+            ...(locationForm.phone.trim() ? { phone: locationForm.phone } : {}),
+          }),
+        }),
+      );
+      // Creation succeeded: re-check readiness so the tile flips to Ready.
+      const payload = await readJsonResponse<EbayReadinessResponse>(
+        await fetch("/api/marketplaces/ebay/readiness", {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      );
+      setReadiness(payload);
+      setActionState("ready");
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setActionState("error");
+    }
+  }, [authHeaders, locationForm, session?.access_token, supabase]);
 
   const disconnectEbay = useCallback(async () => {
     if (!supabase || !session?.access_token) return;
@@ -194,6 +258,13 @@ export default function MarketplaceSettingsPage() {
   const labels = ebayMarketplaceLabels(environment);
   const setupMessage = getEbaySetupMessage(readiness);
   const actionModel = getEbayActionModel(readiness, labels.connect);
+  const offerLocationSetup = shouldOfferEbayLocationSetup(readiness);
+  const locationFormValid =
+    locationForm.name.trim().length > 0 &&
+    locationForm.addressLine1.trim().length > 0 &&
+    locationForm.city.trim().length > 0 &&
+    locationForm.stateOrProvince.trim().length >= 2 &&
+    /^\d{5}(-\d{4})?$/.test(locationForm.postalCode.trim());
   const statusLabel = readiness?.reconnectRequired
     ? "Connection expired, reconnect your eBay account"
     : !connected
@@ -287,14 +358,83 @@ export default function MarketplaceSettingsPage() {
                     Open eBay business policies
                   </a>
                   <a
-                    href="https://www.ebay.com/sh/settings"
+                    href="https://www.ebay.com/sh/ovw"
                     target="_blank"
                     rel="noreferrer"
                     className="font-medium text-amber-100 underline underline-offset-4"
                   >
-                    Open Seller Hub settings
+                    Open Seller Hub
                   </a>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {offerLocationSetup && (
+            <div className="border-b border-zinc-800 p-5">
+              <div className="rounded-md border border-zinc-700 bg-zinc-950 p-4">
+                <h3 className="text-sm font-semibold">
+                  Create your ship-from inventory location
+                </h3>
+                <p className="mt-1 text-sm text-zinc-400">
+                  eBay has no Seller Hub page for Inventory API locations, so
+                  Sello creates one for you. Enter the address your items ship
+                  from; it is sent only to eBay.
+                </p>
+                <form
+                  className="mt-4 grid gap-3 sm:grid-cols-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void createInventoryLocation();
+                  }}
+                >
+                  {(
+                    [
+                      ["name", "Location name", "Default location", true],
+                      ["addressLine1", "Address line 1", "123 Main St", true],
+                      ["addressLine2", "Address line 2 (optional)", "Apt 4", false],
+                      ["city", "City", "San Francisco", true],
+                      ["stateOrProvince", "State", "CA", true],
+                      ["postalCode", "ZIP code", "94103", true],
+                      ["phone", "Phone (optional)", "415-555-0100", false],
+                    ] as const
+                  ).map(([field, label, placeholder, required]) => (
+                    <label key={field} className="flex flex-col gap-1 text-sm">
+                      <span className="text-zinc-400">{label}</span>
+                      <input
+                        type="text"
+                        required={required}
+                        value={locationForm[field]}
+                        placeholder={placeholder}
+                        onChange={(e) =>
+                          setLocationForm((prev) => ({
+                            ...prev,
+                            [field]: e.target.value,
+                          }))
+                        }
+                        className="h-10 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-zinc-100 placeholder:text-zinc-600"
+                      />
+                    </label>
+                  ))}
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-zinc-400">Country</span>
+                    <input
+                      type="text"
+                      value="US"
+                      disabled
+                      className="h-10 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-zinc-500"
+                    />
+                  </label>
+                  <div className="flex items-end">
+                    <button
+                      type="submit"
+                      disabled={!locationFormValid || actionState === "loading"}
+                      className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-400 px-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Create inventory location
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

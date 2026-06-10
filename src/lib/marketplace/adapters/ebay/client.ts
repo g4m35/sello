@@ -11,6 +11,7 @@ import type {
   EbayEnvironment,
   EbayFulfillmentPolicy,
   EbayInventoryLocation,
+  EbayInventoryLocationPayload,
   EbayPaymentPolicy,
   EbayReturnPolicy,
   EbayTokenResponse,
@@ -90,6 +91,48 @@ export class EbaySandboxClient implements EbayApiClient {
       "/sell/inventory/v1/location",
     );
     return payload.locations ?? [];
+  }
+
+  // Seller setup action: creates an Inventory API ship-from location. eBay
+  // error bodies are surfaced (4xx → actionable 422, never a generic 502) so
+  // the seller sees exactly what eBay rejected about the address.
+  async createInventoryLocation(
+    merchantLocationKey: string,
+    payload: EbayInventoryLocationPayload,
+  ): Promise<void> {
+    const response = await this.fetchImpl(
+      `${this.apiBaseUrl}/sell/inventory/v1/location/${encodeURIComponent(merchantLocationKey)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (response.status === 401) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.reconnectRequired,
+        "eBay rejected the stored connection. Reconnect your eBay account.",
+        409,
+        { status: response.status },
+      );
+    }
+
+    if (!response.ok) {
+      const detail = await readEbayErrorMessage(response);
+      throw new EbayIntegrationError(
+        ebayErrorCodes.locationCreateFailed,
+        detail
+          ? `eBay rejected the inventory location: ${detail}`
+          : `eBay rejected the inventory location (HTTP ${response.status}).`,
+        response.status >= 500 ? 502 : 422,
+        { status: response.status },
+      );
+    }
   }
 
   async createOrReplaceInventoryItem(
@@ -198,6 +241,22 @@ export class EbaySandboxClient implements EbayApiClient {
       return null;
     }
     return JSON.parse(text) as T;
+  }
+}
+
+// Best-effort extraction of eBay's human-readable error messages. Never
+// includes tokens (eBay error bodies don't carry them) and never throws.
+async function readEbayErrorMessage(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.json()) as {
+      errors?: { message?: string; longMessage?: string }[];
+    };
+    const messages = (body.errors ?? [])
+      .map((e) => e.longMessage || e.message)
+      .filter((m): m is string => typeof m === "string" && m.length > 0);
+    return messages.length > 0 ? messages.join(" ") : null;
+  } catch {
+    return null;
   }
 }
 

@@ -76,6 +76,19 @@ export function getEbayActionModel(
   };
 }
 
+// The in-app location setup form is offered only when the location is the
+// thing missing on a live connection (eBay has no Seller Hub UI for Inventory
+// API locations, so in-app creation is the only self-serve path).
+export function shouldOfferEbayLocationSetup(
+  readiness: EbayReadinessResponse | null,
+) {
+  return Boolean(
+    readiness?.connected &&
+      !readiness.reconnectRequired &&
+      readiness.missing.includes("inventory_location"),
+  );
+}
+
 export function shouldAutoRefreshEbayReadiness(
   readiness: EbayReadinessResponse | null,
   attempted: boolean,
