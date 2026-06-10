@@ -123,4 +123,89 @@ describe("eBay readiness route", () => {
     expect(JSON.stringify(payload)).not.toContain("raw-access-token");
     expect(JSON.stringify(payload)).not.toContain("raw-refresh-token");
   });
+
+  it("refreshes readiness through production APIs using the stored production token", async () => {
+    process.env.EBAY_ENV = "production";
+    const key = process.env.EBAY_TOKEN_ENCRYPTION_KEY!;
+    const findUnique = vi.fn().mockResolvedValue({
+      id: "connection-1",
+      userId: "11111111-1111-4111-8111-111111111111",
+      marketplace: "ebay",
+      environment: "production",
+      accessTokenEnc: encryptEbayToken("raw-production-access-token", key),
+      refreshTokenEnc: encryptEbayToken("raw-production-refresh-token", key),
+      accessTokenExpiresAt: new Date(Date.now() + 120_000),
+      refreshTokenExpiresAt: null,
+      scopes: [
+        "https://api.ebay.com/oauth/api_scope/sell.inventory",
+        "https://api.ebay.com/oauth/api_scope/sell.account",
+      ],
+    });
+    mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({
+      id: "11111111-1111-4111-8111-111111111111",
+    });
+    mocks.getPrisma.mockReturnValue({
+      marketplaceConnection: {
+        findUnique,
+        update: vi.fn(),
+      },
+      ebaySellerConfig: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockImplementation(({ create }) => create),
+      },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ paymentPolicies: [] })),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ fulfillmentPolicies: [] })),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ returnPolicies: [] })),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ locations: [] })));
+
+    const { POST } = await import("./route");
+    const response = await POST(
+      new Request("http://localhost/api/marketplaces/ebay/readiness", {
+        method: "POST",
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.environment).toBe("production");
+    expect(payload.connected).toBe(true);
+    expect(payload.ready).toBe(false);
+    expect(payload.missing).toEqual([
+      "payment_policy",
+      "fulfillment_policy",
+      "return_policy",
+      "inventory_location",
+    ]);
+    expect(findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_marketplace_environment: {
+          userId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+          environment: "production",
+        },
+      },
+    });
+    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.ebay.com/sell/account/v1/payment_policy?marketplace_id=EBAY_US",
+      "https://api.ebay.com/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US",
+      "https://api.ebay.com/sell/account/v1/return_policy?marketplace_id=EBAY_US",
+      "https://api.ebay.com/sell/inventory/v1/location",
+    ]);
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect((init?.headers as Record<string, string>).Authorization).toBe(
+        "Bearer raw-production-access-token",
+      );
+    }
+    expect(JSON.stringify(payload)).not.toContain("raw-production-access-token");
+    expect(JSON.stringify(payload)).not.toContain("raw-production-refresh-token");
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   CheckCircle2,
@@ -21,24 +21,17 @@ import {
 import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
 
 import { ebayMarketplaceLabels } from "./labels";
+import {
+  ebayReadinessHelp,
+  ebayReadinessItems,
+  ebayReadinessLabels,
+  getEbayActionModel,
+  getEbaySetupMessage,
+  shouldAutoRefreshEbayReadiness,
+  type EbayReadinessItem,
+} from "./view-model";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
-
-const readinessLabels: Record<string, string> = {
-  oauth_connection: "OAuth connection",
-  payment_policy: "Payment policy",
-  fulfillment_policy: "Fulfillment policy",
-  return_policy: "Return policy",
-  inventory_location: "Inventory location",
-};
-
-const readinessItems = [
-  "oauth_connection",
-  "payment_policy",
-  "fulfillment_policy",
-  "return_policy",
-  "inventory_location",
-] as const;
 
 export default function MarketplaceSettingsPage() {
   const [session, setSession] = useState<Session | null>(null);
@@ -46,6 +39,7 @@ export default function MarketplaceSettingsPage() {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [actionState, setActionState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const autoRefreshAttemptedRef = useRef(false);
   const supabase = useMemo(() => getBrowserSupabase(), []);
 
   const authHeaders = useCallback((): Record<string, string> => {
@@ -71,6 +65,67 @@ export default function MarketplaceSettingsPage() {
       setLoadState("error");
     }
   }, [authHeaders, session?.access_token]);
+
+  const connectEbay = useCallback(async () => {
+    if (!supabase || !session?.access_token) return;
+
+    setActionState("loading");
+    setError(null);
+    try {
+      const payload = await readJsonResponse<{ authorizationUrl: string }>(
+        await fetch("/api/marketplaces/ebay/connect", {
+          headers: {
+            ...authHeaders(),
+            Accept: "application/json",
+          },
+        }),
+      );
+      window.location.assign(payload.authorizationUrl);
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setActionState("error");
+    }
+  }, [authHeaders, session?.access_token, supabase]);
+
+  const refreshReadiness = useCallback(async () => {
+    if (!supabase || !session?.access_token) return;
+
+    setActionState("loading");
+    setError(null);
+    try {
+      const payload = await readJsonResponse<EbayReadinessResponse>(
+        await fetch("/api/marketplaces/ebay/readiness", {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      );
+      setReadiness(payload);
+      setActionState("ready");
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setActionState("error");
+    }
+  }, [authHeaders, session?.access_token, supabase]);
+
+  const disconnectEbay = useCallback(async () => {
+    if (!supabase || !session?.access_token) return;
+
+    setActionState("loading");
+    setError(null);
+    try {
+      await readJsonResponse<{ ok: true }>(
+        await fetch("/api/marketplaces/ebay/disconnect", {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      );
+      await loadReadiness();
+      setActionState("ready");
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setActionState("error");
+    }
+  }, [authHeaders, loadReadiness, session?.access_token, supabase]);
 
   useEffect(() => {
     let mounted = true;
@@ -118,72 +173,27 @@ export default function MarketplaceSettingsPage() {
     return () => window.clearTimeout(timer);
   }, [loadReadiness]);
 
-  async function connectEbay() {
-    if (!supabase || !session?.access_token) return;
-
-    setActionState("loading");
-    setError(null);
-    try {
-      const payload = await readJsonResponse<{ authorizationUrl: string }>(
-        await fetch("/api/marketplaces/ebay/connect", {
-          headers: {
-            ...authHeaders(),
-            Accept: "application/json",
-          },
-        }),
-      );
-      window.location.assign(payload.authorizationUrl);
-    } catch (err) {
-      setError(getErrorMessage(err));
-      setActionState("error");
+  useEffect(() => {
+    if (
+      !shouldAutoRefreshEbayReadiness(
+        readiness,
+        autoRefreshAttemptedRef.current,
+      )
+    ) {
+      return;
     }
-  }
 
-  async function refreshReadiness() {
-    if (!supabase || !session?.access_token) return;
+    autoRefreshAttemptedRef.current = true;
+    void refreshReadiness();
+  }, [readiness, refreshReadiness]);
 
-    setActionState("loading");
-    setError(null);
-    try {
-      const payload = await readJsonResponse<EbayReadinessResponse>(
-        await fetch("/api/marketplaces/ebay/readiness", {
-          method: "POST",
-          headers: authHeaders(),
-        }),
-      );
-      setReadiness(payload);
-      setActionState("ready");
-    } catch (err) {
-      setError(getErrorMessage(err));
-      setActionState("error");
-    }
-  }
-
-  async function disconnectEbay() {
-    if (!supabase || !session?.access_token) return;
-
-    setActionState("loading");
-    setError(null);
-    try {
-      await readJsonResponse<{ ok: true }>(
-        await fetch("/api/marketplaces/ebay/disconnect", {
-          method: "POST",
-          headers: authHeaders(),
-        }),
-      );
-      await loadReadiness();
-      setActionState("ready");
-    } catch (err) {
-      setError(getErrorMessage(err));
-      setActionState("error");
-    }
-  }
-
-  const missing = new Set(readiness?.missing ?? readinessItems);
+  const missing = new Set(readiness?.missing ?? ebayReadinessItems);
   const connected = Boolean(readiness?.connected);
   const ready = Boolean(readiness?.ready);
   const environment = readiness?.environment ?? null;
   const labels = ebayMarketplaceLabels(environment);
+  const setupMessage = getEbaySetupMessage(readiness);
+  const actionModel = getEbayActionModel(readiness, labels.connect);
   const statusLabel = !connected
     ? "Not connected"
     : !ready
@@ -215,15 +225,28 @@ export default function MarketplaceSettingsPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={connectEbay}
-                disabled={!session || actionState === "loading"}
-                className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-400 px-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Plug size={16} aria-hidden="true" />
-                {labels.connect}
-              </button>
+              {actionModel.showPrimaryConnect && (
+                <button
+                  type="button"
+                  onClick={connectEbay}
+                  disabled={!session || actionState === "loading"}
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-400 px-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Plug size={16} aria-hidden="true" />
+                  {actionModel.primaryConnectLabel}
+                </button>
+              )}
+              {actionModel.showSecondaryReconnect && (
+                <button
+                  type="button"
+                  onClick={connectEbay}
+                  disabled={!session || actionState === "loading"}
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-semibold text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Plug size={16} aria-hidden="true" />
+                  {actionModel.secondaryReconnectLabel}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={refreshReadiness}
@@ -245,8 +268,37 @@ export default function MarketplaceSettingsPage() {
             </div>
           </div>
 
+          {connected && !ready && (
+            <div className="border-b border-zinc-800 p-5">
+              <div className="rounded-md border border-amber-300/30 bg-amber-300/10 p-4">
+                <h3 className="text-sm font-semibold text-amber-100">
+                  {setupMessage.heading}
+                </h3>
+                <p className="mt-1 text-sm text-amber-50/80">{setupMessage.body}</p>
+                <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                  <a
+                    href="https://www.ebay.com/sh/buspolicy"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-amber-100 underline underline-offset-4"
+                  >
+                    Open eBay business policies
+                  </a>
+                  <a
+                    href="https://www.ebay.com/sh/settings"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-amber-100 underline underline-offset-4"
+                  >
+                    Open Seller Hub settings
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
-            {readinessItems.map((item) => {
+            {ebayReadinessItems.map((item) => {
               const ok = item === "oauth_connection" ? connected : !missing.has(item);
               const Icon = ok ? CheckCircle2 : XCircle;
 
@@ -260,8 +312,17 @@ export default function MarketplaceSettingsPage() {
                     className={ok ? "text-emerald-300" : "text-zinc-500"}
                     aria-hidden="true"
                   />
-                  <p className="mt-3 text-sm font-medium">{readinessLabels[item]}</p>
-                  <p className="mt-1 text-xs text-zinc-500">{ok ? "Ready" : "Missing"}</p>
+                  <p className="mt-3 text-sm font-medium">
+                    {ebayReadinessLabels[item]}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {ok ? "Ready" : "Missing"}
+                  </p>
+                  {!ok && (
+                    <p className="mt-3 text-xs leading-5 text-zinc-400">
+                      {ebayReadinessHelp[item as EbayReadinessItem]}
+                    </p>
+                  )}
                 </div>
               );
             })}
