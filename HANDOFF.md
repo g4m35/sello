@@ -13,12 +13,17 @@ before finishing.**
 
 ## Last updated
 2026-06-09 — Claude. **Production eBay OAuth enabled and deployed** (main @
-`1892879`, sello.wtf). EBAY_ENV now accepts "production"; publishing stays hard
-sandbox-locked. All production eBay env vars are set in Vercel (this project
-forces env vars to Sensitive, so values are write-only; EBAY_TOKEN_ENCRYPTION_KEY
-and EBAY_OAUTH_STATE_SECRET were generated fresh, EBAY_ENV=production set via CLI).
-Owner's next step: sign in on sello.wtf → Settings → Marketplaces → Connect eBay
-and complete consent on auth.ebay.com.
+`1892879`, sello.wtf); EBAY_ENV accepts "production", publishing stays hard
+sandbox-locked, all production eBay env vars set in Vercel (Sensitive/write-only;
+EBAY_TOKEN_ENCRYPTION_KEY and EBAY_OAUTH_STATE_SECRET generated fresh,
+EBAY_ENV=production via CLI). Then merged feature/ui (copy-text export +
+structured measurements/flaws, incl. migration
+`20260609120000_add_draft_measurements_flaws`) and feature/settings-landing
+(settings landing page; sidebar gear no longer signs users out) into develop
+for the next prod deploy. ⚠️ Deploy ordering: apply the migration
+(`npm run db:deploy`) before/with the deploy — Prisma selects all model
+columns, so draft reads 500 without it. Owner's next step: sign in on
+sello.wtf → Settings → Connect eBay and complete consent on auth.ebay.com.
 
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `main` @ `1892879`.
@@ -36,6 +41,9 @@ and complete consent on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-09 (Claude): settings landing page at `/settings` inside the app shell (eBay connection status + manage, account name/email/sign-out, privacy link); sidebar gets a real Settings nav item and the footer gear (which silently called signOut and bounced users to login) now uses a logout icon. `feature/settings-landing` -> develop.
+- 2026-06-09 (Claude): structured measurements + flaws (merged from `feature/ui`). `MeasurementSchema`/`FlawSchema` in `src/lib/ai/listing-draft.ts` (defaulted `[]` so old `validatedJson` still parses; reset/duplicate preserve them), Gemini prompt v2 (never invent measurements; placeholders with `value: null`; only visible flaws; never claim "no flaws"), nullable JSONB columns on `ListingDraft` (additive migration), editable Measurements/Flaws sections on `/inventory/[id]` (rows the seller edits get `source: "seller"`), exports prefer structured data with itemSpecifics-heuristic fallback for old drafts.
+- 2026-06-09 (Claude): copy/paste listing export for Depop/Poshmark/Grailed (merged from `feature/ui`). Pure formatters in `src/lib/marketplace/export-formatters.ts`, route `GET /api/listings/[id]/export?marketplace=…` (typed `{marketplace, title, body, warnings}`; 400 bad marketplace, 401, 404 cross-seller), "Copy listing text" card on `/inventory/[id]` with per-marketplace copy buttons + warning banner. Honest copy-only: no publishing claimed.
 - 2026-06-09 (Claude): production eBay OAuth enablement (feature/ebay-production-oauth -> develop -> main @ 1892879, deployed). EBAY_ENV="production" accepted; env-keyed auth/token/API URLs; connection scoping by config environment in callback/readiness/disconnect; new getEbayEnvironment() so disconnect/stored-readiness work without full credentials; publish hard-locked to sandbox (typed not_enabled in production, zero outbound calls, regression-tested). Set Vercel Production env: EBAY_TOKEN_ENCRYPTION_KEY + EBAY_OAUTH_STATE_SECRET (freshly generated), EBAY_ENV=production. EBAY_CLIENT_ID/SECRET/REDIRECT_URI_NAME were added by owner. Stray empty vars EBAY_RU_NAME / EBAY_PRODUCTION_RU_NAME remain in Vercel; safe to delete.
 - 2026-06-09 (Claude): promoted develop -> main (PR #25) and deployed to production (main @ 27b7151, sello.wtf). All prior develop work now live. Account-deletion GET still returns 500 in prod until its env vars are set.
 - 2026-06-09 (Claude): eBay account-deletion compliance endpoint `/api/marketplaces/ebay/account-deletion` (GET challenge hash, POST ack + best-effort connection purge + JobLog audit) + tests.
@@ -54,6 +62,7 @@ and complete consent on auth.ebay.com.
 - **Account-deletion go-live**: set `EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN` (owner-chosen, 32–80 chars) and `EBAY_MARKETPLACE_DELETION_ENDPOINT` (= `https://sello.wtf/api/marketplaces/ebay/account-deletion`) in Vercel Production, deploy, then register URL + token in the eBay developer portal.
 
 ## Next up (priority order)
+0. Push `feature/ui` + PR to `develop` for copy-export + structured measurements/flaws (when owner asks). Remember the migration deploy-ordering note above.
 1. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
 2. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
 3. **Stripe subscriptions** (gated on Stripe keys).

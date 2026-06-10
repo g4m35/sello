@@ -1,3 +1,4 @@
+import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
 
 /**
@@ -78,6 +79,8 @@ export type ItemDetailView = ItemView & {
   description: string;
   bulletPoints: string[];
   pricingRationale: string | null;
+  measurements: Measurement[];
+  flaws: Flaw[];
   selectedMarketplaces: string[];
   readiness: ReadinessView;
   attempts: AttemptView[];

@@ -67,6 +67,60 @@ const validDraft = {
   warnings: ["Confirm size and condition from additional photos before publishing."],
 };
 
+describe("GeminiListingDraftSchema measurements and flaws", () => {
+  it("accepts structured measurements and flaws", () => {
+    const draft = {
+      ...validDraft,
+      listingDraft: {
+        ...validDraft.listingDraft,
+        measurements: [
+          { label: "Insole length", value: "28", unit: "cm", confidence: 0.7 },
+          { label: "Pit to pit", value: null, unit: "unknown" },
+        ],
+        flaws: [
+          {
+            label: "Heel drag",
+            description: "Light tread wear on both heels",
+            severity: "minor",
+            confidence: 0.8,
+          },
+        ],
+      },
+    };
+
+    const parsed = GeminiListingDraftSchema.parse(draft);
+    expect(parsed.listingDraft.measurements).toHaveLength(2);
+    expect(parsed.listingDraft.measurements[1].value).toBeNull();
+    expect(parsed.listingDraft.flaws[0].severity).toBe("minor");
+  });
+
+  it("defaults measurements and flaws to empty arrays for older drafts", () => {
+    const parsed = GeminiListingDraftSchema.parse(validDraft);
+    expect(parsed.listingDraft.measurements).toEqual([]);
+    expect(parsed.listingDraft.flaws).toEqual([]);
+  });
+
+  it("rejects invalid units and severities", () => {
+    const badUnit = {
+      ...validDraft,
+      listingDraft: {
+        ...validDraft.listingDraft,
+        measurements: [{ label: "Chest", value: "21", unit: "feet" }],
+      },
+    };
+    expect(() => GeminiListingDraftSchema.parse(badUnit)).toThrow();
+
+    const badSeverity = {
+      ...validDraft,
+      listingDraft: {
+        ...validDraft.listingDraft,
+        flaws: [{ label: "Stain", description: "Small mark", severity: "catastrophic" }],
+      },
+    };
+    expect(() => GeminiListingDraftSchema.parse(badSeverity)).toThrow();
+  });
+});
+
 describe("GeminiListingDraftSchema", () => {
   it("accepts a complete structured marketplace draft", () => {
     expect(GeminiListingDraftSchema.parse(validDraft)).toMatchObject({
@@ -100,7 +154,10 @@ describe("GeminiListingDraftSchema", () => {
   });
 
   it("parses raw Gemini JSON and rejects markdown-wrapped responses", () => {
-    expect(parseGeminiListingDraft(JSON.stringify(validDraft))).toEqual(validDraft);
+    expect(parseGeminiListingDraft(JSON.stringify(validDraft))).toEqual({
+      ...validDraft,
+      listingDraft: { ...validDraft.listingDraft, measurements: [], flaws: [] },
+    });
 
     expect(() =>
       parseGeminiListingDraft(`\`\`\`json\n${JSON.stringify(validDraft)}\n\`\`\``),
