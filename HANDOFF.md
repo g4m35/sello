@@ -12,6 +12,19 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-10 — Claude. **Readiness 502 hotfix deployed** (main @ `33f1bde`).
+Root cause: eBay Account API answers 4xx for sellers not opted into business
+policies; the client converted every non-OK response into EBAY_API_FAILED 502,
+so Refresh Readiness 502'd with a generic message. Now: per-call 4xx → missing
+readiness items (200, structured); eBay 401 / revoked refresh token → typed
+EBAY_RECONNECT_REQUIRED state (200, "reconnect" UI message, reconnectRequired
+flag on EbayReadinessResponse); only real eBay 5xx → 502 with upstream status
+in the message. Production publishing untouched (still hard-disabled; test
+asserts it). 278 tests green. Owner verifies by clicking Refresh Readiness on
+sello.wtf/settings/marketplaces; expect setup-incomplete with missing policy
+items, no inline error.
+
+## Previous update
 2026-06-10 — Codex. Completed authenticated production smoke on
 https://sello.wtf with the owner's signed-in Chrome session. Dashboard and
 Inventory rendered; visible Inventory showed one real ready item. Listing editor
