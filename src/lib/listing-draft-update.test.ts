@@ -37,6 +37,32 @@ describe("ListingDraftUpdateSchema", () => {
     expect(update.marketplaceDrafts?.ebay?.categoryId).toBe("");
   });
 
+  it("accepts seller-filled eBay aspects for draft persistence", () => {
+    const update = ListingDraftUpdateSchema.parse({
+      title: "Nike Air Max 1 Patta Waves Noise Aqua",
+      description: "Authentic pair.",
+      bulletPoints: [],
+      recommendedPriceCents: 24000,
+      marketplaceDrafts: {
+        ebay: {
+          categoryId: "15709",
+          aspects: {
+            "US Shoe Size": "10.5",
+            Department: "Men",
+            Color: "Noise Aqua",
+          },
+        },
+      },
+      selectedMarketplaces: ["ebay"],
+    });
+
+    expect(update.marketplaceDrafts?.ebay?.aspects).toEqual({
+      "US Shoe Size": "10.5",
+      Department: "Men",
+      Color: "Noise Aqua",
+    });
+  });
+
   it("rejects malformed eBay category IDs", () => {
     expect(() =>
       ListingDraftUpdateSchema.parse({

@@ -109,6 +109,7 @@ describe("preflightEbayListing", () => {
     );
 
     expect(result.preview).not.toBeNull();
+    expect(result.quantity).toBe(1);
     expect(result.preview!.sku).toBe("percs_item-1");
     expect(result.preview!.steps).toEqual([
       "createOrReplaceInventoryItem",
@@ -119,7 +120,13 @@ describe("preflightEbayListing", () => {
       condition: "NEW_WITH_TAGS",
       product: {
         title: "Nike Air Max 1 Patta Waves Noise Aqua",
-        aspects: { Brand: ["Nike"], Size: ["US 10"] },
+        aspects: {
+          Brand: ["Nike"],
+          Color: ["Aqua"],
+          Department: ["Men"],
+          Size: ["US 10"],
+          "US Shoe Size": ["10"],
+        },
         imageUrls: [
           "https://project.supabase.co/storage/v1/object/public/b/p1.jpg",
         ],
@@ -220,6 +227,111 @@ describe("preflightEbayListing", () => {
     });
     expect(result.itemType).toBe("sneakers");
     expect(result.measurementProfile).toBe("shoes");
+  });
+
+  it("blocks readiness when shoe size is missing with a friendly aspect label", async () => {
+    const item = {
+      ...readyItem(),
+      size: null,
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.missing).toContain("ebay_aspects");
+    expect(result.preview).toBeNull();
+    expect(result.aspects.missingRequired).toEqual([
+      expect.objectContaining({ name: "US Shoe Size", label: "Shoe size" }),
+    ]);
+  });
+
+  it("reports missing brand and color as friendly aspect labels", async () => {
+    const item = {
+      ...readyItem(),
+      brand: null,
+      colorway: null,
+      listingDrafts: [
+        {
+          ...readyItem().listingDrafts[0],
+          title: "Air Max 1 Patta Waves",
+          itemSpecifics: {},
+        },
+      ],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.aspects.missingRequired.map((aspect) => aspect.label)).toEqual([
+      "Brand",
+      "Color",
+    ]);
+    expect(result.aspects.values.Department).toBe("Men");
+  });
+
+  it("defaults resale quantity to 1 visibly when absent", async () => {
+    const item = {
+      ...readyItem(),
+      listingDrafts: [
+        {
+          ...readyItem().listingDrafts[0],
+          marketplaceDrafts: { ebay: { categoryId: "15709" } },
+        },
+      ],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+    );
+
+    expect(result.ready).toBe(true);
+    expect(result.quantity).toBe(1);
+    expect(result.warnings).toContain("quantity_defaulted_to_1");
+    expect(result.preview!.inventoryItem.availability.shipToLocationAvailability.quantity).toBe(1);
+  });
+
+  it("uses saved aspect values to unblock readiness", async () => {
+    const item = {
+      ...readyItem(),
+      size: null,
+      colorway: null,
+      listingDrafts: [
+        {
+          ...readyItem().listingDrafts[0],
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: "15709",
+              quantity: 1,
+              aspects: { "US Shoe Size": "10.5", Color: "Aqua" },
+            },
+          },
+        },
+      ],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+    );
+
+    expect(result.ready).toBe(true);
+    expect(result.aspects.values).toMatchObject({
+      "US Shoe Size": "10.5",
+      Color: "Aqua",
+    });
+    expect(result.preview!.inventoryItem.product.aspects["US Shoe Size"]).toEqual(["10.5"]);
+    expect(result.preview!.inventoryItem.product.aspects.Color).toEqual(["Aqua"]);
   });
 
   it("blocks with a category choice and suggestions for ambiguous items", async () => {

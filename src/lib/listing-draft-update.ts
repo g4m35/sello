@@ -10,6 +10,11 @@ const EbayMarketplaceDraftUpdateSchema = z
       .trim()
       .regex(/^\d*$/, "eBay category ID must contain digits only.")
       .max(32),
+    // Seller-provided eBay item specifics (e.g. Department, Color) that have
+    // no canonical item field. Aspect name → value.
+    aspects: z
+      .record(z.string().trim().min(1).max(60), z.string().trim().max(80))
+      .optional(),
   })
   .strict();
 

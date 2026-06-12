@@ -42,6 +42,7 @@ type DraftEdits = {
   recommendedPriceCents: number | null;
   selectedMarketplaces: string[];
   ebayCategoryId: string;
+  ebayAspects: Record<string, string>;
   measurements: Measurement[];
   flaws: Flaw[];
 };
@@ -83,6 +84,7 @@ function editsFrom(item: ItemDetailView): DraftEdits {
     recommendedPriceCents: item.priceCents,
     selectedMarketplaces: item.selectedMarketplaces,
     ebayCategoryId: item.ebayCategoryId ?? "",
+    ebayAspects: item.ebayAspects,
     measurements: item.measurements,
     flaws: item.flaws,
   };
@@ -261,7 +263,12 @@ export default function ListingDetailPage() {
           bulletPoints: next.bulletPoints,
           recommendedPriceCents: next.recommendedPriceCents,
           selectedMarketplaces: next.selectedMarketplaces,
-          marketplaceDrafts: { ebay: { categoryId: next.ebayCategoryId.trim() } },
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: next.ebayCategoryId.trim(),
+              aspects: next.ebayAspects,
+            },
+          },
           measurements: savableMeasurements(next.measurements),
           flaws: savableFlaws(next.flaws),
         });
@@ -373,7 +380,12 @@ export default function ListingDetailPage() {
         bulletPoints: edits.bulletPoints,
         recommendedPriceCents: edits.recommendedPriceCents,
         selectedMarketplaces: edits.selectedMarketplaces,
-        marketplaceDrafts: { ebay: { categoryId: edits.ebayCategoryId.trim() } },
+        marketplaceDrafts: {
+          ebay: {
+            categoryId: edits.ebayCategoryId.trim(),
+            aspects: edits.ebayAspects,
+          },
+        },
         measurements: savableMeasurements(edits.measurements),
         flaws: savableFlaws(edits.flaws),
         approve: true,
@@ -1192,6 +1204,9 @@ export default function ListingDetailPage() {
               token={token}
               savedCategoryId={edits.ebayCategoryId}
               onSelectCategory={(categoryId) => patch({ ebayCategoryId: categoryId })}
+              onSaveAspect={(name, value) =>
+                patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
+              }
             />
 
             <section className="card">

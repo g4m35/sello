@@ -159,7 +159,9 @@ export const api = {
       bulletPoints?: string[];
       recommendedPriceCents?: number | null;
       selectedMarketplaces?: string[];
-      marketplaceDrafts?: { ebay?: { categoryId: string } };
+      marketplaceDrafts?: {
+        ebay?: { categoryId: string; aspects?: Record<string, string> };
+      };
       measurements?: Measurement[];
       flaws?: Flaw[];
       approve?: boolean;

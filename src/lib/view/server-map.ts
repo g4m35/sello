@@ -129,11 +129,25 @@ export function mapItemDetail(
     measurements: parseMeasurements(draft?.measurements),
     flaws: parseFlaws(draft?.flaws),
     ebayCategoryId: ebayCategoryIdOf(draft?.marketplaceDrafts),
+    ebayAspects: ebayAspectsOf(draft?.marketplaceDrafts),
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     readiness,
     attempts,
     photos,
   };
+}
+
+function ebayAspectsOf(marketplaceDrafts: unknown): Record<string, string> {
+  if (!marketplaceDrafts || typeof marketplaceDrafts !== "object") return {};
+  const ebay = (marketplaceDrafts as Record<string, unknown>).ebay;
+  if (!ebay || typeof ebay !== "object") return {};
+  const aspects = (ebay as Record<string, unknown>).aspects;
+  if (!aspects || typeof aspects !== "object" || Array.isArray(aspects)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(aspects as Record<string, unknown>)) {
+    if (typeof value === "string" && value.trim()) out[key] = value;
+  }
+  return out;
 }
 
 function ebayCategoryIdOf(marketplaceDrafts: unknown): string | null {
