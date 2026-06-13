@@ -38,6 +38,19 @@ enum ItemCondition {
   unknown
 }
 
+enum CompSourceType {
+  manual
+  api
+  scraper
+  visual_search
+}
+
+enum CompStatus {
+  sold
+  active
+  unknown
+}
+
 enum DraftStatus {
   DRAFT
   APPROVED
@@ -159,19 +172,31 @@ model ListingDraft {
 }
 
 model PriceComp {
-  id              String        @id @default(uuid()) @db.Uuid
-  inventoryItemId String        @db.Uuid
-  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
-  source          String
-  title           String
-  priceCents      Int
-  shippingCents   Int           @default(0)
-  soldDate        DateTime?
-  url             String?
-  condition       ItemCondition @default(unknown)
-  notes           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id               String         @id @default(uuid()) @db.Uuid
+  inventoryItemId  String         @db.Uuid
+  inventoryItem    InventoryItem  @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  source           String
+  sourceType       CompSourceType @default(manual)
+  platform         String?
+  status           CompStatus     @default(unknown)
+  title            String
+  brand            String?
+  size             String?
+  priceCents       Int
+  shippingCents    Int            @default(0)
+  totalPriceCents  Int?
+  currency         String         @default("USD")
+  soldDate         DateTime?
+  url              String?
+  imageUrl         String?
+  condition        ItemCondition  @default(unknown)
+  matchScore       Float?
+  usedInPricing    Boolean        @default(true)
+  ignoredAsOutlier Boolean        @default(false)
+  rawJson          Json?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   @@index([inventoryItemId, createdAt])
 }

@@ -1,23 +1,14 @@
 import { NextResponse } from "next/server";
 
+import type { Prisma } from "@/generated/prisma/client";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { calculatePricing } from "@/lib/pricing/comps";
 import { CreatePriceCompRequestSchema } from "@/lib/pricing/price-comp-input";
+import { summarizeComps } from "@/lib/pricing/summarize";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-
-type CompRow = { priceCents: number; shippingCents: number };
-
-function summarize(comps: CompRow[]) {
-  return calculatePricing(
-    comps.map((comp) => ({
-      priceCents: comp.priceCents,
-      shippingCents: comp.shippingCents,
-    })),
-  );
-}
 
 export async function GET(request: Request) {
   try {
@@ -53,7 +44,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       inventoryItemId: inventoryItem.id,
       comps,
-      summary: summarize(comps),
+      summary: summarizeComps(comps),
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
@@ -78,16 +69,31 @@ export async function POST(request: Request) {
       throw new AppError("Inventory item not found.", 404);
     }
 
-    const created = await prisma.priceComp.create({
+    await prisma.priceComp.create({
       data: {
         inventoryItemId: inventoryItem.id,
         source: comp.source,
+        sourceType: comp.sourceType,
+        platform: comp.platform ?? null,
+        status: comp.status,
         title: comp.title,
+        brand: comp.brand ?? null,
+        size: comp.size ?? null,
         priceCents: comp.priceCents,
         shippingCents: comp.shippingCents,
+        totalPriceCents: comp.totalPriceCents ?? null,
+        currency: comp.currency,
         soldDate: comp.soldDate ?? null,
         url: comp.url ?? null,
+        imageUrl: comp.imageUrl ?? null,
         condition: comp.condition,
+        matchScore: comp.matchScore ?? null,
+        usedInPricing: comp.usedInPricing,
+        ignoredAsOutlier: comp.ignoredAsOutlier,
+        rawJson:
+          comp.rawJson === undefined
+            ? undefined
+            : (comp.rawJson as Prisma.InputJsonValue),
         notes: comp.notes ?? null,
       },
     });
@@ -99,9 +105,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       inventoryItemId: inventoryItem.id,
-      comp: created,
       comps,
-      summary: summarize(comps),
+      summary: summarizeComps(comps),
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
