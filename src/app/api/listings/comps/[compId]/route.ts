@@ -70,8 +70,11 @@ async function respondWithComps(
 export async function PATCH(request: Request, context: Context) {
   try {
     const { compId } = await context.params;
-    const update = UpdatePriceCompSchema.parse(await request.json());
+    // Authenticate and verify ownership before parsing the body so an
+    // unauthenticated request always 401s, regardless of body validity
+    // (matches the auth-first pattern used by the other listing routes).
     const { prisma, existing } = await loadOwnedComp(request, compId);
+    const update = UpdatePriceCompSchema.parse(await request.json());
 
     await prisma.priceComp.update({
       where: { id: existing.id },

@@ -18,6 +18,19 @@ describe("price comp [compId] API auth boundaries", () => {
     expect(payload).toEqual({ error: "Sign in before creating a listing draft." });
   });
 
+  it("401s an unauthenticated update even when the body is invalid (auth before parse)", async () => {
+    const response = await PATCH(
+      new Request("http://localhost/api/listings/comps/abc", {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      }),
+      { params },
+    );
+    const payload = await response.json();
+    expect(response.status).toBe(401);
+    expect(payload).toEqual({ error: "Sign in before creating a listing draft." });
+  });
+
   it("rejects deleting a comp when the seller is not signed in", async () => {
     const response = await DELETE(
       new Request("http://localhost/api/listings/comps/abc", { method: "DELETE" }),
