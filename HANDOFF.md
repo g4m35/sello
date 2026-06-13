@@ -12,6 +12,40 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-13 — Claude. **PriceComp v2 release HELD after partial promotion. Read
+this before deploying anything.**
+- Production DB migration `20260613020000_price_comp_v2_fields` **was applied and
+  verified** against the prod Supabase DB (`prisma migrate status` → "Database
+  schema is up to date!", 9 migrations, no drift). It is additive, so currently
+  live code is unaffected.
+- `develop` was merged into `main`; **`main` is now @
+  `1a80b5ef97fca50ff71a47b98f5fd4cc7c441d7d`** and contains PriceComp v2. **It was
+  NOT deployed.**
+- The `main` push did NOT auto-deploy: Vercel canceled the build
+  (`dpl_C5G5Tk68...`, target production, state CANCELED) via the repo's
+  ignored-build-step. Production releases here require an explicit `vercel --prod`.
+- **Live production is unchanged: `dpl_BB7eRKiHMqKZ...`, commit `78009c3`, from
+  `feature/ebay-required-aspects`** (not `main`). Smoke tests were NOT run because
+  PriceComp v2 is not live. Production is stable.
+- ⚠️ **Do NOT deploy the current `main`** — it lacks the eBay work in
+  `feature/ebay-required-aspects` (`78009c3`) that appears to be live, so deploying
+  `main` could roll that back.
+- **Before PriceComp v2 can go live, reconcile `feature/ebay-required-aspects` into
+  `develop`/`main`.** `feature/ebay-required-aspects` (origin @ `78009c3`) carries
+  two migrations NOT in `main`/`develop`:
+  `20260612010000_guarded_ebay_production_publish` (adds `MarketplaceListing.environment`
+  + unique-index swap + `PublishAttempt.idempotencyKey`) and
+  `20260613010000_backfill_ebay_quantity` (JSON backfill of
+  `ListingDraft.marketplaceDrafts.ebay.quantity`). Per the clean develop
+  `migrate status`, these two appear **NOT applied to the prod DB** — verify the
+  prod `_prisma_migrations` ground truth before deploying that branch.
+- A `git merge-tree` trial shows `develop` + `feature/ebay-required-aspects` merge
+  **conflict-free** (disjoint changes; only `prisma/schema.prisma` + `HANDOFF.md`
+  are touched by both and still auto-merge). Reconciliation plan:
+  `docs/superpowers/plans/2026-06-13-reconcile-ebay-and-pricecomp.md`.
+- This entry is a docs-only commit on `develop`; no branch merges, no deploy.
+
+## Previous update
 2026-06-13 — Claude. **PriceComp v2 merged into `develop`** (PR #28; develop @
 `f52b60b15115b44e264e0b942ffbc1abcb3e76bb`, includes review fix `cd9c998` that
 moves the auth/ownership check before body-parse on
