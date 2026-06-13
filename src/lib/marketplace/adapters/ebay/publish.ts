@@ -293,6 +293,7 @@ export async function publishEbayListing(
 
   const draft = item.listingDrafts[0];
   const { categoryId, quantity } = ebayDraftFields(draft);
+  const resolvedQuantity = quantity ?? 1;
   const photos = item.photos.map((photo) => ({
     url: resolvePhotoUrl(photo, deps.env),
   }));
@@ -304,7 +305,7 @@ export async function publishEbayListing(
       title: draft?.title ?? null,
       description: draft?.description ?? null,
       priceCents: draft?.recommendedPriceCents ?? null,
-      quantity,
+      quantity: resolvedQuantity,
       categoryId,
     },
     photos,
@@ -338,7 +339,7 @@ export async function publishEbayListing(
       title: checkedDraft.title!,
       description: checkedDraft.description!,
       priceCents: checkedDraft.recommendedPriceCents!,
-      quantity,
+      quantity: resolvedQuantity,
       categoryId,
       itemSpecifics: asStringRecord(checkedDraft.itemSpecifics),
     },

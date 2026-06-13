@@ -308,7 +308,7 @@ describe("preflightEbayListing", () => {
 
     expect(result.ready).toBe(true);
     expect(result.quantity).toBe(1);
-    expect(result.warnings).toContain("quantity_defaulted_to_1");
+    expect(result.warnings).not.toContain("quantity_defaulted_to_1");
     expect(result.preview!.inventoryItem.availability.shipToLocationAvailability.quantity).toBe(1);
   });
 

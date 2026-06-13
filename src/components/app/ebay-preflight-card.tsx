@@ -27,9 +27,7 @@ export const ebayPreflightMissingLabels: Record<string, string> = {
   merchantLocationKey: "eBay inventory location",
 };
 
-const warningLabels: Record<string, string> = {
-  quantity_defaulted_to_1: "No quantity set; listing as 1.",
-};
+const warningLabels: Record<string, string> = {};
 
 const confidenceLabels: Record<EbayCategoryResolution["confidence"], string> = {
   high: "high confidence",

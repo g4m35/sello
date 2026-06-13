@@ -253,7 +253,7 @@ export async function preflightEbayListing(
       title: draft?.title ?? null,
       description: draft?.description ?? null,
       priceCents: draft?.recommendedPriceCents ?? null,
-      quantity,
+      quantity: resolvedQuantity,
       categoryId,
     },
     photos,
