@@ -15,7 +15,7 @@ type Stage = "review" | "running" | "result";
 type Outcome = {
   marketplace: string;
   name: string;
-  status: "pending" | "running" | "not_implemented" | "failed";
+  status: "pending" | "running" | "published" | "not_implemented" | "failed";
   reason?: string;
 };
 
@@ -41,7 +41,13 @@ export function PublishModal({
   if (openKey !== initKey) {
     setInitKey(openKey);
     if (openKey && item) {
-      setSelected(new Set(item.channels.map((c) => c.marketplace)));
+      setSelected(
+        new Set(
+          item.channels
+            .filter((c) => c.publishImplemented)
+            .map((c) => c.marketplace),
+        ),
+      );
       setStage("review");
       setOutcomes([]);
     }
@@ -77,8 +83,8 @@ export function PublishModal({
         const outcome: Outcome = {
           marketplace: c.marketplace,
           name: c.name,
-          status: "not_implemented",
-          reason: res.reason,
+          status: res.status === "published" ? "published" : "not_implemented",
+          reason: res.reason ?? res.message,
         };
         results.push(outcome);
         setOutcomes((prev) => prev.map((o) => (o.marketplace === c.marketplace ? outcome : o)));
@@ -98,6 +104,9 @@ export function PublishModal({
   }
 
   const selectedCount = selected.size;
+  const selectedLiveEbay = item.channels.some(
+    (c) => c.marketplace === "ebay" && c.publishImplemented && selected.has(c.marketplace),
+  );
 
   return (
     <Modal open={open} onClose={stage === "running" ? undefined : onClose} wide>
@@ -119,8 +128,16 @@ export function PublishModal({
           <div className="modal__body stack-4">
             <Banner
               variant="warn"
-              title="Publishing isn't enabled yet"
-              desc="Listings stay draft-only. Running publish records a real, audited attempt per channel and returns each marketplace's not-implemented status — nothing is sent to any marketplace."
+              title={
+                selectedLiveEbay
+                  ? "Final eBay publish review"
+                  : "Publishing isn't enabled yet"
+              }
+              desc={
+                selectedLiveEbay
+                  ? "Confirming creates a live eBay listing. Sello will run the readiness preflight again before sending anything to eBay."
+                  : "Listings stay draft-only. Running publish records a real, audited attempt per channel and returns each marketplace's not-implemented status; nothing is sent to any marketplace."
+              }
             />
             <div className="mp-select">
               {item.channels.map((c) => {
@@ -136,7 +153,7 @@ export function PublishModal({
                     <div style={{ minWidth: 0 }}>
                       <div className="mp-row__name">{c.name}</div>
                       <div className="mp-row__meta">
-                        {c.publishImplemented ? "Ready to publish" : "Draft preview only · not implemented"}
+                        {c.publishImplemented ? "Live publish enabled" : "Draft preview only / not implemented"}
                       </div>
                     </div>
                     <Badge status={c.status} />
@@ -152,7 +169,9 @@ export function PublishModal({
                 Cancel
               </Btn>
               <Btn variant="accent" disabled={selectedCount === 0} onClick={run}>
-                Run publish ({selectedCount})
+                {selectedLiveEbay
+                  ? "Create live eBay listing"
+                  : `Record publish attempt (${selectedCount})`}
               </Btn>
             </div>
           </div>
@@ -192,11 +211,20 @@ export function PublishModal({
                   <div className="mp-row__meta">
                     {o.status === "pending" && "Queued"}
                     {o.status === "running" && "Sending…"}
-                    {o.status === "not_implemented" && (o.reason ?? "Not implemented — draft saved")}
+                    {o.status === "published" && "Live listing created"}
+                    {o.status === "not_implemented" && (o.reason ?? "Not implemented; draft saved")}
                     {o.status === "failed" && (o.reason ?? "Failed")}
                   </div>
                 </div>
-                <Badge status={o.status === "failed" ? "failed" : "noimpl"} />
+                <Badge
+                  status={
+                    o.status === "failed"
+                      ? "failed"
+                      : o.status === "published"
+                        ? "published"
+                        : "noimpl"
+                  }
+                />
               </div>
             ))}
           </div>

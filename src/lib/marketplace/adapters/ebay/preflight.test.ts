@@ -89,7 +89,7 @@ describe("preflightEbayListing", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("reports production publishing as disabled regardless of the sandbox flag", async () => {
+  it("reports production publishing as disabled when the production flag is off", async () => {
     const result = await preflightEbayListing(
       createPrisma(),
       { userId: "user-1", inventoryItemId: "item-1" },
@@ -99,6 +99,18 @@ describe("preflightEbayListing", () => {
     expect(result.environment).toBe("production");
     expect(result.mode).toBe("dry_run");
     expect(result.publishingEnabled).toBe(false);
+  });
+
+  it("reports production publishing as enabled only when the production flag is on", async () => {
+    const result = await preflightEbayListing(
+      createPrisma(),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      { ...productionEnv, EBAY_PRODUCTION_PUBLISH_ENABLED: "true" },
+    );
+
+    expect(result.environment).toBe("production");
+    expect(result.mode).toBe("dry_run");
+    expect(result.publishingEnabled).toBe(true);
   });
 
   it("produces the exact payload preview for a valid listing", async () => {

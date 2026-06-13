@@ -17,6 +17,12 @@ const enabledEnv = {
   NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
 };
 
+const productionEnabledEnv = {
+  ...enabledEnv,
+  EBAY_ENV: "production",
+  EBAY_PRODUCTION_PUBLISH_ENABLED: "true",
+};
+
 function readyItem() {
   return {
     id: "item-1",
@@ -135,6 +141,28 @@ describe("publishEbayListing — guard", () => {
     expect(deps.createClient).not.toHaveBeenCalled();
   });
 
+  it("blocks production publishing when the production flag is false", async () => {
+    const prisma = createPrisma();
+    const deps = createDeps();
+    deps.env = {
+      ...enabledEnv,
+      EBAY_ENV: "production",
+      EBAY_PRODUCTION_PUBLISH_ENABLED: "false",
+    };
+
+    const result = await publishEbayListing(
+      prisma,
+      { userId: "user-1", inventoryItemId: "item-1" },
+      deps,
+    );
+
+    expect(result.status).toBe("not_enabled");
+    expect(result.code).toBe("EBAY_PUBLISH_NOT_ENABLED");
+    expect(result).toMatchObject({ environment: "production" });
+    expect(deps.resolveAccessToken).not.toHaveBeenCalled();
+    expect(deps.createClient).not.toHaveBeenCalled();
+  });
+
   it("defaults to blocked when the flag is missing entirely", async () => {
     const prisma = createPrisma();
     const deps = createDeps();
@@ -184,6 +212,35 @@ describe("publishEbayListing — preconditions", () => {
     expect(deps.resolveAccessToken).not.toHaveBeenCalled();
     expect(deps.createClient).not.toHaveBeenCalled();
   });
+
+  it("requires production preflight readiness before live publish", async () => {
+    const item = {
+      ...readyItem(),
+      size: null,
+      listingDrafts: [
+        {
+          ...readyItem().listingDrafts[0],
+          marketplaceDrafts: { ebay: { categoryId: "15709", quantity: 1 } },
+        },
+      ],
+    };
+    const prisma = createPrisma({ item });
+    const deps = createDeps();
+    deps.env = productionEnabledEnv;
+
+    await expect(
+      publishEbayListing(
+        prisma,
+        { userId: "user-1", inventoryItemId: "item-1" },
+        deps,
+      ),
+    ).rejects.toMatchObject({
+      code: "EBAY_READINESS_FAILED",
+      details: expect.objectContaining({ missing: expect.arrayContaining(["ebay_aspects"]) }),
+    });
+    expect(deps.resolveAccessToken).not.toHaveBeenCalled();
+    expect(deps.createClient).not.toHaveBeenCalled();
+  });
 });
 
 describe("publishEbayListing — happy path", () => {
@@ -203,5 +260,24 @@ describe("publishEbayListing — happy path", () => {
     expect(client.createOrReplaceInventoryItem).toHaveBeenCalledOnce();
     expect(client.createOffer).toHaveBeenCalledOnce();
     expect(client.publishOffer).toHaveBeenCalledWith("offer-1");
+  });
+
+  it("runs production inventory, offer, and publish calls when the production flag is true", async () => {
+    const prisma = createPrisma();
+    const deps = createDeps();
+    deps.env = productionEnabledEnv;
+
+    const result = await publishEbayListing(
+      prisma,
+      { userId: "user-1", inventoryItemId: "item-1" },
+      deps,
+    );
+
+    expect(result.status).toBe("published");
+    if (result.status !== "published") throw new Error("expected published result");
+    expect(result.environment).toBe("production");
+    expect(result.sku).toBe("percs_item-1");
+    expect(deps.resolveAccessToken).toHaveBeenCalledOnce();
+    expect(deps.createClient).toHaveBeenCalledWith("usable-access-token", "EBAY_US", "production");
   });
 });

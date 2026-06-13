@@ -10,7 +10,11 @@ import {
   type ListingIntelligence,
 } from "@/lib/listing/intelligence";
 
-import { getEbayEnvironment, isEbaySandboxPublishEnabled } from "./config";
+import {
+  getEbayEnvironment,
+  isEbayProductionPublishEnabled,
+  isEbaySandboxPublishEnabled,
+} from "./config";
 import {
   validateEbayListingReadiness,
   type EbayListingReadinessResult,
@@ -24,13 +28,10 @@ import {
 } from "./mapper";
 import type { EbayEnvironment, EbayMarketplaceId } from "./types";
 
-// Production publish PREFLIGHT (dry run). Validates a listing against the
-// exact same rules and payload builders the real publish flow uses and shows
-// what WOULD be sent to eBay, but performs zero outbound network calls of any
-// kind: no token resolution, no eBay client, no fetch. The production publish
-// hard-lock in publish.ts is intentionally untouched; this module can never
-// create a listing. The data-loading mirrors publishEbayListing on purpose
-// (kept separate so the guarded sandbox publish path is not modified at all).
+// Publish preflight (dry run). Validates a listing against the exact same
+// rules and payload builders the real publish flow uses and shows what WOULD be
+// sent to eBay, but performs zero outbound network calls of any kind: no token
+// resolution, no eBay client, no fetch. This module can never create a listing.
 
 type EbayEnv = Record<string, string | undefined>;
 
@@ -172,9 +173,12 @@ export async function preflightEbayListing(
   env: EbayEnv = process.env,
 ): Promise<EbayPreflightResult> {
   const environment = getEbayEnvironment(env);
-  // Production publishing is hard-disabled; sandbox follows its explicit flag.
+  // Preflight is zero-write; this only reports whether the matching publish
+  // route would be enabled after all readiness checks pass.
   const publishingEnabled =
-    environment === "sandbox" && isEbaySandboxPublishEnabled(env);
+    environment === "production"
+      ? isEbayProductionPublishEnabled(env)
+      : isEbaySandboxPublishEnabled(env);
 
   const item = await prisma.inventoryItem.findFirst({
     where: { id: input.inventoryItemId, sellerId: input.userId },

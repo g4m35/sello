@@ -9,6 +9,10 @@ import type {
 } from "@/generated/prisma/client";
 import { parseFlaws, parseMeasurements } from "@/lib/ai/listing-draft";
 import { describeState, toLifecycleState } from "@/lib/lifecycle/item-status";
+import {
+  getEbayEnvironment,
+  isEbayProductionPublishEnabled,
+} from "@/lib/marketplace/adapters/ebay/config";
 import { listMarketplaceAdapters } from "@/lib/marketplace/adapter";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import { buildReadinessView } from "@/lib/view/readiness-view";
@@ -27,6 +31,16 @@ import type {
 const ADAPTER_PUBLISH = new Map(
   listMarketplaceAdapters().map((a) => [a.marketplace as string, a.capabilities.publish]),
 );
+
+function publishImplementedForView(marketplace: string): boolean {
+  if (marketplace === "ebay") {
+    if (getEbayEnvironment() === "production") {
+      return isEbayProductionPublishEnabled();
+    }
+    return ADAPTER_PUBLISH.get(marketplace) ?? false;
+  }
+  return ADAPTER_PUBLISH.get(marketplace) ?? false;
+}
 
 type ItemWithRelations = InventoryItem & {
   listingDrafts: ListingDraft[];
@@ -69,7 +83,7 @@ function channelsOf(item: ItemWithRelations, draft: ListingDraft | null): Channe
       marketplace: mp,
       name: adapter.displayName,
       status,
-      publishImplemented: adapter.capabilities.publish,
+      publishImplemented: publishImplementedForView(mp),
       externalListingId: listing?.externalListingId ?? null,
       lastError: listing?.lastError ?? null,
     };
@@ -129,6 +143,7 @@ export function mapItemDetail(
     measurements: parseMeasurements(draft?.measurements),
     flaws: parseFlaws(draft?.flaws),
     ebayCategoryId: ebayCategoryIdOf(draft?.marketplaceDrafts),
+    ebayQuantity: ebayQuantityOf(draft?.marketplaceDrafts),
     ebayAspects: ebayAspectsOf(draft?.marketplaceDrafts),
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     readiness,
@@ -148,6 +163,16 @@ function ebayAspectsOf(marketplaceDrafts: unknown): Record<string, string> {
     if (typeof value === "string" && value.trim()) out[key] = value;
   }
   return out;
+}
+
+function ebayQuantityOf(marketplaceDrafts: unknown): number {
+  if (!marketplaceDrafts || typeof marketplaceDrafts !== "object") return 1;
+  const ebay = (marketplaceDrafts as Record<string, unknown>).ebay;
+  if (!ebay || typeof ebay !== "object") return 1;
+  const quantity = (ebay as Record<string, unknown>).quantity;
+  return Number.isInteger(quantity) && (quantity as number) > 0
+    ? (quantity as number)
+    : 1;
 }
 
 function ebayCategoryIdOf(marketplaceDrafts: unknown): string | null {
@@ -188,5 +213,5 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
 }
 
 export function publishImplementedFor(marketplace: string): boolean {
-  return ADAPTER_PUBLISH.get(marketplace) ?? false;
+  return publishImplementedForView(marketplace);
 }

@@ -42,15 +42,21 @@ export function EbayPreflightCard({
   itemId,
   token,
   savedCategoryId,
+  savedQuantity,
   onSelectCategory,
+  onSaveQuantity,
   onSaveAspect,
 }: {
   itemId: string;
   token: string;
   /** Seller-saved eBay category override from the draft (empty when unset). */
   savedCategoryId: string;
+  /** Seller-saved eBay quantity; resale listings default to 1. */
+  savedQuantity: number;
   /** Persists a category choice through the editor's normal save flow. */
   onSelectCategory: (categoryId: string) => void;
+  /** Persists eBay quantity through the editor's normal save flow. */
+  onSaveQuantity: (quantity: number) => void;
   /** Persists one eBay item detail (aspect name -> value) via the draft save flow. */
   onSaveAspect: (name: string, value: string) => void;
 }) {
@@ -58,6 +64,7 @@ export function EbayPreflightCard({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [advancedId, setAdvancedId] = useState("");
+  const [quantityDraft, setQuantityDraft] = useState(String(savedQuantity || 1));
   const [aspectDrafts, setAspectDrafts] = useState<Record<string, string>>({});
 
   async function runCheck() {
@@ -112,6 +119,25 @@ export function EbayPreflightCard({
               {" / "}Quantity: {result.quantity}
             </span>
           )}
+        </div>
+
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          <span className="t-small muted">Quantity</span>
+          <input
+            className="input"
+            style={{ width: 80 }}
+            inputMode="numeric"
+            value={quantityDraft}
+            onChange={(e) => setQuantityDraft(e.target.value.replace(/[^\d]/g, ""))}
+          />
+          <Btn
+            variant="secondary"
+            size="sm"
+            disabled={!/^\d+$/.test(quantityDraft) || Number(quantityDraft) <= 0}
+            onClick={() => onSaveQuantity(Number(quantityDraft))}
+          >
+            Save
+          </Btn>
         </div>
 
         {category?.resolvedId && (

@@ -2,7 +2,12 @@ import type { ItemCondition } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
 
 import { EbaySandboxClient, getUsableEbayAccessToken } from "./client";
-import { getEbayConfig, isEbaySandboxPublishEnabled } from "./config";
+import {
+  getEbayConfig,
+  getEbayEnvironment,
+  isEbayProductionPublishEnabled,
+  isEbaySandboxPublishEnabled,
+} from "./config";
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
 import {
   validateEbayListingReadiness,
@@ -15,13 +20,14 @@ import {
   type EbayInventoryItemPayload,
   type EbayOfferPayload,
 } from "./mapper";
+import { preflightEbayListing } from "./preflight";
 import type { EbayConfig, EbayMarketplaceId } from "./types";
 
-// Sandbox-only publish orchestrator. Real eBay calls are blocked unless
-// EBAY_SANDBOX_PUBLISH_ENABLED === "true" AND EBAY_ENV is sandbox. Production
-// OAuth/readiness are allowed elsewhere, but production publishing stays hard
-// disabled until it is deliberately built and approved. When disabled, this
-// returns a typed "not_enabled" result and makes zero outbound eBay requests.
+// Guarded publish orchestrator. Real eBay calls are blocked unless the
+// environment-specific publish flag is explicitly enabled. Production defaults
+// off and remains unavailable unless EBAY_PRODUCTION_PUBLISH_ENABLED === "true".
+// When disabled, this returns a typed "not_enabled" result and makes zero
+// outbound eBay requests.
 // Dependencies are injected so tests run the whole flow without network access.
 
 type EbayEnv = Record<string, string | undefined>;
@@ -77,7 +83,7 @@ export type EbayPublishPrismaLike = {
         userId_marketplace_environment: {
           userId: string;
           marketplace: "ebay";
-          environment: "sandbox";
+          environment: "sandbox" | "production";
         };
       };
     }): Promise<ConnectionRow | null>;
@@ -112,6 +118,7 @@ export type EbayPublishDeps = {
   createClient: (
     accessToken: string,
     marketplaceId: EbayMarketplaceId,
+    environment: "sandbox" | "production",
   ) => EbayPublishClient;
 };
 
@@ -132,7 +139,7 @@ export type EbayPublishSuccess = {
   status: "published";
   code: "EBAY_PUBLISH_SUCCEEDED";
   marketplace: "ebay";
-  environment: "sandbox";
+  environment: "sandbox" | "production";
   sku: string;
   offerId: string;
   listingId: string;
@@ -146,8 +153,8 @@ export const defaultEbayPublishDeps: EbayPublishDeps = {
   env: process.env,
   resolveAccessToken: (prisma, connection, config) =>
     getUsableEbayAccessToken(prisma, connection, config),
-  createClient: (accessToken, marketplaceId) =>
-    new EbaySandboxClient(accessToken, marketplaceId),
+  createClient: (accessToken, marketplaceId, environment) =>
+    new EbaySandboxClient(accessToken, marketplaceId, fetch, environment),
 };
 
 function asStringRecord(value: unknown): Record<string, string> {
@@ -205,10 +212,11 @@ export async function publishEbayListing(
   input: EbayPublishInput,
   deps: EbayPublishDeps = defaultEbayPublishDeps,
 ): Promise<EbayPublishResult> {
+  const environment = getEbayEnvironment(deps.env);
+
   // Hard gates first: when publishing is disabled, return immediately and make
-  // no eBay API calls of any kind. Production publishing is always disabled,
-  // regardless of the sandbox flag; only OAuth/readiness run in production.
-  if (deps.env.EBAY_ENV === "production") {
+  // no eBay API calls of any kind.
+  if (environment === "production" && !isEbayProductionPublishEnabled(deps.env)) {
     return {
       status: "not_enabled",
       code: ebayErrorCodes.publishNotEnabled,
@@ -219,7 +227,7 @@ export async function publishEbayListing(
     };
   }
 
-  if (!isEbaySandboxPublishEnabled(deps.env)) {
+  if (environment === "sandbox" && !isEbaySandboxPublishEnabled(deps.env)) {
     return {
       status: "not_enabled",
       code: ebayErrorCodes.publishNotEnabled,
@@ -231,6 +239,23 @@ export async function publishEbayListing(
   }
 
   const config = getEbayConfig(deps.env);
+
+  const preflight = await preflightEbayListing(prisma, input, deps.env);
+  if (!preflight.ready || !preflight.preview) {
+    if (preflight.missing.includes("ebay_connection")) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.notConnected,
+        `Connect eBay ${environment} before publishing.`,
+        404,
+      );
+    }
+    throw new EbayIntegrationError(
+      ebayErrorCodes.readinessFailed,
+      `Listing is not ready for eBay ${environment} publish. Nothing was published.`,
+      422,
+      { missing: preflight.missing },
+    );
+  }
 
   const item = await prisma.inventoryItem.findFirst({
     where: { id: input.inventoryItemId, sellerId: input.userId },
@@ -249,7 +274,7 @@ export async function publishEbayListing(
       userId_marketplace_environment: {
         userId: input.userId,
         marketplace: "ebay",
-        environment: "sandbox",
+        environment,
       },
     },
   });
@@ -257,7 +282,7 @@ export async function publishEbayListing(
   if (!connection) {
     throw new EbayIntegrationError(
       ebayErrorCodes.notConnected,
-      "Connect eBay sandbox before publishing.",
+      `Connect eBay ${environment} before publishing.`,
       404,
     );
   }
@@ -290,7 +315,7 @@ export async function publishEbayListing(
   if (!readiness.ready) {
     throw new EbayIntegrationError(
       ebayErrorCodes.readinessFailed,
-      "Listing is not ready for eBay sandbox publish. Nothing was published.",
+      `Listing is not ready for eBay ${environment} publish. Nothing was published.`,
       422,
       { missing: readiness.missing },
     );
@@ -327,12 +352,13 @@ export async function publishEbayListing(
     },
   };
 
-  const sku = resolveEbaySku(mapperInput.item);
-  const inventoryPayload = buildEbayInventoryItemPayload(mapperInput);
-  const offerPayload = buildEbayOfferPayload(mapperInput);
+  const sku = preflight.preview.sku || resolveEbaySku(mapperInput.item);
+  const inventoryPayload =
+    preflight.preview.inventoryItem || buildEbayInventoryItemPayload(mapperInput);
+  const offerPayload = preflight.preview.offer || buildEbayOfferPayload(mapperInput);
 
   const accessToken = await deps.resolveAccessToken(prisma, connection, config);
-  const client = deps.createClient(accessToken, config.marketplaceId);
+  const client = deps.createClient(accessToken, config.marketplaceId, environment);
 
   await runStep("inventory_item", () =>
     client.createOrReplaceInventoryItem(sku, inventoryPayload),
@@ -348,7 +374,7 @@ export async function publishEbayListing(
     status: "published",
     code: "EBAY_PUBLISH_SUCCEEDED",
     marketplace: "ebay",
-    environment: "sandbox",
+    environment,
     sku,
     offerId,
     listingId,

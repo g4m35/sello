@@ -83,6 +83,8 @@ export type ItemDetailView = ItemView & {
   flaws: Flaw[];
   /** Seller-saved eBay category override (marketplaceDrafts.ebay.categoryId). */
   ebayCategoryId: string | null;
+  /** Seller-saved eBay quantity, defaulted to 1 for resale listings. */
+  ebayQuantity: number;
   /** Seller-saved eBay item specifics (marketplaceDrafts.ebay.aspects). */
   ebayAspects: Record<string, string>;
   selectedMarketplaces: string[];

@@ -4,6 +4,7 @@ import {
   getEbayConfig,
   getEbayEnvironment,
   getEbayOAuthStateSecret,
+  isEbayProductionPublishEnabled,
   isEbaySandboxPublishEnabled,
 } from "./config";
 import { ebayErrorCodes } from "./errors";
@@ -123,5 +124,22 @@ describe("isEbaySandboxPublishEnabled", () => {
 
   it("is true only when the flag is exactly 'true'", () => {
     expect(isEbaySandboxPublishEnabled({ EBAY_SANDBOX_PUBLISH_ENABLED: "true" })).toBe(true);
+  });
+});
+
+describe("isEbayProductionPublishEnabled", () => {
+  it("defaults to false when the production flag is missing", () => {
+    expect(isEbayProductionPublishEnabled({})).toBe(false);
+  });
+
+  it("is false when the production flag is not exactly 'true'", () => {
+    expect(isEbayProductionPublishEnabled({ EBAY_PRODUCTION_PUBLISH_ENABLED: "false" })).toBe(false);
+    expect(isEbayProductionPublishEnabled({ EBAY_PRODUCTION_PUBLISH_ENABLED: "TRUE" })).toBe(false);
+    expect(isEbayProductionPublishEnabled({ EBAY_PRODUCTION_PUBLISH_ENABLED: "1" })).toBe(false);
+    expect(isEbayProductionPublishEnabled({ EBAY_PRODUCTION_PUBLISH_ENABLED: " true " })).toBe(false);
+  });
+
+  it("is true only when the production flag is exactly 'true'", () => {
+    expect(isEbayProductionPublishEnabled({ EBAY_PRODUCTION_PUBLISH_ENABLED: "true" })).toBe(true);
   });
 });
