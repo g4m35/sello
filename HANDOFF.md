@@ -12,8 +12,24 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-12 — Claude. **PriceComp v2 built on `feature/price-comp-v2` (NOT merged
-or deployed; awaiting owner approval).** Additive migration
+2026-06-13 — Claude. **PriceComp v2 merged into `develop`** (PR #28; develop @
+`f52b60b15115b44e264e0b942ffbc1abcb3e76bb`, includes review fix `cd9c998` that
+moves the auth/ownership check before body-parse on
+`PATCH /api/listings/comps/[compId]`). **`main`/production has NOT been touched** —
+production still runs the prior listing-intelligence deploy. The Vercel deployment
+for the develop merge was CANCELED by the repo's ignored-build-step, so no
+develop/staging deploy ran. **Migration `20260613020000_price_comp_v2_fields` is
+still NOT applied to any database.** ⚠️ Before any production deploy (promoting
+`develop` → `main`), run `npm run db:deploy` against the **production** DB FIRST —
+Vercel may auto-deploy `main`, and the new PriceComp columns must exist before the
+app serves traffic against them. This entry is a docs-only commit on `develop`; no
+merge to `main`, no deploy. Gate re-run green: `npm run lint` (2 pre-existing
+`_m`/`_f` warnings), `npx tsc --noEmit`, `npm test` (357 passed), `npx prisma
+validate`, `npm run build`. Build/feature details below.
+
+## Previous update
+2026-06-12 — Claude. **PriceComp v2 built on `feature/price-comp-v2` (merged to
+develop on 2026-06-13; see above).** Additive migration
 `20260613020000_price_comp_v2_fields` adds enums `CompSourceType`/`CompStatus` and
 PriceComp columns (sourceType, platform, status, brand, size, currency,
 totalPriceCents, imageUrl, matchScore, usedInPricing, ignoredAsOutlier, rawJson);
@@ -181,7 +197,7 @@ next step: sign in on sello.wtf → Settings → Connect eBay and complete conse
 on auth.ebay.com.
 
 ## Current state
-- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `origin/main` @ `a45294a`; `origin/develop` @ `d7ad958`.
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `origin/main` @ `a45294a` (untouched); `origin/develop` @ `f52b60b` (PriceComp v2 merged, awaiting promotion + `db:deploy`).
 - Production eBay OAuth/readiness live; publishing remains sandbox-only by design (hard gate in `publish.ts`). Production publish is the next deliberate build, not a flag flip.
 - Latest readiness diagnosis: OAuth is connected, but the deployed auto-refresh now returns `POST /api/marketplaces/ebay/readiness` 502 with `eBay API request failed`; production policy/location missing state is still not proven real until the eBay Account/Inventory API call succeeds.
 - `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
