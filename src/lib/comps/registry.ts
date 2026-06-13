@@ -1,12 +1,25 @@
+import { apifyEbaySoldSource } from "@/lib/comps/sources/apify-ebay-sold";
+import { depopActiveSource } from "@/lib/comps/sources/depop-active";
 import { ebayBrowseSource } from "@/lib/comps/sources/ebay-browse";
+import { googleLensSource } from "@/lib/comps/sources/google-lens";
+import { grailedSoldSource } from "@/lib/comps/sources/grailed-sold";
+import { poshmarkSoldSource } from "@/lib/comps/sources/poshmark-sold";
 import { stockxSource } from "@/lib/comps/sources/stockx";
 import type { CompSource } from "@/lib/comps/source";
 
-// Sold source first (preferred), active-listing source last (interim signal).
-// Note: eBay Marketplace Insights (sold comps) is no longer an option — eBay
-// restricted access to it. StockX covers sold sneaker/streetwear data; eBay
-// Browse provides an interim active-price signal.
-export const COMP_SOURCES: CompSource[] = [stockxSource, ebayBrowseSource];
+// Sold sources first (preferred), active/visual sources last (interim signals).
+// All are env-gated: a source with no configured credentials reports
+// isEnabled() === false and is skipped, so nothing runs unless configured.
+// Note: eBay Marketplace Insights is intentionally absent (access restricted).
+export const COMP_SOURCES: CompSource[] = [
+  stockxSource,
+  apifyEbaySoldSource,
+  grailedSoldSource,
+  poshmarkSoldSource,
+  ebayBrowseSource,
+  depopActiveSource,
+  googleLensSource,
+];
 
 export function enabledCompSources(): CompSource[] {
   return COMP_SOURCES.filter((source) => source.isEnabled());

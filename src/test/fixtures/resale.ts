@@ -1,5 +1,5 @@
 import type { GeminiListingDraft } from "@/lib/ai/listing-draft";
-import type { PriceCompAmounts } from "@/lib/pricing/comps";
+import type { PricingComp } from "@/lib/pricing/comps";
 import type { ReadinessInput } from "@/lib/lifecycle/readiness";
 
 // Shared, schema-shaped sample data for workflow tests. Kept in one place so
@@ -79,7 +79,7 @@ export const geminiDraftFixture: GeminiListingDraft = {
   warnings: ["Confirm authenticity in hand before shipping."],
 };
 
-export const priceCompFixtures: PriceCompAmounts[] = [
+export const priceCompFixtures: PricingComp[] = [
   { priceCents: 38000, shippingCents: 1500 },
   { priceCents: 41000, shippingCents: 0 },
   { priceCents: 44000, shippingCents: 1200 },
@@ -87,7 +87,7 @@ export const priceCompFixtures: PriceCompAmounts[] = [
   { priceCents: 49000, shippingCents: 1800 },
 ];
 
-export const invalidPriceCompFixtures: PriceCompAmounts[] = [
+export const invalidPriceCompFixtures: PricingComp[] = [
   { priceCents: 0, shippingCents: 0 },
   { priceCents: -1000, shippingCents: 0 },
   { priceCents: Number.NaN, shippingCents: 0 },

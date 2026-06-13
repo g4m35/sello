@@ -36,6 +36,8 @@ export function toPriceCompCreate(inventoryItemId: string, c: NormalizedComp) {
   return {
     inventoryItemId,
     source: `auto:${c.source}`,
+    sourceType: "api" as const,
+    status: (c.sold ? "sold" : "active") as "sold" | "active",
     title: c.title.slice(0, 200),
     priceCents: c.priceCents,
     shippingCents: c.shippingCents,

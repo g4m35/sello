@@ -1,38 +1,17 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, X } from "lucide-react";
 
-type Confidence = "none" | "low" | "medium" | "high";
+import {
+  CompsTable,
+  PricingRecommendationCard,
+  type CompRow,
+  type CompStatus,
+  type Summary,
+} from "./comps-pricing-view";
 
-type PricingSummary = {
-  status: "needs_comps" | "ready";
-  totalComps: number;
-  validComps: number;
-  lowCents: number | null;
-  averageCents: number | null;
-  highCents: number | null;
-  quickSaleCents: number | null;
-  recommendedListCents: number | null;
-  confidence: Confidence;
-};
-
-type PriceComp = {
-  id: string;
-  source: string;
-  title: string;
-  priceCents: number;
-  shippingCents: number;
-  soldDate: string | null;
-  url: string | null;
-  condition: string;
-  notes: string | null;
-};
-
-type CompsResponse = {
-  comps: PriceComp[];
-  summary: PricingSummary;
-};
+type CompsResponse = { comps: CompRow[]; summary: Summary };
 
 const conditionOptions = [
   "new_with_tags",
@@ -44,9 +23,26 @@ const conditionOptions = [
   "unknown",
 ] as const;
 
+const platformOptions = [
+  "",
+  "ebay",
+  "stockx",
+  "grailed",
+  "poshmark",
+  "depop",
+  "goat",
+  "other",
+] as const;
+
+const statusOptions: CompStatus[] = ["sold", "active", "unknown"];
+
 const emptyForm = {
   source: "",
+  platform: "",
+  status: "sold" as CompStatus,
   title: "",
+  brand: "",
+  size: "",
   price: "",
   shipping: "",
   soldDate: "",
@@ -55,25 +51,7 @@ const emptyForm = {
   notes: "",
 };
 
-function formatCents(cents: number | null) {
-  if (cents == null) {
-    return "—";
-  }
-
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100);
-}
-
-function isHttpUrl(value: string) {
-  try {
-    const { protocol } = new URL(value);
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+type FormState = typeof emptyForm;
 
 function dollarsToCents(value: string) {
   const parsed = Number(value.trim());
@@ -81,20 +59,10 @@ function dollarsToCents(value: string) {
 }
 
 function nonNegativeCents(value: string) {
-  if (!value.trim()) {
-    return 0;
-  }
-
+  if (!value.trim()) return 0;
   const parsed = Number(value.trim());
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) : null;
 }
-
-const confidenceStyles: Record<Confidence, string> = {
-  none: "border-neutral-300 bg-neutral-100 text-neutral-600",
-  low: "border-amber-300 bg-amber-50 text-amber-900",
-  medium: "border-sky-300 bg-sky-50 text-sky-900",
-  high: "border-emerald-300 bg-emerald-50 text-emerald-900",
-};
 
 export default function CompsPanel({
   accessToken,
@@ -103,11 +71,13 @@ export default function CompsPanel({
   accessToken: string;
   inventoryItemId: string;
 }) {
-  const [comps, setComps] = useState<PriceComp[]>([]);
-  const [summary, setSummary] = useState<PricingSummary | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [comps, setComps] = useState<CompRow[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -116,22 +86,14 @@ export default function CompsPanel({
     async function loadComps() {
       setIsLoading(true);
       setError("");
-
       try {
         const response = await fetch(
           `/api/listings/comps?inventoryItemId=${encodeURIComponent(inventoryItemId)}`,
           { headers: { Authorization: `Bearer ${accessToken}` } },
         );
         const payload = (await response.json()) as CompsResponse & { error?: string };
-
-        if (cancelled) {
-          return;
-        }
-
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Could not load comps.");
-        }
-
+        if (cancelled) return;
+        if (!response.ok) throw new Error(payload.error ?? "Could not load comps.");
         setComps(payload.comps);
         setSummary(payload.summary);
       } catch (loadError) {
@@ -139,28 +101,34 @@ export default function CompsPanel({
           setError(loadError instanceof Error ? loadError.message : "Could not load comps.");
         }
       } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+        if (!cancelled) setIsLoading(false);
       }
     }
 
     void loadComps();
-
     return () => {
       cancelled = true;
     };
   }, [accessToken, inventoryItemId]);
 
-  async function addComp(event: FormEvent<HTMLFormElement>) {
+  function applyResponse(payload: CompsResponse) {
+    setComps(payload.comps);
+    setSummary(payload.summary);
+  }
+
+  function resetForm() {
+    setForm(emptyForm);
+    setEditingId(null);
+  }
+
+  async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const priceCents = dollarsToCents(form.price);
     if (priceCents == null) {
-      setError("Enter a comp sale price greater than $0.");
+      setError("Enter a comp price greater than $0.");
       return;
     }
-
     const shippingCents = nonNegativeCents(form.shipping);
     if (shippingCents == null) {
       setError("Shipping must be $0 or more.");
@@ -170,109 +138,192 @@ export default function CompsPanel({
     setIsSaving(true);
     setError("");
 
+    const compBody = {
+      source: form.source,
+      platform: form.platform ? form.platform : null,
+      status: form.status,
+      title: form.title,
+      brand: form.brand ? form.brand : null,
+      size: form.size ? form.size : null,
+      priceCents,
+      shippingCents,
+      soldDate: form.soldDate ? form.soldDate : null,
+      url: form.url ? form.url : null,
+      condition: form.condition,
+      notes: form.notes ? form.notes : null,
+    };
+
     try {
-      const response = await fetch("/api/listings/comps", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          inventoryItemId,
-          comp: {
-            source: form.source,
-            title: form.title,
-            priceCents,
-            shippingCents,
-            soldDate: form.soldDate ? form.soldDate : null,
-            url: form.url ? form.url : null,
-            condition: form.condition,
-            notes: form.notes ? form.notes : null,
-          },
-        }),
-      });
+      const response = editingId
+        ? await fetch(`/api/listings/comps/${editingId}`, {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(compBody),
+          })
+        : await fetch("/api/listings/comps", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ inventoryItemId, comp: compBody }),
+          });
+
       const payload = (await response.json()) as CompsResponse & { error?: string };
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Could not add the comp.");
-      }
-
-      setComps(payload.comps);
-      setSummary(payload.summary);
-      setForm(emptyForm);
+      if (!response.ok) throw new Error(payload.error ?? "Could not save the comp.");
+      applyResponse(payload);
+      resetForm();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not add the comp.");
+      setError(saveError instanceof Error ? saveError.message : "Could not save the comp.");
     } finally {
       setIsSaving(false);
     }
   }
 
-  const needsComps = !summary || summary.status === "needs_comps";
+  function startEdit(comp: CompRow) {
+    setEditingId(comp.id);
+    setError("");
+    setForm({
+      source: comp.source,
+      platform: comp.platform ?? "",
+      status: comp.status,
+      title: comp.title,
+      brand: comp.brand ?? "",
+      size: comp.size ?? "",
+      price: (comp.priceCents / 100).toString(),
+      shipping: comp.shippingCents ? (comp.shippingCents / 100).toString() : "",
+      soldDate: comp.soldDate ? comp.soldDate.slice(0, 10) : "",
+      url: comp.url ?? "",
+      condition: comp.condition,
+      notes: comp.notes ?? "",
+    });
+  }
+
+  async function toggleField(comp: CompRow, field: "usedInPricing" | "ignoredAsOutlier") {
+    setBusyId(comp.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/listings/comps/${comp.id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ [field]: !comp[field] }),
+      });
+      const payload = (await response.json()) as CompsResponse & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Could not update the comp.");
+      applyResponse(payload);
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Could not update the comp.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function deleteComp(comp: CompRow) {
+    setBusyId(comp.id);
+    setError("");
+    try {
+      const response = await fetch(`/api/listings/comps/${comp.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = (await response.json()) as CompsResponse & { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Could not delete the comp.");
+      applyResponse(payload);
+      if (editingId === comp.id) resetForm();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Could not delete the comp.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="border border-neutral-300 bg-white p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.14em] text-neutral-500">
-            Comp-based pricing
-          </h3>
-          {summary ? (
-            <span
-              className={`border px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] ${confidenceStyles[summary.confidence]}`}
+      {summary ? <PricingRecommendationCard summary={summary} /> : null}
+
+      <form onSubmit={submitForm} className="border border-neutral-300 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold">{editingId ? "Edit comp" : "Add a manual comp"}</p>
+          {editingId ? (
+            <button
+              type="button"
+              onClick={resetForm}
+              className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-800"
             >
-              {summary.confidence === "none" ? "Needs comps" : `${summary.confidence} confidence`}
-            </span>
+              <X className="h-3 w-3" /> Cancel edit
+            </button>
           ) : null}
         </div>
-
-        {needsComps ? (
-          <p className="mt-3 text-sm text-neutral-600">
-            Needs comps. Add real sold comps below. Pricing is never invented without comps.
-          </p>
-        ) : (
-          <dl className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {[
-              ["Low", summary!.lowCents],
-              ["Average", summary!.averageCents],
-              ["High", summary!.highCents],
-              ["Quick sale", summary!.quickSaleCents],
-              ["Recommended", summary!.recommendedListCents],
-            ].map(([label, value]) => (
-              <div key={label as string} className="border border-neutral-200 p-3">
-                <dt className="text-xs uppercase tracking-[0.12em] text-neutral-500">{label}</dt>
-                <dd className="mt-1 text-base font-semibold">{formatCents(value as number | null)}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
-        {summary && summary.validComps > 0 ? (
-          <p className="mt-2 text-xs text-neutral-500">
-            Based on {summary.validComps} valid comp{summary.validComps === 1 ? "" : "s"} of{" "}
-            {summary.totalComps}. You can override the final price in the editor.
-          </p>
-        ) : null}
-      </div>
-
-      <form onSubmit={addComp} className="border border-neutral-300 bg-white p-4">
-        <p className="text-sm font-semibold">Add a manual comp</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium">Source</span>
             <input
               required
               value={form.source}
-              onChange={(event) => setForm((f) => ({ ...f, source: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
               placeholder="eBay sold, StockX, Grailed sold"
               className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
             />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Platform</span>
+            <select
+              value={form.platform}
+              onChange={(e) => setForm((f) => ({ ...f, platform: e.target.value }))}
+              className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
+            >
+              {platformOptions.map((option) => (
+                <option key={option || "none"} value={option}>
+                  {option ? option : "—"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Status</span>
+            <select
+              value={form.status}
+              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as CompStatus }))}
+              className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
+            >
+              {statusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium">Title</span>
             <input
               required
               value={form.title}
-              onChange={(event) => setForm((f) => ({ ...f, title: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="Comparable item title"
+              className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Brand</span>
+            <input
+              value={form.brand}
+              onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+              placeholder="Nike"
+              className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Size</span>
+            <input
+              value={form.size}
+              onChange={(e) => setForm((f) => ({ ...f, size: e.target.value }))}
+              placeholder="10.5"
               className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
             />
           </label>
@@ -282,7 +333,7 @@ export default function CompsPanel({
               required
               inputMode="decimal"
               value={form.price}
-              onChange={(event) => setForm((f) => ({ ...f, price: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
               placeholder="225.00"
               className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
             />
@@ -292,7 +343,7 @@ export default function CompsPanel({
             <input
               inputMode="decimal"
               value={form.shipping}
-              onChange={(event) => setForm((f) => ({ ...f, shipping: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, shipping: e.target.value }))}
               placeholder="0.00"
               className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
             />
@@ -302,7 +353,7 @@ export default function CompsPanel({
             <input
               type="date"
               value={form.soldDate}
-              onChange={(event) => setForm((f) => ({ ...f, soldDate: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, soldDate: e.target.value }))}
               className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
             />
           </label>
@@ -310,7 +361,7 @@ export default function CompsPanel({
             <span className="font-medium">Condition</span>
             <select
               value={form.condition}
-              onChange={(event) => setForm((f) => ({ ...f, condition: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))}
               className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
             >
               {conditionOptions.map((option) => (
@@ -325,7 +376,7 @@ export default function CompsPanel({
             <input
               type="url"
               value={form.url}
-              onChange={(event) => setForm((f) => ({ ...f, url: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
               placeholder="https://"
               className="border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
             />
@@ -334,7 +385,7 @@ export default function CompsPanel({
             <span className="font-medium">Notes</span>
             <textarea
               value={form.notes}
-              onChange={(event) => setForm((f) => ({ ...f, notes: event.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               rows={2}
               placeholder="Why this comp is comparable (size, condition, recency)."
               className="resize-y border border-neutral-300 px-3 py-2 outline-none focus:border-red-700"
@@ -347,7 +398,7 @@ export default function CompsPanel({
           className="mt-3 inline-flex h-10 items-center justify-center gap-2 bg-neutral-950 px-4 text-sm font-semibold text-white disabled:opacity-60"
         >
           {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          Add comp
+          {editingId ? "Save changes" : "Add comp"}
         </button>
         {error ? (
           <p className="mt-3 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -356,60 +407,19 @@ export default function CompsPanel({
         ) : null}
       </form>
 
-      <div className="border border-neutral-300 bg-white">
-        <div className="border-b border-neutral-200 p-4">
-          <p className="text-sm font-semibold">Comps ({comps.length})</p>
-        </div>
-        {isLoading ? (
-          <p className="p-4 text-sm text-neutral-500">Loading comps…</p>
-        ) : comps.length === 0 ? (
-          <p className="p-4 text-sm text-neutral-500">No comps yet. Needs comps.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase tracking-[0.12em] text-neutral-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Source</th>
-                  <th className="px-4 py-3 font-medium">Title</th>
-                  <th className="px-4 py-3 font-medium">Price</th>
-                  <th className="px-4 py-3 font-medium">Ship</th>
-                  <th className="px-4 py-3 font-medium">Total</th>
-                  <th className="px-4 py-3 font-medium">Sold</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comps.map((comp) => (
-                  <tr key={comp.id} className="border-b border-neutral-100">
-                    <td className="px-4 py-3">{comp.source}</td>
-                    <td className="px-4 py-3">
-                      {comp.url && isHttpUrl(comp.url) ? (
-                        <a
-                          href={comp.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-red-700 underline"
-                        >
-                          {comp.title}
-                        </a>
-                      ) : (
-                        comp.title
-                      )}
-                    </td>
-                    <td className="px-4 py-3">{formatCents(comp.priceCents)}</td>
-                    <td className="px-4 py-3">{formatCents(comp.shippingCents)}</td>
-                    <td className="px-4 py-3 font-medium">
-                      {formatCents(comp.priceCents + comp.shippingCents)}
-                    </td>
-                    <td className="px-4 py-3 text-neutral-500">
-                      {comp.soldDate ? new Date(comp.soldDate).toLocaleDateString() : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {isLoading ? (
+        <p className="border border-neutral-300 bg-white p-4 text-sm text-neutral-500">
+          Loading comps…
+        </p>
+      ) : (
+        <CompsTable
+          comps={comps}
+          onEdit={startEdit}
+          onDelete={deleteComp}
+          onToggle={toggleField}
+          busyId={busyId}
+        />
+      )}
     </div>
   );
 }

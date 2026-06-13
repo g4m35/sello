@@ -12,6 +12,33 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-12 — Claude. **PriceComp v2 built on `feature/price-comp-v2` (NOT merged
+or deployed; awaiting owner approval).** Additive migration
+`20260613020000_price_comp_v2_fields` adds enums `CompSourceType`/`CompStatus` and
+PriceComp columns (sourceType, platform, status, brand, size, currency,
+totalPriceCents, imageUrl, matchScore, usedInPricing, ignoredAsOutlier, rawJson);
+FK + RLS unchanged; existing manual comps backfill via defaults and still
+calculate. Pricing module (`src/lib/pricing/comps.ts`) rewritten: **median is the
+anchor** (quick = median×0.9, list = median×1.1), excludes usedInPricing=false /
+ignoredAsOutlier=true, prefers sold comps when ≥2 exist, returns confidenceScore +
+confidenceReasons + sold/active/comp counts (average still returned). New
+`src/lib/pricing/summarize.ts` maps DB rows → pricing. New
+`PATCH`/`DELETE /api/listings/comps/[compId]` with seller-ownership checks; POST
+persists the v2 fields. Comps panel split into pure `PricingRecommendationCard` +
+`CompsTable` (`src/app/comps-pricing-view.tsx`) + the client container; adds
+platform/status selectors, edit, delete, use-in-pricing + outlier toggles, a
+median tile, sold/active counts, and confidence reasons. Five env-gated provider
+stubs (Apify eBay sold, Grailed sold, Poshmark sold, Depop active, Google Lens)
+registered in `src/lib/comps/registry.ts`; all return [] until keys are set.
+Gate green: `npm run lint` (2 pre-existing `_m`/`_f` warnings), `npx tsc --noEmit`,
+`npm test` (356 passed), `npx prisma validate`, `npm run build`. **Migration NOT
+applied to any DB** — owner runs `npm run db:deploy` through develop→main before
+deploy. `totalPrice` is stored as cents (`totalPriceCents Int?`) to match the
+codebase's money convention. Plan:
+`docs/superpowers/plans/2026-06-12-price-comp-v2.md`. Owner next: review the branch,
+approve develop→main flow, apply the migration to the DB, then deploy.
+
+## Previous update
 2026-06-10 — Claude. **Listing intelligence milestone shipped** (main @
 `2a829f2`, deployed to sello.wtf). New `src/lib/listing/intelligence.ts`:
 item-type + department detection, deterministic eBay category inference
@@ -171,6 +198,7 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-12 (Claude): PriceComp v2 on `feature/price-comp-v2` (not merged/deployed). Additive migration `20260613020000_price_comp_v2_fields` + median-anchored pricing (sold-preference, usedInPricing/ignoredAsOutlier exclusion, confidenceScore + reasons, sold/active counts), `PATCH`/`DELETE /api/listings/comps/[compId]` (seller-scoped), upgraded comps panel (platform/status/edit/delete/toggles/median/counts/reasons, pure views split into `comps-pricing-view.tsx`), and 5 env-gated provider stubs (Apify eBay sold, Grailed sold, Poshmark sold, Depop active, Google Lens). Backward compatible (old manual comps still calculate). Gate green (lint 2 pre-existing warnings, tsc, 356 tests, prisma validate, build). Migration not yet applied to any DB. Plan in `docs/superpowers/plans/2026-06-12-price-comp-v2.md`.
 - 2026-06-10 (Codex): authenticated production smoke with owner's signed-in Chrome session. Pass: dashboard, Inventory list, listing editor panels/photos, measurement add-save-reload-delete, flaw add-save-reload-delete, copy-only language, no published claims, Settings shell. Partial/fail: Depop/Poshmark/Grailed copy worked and warned, but the only visible sneaker item has no size/measurements, so exports lacked a Measurements section and warned `Missing size`; Poshmark had Brand/Size/Condition/Details and no hashtags but no Measurements section. Settings -> Marketplaces rendered connected/setup-incomplete state but auto-refresh produced a Vercel prod `POST /api/marketplaces/ebay/readiness` 502 and inline `Error: eBay API request failed.` Browser console had only unrelated Chrome extension `ethereum` injection errors. No app code changed; HANDOFF only.
 - 2026-06-10 (Claude): production smoke test (read-only). Verified on sello.wtf: `/` 307→`/dashboard`, app shells render (client-side auth gate by design), `/privacy` 200, all data APIs 401 unauthenticated (export route included; auth checked before marketplace validation), no secrets in responses, **zero error/fatal/5xx Vercel production logs in 24h**. Local `develop` synced to `6faaf77` (prod `main @ a45294a` contains it). Authenticated UI flows (measurements/flaws editors, copy exports, eBay settings) not exercised: browser access was declined this session; owner should click through them once or grant browser access next time. No regression found; no code changed. Note: the 2 lint warnings are unused `_m`/`_f` in `draft-actions.test.ts` (cosmetic, fold into the next feature branch).
 - 2026-06-10 (Codex): diagnosed production eBay readiness display after successful OAuth. Confirmed code uses production eBay base URLs/token rows for `EBAY_ENV=production`, and Vercel logs showed only GET readiness after callback, no POST refresh. Added auto-refresh after connected/no-checkedAt readiness, clearer setup-required copy and Seller Hub links, secondary Reconnect behavior, production readiness route test, and view-model tests.
