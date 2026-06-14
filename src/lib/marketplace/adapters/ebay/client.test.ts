@@ -395,6 +395,16 @@ describe("eBay sandbox publish methods", () => {
     );
   });
 
+  it("treats a missing SKU offer lookup as no offers", async () => {
+    const { client } = recordingClient([
+      new Response(JSON.stringify({ errors: [{ errorId: 25710 }] }), {
+        status: 404,
+      }),
+    ]);
+
+    await expect(client.getOffersBySku("percsitem1")).resolves.toEqual([]);
+  });
+
   it("deletes unpublished offers and inventory items for guarded cleanup", async () => {
     const { client, calls } = recordingClient([
       new Response(null, { status: 204 }),

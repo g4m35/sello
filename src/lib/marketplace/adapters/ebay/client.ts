@@ -186,9 +186,17 @@ export class EbaySandboxClient implements EbayApiClient {
   }
 
   async getOffersBySku(sku: string): Promise<EbayOfferLookup[]> {
-    const payload = await this.get<{ offers?: EbayOfferLookup[] }>(
-      `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`,
-    );
+    let payload: { offers?: EbayOfferLookup[] } | null;
+    try {
+      payload = await this.get<{ offers?: EbayOfferLookup[] }>(
+        `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`,
+      );
+    } catch (error) {
+      if (error instanceof EbayIntegrationError && error.details?.status === 404) {
+        return [];
+      }
+      throw error;
+    }
     return payload.offers ?? [];
   }
 
