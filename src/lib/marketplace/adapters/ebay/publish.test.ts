@@ -252,7 +252,7 @@ describe("publishEbayListing — happy path", () => {
 
     expect(result.status).toBe("published");
     if (result.status !== "published") throw new Error("expected published result");
-    expect(result.sku).toBe("percs_item-1");
+    expect(result.sku).toBe("percsitem1");
     expect(result.offerId).toBe("offer-1");
     expect(result.listingId).toBe("listing-1");
 
@@ -276,7 +276,7 @@ describe("publishEbayListing — happy path", () => {
     expect(result.status).toBe("published");
     if (result.status !== "published") throw new Error("expected published result");
     expect(result.environment).toBe("production");
-    expect(result.sku).toBe("percs_item-1");
+    expect(result.sku).toBe("percsitem1");
     expect(deps.resolveAccessToken).toHaveBeenCalledOnce();
     expect(deps.createClient).toHaveBeenCalledWith("usable-access-token", "EBAY_US", "production");
   });

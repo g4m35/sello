@@ -87,8 +87,16 @@ const conditionMap: Record<ItemCondition, string | null> = {
 };
 
 export function resolveEbaySku(item: EbayMapperItem): string {
-  const existing = item.sku?.trim();
-  return existing && existing.length > 0 ? existing : `percs_${item.id}`;
+  const existing = sanitizeEbaySku(item.sku);
+  if (existing) return existing;
+  const generated = sanitizeEbaySku(`percs${item.id}`);
+  return generated || "percsitem";
+}
+
+function sanitizeEbaySku(value: string | null | undefined): string | null {
+  const cleaned = value?.trim().replace(/[^a-zA-Z0-9]/g, "") ?? "";
+  if (!cleaned) return null;
+  return cleaned.slice(0, 50);
 }
 
 function requireField<T>(value: T | null | undefined, field: string): T {

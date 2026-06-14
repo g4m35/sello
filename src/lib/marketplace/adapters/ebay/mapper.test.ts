@@ -41,16 +41,16 @@ function baseInput(): EbayMapperInput {
 }
 
 describe("resolveEbaySku", () => {
-  it("uses the existing SKU when present", () => {
+  it("normalizes an existing SKU when present", () => {
     const input = baseInput();
     input.item.sku = "custom-sku-123";
-    expect(resolveEbaySku(input.item)).toBe("custom-sku-123");
+    expect(resolveEbaySku(input.item)).toBe("customsku123");
   });
 
   it("derives a deterministic SKU from the inventory item id", () => {
     const input = baseInput();
     expect(resolveEbaySku(input.item)).toBe(
-      "percs_0d1e2f34-5678-4abc-9def-0123456789ab",
+      "percs0d1e2f3456784abc9def0123456789ab",
     );
     // Deterministic: same input, same output.
     expect(resolveEbaySku(input.item)).toBe(resolveEbaySku(input.item));
@@ -94,7 +94,7 @@ describe("buildEbayOfferPayload", () => {
   it("maps marketplace, price, category, policies and location", () => {
     const payload = buildEbayOfferPayload(baseInput());
 
-    expect(payload.sku).toBe("percs_0d1e2f34-5678-4abc-9def-0123456789ab");
+    expect(payload.sku).toBe("percs0d1e2f3456784abc9def0123456789ab");
     expect(payload.marketplaceId).toBe("EBAY_US");
     expect(payload.format).toBe("FIXED_PRICE");
     expect(payload.categoryId).toBe("15709");

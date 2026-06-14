@@ -122,7 +122,7 @@ describe("preflightEbayListing", () => {
 
     expect(result.preview).not.toBeNull();
     expect(result.quantity).toBe(1);
-    expect(result.preview!.sku).toBe("percs_item-1");
+    expect(result.preview!.sku).toBe("percsitem1");
     expect(result.preview!.steps).toEqual([
       "createOrReplaceInventoryItem",
       "createOffer",
