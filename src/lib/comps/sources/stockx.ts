@@ -7,7 +7,7 @@ export const stockxSource: CompSource = {
   displayName: "StockX",
   sold: true,
   isEnabled() {
-    return Boolean(process.env.STOCKX_API_KEY);
+    return process.env.PRICE_COMP_STOCKX_ENABLED === "true" && Boolean(process.env.STOCKX_API_KEY);
   },
   async fetchComps(_query: CompQuery): Promise<NormalizedComp[]> {
     void _query;

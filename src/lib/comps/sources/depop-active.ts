@@ -7,7 +7,7 @@ export const depopActiveSource: CompSource = {
   displayName: "Depop (active listings)",
   sold: false,
   isEnabled() {
-    return Boolean(process.env.DEPOP_COMPS_API_KEY);
+    return process.env.PRICE_COMP_DEPOP_ACTIVE_ENABLED === "true" && Boolean(process.env.DEPOP_COMPS_API_KEY);
   },
   async fetchComps(_query: CompQuery): Promise<NormalizedComp[]> {
     void _query;

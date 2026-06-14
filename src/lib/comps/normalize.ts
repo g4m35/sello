@@ -29,20 +29,45 @@ export function trimOutliers(comps: NormalizedComp[]): NormalizedComp[] {
   return comps.filter((c) => c.priceCents >= lo && c.priceCents <= hi);
 }
 
+function isAccepted(c: NormalizedComp): boolean {
+  return c.matchClassification === "strong" || c.matchClassification === "possible";
+}
+
 // Maps a normalized comp to PriceComp create data. The source is prefixed
 // "auto:" so refreshed automatic comps can be replaced without touching any
 // manually entered comps.
 export function toPriceCompCreate(inventoryItemId: string, c: NormalizedComp) {
+  const accepted = isAccepted(c);
   return {
     inventoryItemId,
     source: `auto:${c.source}`,
     sourceType: "api" as const,
+    platform: c.source.includes("ebay") ? "ebay" : null,
     status: (c.sold ? "sold" : "active") as "sold" | "active",
     title: c.title.slice(0, 200),
+    brand: c.brand?.slice(0, 80) ?? null,
+    size: c.size?.slice(0, 40) ?? null,
     priceCents: c.priceCents,
     shippingCents: c.shippingCents,
+    totalPriceCents: c.priceCents + c.shippingCents,
+    currency: c.currency ?? "USD",
     soldDate: c.soldDate ? new Date(c.soldDate) : null,
     url: c.url && /^https?:\/\//i.test(c.url) ? c.url.slice(0, 500) : null,
-    notes: c.sold ? "Sold comp" : "Active listing",
+    imageUrl:
+      c.imageUrl && /^https?:\/\//i.test(c.imageUrl) ? c.imageUrl.slice(0, 500) : null,
+    condition: c.condition,
+    matchScore: c.matchScore ?? null,
+    usedInPricing: accepted,
+    ignoredAsOutlier: !accepted,
+    rawJson: {
+      matchClassification: c.matchClassification ?? "rejected",
+      matchReasons: c.matchReasons ?? [],
+      sourcePayload: c.rawJson ?? null,
+    },
+    notes: accepted
+      ? c.sold
+        ? "Accepted automatic sold comp"
+        : "Accepted automatic active listing"
+      : `Rejected automatic comp: ${(c.matchReasons ?? ["Weak match"]).join("; ")}`.slice(0, 1000),
   };
 }

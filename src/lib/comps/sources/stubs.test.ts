@@ -17,11 +17,36 @@ const query: CompQuery = {
 };
 
 const cases = [
-  { source: apifyEbaySoldSource, env: "APIFY_TOKEN", sold: true },
-  { source: grailedSoldSource, env: "GRAILED_COMPS_API_KEY", sold: true },
-  { source: poshmarkSoldSource, env: "POSHMARK_COMPS_API_KEY", sold: true },
-  { source: depopActiveSource, env: "DEPOP_COMPS_API_KEY", sold: false },
-  { source: googleLensSource, env: "GOOGLE_LENS_API_KEY", sold: false },
+  {
+    source: apifyEbaySoldSource,
+    env: "APIFY_TOKEN",
+    flag: "PRICE_COMP_APIFY_EBAY_SOLD_ENABLED",
+    sold: true,
+  },
+  {
+    source: grailedSoldSource,
+    env: "GRAILED_COMPS_API_KEY",
+    flag: "PRICE_COMP_GRAILED_SOLD_ENABLED",
+    sold: true,
+  },
+  {
+    source: poshmarkSoldSource,
+    env: "POSHMARK_COMPS_API_KEY",
+    flag: "PRICE_COMP_POSHMARK_SOLD_ENABLED",
+    sold: true,
+  },
+  {
+    source: depopActiveSource,
+    env: "DEPOP_COMPS_API_KEY",
+    flag: "PRICE_COMP_DEPOP_ACTIVE_ENABLED",
+    sold: false,
+  },
+  {
+    source: googleLensSource,
+    env: "GOOGLE_LENS_API_KEY",
+    flag: "PRICE_COMP_GOOGLE_LENS_ENABLED",
+    sold: false,
+  },
 ];
 
 afterEach(() => {
@@ -29,20 +54,23 @@ afterEach(() => {
 });
 
 describe("external comp source stubs", () => {
-  for (const { source, env, sold } of cases) {
-    it(`${source.id} is disabled without ${env} and reports sold=${sold}`, () => {
+  for (const { source, env, flag, sold } of cases) {
+    it(`${source.id} is disabled without ${env}/${flag} and reports sold=${sold}`, () => {
       vi.stubEnv(env, "");
+      vi.stubEnv(flag, "");
       expect(source.isEnabled()).toBe(false);
       expect(source.sold).toBe(sold);
     });
 
-    it(`${source.id} is enabled once ${env} is set`, () => {
+    it(`${source.id} is enabled once ${env} and ${flag} are set`, () => {
       vi.stubEnv(env, "configured");
+      vi.stubEnv(flag, "true");
       expect(source.isEnabled()).toBe(true);
     });
 
     it(`${source.id} returns no invented comps`, async () => {
       vi.stubEnv(env, "configured");
+      vi.stubEnv(flag, "true");
       await expect(source.fetchComps(query)).resolves.toEqual([]);
     });
   }

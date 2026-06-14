@@ -11,6 +11,12 @@ export type CompQuery = {
   category: string;
   /** Best free-text search string built from the fields above. */
   keywords: string;
+  variants?: CompQueryVariant[];
+};
+
+export type CompQueryVariant = {
+  kind: "strict" | "broad" | "marketplace";
+  keywords: string;
 };
 
 export type NormalizedComp = {
@@ -20,12 +26,21 @@ export type NormalizedComp = {
   title: string;
   priceCents: number;
   shippingCents: number;
+  currency?: string;
   /** ISO date of sale when the source provides sold data; null for active listings. */
   soldDate: string | null;
   url: string | null;
+  imageUrl?: string | null;
   /** Whether this is a completed SALE (true) or an active asking price (false). */
   sold: boolean;
   condition: string;
+  brand?: string | null;
+  size?: string | null;
+  category?: string | null;
+  rawJson?: unknown;
+  matchScore?: number | null;
+  matchClassification?: "strong" | "possible" | "weak" | "rejected";
+  matchReasons?: string[];
 };
 
 export interface CompSource {

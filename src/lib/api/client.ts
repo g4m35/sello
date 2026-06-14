@@ -81,11 +81,33 @@ export const api = {
         quickSaleCents: number | null;
         recommendedListCents: number | null;
         confidence: string;
+        confidenceScore?: number;
+        confidenceReasons?: string[];
+      };
+      discovery: {
+        status: string;
+        autoDiscoveryEnabled: boolean;
+        enabledSources: string[];
+        queries: string[];
+        sourceErrors: { source: string; message: string }[];
+        lastRunAt: string | null;
+        acceptedCount?: number | null;
+        rejectedCount?: number | null;
       };
     }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token),
 
   refreshComps: (token: string, inventoryItemId: string) =>
-    request<{ fetched: number; sources: string[]; enabled: number }>(
+    request<{
+      fetched: number;
+      accepted: number;
+      rejected: number;
+      sources: string[];
+      enabled: number;
+      status: string;
+      queries: string[];
+      sourceErrors: { source: string; message: string }[];
+      appliedPriceCents: number | null;
+    }>(
       "/api/listings/comps/refresh",
       token,
       { method: "POST", body: JSON.stringify({ inventoryItemId }) },

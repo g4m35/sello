@@ -7,7 +7,7 @@ export const grailedSoldSource: CompSource = {
   displayName: "Grailed sold",
   sold: true,
   isEnabled() {
-    return Boolean(process.env.GRAILED_COMPS_API_KEY);
+    return process.env.PRICE_COMP_GRAILED_SOLD_ENABLED === "true" && Boolean(process.env.GRAILED_COMPS_API_KEY);
   },
   async fetchComps(_query: CompQuery): Promise<NormalizedComp[]> {
     void _query;

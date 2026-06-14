@@ -8,7 +8,7 @@ export const googleLensSource: CompSource = {
   displayName: "Google Lens",
   sold: false,
   isEnabled() {
-    return Boolean(process.env.GOOGLE_LENS_API_KEY);
+    return process.env.PRICE_COMP_GOOGLE_LENS_ENABLED === "true" && Boolean(process.env.GOOGLE_LENS_API_KEY);
   },
   async fetchComps(_query: CompQuery): Promise<NormalizedComp[]> {
     void _query;

@@ -15,11 +15,43 @@ type EbayItemSummary = {
   title?: string;
   price?: { value?: string; currency?: string };
   itemWebUrl?: string;
+  image?: { imageUrl?: string };
+  condition?: string;
+  shippingOptions?: { shippingCost?: { value?: string; currency?: string } }[];
 };
+
+const DEFAULT_TIMEOUT_MS = 6_000;
+
+function enabledFlag(name: string): boolean {
+  return process.env[name] === "true";
+}
+
+function credentials(): { clientId: string; clientSecret: string } | null {
+  const clientId = process.env.EBAY_BROWSE_CLIENT_ID || process.env.EBAY_CLIENT_ID;
+  const clientSecret = process.env.EBAY_BROWSE_CLIENT_SECRET || process.env.EBAY_CLIENT_SECRET;
+  return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "SelloPriceComps/1.0 (+https://sello.wtf)",
+        ...(init.headers ?? {}),
+      },
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function getAppToken(clientId: string, clientSecret: string): Promise<string | null> {
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const res = await fetch(OAUTH_URL, {
+  const res = await fetchWithTimeout(OAUTH_URL, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basic}`,
@@ -32,26 +64,43 @@ async function getAppToken(clientId: string, clientSecret: string): Promise<stri
   return json.access_token ?? null;
 }
 
+function conditionFromEbay(value: string | undefined): NormalizedComp["condition"] {
+  const normalized = (value ?? "").toLowerCase();
+  if (normalized.includes("new")) return "new_without_tags";
+  if (normalized.includes("pre-owned") || normalized.includes("used")) return "used_good";
+  return "unknown";
+}
+
+function cents(value: string | undefined): number | null {
+  if (!value) return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : null;
+}
+
 export const ebayBrowseSource: CompSource = {
   id: "ebay-browse",
   displayName: "eBay (active listings)",
   sold: false,
 
   isEnabled() {
-    return Boolean(process.env.EBAY_BROWSE_CLIENT_ID && process.env.EBAY_BROWSE_CLIENT_SECRET);
+    return Boolean(
+      enabledFlag("PRICE_COMP_AUTO_DISCOVERY_ENABLED") &&
+        enabledFlag("PRICE_COMP_EBAY_SEARCH_ENABLED") &&
+        credentials(),
+    );
   },
 
   async fetchComps(query: CompQuery): Promise<NormalizedComp[]> {
-    const clientId = process.env.EBAY_BROWSE_CLIENT_ID;
-    const clientSecret = process.env.EBAY_BROWSE_CLIENT_SECRET;
-    if (!clientId || !clientSecret) return [];
+    const creds = credentials();
+    if (!creds) return [];
 
-    const token = await getAppToken(clientId, clientSecret);
+    const token = await getAppToken(creds.clientId, creds.clientSecret);
     if (!token) return [];
 
     const marketplace = process.env.EBAY_BROWSE_MARKETPLACE_ID || "EBAY_US";
-    const url = `${SEARCH_URL}?q=${encodeURIComponent(query.keywords)}&limit=25`;
-    const res = await fetch(url, {
+    const keywords = query.variants?.[0]?.keywords ?? query.keywords;
+    const url = `${SEARCH_URL}?q=${encodeURIComponent(keywords)}&limit=25`;
+    const res = await fetchWithTimeout(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         "X-EBAY-C-MARKETPLACE-ID": marketplace,
@@ -63,22 +112,27 @@ export const ebayBrowseSource: CompSource = {
     const summaries = json.itemSummaries ?? [];
 
     return summaries.flatMap((s): NormalizedComp[] => {
-      const raw = s.price?.value;
       const currency = s.price?.currency ?? "USD";
-      if (!raw || currency !== "USD") return [];
-      const value = Number.parseFloat(raw);
-      if (!Number.isFinite(value) || value <= 0) return [];
+      if (currency !== "USD") return [];
+      const priceCents = cents(s.price?.value);
+      if (priceCents == null) return [];
+      const shipping = s.shippingOptions?.find(
+        (option) => (option.shippingCost?.currency ?? "USD") === "USD",
+      )?.shippingCost?.value;
       return [
         {
           source: "ebay-browse",
           externalId: s.itemId ?? null,
           title: s.title ?? query.title,
-          priceCents: Math.round(value * 100),
-          shippingCents: 0,
+          priceCents,
+          shippingCents: cents(shipping) ?? 0,
+          currency,
           soldDate: null,
           url: s.itemWebUrl ?? null,
+          imageUrl: s.image?.imageUrl ?? null,
           sold: false,
-          condition: "unknown",
+          condition: conditionFromEbay(s.condition),
+          rawJson: s,
         },
       ];
     });

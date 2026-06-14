@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { isAutoDiscoveryEnabled } from "@/lib/comps/fetch";
+import { enabledCompSources } from "@/lib/comps/registry";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { calculatePricing } from "@/lib/pricing/comps";
 import { CreatePriceCompRequestSchema } from "@/lib/pricing/price-comp-input";
@@ -33,18 +35,52 @@ export async function GET(request: Request) {
         inventoryItemId: null,
         comps: [],
         summary: calculatePricing([]),
+        discovery: {
+          status: isAutoDiscoveryEnabled() ? "not_run" : "disabled",
+          autoDiscoveryEnabled: isAutoDiscoveryEnabled(),
+          enabledSources: [],
+          queries: [],
+          sourceErrors: [],
+          lastRunAt: null,
+        },
       });
     }
 
-    const comps = await prisma.priceComp.findMany({
-      where: { inventoryItemId: inventoryItem.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const [comps, lastRun] = await Promise.all([
+      prisma.priceComp.findMany({
+        where: { inventoryItemId: inventoryItem.id },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.compSearchRun.findFirst({
+        where: { inventoryItemId: inventoryItem.id },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    const summary = summarizeComps(comps);
+    const enabledSources = enabledCompSources().map((source) => source.id);
 
     return NextResponse.json({
       inventoryItemId: inventoryItem.id,
       comps,
-      summary: summarizeComps(comps),
+      summary,
+      discovery: {
+        status:
+          lastRun?.status ??
+          (isAutoDiscoveryEnabled()
+            ? enabledSources.length > 0
+              ? summary.validComps > 0
+                ? "found_comps"
+                : "not_run"
+              : "source_unavailable"
+            : "disabled"),
+        autoDiscoveryEnabled: isAutoDiscoveryEnabled(),
+        enabledSources,
+        queries: lastRun?.queries ?? [],
+        sourceErrors: lastRun?.sourceErrors ?? [],
+        lastRunAt: lastRun?.createdAt ?? null,
+        acceptedCount: lastRun?.acceptedCount ?? null,
+        rejectedCount: lastRun?.rejectedCount ?? null,
+      },
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;

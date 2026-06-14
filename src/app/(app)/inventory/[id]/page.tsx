@@ -1174,7 +1174,10 @@ export default function ListingDetailPage() {
                 </Field>
               </div>
               <div className="divider" />
-              <AutoPricing itemId={id} />
+              <AutoPricing
+                itemId={id}
+                onApplyPrice={(priceCents) => patch({ recommendedPriceCents: priceCents })}
+              />
             </FormSection>
           </div>
 

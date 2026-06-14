@@ -8,7 +8,7 @@ export const apifyEbaySoldSource: CompSource = {
   displayName: "eBay sold (Apify)",
   sold: true,
   isEnabled() {
-    return Boolean(process.env.APIFY_TOKEN);
+    return process.env.PRICE_COMP_APIFY_EBAY_SOLD_ENABLED === "true" && Boolean(process.env.APIFY_TOKEN);
   },
   async fetchComps(_query: CompQuery): Promise<NormalizedComp[]> {
     void _query;

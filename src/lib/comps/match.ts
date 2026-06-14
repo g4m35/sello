@@ -1,4 +1,5 @@
 import type { CompQuery } from "@/lib/comps/source";
+import { buildCompQueryVariants } from "@/lib/comps/query";
 
 export type MatchInput = {
   productName: string;
@@ -6,6 +7,9 @@ export type MatchInput = {
   styleCode: string | null;
   size: string | null;
   category: string;
+  colorway?: string | null;
+  condition?: string | null;
+  description?: string | null;
 };
 
 // Builds the best search query for an item. Sneakers/streetwear are most
@@ -23,5 +27,6 @@ export function buildCompQuery(item: MatchInput): CompQuery {
     size: item.size?.trim() || null,
     category: item.category,
     keywords,
+    variants: buildCompQueryVariants(item),
   };
 }
