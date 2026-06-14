@@ -16,6 +16,7 @@ export const ebayErrorCodes = {
   alreadyPublished: "EBAY_ALREADY_PUBLISHED",
   publishFailed: "EBAY_PUBLISH_FAILED",
   delistFailed: "EBAY_DELIST_FAILED",
+  orphanCleanupFailed: "EBAY_ORPHAN_CLEANUP_FAILED",
 } as const;
 
 export type EbayErrorCode =

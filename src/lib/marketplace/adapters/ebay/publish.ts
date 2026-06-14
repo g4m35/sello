@@ -143,11 +143,17 @@ export type EbayPublishSuccess = {
   sku: string;
   offerId: string;
   listingId: string;
+  steps: EbayPublishStepRecord[];
 };
 
 export type EbayPublishResult = EbayPublishNotEnabled | EbayPublishSuccess;
 
 export type EbayPublishStep = "inventory_item" | "offer" | "publish";
+
+export type EbayPublishStepRecord = {
+  step: EbayPublishStep;
+  status: "started" | "succeeded" | "failed";
+};
 
 export const defaultEbayPublishDeps: EbayPublishDeps = {
   env: process.env,
@@ -364,14 +370,15 @@ export async function publishEbayListing(
 
   const accessToken = await deps.resolveAccessToken(prisma, connection, config);
   const client = deps.createClient(accessToken, config.marketplaceId, environment);
+  const stepEvents: EbayPublishStepRecord[] = [];
 
-  await runStep("inventory_item", () =>
+  await runStep("inventory_item", stepEvents, () =>
     client.createOrReplaceInventoryItem(sku, inventoryPayload),
   );
-  const { offerId } = await runStep("offer", () =>
+  const { offerId } = await runStep("offer", stepEvents, () =>
     client.createOffer(offerPayload),
   );
-  const { listingId } = await runStep("publish", () =>
+  const { listingId } = await runStep("publish", stepEvents, () =>
     client.publishOffer(offerId),
   );
 
@@ -383,6 +390,7 @@ export async function publishEbayListing(
     sku,
     offerId,
     listingId,
+    steps: stepEvents,
   };
 }
 
@@ -391,22 +399,34 @@ export async function publishEbayListing(
 // step detail attached; never swallows.
 async function runStep<T>(
   step: EbayPublishStep,
+  stepEvents: EbayPublishStepRecord[],
   fn: () => Promise<T>,
 ): Promise<T> {
+  stepEvents.push({ step, status: "started" });
   try {
-    return await fn();
+    const result = await fn();
+    stepEvents.push({ step, status: "succeeded" });
+    return result;
   } catch (error) {
+    stepEvents.push({ step, status: "failed" });
     if (error instanceof EbayIntegrationError) {
       throw new EbayIntegrationError(error.code, error.message, error.status, {
         ...(error.details ?? {}),
         step,
+        stepEvents,
+        startedSteps: stepEvents
+          .filter((event) => event.status === "started")
+          .map((event) => event.step),
+        succeededSteps: stepEvents
+          .filter((event) => event.status === "succeeded")
+          .map((event) => event.step),
       });
     }
     throw new EbayIntegrationError(
       ebayErrorCodes.publishFailed,
       "eBay sandbox publish step failed.",
       502,
-      { step },
+      { step, stepEvents },
     );
   }
 }

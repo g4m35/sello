@@ -310,15 +310,106 @@ describe("eBay sandbox publish methods", () => {
 
   it("normalizes publish failures to a typed error without leaking the token", async () => {
     const { client } = recordingClient([
-      new Response(JSON.stringify({ errors: [{ errorId: 25001 }] }), { status: 400 }),
+      new Response(
+        JSON.stringify({
+          errors: [
+            {
+              errorId: 25001,
+              domain: "API_INVENTORY",
+              category: "REQUEST",
+              message: "Invalid policy.",
+              longMessage: "Fulfillment policy was not found.",
+              parameters: [{ name: "fulfillmentPolicyId", value: "secret-access-token" }],
+            },
+          ],
+        }),
+        { status: 400 },
+      ),
     ]);
 
     await expect(client.publishOffer("offer-123")).rejects.toMatchObject({
       code: "EBAY_PUBLISH_FAILED",
       status: 502,
+      details: {
+        status: 400,
+        ebayError: {
+          status: 400,
+          message: "Fulfillment policy was not found.",
+          errors: [
+            expect.objectContaining({
+              errorId: "25001",
+              domain: "API_INVENTORY",
+              category: "REQUEST",
+              longMessage: "Fulfillment policy was not found.",
+              parameters: [{ name: "fulfillmentPolicyId", value: "[redacted]" }],
+            }),
+          ],
+        },
+      },
     });
     await expect(
       client.createOffer({ sku: "x" } as never),
     ).rejects.not.toThrow("secret-access-token");
+  });
+
+  it("normalizes text publish failures with status and body excerpt", async () => {
+    const { client } = recordingClient([
+      new Response("upstream unavailable", { status: 503 }),
+    ]);
+
+    await expect(client.createOffer({ sku: "x" } as never)).rejects.toMatchObject({
+      code: "EBAY_PUBLISH_FAILED",
+      details: {
+        status: 503,
+        ebayError: {
+          status: 503,
+          message: "upstream unavailable",
+          rawText: "upstream unavailable",
+        },
+      },
+    });
+  });
+
+  it("reads inventory items and offers by SKU for orphan reconciliation", async () => {
+    const { client, calls } = recordingClient([
+      new Response(JSON.stringify({ sku: "percs_item-1" }), { status: 200 }),
+      new Response(JSON.stringify({ offers: [{ offerId: "offer-1" }] }), {
+        status: 200,
+      }),
+    ]);
+
+    await expect(client.getInventoryItem("percs_item-1")).resolves.toMatchObject({
+      sku: "percs_item-1",
+    });
+    await expect(client.getOffersBySku("percs_item-1")).resolves.toEqual([
+      { offerId: "offer-1" },
+    ]);
+
+    expect(calls[0].init.method).toBeUndefined();
+    expect(calls[0].url).toBe(
+      "https://api.sandbox.ebay.com/sell/inventory/v1/inventory_item/percs_item-1",
+    );
+    expect(calls[1].url).toBe(
+      "https://api.sandbox.ebay.com/sell/inventory/v1/offer?sku=percs_item-1",
+    );
+  });
+
+  it("deletes unpublished offers and inventory items for guarded cleanup", async () => {
+    const { client, calls } = recordingClient([
+      new Response(null, { status: 204 }),
+      new Response(null, { status: 204 }),
+    ]);
+
+    await client.deleteOffer("offer-1");
+    await client.deleteInventoryItem("percs_item-1");
+
+    expect(calls[0].init.method).toBe("DELETE");
+    expect(calls[0].url).toBe(
+      "https://api.sandbox.ebay.com/sell/inventory/v1/offer/offer-1",
+    );
+    expect(calls[1].init.method).toBe("DELETE");
+    expect(calls[1].url).toBe(
+      "https://api.sandbox.ebay.com/sell/inventory/v1/inventory_item/percs_item-1",
+    );
   });
 });

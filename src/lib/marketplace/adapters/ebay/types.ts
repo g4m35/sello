@@ -61,6 +61,30 @@ export type EbayInventoryLocation = {
   name?: string;
 };
 
+export type EbayInventoryItemLookup = {
+  sku?: string;
+  product?: {
+    title?: string;
+    aspects?: Record<string, string[]>;
+    imageUrls?: string[];
+  };
+  availability?: unknown;
+  condition?: string;
+};
+
+export type EbayOfferLookup = {
+  offerId?: string;
+  sku?: string;
+  marketplaceId?: EbayMarketplaceId | string;
+  format?: string;
+  listing?: {
+    listingId?: string;
+    listingStatus?: string;
+    soldQuantity?: number;
+  };
+  status?: string;
+};
+
 // Request body for createInventoryLocation
 // (POST /sell/inventory/v1/location/{merchantLocationKey}).
 export type EbayInventoryLocationPayload = {

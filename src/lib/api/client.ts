@@ -3,6 +3,7 @@ import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/prefli
 import type {
   AttemptView,
   ChannelView,
+  EbayOrphanArtifactView,
   ItemDetailView,
   ItemView,
 } from "@/lib/view/types";
@@ -29,8 +30,14 @@ async function request<T>(
   const json = text ? JSON.parse(text) : {};
 
   if (!res.ok) {
+    const message =
+      typeof json?.error === "string"
+        ? json.error
+        : typeof json?.error?.message === "string"
+          ? json.error.message
+          : `Request failed (${res.status})`;
     const err: ApiError = {
-      error: json?.error ?? `Request failed (${res.status})`,
+      error: message,
       status: res.status,
     };
     throw err;
@@ -228,6 +235,28 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  scanEbayOrphans: (token: string, itemId: string) =>
+    request<{ ok: true; scan: EbayOrphanArtifactView }>(
+      `/api/listings/${itemId}/ebay-orphans`,
+      token,
+      { method: "POST", body: JSON.stringify({ action: "scan" }) },
+    ),
+
+  cleanupEbayOrphans: (token: string, itemId: string) =>
+    request<{
+      ok: true;
+      status: "cleaned";
+      code: string;
+      marketplace: "ebay";
+      environment: string;
+      scan: EbayOrphanArtifactView;
+      marketplaceListingId: string;
+      publishAttemptId: string;
+    }>(`/api/listings/${itemId}/ebay-orphans`, token, {
+      method: "POST",
+      body: JSON.stringify({ action: "cleanup", confirmCleanup: true }),
+    }),
+
   // Copy/paste export text for marketplaces without a publish adapter. The
   // server only formats text; nothing is published.
   exportListing: (
@@ -278,6 +307,14 @@ export const api = {
     const json = await res.json();
     // 501 is the expected, documented outcome — return it as data.
     if (res.status === 501 || res.ok) return json;
-    throw { error: json?.error ?? "Publish failed", status: res.status } as ApiError;
+    throw {
+      error:
+        typeof json?.error === "string"
+          ? json.error
+          : typeof json?.error?.message === "string"
+            ? json.error.message
+            : "Publish failed",
+      status: res.status,
+    } as ApiError;
   },
 };

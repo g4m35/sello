@@ -5,7 +5,11 @@ import { MpLogo } from "@/components/ui/marketplace";
 import { durationLabel, relativeTime } from "@/lib/view/format";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
-import type { AttemptView, ChannelStateView } from "@/lib/view/types";
+import type {
+  AttemptView,
+  ChannelStateView,
+  EbayOrphanArtifactView,
+} from "@/lib/view/types";
 
 function titleCase(value: string | null | undefined): string {
   if (!value) return "Unknown";
@@ -29,16 +33,34 @@ export function confirmEbayDelist(
   );
 }
 
+export function confirmEbayOrphanCleanup(
+  confirmFn: (message: string) => boolean = window.confirm,
+): boolean {
+  return confirmFn(
+    "This removes unpublished eBay inventory or offer artifacts for this SKU. It will not continue if a live eBay listing is detected.",
+  );
+}
+
 export function MarketplaceOperationsPanel({
   channels,
   attempts,
   delisting,
+  orphanScan,
+  scanningOrphans,
+  cleaningOrphans,
   onDelistEbay,
+  onScanEbayOrphans,
+  onCleanupEbayOrphans,
 }: {
   channels: ChannelStateView[];
   attempts: AttemptView[];
   delisting: boolean;
+  orphanScan: EbayOrphanArtifactView | null;
+  scanningOrphans: boolean;
+  cleaningOrphans: boolean;
   onDelistEbay: () => void;
+  onScanEbayOrphans: () => void;
+  onCleanupEbayOrphans: () => void;
 }) {
   const latestAttempt = attempts[0] ?? null;
   const ebay = channels.find((channel) => channel.marketplace === "ebay") ?? null;
@@ -106,6 +128,21 @@ export function MarketplaceOperationsPanel({
           />
         )}
 
+        {latestAttempt?.failedStep && (
+          <div className="stack-2">
+            <Identifier label="Failed step" value={latestAttempt.failedStep} />
+            <Identifier
+              label="eBay status"
+              value={
+                latestAttempt.ebayErrorStatus == null
+                  ? null
+                  : String(latestAttempt.ebayErrorStatus)
+              }
+            />
+            <Identifier label="eBay reason" value={latestAttempt.ebayErrorMessage} />
+          </div>
+        )}
+
         {attempts.length > 1 && (
           <details>
             <summary className="t-small muted" style={{ cursor: "pointer" }}>
@@ -142,6 +179,69 @@ export function MarketplaceOperationsPanel({
             >
               {delisting ? "Ending..." : "End eBay listing"}
             </Btn>
+          </div>
+        )}
+
+        {!canDelistEbay && (
+          <div className="stack-3">
+            <div className="row" style={{ justifyContent: "space-between", gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="t-small">eBay orphan recovery</div>
+                <div className="t-small muted">
+                  Read-only check for unpublished inventory or offer artifacts.
+                </div>
+              </div>
+              <Btn
+                variant="secondary"
+                size="sm"
+                icon="search"
+                disabled={scanningOrphans}
+                onClick={onScanEbayOrphans}
+              >
+                {scanningOrphans
+                  ? "Checking..."
+                  : "Check for eBay orphan publish artifacts"}
+              </Btn>
+            </div>
+
+            {orphanScan && (
+              <div className="stack-2">
+                <Identifier label="Checked SKU" value={orphanScan.sku} />
+                <Identifier
+                  label="Inventory item"
+                  value={orphanScan.inventoryItemFound ? "Found" : "Not found"}
+                />
+                <Identifier
+                  label="Offer IDs"
+                  value={
+                    orphanScan.offers.length > 0
+                      ? orphanScan.offers
+                          .map((offer) => offer.offerId ?? "unknown offer")
+                          .join(", ")
+                      : "Not found"
+                  }
+                />
+                <Identifier
+                  label="Live listing"
+                  value={orphanScan.liveListingFound ? "Possible live listing found" : "Not found"}
+                />
+                {orphanScan.cleanupAvailable && (
+                  <div className="row" style={{ justifyContent: "flex-end" }}>
+                    <Btn
+                      variant="secondary"
+                      size="sm"
+                      icon="trash"
+                      disabled={cleaningOrphans}
+                      onClick={onCleanupEbayOrphans}
+                    >
+                      {cleaningOrphans
+                        ? "Cleaning..."
+                        : "Clean up unpublished eBay artifacts"}
+                    </Btn>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

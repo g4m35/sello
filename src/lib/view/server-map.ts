@@ -197,6 +197,14 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
   const item = listing.inventoryItem;
   const draft = item.listingDrafts[0];
   const mp = listing.marketplace as string;
+  const adapterResult = asRecord(attempt.adapterResult);
+  const ebayError = asRecord(adapterResult?.ebayError);
+  const failedStep =
+    typeof adapterResult?.step === "string" ? friendlyEbayStep(adapterResult.step) : null;
+  const ebayErrorStatus =
+    typeof ebayError?.status === "number" ? ebayError.status : null;
+  const ebayErrorMessage =
+    typeof ebayError?.message === "string" ? ebayError.message : null;
   return {
     id: attempt.id,
     itemId: item.id,
@@ -220,7 +228,23 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
     externalOfferId: listing.externalOfferId,
     externalListingId: listing.externalListingId,
     listingLastError: listing.lastError,
+    failedStep,
+    ebayErrorStatus,
+    ebayErrorMessage,
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function friendlyEbayStep(step: string): string {
+  if (step === "inventory_item") return "Create or update inventory item";
+  if (step === "offer") return "Create offer";
+  if (step === "publish") return "Publish offer";
+  return step;
 }
 
 export function publishImplementedFor(marketplace: string): boolean {

@@ -267,6 +267,7 @@ type EbayFakeState = {
     code: string;
     reason: string | null;
     idempotencyKey?: string | null;
+    adapterResult?: unknown;
   }>;
   events: Array<{ kind: string; data: Record<string, unknown> }>;
   updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
@@ -392,6 +393,7 @@ function createEbayFakePrisma(opts?: {
           code: data.code,
           reason: data.reason ?? null,
           idempotencyKey: data.idempotencyKey ?? null,
+          adapterResult: "adapterResult" in data ? data.adapterResult : null,
         });
         return { id };
       },
@@ -400,13 +402,19 @@ function createEbayFakePrisma(opts?: {
         data,
       }: {
         where: { id: string };
-        data: { status?: string; code?: string; reason?: string | null };
+        data: {
+          status?: string;
+          code?: string;
+          reason?: string | null;
+          adapterResult?: unknown;
+        };
       }) {
         const attempt = state.attempts.find((a) => a.id === where.id);
         if (!attempt) throw new Error("attempt not found");
         if (data.status) attempt.status = data.status;
         if (data.code) attempt.code = data.code;
         if ("reason" in data) attempt.reason = data.reason ?? null;
+        if ("adapterResult" in data) attempt.adapterResult = data.adapterResult;
         return { id: where.id };
       },
     },
@@ -459,6 +467,14 @@ describe("executePublish — eBay dispatch", () => {
       sku: "percs_item-1",
       offerId: "offer-1",
       listingId: "listing-x",
+      steps: [
+        { step: "inventory_item", status: "started" },
+        { step: "inventory_item", status: "succeeded" },
+        { step: "offer", status: "started" },
+        { step: "offer", status: "succeeded" },
+        { step: "publish", status: "started" },
+        { step: "publish", status: "succeeded" },
+      ],
     });
 
     const result = await executePublish(prisma, input, undefined, ebayPublish);
@@ -480,6 +496,8 @@ describe("executePublish — eBay dispatch", () => {
         "ebay_inventory_item_created",
         "ebay_offer_created",
         "ebay_offer_published",
+        "ebay_publish_step_started",
+        "ebay_publish_step_succeeded",
       ]),
     );
   });
@@ -683,7 +701,28 @@ describe("executePublish — eBay dispatch", () => {
           ebayErrorCodes.publishFailed,
           "offer failed",
           502,
-          { step: "offer" },
+          {
+            step: "offer",
+            stepEvents: [
+              { step: "inventory_item", status: "started" },
+              { step: "inventory_item", status: "succeeded" },
+              { step: "offer", status: "started" },
+              { step: "offer", status: "failed" },
+            ],
+            startedSteps: ["inventory_item", "offer"],
+            succeededSteps: ["inventory_item"],
+            ebayError: {
+              status: 400,
+              message: "Fulfillment policy was not found.",
+              errors: [
+                {
+                  errorId: "25001",
+                  message: "Fulfillment policy was not found.",
+                  parameters: [{ name: "access_token", value: "[redacted]" }],
+                },
+              ],
+            },
+          },
         ),
       );
 
@@ -693,5 +732,28 @@ describe("executePublish — eBay dispatch", () => {
 
     const failed = prisma._state.events.find((e) => e.kind === "publish_failed");
     expect(failed?.data.step).toBe("offer");
+    expect(failed?.data.ebayError).toMatchObject({
+      status: 400,
+      message: "Fulfillment policy was not found.",
+    });
+    expect(JSON.stringify(prisma._state.attempts[0].adapterResult)).not.toContain(
+      "secret-access-token",
+    );
+    expect(prisma._state.attempts[0].adapterResult).toMatchObject({
+      step: "offer",
+      startedSteps: ["inventory_item", "offer"],
+      succeededSteps: ["inventory_item"],
+      ebayError: {
+        status: 400,
+        message: "Fulfillment policy was not found.",
+      },
+    });
+    expect(prisma._state.events.map((e) => e.kind)).toEqual(
+      expect.arrayContaining([
+        "ebay_publish_step_started",
+        "ebay_publish_step_succeeded",
+        "ebay_publish_step_failed",
+      ]),
+    );
   });
 });

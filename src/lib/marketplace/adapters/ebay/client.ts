@@ -9,9 +9,11 @@ import type {
   EbayApiClient,
   EbayConfig,
   EbayEnvironment,
+  EbayInventoryItemLookup,
   EbayFulfillmentPolicy,
   EbayInventoryLocation,
   EbayInventoryLocationPayload,
+  EbayOfferLookup,
   EbayPaymentPolicy,
   EbayReturnPolicy,
   EbayTokenResponse,
@@ -177,6 +179,37 @@ export class EbaySandboxClient implements EbayApiClient {
     return { listingId: result.listingId };
   }
 
+  async getInventoryItem(sku: string): Promise<EbayInventoryItemLookup | null> {
+    return this.getNullable<EbayInventoryItemLookup>(
+      `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
+    );
+  }
+
+  async getOffersBySku(sku: string): Promise<EbayOfferLookup[]> {
+    const payload = await this.get<{ offers?: EbayOfferLookup[] }>(
+      `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`,
+    );
+    return payload.offers ?? [];
+  }
+
+  async deleteOffer(offerId: string): Promise<void> {
+    await this.send<unknown>(
+      "DELETE",
+      `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}`,
+      undefined,
+      ebayErrorCodes.delistFailed,
+    );
+  }
+
+  async deleteInventoryItem(sku: string): Promise<void> {
+    await this.send<unknown>(
+      "DELETE",
+      `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
+      undefined,
+      ebayErrorCodes.delistFailed,
+    );
+  }
+
   private async get<T>(path: string): Promise<T> {
     const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
       headers: {
@@ -208,6 +241,41 @@ export class EbaySandboxClient implements EbayApiClient {
     return (await response.json()) as T;
   }
 
+  private async getNullable<T>(path: string): Promise<T | null> {
+    const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+    });
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (response.status === 401) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.reconnectRequired,
+        "eBay rejected the stored connection. Reconnect your eBay account.",
+        409,
+        { status: response.status },
+      );
+    }
+
+    if (!response.ok) {
+      const ebayError = await readEbayError(response);
+      throw new EbayIntegrationError(
+        ebayErrorCodes.apiFailed,
+        `eBay API request failed: ${ebayError.message}`,
+        502,
+        { status: response.status, ebayError },
+      );
+    }
+
+    return (await response.json()) as T;
+  }
+
   async withdrawOffer(offerId: string): Promise<{ listingId: string | null }> {
     const result = await this.send<{ listingId?: string }>(
       "POST",
@@ -222,7 +290,7 @@ export class EbaySandboxClient implements EbayApiClient {
   // to typed eBay errors carrying only the HTTP status, never the bearer token
   // or request body, so payloads can be surfaced safely.
   private async send<T>(
-    method: "POST" | "PUT",
+    method: "DELETE" | "POST" | "PUT",
     path: string,
     body?: unknown,
     errorCode: typeof ebayErrorCodes.publishFailed | typeof ebayErrorCodes.delistFailed =
@@ -240,13 +308,14 @@ export class EbaySandboxClient implements EbayApiClient {
     });
 
     if (!response.ok) {
+      const ebayError = await readEbayError(response);
       throw new EbayIntegrationError(
         errorCode,
         errorCode === ebayErrorCodes.delistFailed
-          ? "eBay delist request failed."
-          : "eBay publish request failed.",
+          ? `eBay delist request failed: ${ebayError.message}`
+          : `eBay publish request failed: ${ebayError.message}`,
         502,
-        { status: response.status },
+        { status: response.status, ebayError },
       );
     }
 
@@ -271,6 +340,115 @@ async function readEbayErrorMessage(response: Response): Promise<string | null> 
     return messages.length > 0 ? messages.join(" ") : null;
   } catch {
     return null;
+  }
+}
+
+const secretValuePattern = /(bearer|token|authorization|secret|refresh|access)/i;
+
+export type SanitizedEbayError = {
+  status: number;
+  message: string;
+  errors: Array<{
+    errorId?: string;
+    domain?: string;
+    category?: string;
+    message?: string;
+    longMessage?: string;
+    parameters?: Array<{ name: string; value?: string }>;
+  }>;
+  rawText?: string;
+};
+
+function truncate(value: string, max = 500): string {
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function safeString(value: unknown): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const text = String(value);
+  if (secretValuePattern.test(text)) return "[redacted]";
+  return truncate(text, 250);
+}
+
+function safeParameter(value: unknown): { name: string; value?: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const name = safeString(record.name);
+  if (!name) return null;
+  const rawValue = safeString(record.value);
+  return {
+    name,
+    ...(rawValue ? { value: rawValue === "[redacted]" ? "[redacted]" : rawValue } : {}),
+  };
+}
+
+export async function readEbayError(response: Response): Promise<SanitizedEbayError> {
+  const status = response.status;
+  let text = "";
+  try {
+    text = await response.text();
+  } catch {
+    text = "";
+  }
+
+  if (!text) {
+    return {
+      status,
+      message: `HTTP ${status}`,
+      errors: [],
+    };
+  }
+
+  try {
+    const body = JSON.parse(text) as Record<string, unknown>;
+    const errors = Array.isArray(body.errors)
+      ? body.errors
+          .map((entry) => {
+            if (!entry || typeof entry !== "object") return null;
+            const record = entry as Record<string, unknown>;
+            const parameters = Array.isArray(record.parameters)
+              ? record.parameters
+                  .map(safeParameter)
+                  .filter((p): p is { name: string; value?: string } => Boolean(p))
+              : undefined;
+            return {
+              ...(safeString(record.errorId) ? { errorId: safeString(record.errorId) } : {}),
+              ...(safeString(record.domain) ? { domain: safeString(record.domain) } : {}),
+              ...(safeString(record.category)
+                ? { category: safeString(record.category) }
+                : {}),
+              ...(safeString(record.message) ? { message: safeString(record.message) } : {}),
+              ...(safeString(record.longMessage)
+                ? { longMessage: safeString(record.longMessage) }
+                : {}),
+              ...(parameters && parameters.length > 0 ? { parameters } : {}),
+            };
+          })
+          .filter((entry): entry is SanitizedEbayError["errors"][number] =>
+            Boolean(entry),
+          )
+      : [];
+    const oauthMessage =
+      safeString(body.error_description) || safeString(body.error) || undefined;
+    const message =
+      errors
+        .map((entry) => entry.longMessage || entry.message)
+        .filter((entry): entry is string => Boolean(entry))
+        .join(" ") ||
+      oauthMessage ||
+      `HTTP ${status}`;
+    return {
+      status,
+      message,
+      errors,
+    };
+  } catch {
+    return {
+      status,
+      message: truncate(text, 500),
+      errors: [],
+      rawText: truncate(text, 500),
+    };
   }
 }
 

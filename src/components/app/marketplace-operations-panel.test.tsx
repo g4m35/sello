@@ -5,6 +5,7 @@ import type { AttemptView, ChannelStateView } from "@/lib/view/types";
 
 import {
   confirmEbayDelist,
+  confirmEbayOrphanCleanup,
   MarketplaceOperationsPanel,
 } from "./marketplace-operations-panel";
 
@@ -44,6 +45,9 @@ function attempt(overrides: Partial<AttemptView> = {}): AttemptView {
     externalOfferId: "offer-1",
     externalListingId: "ebay-listing-1",
     listingLastError: null,
+    failedStep: null,
+    ebayErrorStatus: null,
+    ebayErrorMessage: null,
     ...overrides,
   };
 }
@@ -55,7 +59,12 @@ describe("MarketplaceOperationsPanel", () => {
         channels={[channel()]}
         attempts={[attempt()]}
         onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
         delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
       />,
     );
 
@@ -76,7 +85,12 @@ describe("MarketplaceOperationsPanel", () => {
         channels={[channel({ status: "ready", externalListingId: null })]}
         attempts={[]}
         onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
         delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
       />,
     );
 
@@ -93,14 +107,87 @@ describe("MarketplaceOperationsPanel", () => {
             rawStatus: "FAILED",
             reason: "Policy missing.",
             listingLastError: "Policy missing.",
+            failedStep: "Create offer",
+            ebayErrorStatus: 400,
+            ebayErrorMessage: "Fulfillment policy was not found.",
           }),
         ]}
         onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
         delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
       />,
     );
 
     expect(html).toContain("Policy missing.");
+    expect(html).toContain("Failed step");
+    expect(html).toContain("Create offer");
+    expect(html).toContain("eBay status");
+    expect(html).toContain("400");
+    expect(html).toContain("Fulfillment policy was not found.");
+  });
+
+  it("shows orphan scan results and hides cleanup until artifacts exist", () => {
+    const html = renderToStaticMarkup(
+      <MarketplaceOperationsPanel
+        channels={[channel({ status: "failed", externalListingId: null, externalOfferId: null })]}
+        attempts={[]}
+        onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
+        delisting={false}
+        orphanScan={{
+          sku: "percs_item-1",
+          inventoryItemFound: false,
+          offers: [],
+          liveListingFound: false,
+          cleanupAvailable: false,
+          checkedAt: "2026-06-14T12:00:00.000Z",
+        }}
+        scanningOrphans={false}
+        cleaningOrphans={false}
+      />,
+    );
+
+    expect(html).toContain("Check for eBay orphan publish artifacts");
+    expect(html).toContain("percs_item-1");
+    expect(html).not.toContain("Clean up unpublished eBay artifacts");
+  });
+
+  it("shows guarded cleanup only when an unpublished artifact exists", () => {
+    const html = renderToStaticMarkup(
+      <MarketplaceOperationsPanel
+        channels={[channel({ status: "failed", externalListingId: null, externalOfferId: null })]}
+        attempts={[]}
+        onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
+        delisting={false}
+        orphanScan={{
+          sku: "percs_item-1",
+          inventoryItemFound: true,
+          offers: [
+            {
+              offerId: "offer-1",
+              status: "UNPUBLISHED",
+              listingId: null,
+              listingStatus: null,
+            },
+          ],
+          liveListingFound: false,
+          cleanupAvailable: true,
+          checkedAt: "2026-06-14T12:00:00.000Z",
+        }}
+        scanningOrphans={false}
+        cleaningOrphans={false}
+      />,
+    );
+
+    expect(html).toContain("offer-1");
+    expect(html).toContain("Clean up unpublished eBay artifacts");
   });
 
   it("requires a confirmation that says this ends the live eBay listing", () => {
@@ -109,6 +196,15 @@ describe("MarketplaceOperationsPanel", () => {
     expect(confirmEbayDelist(confirm)).toBe(true);
     expect(confirm).toHaveBeenCalledWith(
       expect.stringContaining("This ends the live eBay listing"),
+    );
+  });
+
+  it("requires cleanup confirmation for unpublished orphan artifacts", () => {
+    const confirm = vi.fn().mockReturnValue(true);
+
+    expect(confirmEbayOrphanCleanup(confirm)).toBe(true);
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining("removes unpublished eBay inventory or offer artifacts"),
     );
   });
 });

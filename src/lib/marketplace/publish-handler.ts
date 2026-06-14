@@ -15,6 +15,7 @@ import {
   publishEbayListing,
   type EbayPublishPrismaLike,
   type EbayPublishResult,
+  type EbayPublishStepRecord,
 } from "./adapters/ebay/publish";
 
 const publishingPersistenceTables = ["PublishAttempt", "MarketplaceEvent"] as const;
@@ -446,6 +447,15 @@ async function executeEbayPublish(
     });
 
     const steps: Array<{ kind: string; data: Prisma.InputJsonValue }> = [
+      ...(result.steps ?? []).map((step) => ({
+        kind: `ebay_publish_step_${step.status}`,
+        data: {
+          step: step.step,
+          attemptId: attempt.id,
+          marketplace: "ebay",
+          environment,
+        } as Prisma.InputJsonValue,
+      })),
       {
         kind: "ebay_inventory_item_created",
         data: { sku: result.sku, attemptId: attempt.id },
@@ -563,26 +573,94 @@ async function recordEbayFailure(
     typeof error.details.step === "string"
       ? error.details.step
       : null;
+  const ebayError =
+    error instanceof EbayIntegrationError &&
+    error.details &&
+    isRecord(error.details.ebayError)
+      ? sanitizeJsonRecord(error.details.ebayError)
+      : null;
+  const stepEvents =
+    error instanceof EbayIntegrationError && Array.isArray(error.details?.stepEvents)
+      ? error.details.stepEvents.filter(isPublishStepEvent)
+      : [];
+  const startedSteps =
+    error instanceof EbayIntegrationError && Array.isArray(error.details?.startedSteps)
+      ? error.details.startedSteps.filter((value): value is string => typeof value === "string")
+      : [];
+  const succeededSteps =
+    error instanceof EbayIntegrationError && Array.isArray(error.details?.succeededSteps)
+      ? error.details.succeededSteps.filter((value): value is string => typeof value === "string")
+      : [];
 
   await withMigrationDetection(async () => {
     await updatePublishAttempt(prisma, publishAttemptId, {
       status: "FAILED",
       code,
       reason,
-      adapterResult: { code, step, missing } as unknown as Prisma.InputJsonValue,
+      adapterResult: {
+        code,
+        step,
+        missing,
+        ebayError,
+        stepEvents,
+        startedSteps,
+        succeededSteps,
+      } as unknown as Prisma.InputJsonValue,
       completedAt: new Date(),
     });
+
+    for (const stepEvent of stepEvents) {
+      await prisma.marketplaceEvent.create({
+        data: {
+          marketplaceListingId,
+          kind: `ebay_publish_step_${stepEvent.status}`,
+          data: {
+            code,
+            step: stepEvent.step,
+            attemptId: publishAttemptId,
+            marketplace: "ebay",
+          },
+        },
+      });
+    }
 
     await prisma.marketplaceEvent.create({
       data: {
         marketplaceListingId,
         kind: "publish_failed",
-        data: { code, step, missing, attemptId: publishAttemptId, marketplace: "ebay" },
+        data: {
+          code,
+          step,
+          missing,
+          ebayError,
+          startedSteps,
+          succeededSteps,
+          attemptId: publishAttemptId,
+          marketplace: "ebay",
+        } as unknown as Prisma.InputJsonValue,
       },
     });
 
     return { id: publishAttemptId };
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sanitizeJsonRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+}
+
+function isPublishStepEvent(value: unknown): value is EbayPublishStepRecord {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.step === "string" &&
+    ["inventory_item", "offer", "publish"].includes(value.step) &&
+    typeof value.status === "string" &&
+    ["started", "succeeded", "failed"].includes(value.status)
+  );
 }
 
 async function updatePublishAttempt(

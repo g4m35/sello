@@ -75,6 +75,23 @@ export type AttemptView = {
   externalOfferId: string | null;
   externalListingId: string | null;
   listingLastError: string | null;
+  failedStep: string | null;
+  ebayErrorStatus: number | null;
+  ebayErrorMessage: string | null;
+};
+
+export type EbayOrphanArtifactView = {
+  sku: string;
+  inventoryItemFound: boolean;
+  offers: Array<{
+    offerId: string | null;
+    status: string | null;
+    listingId: string | null;
+    listingStatus: string | null;
+  }>;
+  liveListingFound: boolean;
+  cleanupAvailable: boolean;
+  checkedAt: string;
 };
 
 export type ReadinessView = {

@@ -16,6 +16,7 @@ import { AutoPricing } from "@/components/app/auto-pricing";
 import { EbayPreflightCard } from "@/components/app/ebay-preflight-card";
 import {
   confirmEbayDelist,
+  confirmEbayOrphanCleanup,
   MarketplaceOperationsPanel,
 } from "@/components/app/marketplace-operations-panel";
 import {
@@ -33,7 +34,7 @@ import {
   type ExportMarketplace,
 } from "@/lib/marketplace/export-formatters";
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
-import type { ItemDetailView } from "@/lib/view/types";
+import type { EbayOrphanArtifactView, ItemDetailView } from "@/lib/view/types";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -168,6 +169,10 @@ export default function ListingDetailPage() {
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [delistingEbay, setDelistingEbay] = useState(false);
+  const [scanningEbayOrphans, setScanningEbayOrphans] = useState(false);
+  const [cleaningEbayOrphans, setCleaningEbayOrphans] = useState(false);
+  const [ebayOrphanScan, setEbayOrphanScan] =
+    useState<EbayOrphanArtifactView | null>(null);
   const [exportBusy, setExportBusy] = useState<ExportMarketplace | null>(null);
   const [exportResult, setExportResult] = useState<{
     marketplace: ExportMarketplace;
@@ -240,6 +245,7 @@ export default function ListingDetailPage() {
         setItem(res.item);
         setEdits(editsFrom(res.item));
         setItemEdits(itemEditsFrom(res.item));
+        setEbayOrphanScan(null);
         setError(null);
       } catch (e) {
         if (active) {
@@ -461,6 +467,39 @@ export default function ListingDetailPage() {
       setNotice((e as { error?: string })?.error ?? "Could not end the eBay listing.");
     } finally {
       setDelistingEbay(false);
+    }
+  }, [token, id, reload]);
+
+  const runEbayOrphanScan = useCallback(async () => {
+    setScanningEbayOrphans(true);
+    setNotice(null);
+    try {
+      const result = await api.scanEbayOrphans(token, id);
+      setEbayOrphanScan(result.scan);
+    } catch (e) {
+      setNotice(
+        (e as { error?: string })?.error ?? "Could not check eBay publish artifacts.",
+      );
+    } finally {
+      setScanningEbayOrphans(false);
+    }
+  }, [token, id]);
+
+  const runEbayOrphanCleanup = useCallback(async () => {
+    if (!confirmEbayOrphanCleanup()) return;
+    setCleaningEbayOrphans(true);
+    setNotice(null);
+    try {
+      const result = await api.cleanupEbayOrphans(token, id);
+      setEbayOrphanScan(result.scan);
+      reload();
+    } catch (e) {
+      setNotice(
+        (e as { error?: string })?.error ??
+          "Could not clean up eBay publish artifacts.",
+      );
+    } finally {
+      setCleaningEbayOrphans(false);
     }
   }, [token, id, reload]);
 
@@ -1289,7 +1328,12 @@ export default function ListingDetailPage() {
               channels={item.channels}
               attempts={item.attempts}
               delisting={delistingEbay}
+              orphanScan={ebayOrphanScan}
+              scanningOrphans={scanningEbayOrphans}
+              cleaningOrphans={cleaningEbayOrphans}
               onDelistEbay={() => void runEbayDelist()}
+              onScanEbayOrphans={() => void runEbayOrphanScan()}
+              onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}
             />
           </div>
         </div>
