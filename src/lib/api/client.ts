@@ -10,6 +10,47 @@ import type {
 
 export type ApiError = { error: string; status: number };
 
+export type PriceCompRow = {
+  id: string;
+  source: string;
+  sourceType: string;
+  platform: string | null;
+  status: string;
+  title: string;
+  brand: string | null;
+  size: string | null;
+  priceCents: number;
+  shippingCents: number;
+  totalPriceCents: number | null;
+  currency: string;
+  soldDate: string | null;
+  url: string | null;
+  imageUrl: string | null;
+  condition: string;
+  matchScore: number | null;
+  usedInPricing: boolean;
+  ignoredAsOutlier: boolean;
+  rawJson: unknown;
+  notes: string | null;
+};
+
+export type CompsSummary = {
+  status: string;
+  totalComps: number;
+  validComps: number;
+  soldCompCount?: number;
+  activeCompCount?: number;
+  lowCents: number | null;
+  medianCents?: number | null;
+  averageCents: number | null;
+  highCents: number | null;
+  quickSaleCents: number | null;
+  recommendedListCents: number | null;
+  confidence: string;
+  confidenceScore?: number;
+  confidenceReasons?: string[];
+};
+
 async function request<T>(
   path: string,
   token: string,
@@ -70,20 +111,8 @@ export const api = {
   getComps: (token: string, itemId: string) =>
     request<{
       inventoryItemId: string | null;
-      comps: unknown[];
-      summary: {
-        status: string;
-        totalComps: number;
-        validComps: number;
-        lowCents: number | null;
-        averageCents: number | null;
-        highCents: number | null;
-        quickSaleCents: number | null;
-        recommendedListCents: number | null;
-        confidence: string;
-        confidenceScore?: number;
-        confidenceReasons?: string[];
-      };
+      comps: PriceCompRow[];
+      summary: CompsSummary;
       discovery: {
         status: string;
         autoDiscoveryEnabled: boolean;
@@ -95,6 +124,55 @@ export const api = {
         rejectedCount?: number | null;
       };
     }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token),
+
+  addComp: (
+    token: string,
+    body: {
+      inventoryItemId: string;
+      comp: {
+        source: string;
+        sourceType: "manual" | "api" | "scraper" | "visual_search";
+        platform?: string | null;
+        status: "sold" | "active" | "unknown";
+        title: string;
+        brand?: string | null;
+        size?: string | null;
+        priceCents: number;
+        shippingCents?: number;
+        totalPriceCents?: number | null;
+        currency?: string;
+        soldDate?: string | null;
+        url?: string | null;
+        imageUrl?: string | null;
+        condition?: string;
+        matchScore?: number | null;
+        usedInPricing?: boolean;
+        ignoredAsOutlier?: boolean;
+        rawJson?: unknown;
+        notes?: string | null;
+      };
+    },
+  ) =>
+    request<{
+      inventoryItemId: string;
+      comps: PriceCompRow[];
+      summary: CompsSummary;
+    }>("/api/listings/comps", token, { method: "POST", body: JSON.stringify(body) }),
+
+  updateComp: (
+    token: string,
+    compId: string,
+    body: {
+      usedInPricing?: boolean;
+      ignoredAsOutlier?: boolean;
+      notes?: string | null;
+    },
+  ) =>
+    request<{
+      inventoryItemId: string;
+      comps: PriceCompRow[];
+      summary: CompsSummary;
+    }>(`/api/listings/comps/${compId}`, token, { method: "PATCH", body: JSON.stringify(body) }),
 
   refreshComps: (token: string, inventoryItemId: string) =>
     request<{

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { Banner, Btn } from "@/components/ui/primitives";
 import { useSession } from "@/components/providers/session-provider";
-import { api } from "@/lib/api/client";
+import { api, type PriceCompRow } from "@/lib/api/client";
 import { getAutoCompStatusCopy } from "@/lib/comps/status";
 import { formatMoneyCents } from "@/lib/view/format";
 
@@ -36,6 +36,38 @@ type Discovery = {
   rejectedCount?: number | null;
 };
 
+type ManualCompForm = {
+  source: string;
+  title: string;
+  price: string;
+  url: string;
+};
+
+const emptyManualComp: ManualCompForm = {
+  source: "Manual comp",
+  title: "",
+  price: "",
+  url: "",
+};
+
+function rawMetadata(comp: PriceCompRow): { matchClassification?: string; matchReasons?: string[] } {
+  if (!comp.rawJson || typeof comp.rawJson !== "object" || Array.isArray(comp.rawJson)) return {};
+  const raw = comp.rawJson as Record<string, unknown>;
+  return {
+    matchClassification:
+      typeof raw.matchClassification === "string" ? raw.matchClassification : undefined,
+    matchReasons: Array.isArray(raw.matchReasons)
+      ? raw.matchReasons.filter((reason): reason is string => typeof reason === "string")
+      : undefined,
+  };
+}
+
+function centsFromDollars(value: string): number | null {
+  const normalized = value.trim().replace(/^\$/, "");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : null;
+}
+
 // Read-only automatic pricing. Comps are gathered for the seller, not entered by
 // hand. Pricing is computed from real comps only; nothing is invented. A
 // "Refresh comps" action runs the configured comp sources on demand.
@@ -49,10 +81,15 @@ export function AutoPricing({
   const { token } = useSession();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
+  const [comps, setComps] = useState<PriceCompRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [note, setNote] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualComp, setManualComp] = useState<ManualCompForm>(emptyManualComp);
+  const [savingManual, setSavingManual] = useState(false);
+  const [busyCompId, setBusyCompId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -62,6 +99,7 @@ export function AutoPricing({
         if (active) {
           setSummary(res.summary);
           setDiscovery(res.discovery);
+          setComps(res.comps);
           setError(null);
         }
       } catch (e) {
@@ -93,6 +131,67 @@ export function AutoPricing({
     }
   }
 
+  async function addManualComp() {
+    const priceCents = centsFromDollars(manualComp.price);
+    if (priceCents == null || manualComp.title.trim().length === 0) {
+      setNote("Add a manual comp title and a price above $0.");
+      return;
+    }
+
+    setSavingManual(true);
+    setNote(null);
+    try {
+      const res = await api.addComp(token, {
+        inventoryItemId: itemId,
+        comp: {
+          source: manualComp.source.trim() || "Manual comp",
+          sourceType: "manual",
+          platform: null,
+          status: "sold",
+          title: manualComp.title.trim(),
+          priceCents,
+          shippingCents: 0,
+          currency: "USD",
+          url: manualComp.url.trim() || null,
+          condition: "unknown",
+          usedInPricing: true,
+          ignoredAsOutlier: false,
+          notes: "Manual comp added from listing editor.",
+        },
+      });
+      setSummary(res.summary);
+      setComps(res.comps);
+      setManualComp(emptyManualComp);
+      setManualOpen(false);
+      setNote("Manual comp added.");
+    } catch (e) {
+      setNote((e as { error?: string })?.error ?? "Could not add manual comp.");
+    } finally {
+      setSavingManual(false);
+    }
+  }
+
+  async function rejectComp(comp: PriceCompRow) {
+    setBusyCompId(comp.id);
+    setNote(null);
+    try {
+      const res = await api.updateComp(token, comp.id, {
+        usedInPricing: false,
+        ignoredAsOutlier: true,
+        notes: comp.notes
+          ? `${comp.notes} Rejected in pricing review.`
+          : "Rejected in pricing review.",
+      });
+      setSummary(res.summary);
+      setComps(res.comps);
+      setNote("Comp rejected and removed from automatic pricing.");
+    } catch (e) {
+      setNote((e as { error?: string })?.error ?? "Could not reject comp.");
+    } finally {
+      setBusyCompId(null);
+    }
+  }
+
   const refreshBtn = (
     <Btn variant="secondary" size="sm" icon="refresh" onClick={refresh} disabled={refreshing}>
       {refreshing ? "Fetching…" : "Refresh comps"}
@@ -110,6 +209,7 @@ export function AutoPricing({
     summary.recommendedListCents != null &&
     (summary.confidence === "medium" || summary.confidence === "low") &&
     onApplyPrice;
+  const visibleComps = comps.slice(0, 8);
 
   const details = (
     <div className="stack-2">
@@ -129,6 +229,119 @@ export function AutoPricing({
     </div>
   );
 
+  const manualCompControls = (
+    <div className="stack-2">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <span className="t-small muted">Manual fallback</span>
+        <Btn
+          variant="ghost"
+          size="sm"
+          icon={manualOpen ? "x" : "plus"}
+          onClick={() => setManualOpen((open) => !open)}
+        >
+          {manualOpen ? "Close" : "Add manual comp"}
+        </Btn>
+      </div>
+      {manualOpen && (
+        <div className="stack-2">
+          <div className="form-grid form-grid--2" style={{ gap: 10 }}>
+            <label className="field">
+              <span>Source</span>
+              <input
+                value={manualComp.source}
+                onChange={(e) => setManualComp((form) => ({ ...form, source: e.target.value }))}
+                placeholder="eBay sold, Grailed sold"
+              />
+            </label>
+            <label className="field">
+              <span>Sold price</span>
+              <input
+                value={manualComp.price}
+                onChange={(e) => setManualComp((form) => ({ ...form, price: e.target.value }))}
+                placeholder="165.00"
+                inputMode="decimal"
+              />
+            </label>
+          </div>
+          <label className="field">
+            <span>Title</span>
+            <input
+              value={manualComp.title}
+              onChange={(e) => setManualComp((form) => ({ ...form, title: e.target.value }))}
+              placeholder="Comparable item title"
+            />
+          </label>
+          <label className="field">
+            <span>URL</span>
+            <input
+              value={manualComp.url}
+              onChange={(e) => setManualComp((form) => ({ ...form, url: e.target.value }))}
+              placeholder="https://"
+              type="url"
+            />
+          </label>
+          <Btn variant="secondary" size="sm" onClick={addManualComp} disabled={savingManual}>
+            {savingManual ? "Adding…" : "Add comp"}
+          </Btn>
+        </div>
+      )}
+    </div>
+  );
+
+  const compList = visibleComps.length > 0 && (
+    <div className="stack-2">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <span className="t-small muted">Candidate comps</span>
+        <span className="t-micro">
+          {summary.validComps} used · {Math.max(0, summary.totalComps - summary.validComps)} filtered
+        </span>
+      </div>
+      <div className="stack-2">
+        {visibleComps.map((comp) => {
+          const raw = rawMetadata(comp);
+          const total = comp.totalPriceCents ?? comp.priceCents + comp.shippingCents;
+          const classification =
+            raw.matchClassification ?? (comp.usedInPricing ? "possible" : "rejected");
+          const reasons = raw.matchReasons?.slice(0, 2) ?? [];
+          return (
+            <div key={comp.id} className="card" style={{ padding: 12 }}>
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "start" }}>
+                <div className="stack-1" style={{ minWidth: 0 }}>
+                  <div className="t-small" style={{ fontWeight: 650 }}>
+                    {comp.title}
+                  </div>
+                  <div className="t-micro">
+                    {comp.source.replace(/^auto:/, "")} · {comp.status} · {classification}
+                    {comp.matchScore != null ? ` · ${Math.round(comp.matchScore * 100)}%` : ""}
+                  </div>
+                  {reasons.length > 0 && <div className="t-small muted">{reasons.join(" · ")}</div>}
+                </div>
+                <div className="stack-1" style={{ alignItems: "end" }}>
+                  <div className="t-num">{formatMoneyCents(total)}</div>
+                  {comp.url && (
+                    <a className="t-micro" href={comp.url} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  )}
+                  {comp.usedInPricing && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => rejectComp(comp)}
+                      disabled={busyCompId === comp.id}
+                    >
+                      {busyCompId === comp.id ? "Rejecting…" : "Reject"}
+                    </Btn>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   if (!hasData) {
     return (
       <div className="stack-3">
@@ -142,6 +355,8 @@ export function AutoPricing({
           title={copy.title}
           desc={details}
         />
+        {manualCompControls}
+        {compList}
       </div>
     );
   }
@@ -201,6 +416,8 @@ export function AutoPricing({
           ))}
         </ul>
       )}
+      {manualCompControls}
+      {compList}
     </div>
   );
 }
