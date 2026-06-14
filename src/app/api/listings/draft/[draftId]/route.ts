@@ -100,7 +100,9 @@ export async function PATCH(
 
 function mergeMarketplaceDrafts(
   existing: Prisma.JsonValue,
-  update: { ebay?: { categoryId: string } } | undefined,
+  update:
+    | { ebay?: { categoryId: string; quantity?: number; aspects?: Record<string, string> } }
+    | undefined,
 ) {
   const current =
     existing && typeof existing === "object" && !Array.isArray(existing)
@@ -121,6 +123,8 @@ function mergeMarketplaceDrafts(
     ebay: {
       ...ebay,
       categoryId: update.ebay.categoryId.trim(),
+      quantity: update.ebay.quantity ?? 1,
+      ...(update.ebay.aspects ? { aspects: update.ebay.aspects } : {}),
     },
   };
 }

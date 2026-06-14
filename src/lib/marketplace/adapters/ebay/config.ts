@@ -62,6 +62,12 @@ export function isEbaySandboxPublishEnabled(env: EbayEnv = process.env): boolean
   return env.EBAY_SANDBOX_PUBLISH_ENABLED === "true";
 }
 
+// Server-side gate for real eBay production publish calls. Defaults to false
+// and only the exact string "true" enables live listing creation.
+export function isEbayProductionPublishEnabled(env: EbayEnv = process.env): boolean {
+  return env.EBAY_PRODUCTION_PUBLISH_ENABLED === "true";
+}
+
 const minOAuthStateSecretBytes = 32;
 
 // Dedicated secret for signing the OAuth state cookie (HMAC), kept separate from

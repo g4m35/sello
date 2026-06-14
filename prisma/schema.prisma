@@ -206,6 +206,7 @@ model MarketplaceListing {
   inventoryItemId   String                   @db.Uuid
   inventoryItem     InventoryItem            @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
   marketplace       Marketplace
+  environment       String                   @default("sandbox")
   status            MarketplaceListingStatus @default(NOT_LISTED)
   sku               String?
   externalOfferId   String?
@@ -217,8 +218,9 @@ model MarketplaceListing {
   publishAttempts   PublishAttempt[]
   events            MarketplaceEvent[]
 
-  @@unique([inventoryItemId, marketplace])
+  @@unique([inventoryItemId, marketplace, environment])
   @@index([marketplace, status])
+  @@index([marketplace, environment, status])
 }
 
 model PublishAttempt {
@@ -226,6 +228,7 @@ model PublishAttempt {
   marketplaceListingId String               @db.Uuid
   marketplaceListing   MarketplaceListing   @relation(fields: [marketplaceListingId], references: [id], onDelete: Cascade)
   status               PublishAttemptStatus @default(NOT_IMPLEMENTED)
+  idempotencyKey       String?
   code                 String
   reason               String?
   adapterResult        Json?
@@ -236,6 +239,7 @@ model PublishAttempt {
 
   @@index([marketplaceListingId, createdAt])
   @@index([requestedBy, createdAt])
+  @@index([idempotencyKey])
 }
 
 model MarketplaceEvent {

@@ -155,7 +155,7 @@ export class EbaySandboxClient implements EbayApiClient {
     if (!result?.offerId) {
       throw new EbayIntegrationError(
         ebayErrorCodes.publishFailed,
-        "eBay sandbox createOffer returned no offerId.",
+        "eBay createOffer returned no offerId.",
         502,
       );
     }
@@ -170,7 +170,7 @@ export class EbaySandboxClient implements EbayApiClient {
     if (!result?.listingId) {
       throw new EbayIntegrationError(
         ebayErrorCodes.publishFailed,
-        "eBay sandbox publishOffer returned no listingId.",
+        "eBay publishOffer returned no listingId.",
         502,
       );
     }
@@ -230,7 +230,7 @@ export class EbaySandboxClient implements EbayApiClient {
     if (!response.ok) {
       throw new EbayIntegrationError(
         ebayErrorCodes.publishFailed,
-        "eBay sandbox publish request failed.",
+        "eBay publish request failed.",
         502,
         { status: response.status },
       );

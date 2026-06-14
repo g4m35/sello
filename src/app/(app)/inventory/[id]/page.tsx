@@ -42,6 +42,8 @@ type DraftEdits = {
   recommendedPriceCents: number | null;
   selectedMarketplaces: string[];
   ebayCategoryId: string;
+  ebayQuantity: number;
+  ebayAspects: Record<string, string>;
   measurements: Measurement[];
   flaws: Flaw[];
 };
@@ -83,6 +85,8 @@ function editsFrom(item: ItemDetailView): DraftEdits {
     recommendedPriceCents: item.priceCents,
     selectedMarketplaces: item.selectedMarketplaces,
     ebayCategoryId: item.ebayCategoryId ?? "",
+    ebayQuantity: item.ebayQuantity,
+    ebayAspects: item.ebayAspects,
     measurements: item.measurements,
     flaws: item.flaws,
   };
@@ -261,7 +265,13 @@ export default function ListingDetailPage() {
           bulletPoints: next.bulletPoints,
           recommendedPriceCents: next.recommendedPriceCents,
           selectedMarketplaces: next.selectedMarketplaces,
-          marketplaceDrafts: { ebay: { categoryId: next.ebayCategoryId.trim() } },
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: next.ebayCategoryId.trim(),
+              quantity: next.ebayQuantity,
+              aspects: next.ebayAspects,
+            },
+          },
           measurements: savableMeasurements(next.measurements),
           flaws: savableFlaws(next.flaws),
         });
@@ -373,7 +383,13 @@ export default function ListingDetailPage() {
         bulletPoints: edits.bulletPoints,
         recommendedPriceCents: edits.recommendedPriceCents,
         selectedMarketplaces: edits.selectedMarketplaces,
-        marketplaceDrafts: { ebay: { categoryId: edits.ebayCategoryId.trim() } },
+        marketplaceDrafts: {
+          ebay: {
+            categoryId: edits.ebayCategoryId.trim(),
+            quantity: edits.ebayQuantity,
+            aspects: edits.ebayAspects,
+          },
+        },
         measurements: savableMeasurements(edits.measurements),
         flaws: savableFlaws(edits.flaws),
         approve: true,
@@ -474,6 +490,7 @@ export default function ListingDetailPage() {
       ),
   );
   const shortId = item.id.slice(0, 8);
+  const canLivePublish = item.channels.some((channel) => channel.publishImplemented);
   const canMarkSold = item.lifecycleState === "ready" || item.lifecycleState === "active";
   const canDelist =
     item.lifecycleState === "draft" ||
@@ -618,16 +635,18 @@ export default function ListingDetailPage() {
             >
               Save draft
             </Btn>
-            <Btn
-              variant="accent"
-              size="sm"
-              icon="send"
-              kbd="⌘↵"
-              disabled={!item.readiness.ready || approving}
-              onClick={requestPublish}
-            >
-              Publish
-            </Btn>
+            {canLivePublish && (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="send"
+                kbd="⌘↵"
+                disabled={!item.readiness.ready || approving}
+                onClick={requestPublish}
+              >
+                Publish
+              </Btn>
+            )}
           </div>
         </div>
 
@@ -1113,15 +1132,17 @@ export default function ListingDetailPage() {
                     {item.readiness.doneCount} of {item.readiness.totalCount} checks
                   </div>
                 </div>
-                <Btn
-                  variant="accent"
-                  size="sm"
-                  icon="send"
-                  disabled={!item.readiness.ready || approving}
-                  onClick={requestPublish}
-                >
-                  {approving ? "Preparing…" : "Publish"}
-                </Btn>
+                {canLivePublish && (
+                  <Btn
+                    variant="accent"
+                    size="sm"
+                    icon="send"
+                    disabled={!item.readiness.ready || approving}
+                    onClick={requestPublish}
+                  >
+                    {approving ? "Preparing..." : "Publish"}
+                  </Btn>
+                )}
               </div>
               <ul className="readiness__list">
                 {item.readiness.checks.map((check) => (
@@ -1191,7 +1212,12 @@ export default function ListingDetailPage() {
               itemId={id}
               token={token}
               savedCategoryId={edits.ebayCategoryId}
+              savedQuantity={edits.ebayQuantity}
               onSelectCategory={(categoryId) => patch({ ebayCategoryId: categoryId })}
+              onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
+              onSaveAspect={(name, value) =>
+                patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
+              }
             />
 
             <section className="card">

@@ -120,12 +120,12 @@ describe("validateEbayListingReadiness", () => {
     );
   });
 
-  it("defaults quantity to 1 with a warning when absent", () => {
+  it("allows absent quantity because callers resolve the resale default to 1", () => {
     const input = baseInput();
     input.draft.quantity = null;
     const result = validateEbayListingReadiness(input);
     expect(result.ready).toBe(true);
     expect(result.missing).not.toContain("quantity");
-    expect(result.warnings).toContain("quantity_defaulted_to_1");
+    expect(result.warnings).not.toContain("quantity_defaulted_to_1");
   });
 });

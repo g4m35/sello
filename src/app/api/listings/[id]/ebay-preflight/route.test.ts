@@ -41,7 +41,7 @@ describe("eBay preflight route", () => {
           brand: "Nike",
           condition: "new_with_tags",
           size: "US 10",
-          colorway: null,
+          colorway: "Aqua",
           listingDrafts: [
             {
               title: "Nike Air Max 1",
