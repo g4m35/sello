@@ -53,4 +53,44 @@ describe("PublishModal", () => {
     expect(html).toContain("Confirming creates a live eBay listing");
     expect(html).toContain("Create live eBay listing");
   });
+
+  it("renders the preflight-backed final review section for a live eBay publish", () => {
+    const html = renderToStaticMarkup(
+      <PublishModal open onClose={() => undefined} item={item()} />,
+    );
+
+    // The live review is present and, before the dry-run preflight resolves,
+    // sits in its loading state (effects do not run in static markup), so the
+    // create button is rendered but gated.
+    expect(html).toContain("Review the live eBay listing");
+    expect(html).toContain("Loading the final eBay review");
+    expect(html).toContain("Create live eBay listing");
+  });
+
+  it("hides the live review and live publish button when eBay publish is not enabled", () => {
+    const draftOnly = item({
+      channels: [
+        {
+          marketplace: "ebay",
+          name: "eBay",
+          status: "ready",
+          publishImplemented: false,
+          environment: "production",
+          sku: null,
+          externalOfferId: null,
+          externalListingId: null,
+          lastError: null,
+        },
+      ],
+    });
+
+    const html = renderToStaticMarkup(
+      <PublishModal open onClose={() => undefined} item={draftOnly} />,
+    );
+
+    expect(html).not.toContain("Review the live eBay listing");
+    expect(html).not.toContain("Create live eBay listing");
+    expect(html).toContain("enabled yet");
+    expect(html).toContain("Record publish attempt");
+  });
 });

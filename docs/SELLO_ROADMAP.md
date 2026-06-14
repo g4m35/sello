@@ -72,6 +72,17 @@ for publish-critical values.
 4. **Worker host** — queues for publish/sync/delist with retries.
 5. **Second marketplace adapter** behind the same capability gates.
 
+## First live eBay publish (the production-unlock milestone)
+
+The step-by-step runbook for the first controlled live listing lives in
+[`docs/FIRST_LIVE_PUBLISH.md`](./FIRST_LIVE_PUBLISH.md). It covers the listing to
+use, the exact title/price/category/quantity/aspects, payment/fulfillment/return
+policies, inventory location, the final payload preview, duplicate protection,
+publish attempt/event logging, the delist recovery path, the flag
+enable/disable steps, and the rollback/cleanup checklist. Production publishing
+stays OFF (`EBAY_PRODUCTION_PUBLISH_ENABLED`) until that runbook is deliberately
+executed.
+
 ## Non-negotiables (mirror CLAUDE.md integrity rules)
 
 - Never fake publishing, prices, or comps.

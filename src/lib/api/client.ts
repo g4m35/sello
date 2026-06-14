@@ -1,4 +1,5 @@
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
+import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
 import type {
   AttemptView,
   ChannelView,
@@ -242,6 +243,16 @@ export const api = {
     }>(
       `/api/listings/${itemId}/export?marketplace=${encodeURIComponent(marketplace)}`,
       token,
+    ),
+
+  // eBay publish preflight (dry run). Validates the listing and returns the
+  // exact payload preview without any outbound eBay call. Used to drive the
+  // final live-publish review so what the seller confirms equals what is sent.
+  ebayPreflight: (token: string, itemId: string) =>
+    request<EbayPreflightResult>(
+      `/api/listings/${itemId}/ebay-preflight`,
+      token,
+      { method: "POST" },
     ),
 
   // Honest publish: the server returns 501 NOT_IMPLEMENTED. We surface the

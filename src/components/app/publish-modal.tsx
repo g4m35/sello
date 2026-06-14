@@ -1,13 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Icon } from "@/components/ui/icon";
 import { Badge, Banner, Btn, Check, Modal } from "@/components/ui/primitives";
 import { MpLogo } from "@/components/ui/marketplace";
+import { ebayPreflightMissingLabels } from "@/components/app/ebay-preflight-card";
 import { api } from "@/lib/api/client";
 import { useSession } from "@/components/providers/session-provider";
 import { formatMoneyCents } from "@/lib/view/format";
+import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
+import {
+  buildEbayPublishReview,
+  canSubmitLiveEbayPublish,
+} from "@/lib/marketplace/adapters/ebay/publish-review";
 import type { ItemView } from "@/lib/view/types";
 
 type Stage = "review" | "running" | "result";
@@ -34,6 +40,11 @@ export function PublishModal({
   const [stage, setStage] = useState<Stage>("review");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
+  // Live eBay final review (loaded from the dry-run preflight) and the explicit
+  // confirmation the seller must give before a live listing is created.
+  const [preflight, setPreflight] = useState<EbayPreflightResult | null>(null);
+  const [preflightError, setPreflightError] = useState<string | null>(null);
+  const [confirmLive, setConfirmLive] = useState(false);
 
   // Reset the modal each time it opens for an item (render-phase derived state).
   const openKey = open && item ? item.id : null;
@@ -50,8 +61,49 @@ export function PublishModal({
       );
       setStage("review");
       setOutcomes([]);
+      setPreflight(null);
+      setPreflightError(null);
+      setConfirmLive(false);
     }
   }
+
+  const itemId = item?.id ?? null;
+  // A live eBay publish is only possible when eBay's publish capability is on
+  // (production flag enabled) AND the seller has eBay selected. In every other
+  // case this is false and the live-review path is skipped entirely.
+  const selectedLiveEbay = Boolean(
+    item?.channels.some(
+      (c) =>
+        c.marketplace === "ebay" &&
+        c.publishImplemented &&
+        selected.has(c.marketplace),
+    ),
+  );
+
+  // Fetch the dry-run preflight to drive the final review. Zero outbound eBay
+  // calls (the preflight route is read-only); follows the project's effect rule
+  // of setting state only inside the async runner after the await.
+  useEffect(() => {
+    if (!open || !selectedLiveEbay || !itemId) return;
+    let active = true;
+    async function run() {
+      try {
+        const result = await api.ebayPreflight(token, itemId!);
+        if (active) setPreflight(result);
+      } catch (e) {
+        if (active) {
+          setPreflightError(
+            (e as { error?: string })?.error ??
+              "Could not load the eBay review.",
+          );
+        }
+      }
+    }
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [open, selectedLiveEbay, itemId, token]);
 
   if (!item) return null;
 
@@ -104,9 +156,15 @@ export function PublishModal({
   }
 
   const selectedCount = selected.size;
-  const selectedLiveEbay = item.channels.some(
-    (c) => c.marketplace === "ebay" && c.publishImplemented && selected.has(c.marketplace),
-  );
+  // Loading is derived (not stored) so the effect never sets state synchronously.
+  const preflightLoading =
+    selectedLiveEbay && preflight === null && preflightError === null;
+  const review = preflight ? buildEbayPublishReview(preflight) : null;
+  const reviewReady = review?.ready === true;
+  const liveSubmitReady = canSubmitLiveEbayPublish({
+    reviewReady,
+    confirmed: confirmLive,
+  });
 
   return (
     <Modal open={open} onClose={stage === "running" ? undefined : onClose} wide>
@@ -139,6 +197,63 @@ export function PublishModal({
                   : "Listings stay draft-only. Running publish records a real, audited attempt per channel and returns each marketplace's not-implemented status; nothing is sent to any marketplace."
               }
             />
+            {selectedLiveEbay && (
+              <div className="card" style={{ padding: 12 }}>
+                <div className="t-small" style={{ fontWeight: 600, marginBottom: 8 }}>
+                  Review the live eBay listing
+                </div>
+                {preflightLoading && (
+                  <div className="t-small muted">Loading the final eBay review…</div>
+                )}
+                {preflightError && (
+                  <div className="t-small" style={{ color: "var(--red, #f87171)" }}>
+                    Could not load the eBay review: {preflightError}
+                  </div>
+                )}
+                {review && !review.ready && (
+                  <div className="stack-2">
+                    <div className="t-small" style={{ fontWeight: 500 }}>
+                      Resolve these before publishing to eBay:
+                    </div>
+                    <ul className="t-small muted" style={{ paddingLeft: 18, margin: 0 }}>
+                      {review.missing.map((id) => (
+                        <li key={id}>{ebayPreflightMissingLabels[id] ?? id}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {review?.ready && (
+                  <div className="stack-2">
+                    <ReviewRow label="Marketplace" value={review.review.marketplaceLabel} />
+                    <ReviewRow label="Title" value={review.review.title} />
+                    <ReviewRow label="Price" value={review.review.priceLabel} />
+                    <ReviewRow label="Category" value={review.review.categoryLabel} />
+                    <ReviewRow label="Quantity" value={String(review.review.quantity)} />
+                    <ReviewRow label="Condition" value={review.review.conditionLabel} />
+                    <ReviewRow label="Payment policy" value={review.review.policies.payment} />
+                    <ReviewRow
+                      label="Fulfillment policy"
+                      value={review.review.policies.fulfillment}
+                    />
+                    <ReviewRow label="Return policy" value={review.review.policies.return} />
+                    <ReviewRow label="Inventory location" value={review.review.location} />
+                    <label
+                      className="row"
+                      style={{ gap: 8, alignItems: "center", cursor: "pointer", marginTop: 4 }}
+                    >
+                      <Check
+                        checked={confirmLive}
+                        onChange={() => setConfirmLive((v) => !v)}
+                      />
+                      <span className="t-small">
+                        I understand this creates a live eBay listing on eBay (
+                        {review.review.environment}).
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="mp-select">
               {item.channels.map((c) => {
                 const on = selected.has(c.marketplace);
@@ -168,7 +283,11 @@ export function PublishModal({
               <Btn variant="ghost" onClick={onClose}>
                 Cancel
               </Btn>
-              <Btn variant="accent" disabled={selectedCount === 0} onClick={run}>
+              <Btn
+                variant="accent"
+                disabled={selectedLiveEbay ? !liveSubmitReady : selectedCount === 0}
+                onClick={run}
+              >
                 {selectedLiveEbay
                   ? "Create live eBay listing"
                   : `Record publish attempt (${selectedCount})`}
@@ -239,5 +358,16 @@ export function PublishModal({
         </>
       )}
     </Modal>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="row" style={{ justifyContent: "space-between", gap: 12 }}>
+      <span className="t-small muted">{label}</span>
+      <span className="t-small" style={{ wordBreak: "break-word", textAlign: "right" }}>
+        {value}
+      </span>
+    </div>
   );
 }

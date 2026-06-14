@@ -12,6 +12,36 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-14 — Claude. **First-live-eBay-publish rehearsal + safety hardening.
+Flag still OFF; no live listing created.**
+- Safety audit of the production publish path. Confirmed the lock holds: with
+  `EBAY_PRODUCTION_PUBLISH_ENABLED` OFF, `publishImplementedFor("ebay")` is
+  false so no live publish button can render (`canLivePublish` false on the
+  listing page; the publish modal cannot open), and a direct call to the
+  publish route returns typed `EBAY_PUBLISH_NOT_ENABLED` (403) with a
+  `publish_blocked` event and zero outbound eBay calls. Readiness and the
+  dry-run preflight are flag-independent and still work.
+- Final-review UX (behind the flag only): the publish modal now loads the
+  dry-run preflight and shows a human review (marketplace, title, price,
+  category, quantity, condition, payment/fulfillment/return policies, inventory
+  location). A live publish requires ticking an explicit "creates a live eBay
+  listing" confirmation; the button is gated on `reviewReady && confirmed`.
+  Because the review is built from the same preflight payload the publish
+  sends, what the seller confirms cannot drift from what eBay receives.
+- New pure helper `buildEbayPublishReview` / `canSubmitLiveEbayPublish`
+  (`adapters/ebay/publish-review.ts`) + `api.ebayPreflight` client method.
+- Docs: added `docs/FIRST_LIVE_PUBLISH.md` (runbook: listing, fields, policies,
+  location, payload preview, duplicate protection, attempt/event logging,
+  delist recovery, flag enable/disable, rollback/cleanup) and linked it from
+  `docs/SELLO_ROADMAP.md`.
+- Tests: +6 (publish-review parity + confirmation gate; modal live-review and
+  flag-off hiding). Existing flag-off coverage in `server-map.test.ts`,
+  `publish/route.test.ts`, `publish.test.ts`, and `preflight.test.ts` left
+  intact. Full gate: lint (2 pre-existing warnings only), `vitest` 403 passing,
+  `prisma validate`, `tsc --noEmit`, `next build` — all green.
+- Deploy + production verification details appended below once shipped.
+
+## Previous update
 2026-06-14 — Codex. **Source reconciliation shipped: eBay live production code
 and PriceComp v2 now coexist on `main` and production.**
 - PR #29 (`feature/reconcile-ebay-pricecomp` → `develop`) merged cleanly, then
