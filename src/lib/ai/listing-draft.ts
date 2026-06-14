@@ -24,6 +24,15 @@ export const ProductCategorySchema = z.enum([
 export const MeasurementUnitSchema = z.enum(["in", "cm", "unknown"]);
 export const FlawSeveritySchema = z.enum(["minor", "moderate", "major", "unknown"]);
 const FieldSourceSchema = z.enum(["ai", "seller"]);
+const SHORT_AI_TEXT_MAX_LENGTH = 240;
+
+const shortAiTextSchema = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.length > SHORT_AI_TEXT_MAX_LENGTH
+      ? value.slice(0, SHORT_AI_TEXT_MAX_LENGTH)
+      : value,
+  z.string().min(1).max(SHORT_AI_TEXT_MAX_LENGTH),
+);
 
 // Structured measurements/flaws. `value: null` means "seller still needs to
 // measure"; Gemini must never invent exact numbers from photos.
@@ -84,7 +93,7 @@ export const GeminiListingDraftSchema = z
         condition: ConditionSchema,
         confidence: z.number().min(0).max(1),
         identifiers: z.array(z.string().min(1).max(120)).max(12),
-        authenticationNotes: z.array(z.string().min(1).max(240)).max(8),
+        authenticationNotes: z.array(shortAiTextSchema).max(8),
       })
       .strict(),
     listingDraft: z
@@ -109,7 +118,7 @@ export const GeminiListingDraftSchema = z
         depop: MarketplaceListingSchema,
       })
       .strict(),
-    warnings: z.array(z.string().min(1).max(240)).max(8),
+    warnings: z.array(shortAiTextSchema).max(8),
   })
   .strict();
 
@@ -145,6 +154,12 @@ const marketplaceDraftJsonSchema = {
   required: ["title", "description", "categoryHint", "tags"],
 };
 
+const shortAiTextJsonSchema = {
+  type: Type.STRING,
+  minLength: "1",
+  maxLength: String(SHORT_AI_TEXT_MAX_LENGTH),
+};
+
 export const geminiListingDraftResponseSchema = {
   type: Type.OBJECT,
   properties: {
@@ -168,7 +183,7 @@ export const geminiListingDraftResponseSchema = {
         },
         confidence: { type: Type.NUMBER },
         identifiers: { type: Type.ARRAY, items: { type: Type.STRING } },
-        authenticationNotes: { type: Type.ARRAY, items: { type: Type.STRING } },
+        authenticationNotes: { type: Type.ARRAY, items: shortAiTextJsonSchema },
       },
       required: [
         "productName",
@@ -253,7 +268,7 @@ export const geminiListingDraftResponseSchema = {
       },
       required: ["ebay", "grailed", "poshmark", "depop"],
     },
-    warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
+    warnings: { type: Type.ARRAY, items: shortAiTextJsonSchema },
   },
   required: ["identification", "listingDraft", "marketplaceDrafts", "warnings"],
 };

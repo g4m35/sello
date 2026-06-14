@@ -12,6 +12,30 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-14 — Codex. **Gemini authentication-note validation fix local; Sello tab
+preserved; no deploy.**
+- Root cause: Gemini structured-output schema allowed unconstrained
+  `identification.authenticationNotes` strings, while Zod enforced
+  `max(240)`, so a long but otherwise usable note made draft generation fail
+  with `Gemini JSON failed validation`.
+- Fix on local branch `feature/gemini-auth-notes-validation`: `src/lib/ai/listing-draft.ts`
+  now advertises `minLength: "1"` / `maxLength: "240"` for short AI note/warning
+  strings in the Gemini response schema and clips overlong generated
+  authentication notes/warnings to the app limit before strict validation.
+  Malformed JSON and shape/type failures still fail loudly.
+- Tests added in `src/lib/ai/listing-draft.test.ts` for the exact oversized
+  authentication-note failure and for the outbound Gemini schema limit.
+- Verification passed: focused `npx vitest run src/lib/ai/listing-draft.test.ts`,
+  `npm run lint` (2 pre-existing warnings in `draft-actions.test.ts`), `npm test`
+  (64 files / 417 tests), `npx prisma validate`, and `npm run build`.
+- Chrome production tab `https://sello.wtf/inventory/new` was claimed and released
+  as handoff. It still shows the selected photo, the old validation error, and
+  `Try again` / `Identify & create draft`. Production was NOT redeployed, so
+  clicking it now would still exercise the old deployed parser.
+- Blocked on owner: explicit approval to deploy/promote this branch before retrying
+  the still-loaded production image on `sello.wtf`.
+
+## Previous update
 2026-06-14 — Claude. **First-live-eBay-publish rehearsal + safety hardening.
 Flag still OFF; no live listing created.**
 - Safety audit of the production publish path. Confirmed the lock holds: with

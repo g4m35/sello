@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   GeminiListingDraftSchema,
+  geminiListingDraftResponseSchema,
   parseGeminiListingDraft,
 } from "./listing-draft";
 
@@ -162,5 +163,28 @@ describe("GeminiListingDraftSchema", () => {
     expect(() =>
       parseGeminiListingDraft(`\`\`\`json\n${JSON.stringify(validDraft)}\n\`\`\``),
     ).toThrow("Gemini returned non-JSON content.");
+  });
+
+  it("clips oversized generated authentication notes to the app limit", () => {
+    const longNote = `${"Authentication details ".repeat(16)}Check tags and stitching.`;
+    const parsed = parseGeminiListingDraft(
+      JSON.stringify({
+        ...validDraft,
+        identification: {
+          ...validDraft.identification,
+          authenticationNotes: [longNote],
+        },
+      }),
+    );
+
+    expect(parsed.identification.authenticationNotes[0]).toHaveLength(240);
+    expect(parsed.identification.authenticationNotes[0]).toBe(longNote.slice(0, 240));
+  });
+
+  it("advertises string length limits to Gemini", () => {
+    expect(
+      geminiListingDraftResponseSchema.properties.identification.properties.authenticationNotes
+        .items,
+    ).toMatchObject({ maxLength: "240" });
   });
 });
