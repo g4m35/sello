@@ -1,4 +1,5 @@
 export type CompStatus = "sold" | "active" | "unknown";
+export type PricingBasis = "sold_comps" | "mixed_comps" | "active_market_estimate" | "unknown";
 
 // Richer per-comp input. Every field beyond price/shipping is optional so legacy
 // callers passing `{ priceCents, shippingCents }` keep working unchanged.
@@ -7,6 +8,7 @@ export type PricingComp = {
   shippingCents: number;
   totalPriceCents?: number | null;
   status?: CompStatus;
+  sourceType?: string | null;
   usedInPricing?: boolean;
   ignoredAsOutlier?: boolean;
   matchScore?: number | null;
@@ -25,6 +27,11 @@ export type PricingSummary = {
   compCount: number;
   soldCompCount: number;
   activeCompCount: number;
+  unknownCompCount: number;
+  strongCompCount: number;
+  possibleCompCount: number;
+  pricingBasis: PricingBasis;
+  confidenceCapReason: string | null;
   lowCents: number | null;
   medianCents: number | null;
   averageCents: number | null;
@@ -42,8 +49,8 @@ export const QUICK_SALE_FACTOR = 0.9;
 export const LIST_PREMIUM_FACTOR = 1.1;
 // (high - low) / median above this marks a low-similarity set.
 export const WIDE_SPREAD_RATIO = 0.5;
-// Sold comps anchor the price only once there are at least this many of them.
-export const MIN_SOLD_FOR_PREFERENCE = 2;
+// Sold comps anchor the price only once there are enough to avoid one-off noise.
+export const MIN_SOLD_FOR_PREFERENCE = 3;
 
 function isEligible(c: PricingComp): boolean {
   return (
@@ -76,15 +83,45 @@ function allShare(set: PricingComp[], get: (c: PricingComp) => string | null | u
   return values.length > 0 && values.every((v) => v !== "" && v === values[0]);
 }
 
+function isManualSoldComp(c: PricingComp): boolean {
+  return c.sourceType === "manual" && c.status === "sold";
+}
+
+function matchBucketCount(set: PricingComp[], min: number, max = 1): number {
+  return set.filter((c) => {
+    if (typeof c.matchScore !== "number" || !Number.isFinite(c.matchScore)) return false;
+    return c.matchScore >= min && c.matchScore <= max;
+  }).length;
+}
+
+function possibleManualSoldCount(set: PricingComp[]): number {
+  return set.filter(
+    (c) => isManualSoldComp(c) && (c.matchScore == null || !Number.isFinite(c.matchScore)),
+  ).length;
+}
+
 function scoreConfidence(args: {
   set: PricingComp[];
   usingSold: boolean;
   soldCompCount: number;
+  activeCompCount: number;
+  strongCompCount: number;
+  possibleCompCount: number;
   lowCents: number;
   highCents: number;
   medianCents: number;
-}): { score: number; confidence: PricingConfidence; reasons: string[] } {
-  const { set, usingSold, soldCompCount, lowCents, highCents, medianCents } = args;
+}): { score: number; confidence: PricingConfidence; reasons: string[]; capReason: string | null } {
+  const {
+    set,
+    usingSold,
+    soldCompCount,
+    activeCompCount,
+    strongCompCount,
+    possibleCompCount,
+    lowCents,
+    highCents,
+    medianCents,
+  } = args;
   const reasons: string[] = [];
   let score = 0;
 
@@ -104,10 +141,22 @@ function scoreConfidence(args: {
     score += 0.2;
     reasons.push(`Anchored on ${soldCompCount} sold comp${soldCompCount === 1 ? "" : "s"}.`);
   } else if (soldCompCount > 0) {
-    score += 0.05;
-    reasons.push("Fewer than 2 sold comps; using all eligible comps.");
+    score += 0.08;
+    reasons.push(
+      `Includes ${soldCompCount} sold comp${soldCompCount === 1 ? "" : "s"}, but fewer than ${MIN_SOLD_FOR_PREFERENCE}; blending with market listings.`,
+    );
   } else {
-    reasons.push("Active listings only (asking prices, not sales).");
+    reasons.push("Active market listings only (asking prices, not sold prices).");
+  }
+
+  if (strongCompCount >= 3) {
+    score += 0.1;
+    reasons.push(`${strongCompCount} strong comp${strongCompCount === 1 ? "" : "s"} matched.`);
+  } else if (strongCompCount + possibleCompCount >= 3) {
+    score += 0.05;
+    reasons.push(`${strongCompCount + possibleCompCount} strong/possible comps matched.`);
+  } else {
+    reasons.push("Fewer than 3 strong/possible comps.");
   }
 
   const scored = set.filter(
@@ -165,15 +214,30 @@ function scoreConfidence(args: {
   }
 
   score = Math.max(0, Math.min(1, Math.round(score * 100) / 100));
+  let capReason: string | null = null;
+  if (soldCompCount === 0 && activeCompCount > 0 && score > 0.64) {
+    score = 0.64;
+    capReason = "Confidence capped at medium because pricing is based on active market listings, not sold comps.";
+    reasons.push(capReason);
+  }
+  if (strongCompCount + possibleCompCount < 3 && score > 0.44) {
+    score = 0.44;
+    capReason = "Confidence capped below medium because fewer than 3 strong/possible comps matched.";
+    reasons.push(capReason);
+  }
   const confidence: PricingConfidence =
     score >= 0.7 ? "high" : score >= 0.45 ? "medium" : "low";
-  return { score, confidence, reasons };
+  return { score, confidence, reasons, capReason };
 }
 
 export function calculatePricing(comps: PricingComp[]): PricingSummary {
   const eligible = comps.filter(isEligible);
   const soldCompCount = eligible.filter((c) => c.status === "sold").length;
   const activeCompCount = eligible.filter((c) => c.status === "active").length;
+  const unknownCompCount = eligible.filter((c) => c.status == null || c.status === "unknown").length;
+  const strongCompCount = matchBucketCount(eligible, 0.72);
+  const possibleCompCount =
+    matchBucketCount(eligible, 0.45, 0.719999) + possibleManualSoldCount(eligible);
 
   if (eligible.length === 0) {
     return {
@@ -183,6 +247,11 @@ export function calculatePricing(comps: PricingComp[]): PricingSummary {
       compCount: 0,
       soldCompCount: 0,
       activeCompCount: 0,
+      unknownCompCount: 0,
+      strongCompCount: 0,
+      possibleCompCount: 0,
+      pricingBasis: "unknown",
+      confidenceCapReason: null,
       lowCents: null,
       medianCents: null,
       averageCents: null,
@@ -191,13 +260,20 @@ export function calculatePricing(comps: PricingComp[]): PricingSummary {
       recommendedListCents: null,
       confidence: "none",
       confidenceScore: 0,
-      confidenceReasons: ["No comps yet. Add real sold or active comps."],
+      confidenceReasons: ["No comps yet. Add real sold comps or active market listings."],
     };
   }
 
   const soldEligible = eligible.filter((c) => c.status === "sold");
   const usingSold = soldEligible.length >= MIN_SOLD_FOR_PREFERENCE;
   const anchorSet = usingSold ? soldEligible : eligible;
+  const pricingBasis: PricingBasis = usingSold
+    ? "sold_comps"
+    : soldCompCount > 0 && activeCompCount > 0
+      ? "mixed_comps"
+      : activeCompCount > 0 && soldCompCount === 0
+        ? "active_market_estimate"
+        : "unknown";
 
   const totals = anchorSet.map(totalCents).sort((a, b) => a - b);
   const lowCents = totals[0];
@@ -205,10 +281,13 @@ export function calculatePricing(comps: PricingComp[]): PricingSummary {
   const medianCents = median(totals);
   const averageCents = Math.round(totals.reduce((sum, t) => sum + t, 0) / totals.length);
 
-  const { score, confidence, reasons } = scoreConfidence({
+  const { score, confidence, reasons, capReason } = scoreConfidence({
     set: anchorSet,
     usingSold,
     soldCompCount,
+    activeCompCount,
+    strongCompCount,
+    possibleCompCount,
     lowCents,
     highCents,
     medianCents,
@@ -221,6 +300,11 @@ export function calculatePricing(comps: PricingComp[]): PricingSummary {
     compCount: eligible.length,
     soldCompCount,
     activeCompCount,
+    unknownCompCount,
+    strongCompCount,
+    possibleCompCount,
+    pricingBasis,
+    confidenceCapReason: capReason,
     lowCents,
     medianCents,
     averageCents,

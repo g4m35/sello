@@ -1,6 +1,7 @@
 import { apifyEbaySoldSource } from "@/lib/comps/sources/apify-ebay-sold";
 import { depopActiveSource } from "@/lib/comps/sources/depop-active";
 import { ebayBrowseSource } from "@/lib/comps/sources/ebay-browse";
+import { ebayMarketplaceInsightsSource } from "@/lib/comps/sources/ebay-marketplace-insights";
 import { googleLensSource } from "@/lib/comps/sources/google-lens";
 import { grailedSoldSource } from "@/lib/comps/sources/grailed-sold";
 import { poshmarkSoldSource } from "@/lib/comps/sources/poshmark-sold";
@@ -12,6 +13,7 @@ import type { CompSource } from "@/lib/comps/source";
 // isEnabled() === false and is skipped, so nothing runs unless configured.
 // Note: eBay Marketplace Insights is intentionally absent (access restricted).
 export const COMP_SOURCES: CompSource[] = [
+  ebayMarketplaceInsightsSource,
   stockxSource,
   apifyEbaySoldSource,
   grailedSoldSource,

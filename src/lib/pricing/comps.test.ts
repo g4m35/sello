@@ -94,7 +94,7 @@ describe("calculatePricing", () => {
     expect(s.medianCents).toBe(10000);
   });
 
-  it("prefers sold comps over active comps when at least 2 sold comps exist", () => {
+  it("prefers sold comps over active comps when at least 3 sold comps exist", () => {
     const s = calculatePricing([
       comp({ priceCents: 10000, status: "sold" }),
       comp({ priceCents: 12000, status: "sold" }),
@@ -104,19 +104,22 @@ describe("calculatePricing", () => {
     ]);
     expect(s.soldCompCount).toBe(3);
     expect(s.activeCompCount).toBe(2);
+    expect(s.pricingBasis).toBe("sold_comps");
     // Active 50000s are excluded from the anchor because sold comps dominate.
     expect(s.medianCents).toBe(12000);
     expect(s.highCents).toBe(14000);
     expect(s.confidenceReasons.some((r) => r.includes("sold"))).toBe(true);
   });
 
-  it("falls back to all eligible comps when fewer than 2 sold comps exist", () => {
+  it("falls back to all eligible comps when fewer than 3 sold comps exist", () => {
     const s = calculatePricing([
       comp({ priceCents: 10000, status: "sold" }),
       comp({ priceCents: 20000, status: "active" }),
       comp({ priceCents: 30000, status: "active" }),
     ]);
     expect(s.medianCents).toBe(20000); // all three used
+    expect(s.pricingBasis).toBe("mixed_comps");
+    expect(s.confidenceReasons.join(" ")).toContain("fewer than 3");
   });
 
   it("scales confidence up for a large, recent, consistent sold sample", () => {
@@ -137,12 +140,61 @@ describe("calculatePricing", () => {
     expect(s.confidence).toBe("high");
     expect(s.confidenceScore).toBeGreaterThanOrEqual(0.7);
     expect(s.confidenceReasons.some((r) => r.includes("sold"))).toBe(true);
+    expect(s.pricingBasis).toBe("sold_comps");
   });
 
   it("returns low confidence for a single active asking-price comp", () => {
     const s = calculatePricing([comp({ priceCents: 10000, status: "active" })]);
     expect(s.confidence).toBe("low");
     expect(s.confidenceReasons.some((r) => r.toLowerCase().includes("active"))).toBe(true);
+  });
+
+  it("caps active-listing-only recommendations at medium confidence", () => {
+    const s = calculatePricing(
+      Array.from({ length: 8 }, (_, i) =>
+        comp({
+          priceCents: 18000 + i * 100,
+          status: "active",
+          brand: "The North Face",
+          size: "Large",
+          condition: "used_good",
+          matchScore: 0.9,
+        }),
+      ),
+    );
+
+    expect(s.pricingBasis).toBe("active_market_estimate");
+    expect(s.confidence).toBe("medium");
+    expect(s.confidenceScore).toBeLessThan(0.7);
+    expect(s.confidenceCapReason).toContain("active market listings");
+    expect(s.confidenceReasons.join(" ")).toContain("not sold comps");
+  });
+
+  it("lets a manual sold comp improve a market listing estimate without pretending it is enough sold data", () => {
+    const s = calculatePricing([
+      comp({ priceCents: 13000, status: "sold", sourceType: "manual", matchScore: null }),
+      comp({ priceCents: 18000, status: "active", matchScore: 0.8 }),
+      comp({ priceCents: 19000, status: "active", matchScore: 0.8 }),
+    ]);
+
+    expect(s.soldCompCount).toBe(1);
+    expect(s.activeCompCount).toBe(2);
+    expect(s.pricingBasis).toBe("mixed_comps");
+    expect(s.medianCents).toBe(18000);
+    expect(s.confidenceReasons.join(" ")).toContain("Includes 1 sold comp");
+  });
+
+  it("counts seller-entered sold comps without match scores as possible comps", () => {
+    const s = calculatePricing([
+      comp({ priceCents: 15000, status: "sold", sourceType: "manual", matchScore: null }),
+      comp({ priceCents: 16000, status: "sold", sourceType: "manual", matchScore: null }),
+      comp({ priceCents: 17000, status: "sold", sourceType: "manual", matchScore: null }),
+    ]);
+
+    expect(s.pricingBasis).toBe("sold_comps");
+    expect(s.possibleCompCount).toBe(3);
+    expect(s.confidence).toBe("medium");
+    expect(s.confidenceReasons.join(" ")).toContain("strong/possible comps");
   });
 
   it("penalizes a wide price spread in the confidence reasons", () => {

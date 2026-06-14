@@ -122,11 +122,30 @@ describe("toPriceCompCreate", () => {
     expect(row.source).toBe("auto:ebay-browse");
     expect(row.url).toBeNull();
     expect(row.matchScore).toBe(0.82);
+    expect(row.status).toBe("active");
+    expect(row.notes).toBe("Accepted automatic active listing");
     expect(row.usedInPricing).toBe(true);
     expect(row.rawJson).toMatchObject({
       matchClassification: "strong",
       matchReasons: ["Brand match", "Title overlap"],
     });
+  });
+
+  it("stores automatic sold source results as sold comps", () => {
+    const row = toPriceCompCreate(
+      "item-1",
+      comp({
+        source: "provider-sold",
+        sold: true,
+        soldDate: "2026-06-01T00:00:00.000Z",
+        matchClassification: "strong",
+        matchReasons: ["Sold source"],
+      }),
+    );
+
+    expect(row.status).toBe("sold");
+    expect(row.soldDate).toEqual(new Date("2026-06-01T00:00:00.000Z"));
+    expect(row.notes).toBe("Accepted automatic sold comp");
   });
 
   it("keeps weak automatic comps visible but excludes them from pricing", () => {

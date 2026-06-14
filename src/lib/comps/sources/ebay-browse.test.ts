@@ -31,6 +31,8 @@ describe("ebayBrowseSource", () => {
 
     vi.stubEnv("PRICE_COMP_EBAY_SEARCH_ENABLED", "true");
     expect(ebayBrowseSource.isEnabled()).toBe(true);
+    expect(ebayBrowseSource.sold).toBe(false);
+    expect(ebayBrowseSource.resultKind).toBe("active_listings");
   });
 
   it("uses application OAuth, timeouts, and normalizes safe public active listings", async () => {

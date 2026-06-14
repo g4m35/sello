@@ -6,6 +6,7 @@ export const depopActiveSource: CompSource = {
   id: "depop-active",
   displayName: "Depop (active listings)",
   sold: false,
+  resultKind: "active_listings",
   isEnabled() {
     return process.env.PRICE_COMP_DEPOP_ACTIVE_ENABLED === "true" && Boolean(process.env.DEPOP_COMPS_API_KEY);
   },

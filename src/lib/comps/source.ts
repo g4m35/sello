@@ -19,6 +19,8 @@ export type CompQueryVariant = {
   keywords: string;
 };
 
+export type CompSourceResultKind = "sold_comps" | "active_listings" | "mixed" | "unknown";
+
 export type NormalizedComp = {
   source: string;
   /** Stable id from the source, when available (used for dedupe). */
@@ -48,7 +50,14 @@ export interface CompSource {
   readonly displayName: string;
   /** True when this source returns completed sales, false for active asking prices. */
   readonly sold: boolean;
+  /** Declares whether source results are completed sales or market listing estimates. */
+  readonly resultKind: CompSourceResultKind;
   /** Whether the source is configured (has credentials) and may be queried. */
   isEnabled(): boolean;
   fetchComps(query: CompQuery): Promise<NormalizedComp[]>;
+}
+
+export interface SoldCompSource extends CompSource {
+  readonly sold: true;
+  readonly resultKind: "sold_comps";
 }

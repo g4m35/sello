@@ -30,6 +30,7 @@ describe("runCompFetch", () => {
       id: "test-source",
       displayName: "Test source",
       sold: true,
+      resultKind: "sold_comps",
       isEnabled: () => true,
       fetchComps: vi.fn(async () => [
         comp(1),

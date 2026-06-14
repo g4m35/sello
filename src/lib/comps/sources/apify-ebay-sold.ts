@@ -7,6 +7,7 @@ export const apifyEbaySoldSource: CompSource = {
   id: "apify-ebay-sold",
   displayName: "eBay sold (Apify)",
   sold: true,
+  resultKind: "sold_comps",
   isEnabled() {
     return process.env.PRICE_COMP_APIFY_EBAY_SOLD_ENABLED === "true" && Boolean(process.env.APIFY_TOKEN);
   },

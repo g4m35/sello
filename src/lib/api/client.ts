@@ -40,6 +40,11 @@ export type CompsSummary = {
   validComps: number;
   soldCompCount?: number;
   activeCompCount?: number;
+  unknownCompCount?: number;
+  strongCompCount?: number;
+  possibleCompCount?: number;
+  pricingBasis?: string;
+  confidenceCapReason?: string | null;
   lowCents: number | null;
   medianCents?: number | null;
   averageCents: number | null;

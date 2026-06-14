@@ -5,6 +5,7 @@ export const poshmarkSoldSource: CompSource = {
   id: "poshmark-sold",
   displayName: "Poshmark sold",
   sold: true,
+  resultKind: "sold_comps",
   isEnabled() {
     return process.env.PRICE_COMP_POSHMARK_SOLD_ENABLED === "true" && Boolean(process.env.POSHMARK_COMPS_API_KEY);
   },

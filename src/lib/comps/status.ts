@@ -1,6 +1,9 @@
 export type AutoCompSummaryStatus = {
   validComps: number;
   confidence: string;
+  soldCompCount?: number;
+  activeCompCount?: number;
+  pricingBasis?: string;
 };
 
 export type AutoCompDiscoveryStatus = {
@@ -62,9 +65,25 @@ export function getAutoCompStatusCopy(
     };
   }
   if (summary.validComps > 0) {
+    if (summary.pricingBasis === "active_market_estimate" || (summary.soldCompCount ?? 0) === 0) {
+      return {
+        variant: "info" as const,
+        title: "Market listing estimate ready",
+        desc:
+          "This estimate uses active listings as asking-price signals, not sold comps. Review before accepting.",
+      };
+    }
+    if (summary.pricingBasis === "mixed_comps") {
+      return {
+        variant: "info" as const,
+        title: "Mixed sold and market comps found",
+        desc:
+          "Sello blended available sold comps with active market listings because sold data is still sparse.",
+      };
+    }
     return {
       variant: "info" as const,
-      title: "Auto comps found",
+      title: "Sold comps found",
       desc:
         "Review the recommendation and comp confidence before approving this listing.",
     };

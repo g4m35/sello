@@ -79,8 +79,9 @@ function cents(value: string | undefined): number | null {
 
 export const ebayBrowseSource: CompSource = {
   id: "ebay-browse",
-  displayName: "eBay (active listings)",
+  displayName: "eBay Browse (active market listings)",
   sold: false,
+  resultKind: "active_listings",
 
   isEnabled() {
     return Boolean(

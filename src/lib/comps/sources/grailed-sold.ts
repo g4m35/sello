@@ -6,6 +6,7 @@ export const grailedSoldSource: CompSource = {
   id: "grailed-sold",
   displayName: "Grailed sold",
   sold: true,
+  resultKind: "sold_comps",
   isEnabled() {
     return process.env.PRICE_COMP_GRAILED_SOLD_ENABLED === "true" && Boolean(process.env.GRAILED_COMPS_API_KEY);
   },

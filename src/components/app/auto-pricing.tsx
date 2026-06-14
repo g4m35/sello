@@ -14,6 +14,11 @@ type Summary = {
   validComps: number;
   soldCompCount?: number;
   activeCompCount?: number;
+  unknownCompCount?: number;
+  strongCompCount?: number;
+  possibleCompCount?: number;
+  pricingBasis?: string;
+  confidenceCapReason?: string | null;
   lowCents: number | null;
   medianCents?: number | null;
   averageCents: number | null;
@@ -44,7 +49,7 @@ type ManualCompForm = {
 };
 
 const emptyManualComp: ManualCompForm = {
-  source: "Manual comp",
+  source: "Manual sold comp",
   title: "",
   price: "",
   url: "",
@@ -66,6 +71,30 @@ function centsFromDollars(value: string): number | null {
   const normalized = value.trim().replace(/^\$/, "");
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) : null;
+}
+
+function basisLabel(summary: Summary): string {
+  if (summary.pricingBasis === "sold_comps") return "sold-comp pricing";
+  if (summary.pricingBasis === "mixed_comps") return "mixed sold + market estimate";
+  if (summary.pricingBasis === "active_market_estimate") return "market listing estimate";
+  return "pricing estimate";
+}
+
+function sampleLabel(summary: Summary): string {
+  if (summary.soldCompCount && summary.soldCompCount > 0 && (summary.activeCompCount ?? 0) === 0) {
+    return `${summary.validComps} sold comp${summary.validComps === 1 ? "" : "s"}`;
+  }
+  if (summary.pricingBasis === "active_market_estimate" || (summary.soldCompCount ?? 0) === 0) {
+    return `${summary.validComps} market listing${summary.validComps === 1 ? "" : "s"}`;
+  }
+  return `${summary.soldCompCount ?? 0} sold · ${summary.activeCompCount ?? 0} market`;
+}
+
+function compKindLabel(comp: PriceCompRow): string {
+  if (comp.sourceType === "manual" && comp.status === "sold") return "manual sold comp";
+  if (comp.status === "sold") return "sold/completed comp";
+  if (comp.status === "active") return "active market listing";
+  return "status unknown";
 }
 
 // Read-only automatic pricing. Comps are gathered for the seller, not entered by
@@ -122,7 +151,7 @@ export function AutoPricing({
       setNote(
         res.enabled === 0
           ? "No automatic comp source is connected. Manual comps still work."
-          : `Checked ${res.sources.join(", ")} · ${res.accepted} accepted · ${res.rejected} filtered.`,
+          : `Checked ${res.sources.join(", ")} · ${res.accepted} accepted · ${res.rejected} filtered. Active listings remain market estimates until sold data is available.`,
       );
     } catch (e) {
       setNote((e as { error?: string })?.error ?? "Could not refresh comps.");
@@ -144,7 +173,7 @@ export function AutoPricing({
       const res = await api.addComp(token, {
         inventoryItemId: itemId,
         comp: {
-          source: manualComp.source.trim() || "Manual comp",
+          source: manualComp.source.trim() || "Manual sold comp",
           sourceType: "manual",
           platform: null,
           status: "sold",
@@ -156,7 +185,7 @@ export function AutoPricing({
           condition: "unknown",
           usedInPricing: true,
           ignoredAsOutlier: false,
-          notes: "Manual comp added from listing editor.",
+          notes: "Manual sold comp added from listing editor.",
         },
       });
       setSummary(res.summary);
@@ -210,9 +239,22 @@ export function AutoPricing({
     (summary.confidence === "medium" || summary.confidence === "low") &&
     onApplyPrice;
   const visibleComps = comps.slice(0, 8);
+  const basis = basisLabel(summary);
+  const soldCount = summary.soldCompCount ?? 0;
+  const activeCount = summary.activeCompCount ?? 0;
 
   const details = (
     <div className="stack-2">
+      <div>Basis: {basis}</div>
+      <div>
+        Evidence: {soldCount} sold/completed · {activeCount} active market
+        {summary.unknownCompCount ? ` · ${summary.unknownCompCount} unknown` : ""}
+      </div>
+      {summary.strongCompCount != null && (
+        <div>
+          Match quality: {summary.strongCompCount} strong · {summary.possibleCompCount ?? 0} possible
+        </div>
+      )}
       <div>Sources: {sourceList}</div>
       {queryList.length > 0 && (
         <div>
@@ -232,14 +274,14 @@ export function AutoPricing({
   const manualCompControls = (
     <div className="stack-2">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <span className="t-small muted">Manual fallback</span>
+        <span className="t-small muted">Manual sold-comp fallback</span>
         <Btn
           variant="ghost"
           size="sm"
           icon={manualOpen ? "x" : "plus"}
           onClick={() => setManualOpen((open) => !open)}
         >
-          {manualOpen ? "Close" : "Add manual comp"}
+          {manualOpen ? "Close" : "Add sold comp"}
         </Btn>
       </div>
       {manualOpen && (
@@ -254,7 +296,7 @@ export function AutoPricing({
               />
             </label>
             <label className="field">
-              <span>Sold price</span>
+              <span>Sold/completed price</span>
               <input
                 value={manualComp.price}
                 onChange={(e) => setManualComp((form) => ({ ...form, price: e.target.value }))}
@@ -281,7 +323,7 @@ export function AutoPricing({
             />
           </label>
           <Btn variant="secondary" size="sm" onClick={addManualComp} disabled={savingManual}>
-            {savingManual ? "Adding…" : "Add comp"}
+            {savingManual ? "Adding…" : "Add sold comp"}
           </Btn>
         </div>
       )}
@@ -291,7 +333,7 @@ export function AutoPricing({
   const compList = visibleComps.length > 0 && (
     <div className="stack-2">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <span className="t-small muted">Candidate comps</span>
+        <span className="t-small muted">Candidate price signals</span>
         <span className="t-micro">
           {summary.validComps} used · {Math.max(0, summary.totalComps - summary.validComps)} filtered
         </span>
@@ -311,7 +353,7 @@ export function AutoPricing({
                     {comp.title}
                   </div>
                   <div className="t-micro">
-                    {comp.source.replace(/^auto:/, "")} · {comp.status} · {classification}
+                    {comp.source.replace(/^auto:/, "")} · {compKindLabel(comp)} · {classification}
                     {comp.matchScore != null ? ` · ${Math.round(comp.matchScore * 100)}%` : ""}
                   </div>
                   {reasons.length > 0 && <div className="t-small muted">{reasons.join(" · ")}</div>}
@@ -362,19 +404,19 @@ export function AutoPricing({
   }
 
   const stats: { label: string; value: string }[] = [
-    { label: "Lowest", value: formatMoneyCents(summary.lowCents) },
-    { label: "Median", value: formatMoneyCents(summary.medianCents ?? null) },
-    { label: "Average", value: formatMoneyCents(summary.averageCents) },
-    { label: "Highest", value: formatMoneyCents(summary.highCents) },
+    { label: summary.pricingBasis === "active_market_estimate" ? "Market low" : "Lowest", value: formatMoneyCents(summary.lowCents) },
+    { label: summary.pricingBasis === "active_market_estimate" ? "Market median" : "Median", value: formatMoneyCents(summary.medianCents ?? null) },
+    { label: summary.pricingBasis === "active_market_estimate" ? "Market average" : "Average", value: formatMoneyCents(summary.averageCents) },
+    { label: summary.pricingBasis === "active_market_estimate" ? "Market high" : "Highest", value: formatMoneyCents(summary.highCents) },
     { label: "Quick sale", value: formatMoneyCents(summary.quickSaleCents) },
-    { label: "Recommended", value: formatMoneyCents(summary.recommendedListCents) },
+    { label: summary.pricingBasis === "active_market_estimate" ? "Suggested list" : "Recommended", value: formatMoneyCents(summary.recommendedListCents) },
   ];
 
   return (
     <div className="stack-3">
       <div className="row" style={{ justifyContent: "space-between" }}>
         <span className="t-small muted">
-          From {summary.validComps} comp{summary.validComps === 1 ? "" : "s"}
+          From {sampleLabel(summary)}
         </span>
         <div className="row" style={{ gap: 8 }}>
           <span className="badge badge--ready" style={{ textTransform: "capitalize" }}>
@@ -411,7 +453,10 @@ export function AutoPricing({
       />
       {summary.confidenceReasons && summary.confidenceReasons.length > 0 && (
         <ul className="stack-1 t-small muted" style={{ paddingLeft: 18 }}>
-          {summary.confidenceReasons.map((reason) => (
+          {summary.confidenceCapReason && <li>{summary.confidenceCapReason}</li>}
+          {summary.confidenceReasons
+            .filter((reason) => reason !== summary.confidenceCapReason)
+            .map((reason) => (
             <li key={reason}>{reason}</li>
           ))}
         </ul>

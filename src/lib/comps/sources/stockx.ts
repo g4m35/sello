@@ -6,6 +6,7 @@ export const stockxSource: CompSource = {
   id: "stockx",
   displayName: "StockX",
   sold: true,
+  resultKind: "sold_comps",
   isEnabled() {
     return process.env.PRICE_COMP_STOCKX_ENABLED === "true" && Boolean(process.env.STOCKX_API_KEY);
   },

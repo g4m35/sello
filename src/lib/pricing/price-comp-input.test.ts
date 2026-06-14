@@ -87,6 +87,24 @@ describe("CreatePriceCompRequestSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("accepts a seller-provided manual sold comp URL", () => {
+    const parsed = CreatePriceCompRequestSchema.parse({
+      inventoryItemId: "11111111-1111-4111-8111-111111111111",
+      comp: {
+        source: "Manual sold comp",
+        sourceType: "manual",
+        status: "sold",
+        title: "The North Face Nuptse sold listing",
+        priceCents: 16500,
+        url: "https://www.ebay.com/itm/123",
+      },
+    });
+
+    expect(parsed.comp.sourceType).toBe("manual");
+    expect(parsed.comp.status).toBe("sold");
+    expect(parsed.comp.url).toBe("https://www.ebay.com/itm/123");
+  });
 });
 
 describe("UpdatePriceCompSchema", () => {

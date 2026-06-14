@@ -7,6 +7,7 @@ export const googleLensSource: CompSource = {
   id: "google-lens",
   displayName: "Google Lens",
   sold: false,
+  resultKind: "active_listings",
   isEnabled() {
     return process.env.PRICE_COMP_GOOGLE_LENS_ENABLED === "true" && Boolean(process.env.GOOGLE_LENS_API_KEY);
   },

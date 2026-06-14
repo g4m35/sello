@@ -7,6 +7,7 @@ export type PriceCompRow = {
   shippingCents: number;
   totalPriceCents: number | null;
   status: "sold" | "active" | "unknown";
+  sourceType?: string | null;
   usedInPricing: boolean;
   ignoredAsOutlier: boolean;
   matchScore: number | null;
@@ -23,6 +24,7 @@ export function summarizeComps(comps: PriceCompRow[]): PricingSummary {
       shippingCents: c.shippingCents,
       totalPriceCents: c.totalPriceCents,
       status: c.status,
+      sourceType: c.sourceType,
       usedInPricing: c.usedInPricing,
       ignoredAsOutlier: c.ignoredAsOutlier,
       matchScore: c.matchScore,
