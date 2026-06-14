@@ -287,7 +287,7 @@ describe("publishEbayListing — happy path", () => {
       listingDrafts: [
         {
           ...readyItem().listingDrafts[0],
-          marketplaceDrafts: { ebay: { quantity: 1 } },
+          marketplaceDrafts: { ebay: { categoryId: "", quantity: 1 } },
         },
       ],
     };
