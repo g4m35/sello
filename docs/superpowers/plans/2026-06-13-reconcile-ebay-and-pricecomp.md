@@ -5,8 +5,17 @@ was promoted to `main` and its prod DB migration applied, but production is actu
 `feature/ebay-required-aspects` (`78009c3`), which `main` does not contain. Deploying `main` as-is
 would roll back live eBay work. This plan reconciles both lines safely.
 
-**Goal:** Get one branch that contains BOTH the eBay-required-aspects work AND PriceComp v2, with the
-production DB migrated consistently, then deploy it to production without regressions.
+**Migration state — VERIFIED (2026-06-13):** The prod DB already has **all** relevant migrations
+applied — `20260612010000_guarded_ebay_production_publish`, `20260613010000_backfill_ebay_quantity`,
+AND `20260613020000_price_comp_v2_fields`. Read-only `prisma migrate status` reports "Database schema
+is up to date!" from BOTH `develop` (9 migrations) and `feature/ebay-required-aspects` (10 migrations),
+so the DB holds the union. **The remaining release risk is therefore CODE divergence only** (live prod
+runs the eBay branch; `main` has PriceComp v2 but not the eBay code). The DB is not a blocker; `db:deploy`
+during the combined release is expected to be a **no-op** (still run/verify it).
+
+**Goal:** Get one branch that contains BOTH the eBay-required-aspects work AND PriceComp v2, then deploy
+it to production without regressions. (No production schema change is required — the DB is already in the
+merged end-state.)
 
 ---
 
@@ -56,11 +65,13 @@ Current SHAs: `origin/main` `1a80b5e` · `origin/develop` `3949215` · `origin/f
 `...20260609120000_add_draft_measurements_flaws` → `20260612010000_guarded_ebay...` →
 `20260613010000_backfill_ebay_quantity` → `20260613020000_price_comp_v2_fields`. Consistent; no rename needed.
 
-**Prod DB reality (from `prisma migrate status` on develop = "up to date", 9 migrations):** the DB has the
-8 base + `price_comp_v2`. The two eBay migrations are **NOT recorded as applied**. This is the central
-risk to verify (see §6 step 1): if `78009c3` is genuinely live, it expects `MarketplaceListing.environment`,
-which migration 1 adds — so either those migrations were applied out-of-band, or the live app tolerates
-their absence, or production is not actually `78009c3`. Resolve before deploying.
+**Prod DB reality — VERIFIED applied:** the prod DB has the 8 base migrations + the two eBay migrations
+(`20260612010000`, `20260613010000`) + `price_comp_v2` (`20260613020000`) — the full union. Read-only
+`prisma migrate status` reports "Database schema is up to date!" from BOTH `develop` (9 migrations) and
+`feature/ebay-required-aspects` (10 migrations), which is only possible if every migration in each branch's
+folder is recorded as applied. So the live `78009c3` code's use of `MarketplaceListing.environment` and
+`PublishAttempt.idempotencyKey` is backed by real columns — production is self-consistent. (This corrects
+an earlier draft that inferred the eBay migrations were unapplied from develop's status alone.)
 
 ---
 
@@ -122,36 +133,35 @@ A `git merge-tree --write-tree develop feature/ebay-required-aspects` returned *
 4. Gate: `npm run lint && npx tsc --noEmit && npm test && npx prisma validate && npm run build`.
 5. Open PR `reconcile/ebay-into-develop` → `develop`; review (CodeRabbit), merge.
 6. Promote `develop` → `main` (`git merge --no-ff`, "Promote develop -> main: eBay aspects + PriceComp v2").
-7. Apply DB migrations to prod (§6), THEN deploy (§7). Do NOT deploy before the DB step.
+7. Verify the prod DB migration state (§6 — expected a no-op since all migrations are already applied),
+   THEN deploy (§7).
 
 Do NOT merge `develop` into `feature/ebay-required-aspects` (wrong direction; would leave the integrated
 result off the mainline).
 
 ---
 
-## 6. Exact DB migration plan (production)
+## 6. DB migration plan (production) — already migrated; expect a no-op
 
-Prod already has `price_comp_v2` applied; the two eBay migrations are pending there.
+**Verified state:** the prod DB already has ALL relevant migrations applied — the two eBay migrations
+(`20260612010000`, `20260613010000`) AND `20260613020000_price_comp_v2_fields`. **No production schema
+change is required for this release.**
 
-1. **Verify ground truth first.** From the reconciled branch, against prod:
-   `! npx prisma migrate status`. EXPECT: exactly `20260612010000_guarded_ebay_production_publish` and
-   `20260613010000_backfill_ebay_quantity` reported as not-yet-applied, nothing else. If it instead reports
-   them as already applied, or reports drift / unknown migrations, **STOP** — that reveals what `78009c3`
-   actually did to prod, and changes the plan.
-2. **Pre-checks for migration 1 (index swap):** existing `MarketplaceListing` rows all get
-   `environment='sandbox'` (column default), so the new unique index `(inventoryItemId, marketplace,
-   environment)` is at least as permissive as the dropped `(inventoryItemId, marketplace)` — no new unique
-   collisions. Safe. (If any duplicate `(inventoryItemId, marketplace)` rows already exist, the OLD unique
-   index would already have prevented them, so none can exist.)
-3. **Apply:** `! npm run db:deploy`. Prisma applies the two pending eBay migrations in filename order
-   (`...12010000` then `...13010000`); `price_comp_v2` is already recorded and is skipped. `migrate deploy`
-   applies any unrecorded migration regardless of timestamp, and the two eBay migrations touch
-   `MarketplaceListing`/`PublishAttempt`/`ListingDraft` — disjoint from `PriceComp` — so out-of-natural-order
-   application is safe.
-4. **Verify:** `! npx prisma migrate status` → "Database schema is up to date!" (10 migrations).
+1. **Confirm (read-only) before deploy.** From the reconciled branch, against prod: `! npx prisma migrate
+   status`. EXPECT: "Database schema is up to date!" with all 11 migrations (8 base + 2 eBay + price_comp_v2)
+   applied and nothing pending. If it reports anything pending or any drift/unknown migration, **STOP** and
+   investigate before deploying.
+2. **Apply (expected no-op):** `! npm run db:deploy`. Because every migration is already recorded, expect
+   "No pending migrations to apply." Run it anyway as a safety net so the deploy never races ahead of the DB.
+3. **Re-verify:** `! npx prisma migrate status` → "Database schema is up to date!".
 
-Owner runs these via the `!` prefix (the harness blocks the agent from loading `.env.local` secrets, and
-`DIRECT_URL` has IPv6/DNS issues on this machine).
+Owner runs these via the `!` prefix (the harness blocks the agent from loading `.env.local` secrets; in
+practice `DIRECT_URL` resolves to the Supabase pooler and connects fine).
+
+> History note: the two eBay migrations carry EARLIER timestamps than `price_comp_v2` but were applied to
+> prod alongside the live `78009c3` deploy; `price_comp_v2` was applied later. They touch disjoint tables
+> (`MarketplaceListing`/`PublishAttempt`/`ListingDraft` vs `PriceComp`), so the out-of-natural-order
+> application was harmless and is already done.
 
 ---
 
@@ -177,9 +187,14 @@ deploys are explicit.
 
 ---
 
+## Resolved (verified 2026-06-13)
+- **What is live on `sello.wtf`?** `dpl_BB7eRKiHMqKZ...` (READY, target production, aliased to `sello.wtf`),
+  commit `78009c3` from `feature/ebay-required-aspects` — confirmed via the Vercel deployment record.
+- **Are the two eBay migrations applied to prod?** YES. `prisma migrate status` from
+  `feature/ebay-required-aspects` (10 migrations) and from `develop` (9 migrations) both report "Database
+  schema is up to date!", so the prod DB holds the union of all 11 migrations. Live `78009c3` code's use of
+  `MarketplaceListing.environment` / `PublishAttempt.idempotencyKey` is backed by real columns. No DB risk.
+
 ## Open questions to settle before executing
-- **What is truly live on `sello.wtf`, and are the two eBay migrations actually applied to prod?** The
-  develop `migrate status` says they are not. If `78009c3` is live and depends on `MarketplaceListing.environment`
-  without that column existing, production may already be inconsistent — investigate first (§6 step 1).
-- Confirm `feature/ebay-required-aspects` is the intended source of the live eBay work (vs. an
-  uncommitted/owner-side variant).
+- Confirm `feature/ebay-required-aspects` (`78009c3`) is the intended source of the live eBay work (vs. an
+  uncommitted/owner-side variant) — i.e. that nothing newer exists outside this branch.
