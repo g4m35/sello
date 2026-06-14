@@ -253,6 +253,7 @@ describe("eBay sandbox publish methods", () => {
     const headers = calls[0].init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer secret-access-token");
     expect(headers["Content-Language"]).toBe("en-US");
+    expect(headers["Accept-Language"]).toBe("en-US");
   });
 
   it("POSTs createOffer to the offer path and returns the offerId", async () => {

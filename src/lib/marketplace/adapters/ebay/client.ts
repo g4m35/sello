@@ -215,6 +215,8 @@ export class EbaySandboxClient implements EbayApiClient {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
+        "Content-Language": "en-US",
+        "Accept-Language": "en-US",
       },
     });
 
@@ -246,6 +248,8 @@ export class EbaySandboxClient implements EbayApiClient {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
+        "Content-Language": "en-US",
+        "Accept-Language": "en-US",
         Accept: "application/json",
       },
     });
@@ -302,6 +306,7 @@ export class EbaySandboxClient implements EbayApiClient {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
         "Content-Language": "en-US",
+        "Accept-Language": "en-US",
         Accept: "application/json",
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
