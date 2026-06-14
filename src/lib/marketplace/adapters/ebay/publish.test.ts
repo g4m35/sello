@@ -280,4 +280,31 @@ describe("publishEbayListing — happy path", () => {
     expect(deps.resolveAccessToken).toHaveBeenCalledOnce();
     expect(deps.createClient).toHaveBeenCalledWith("usable-access-token", "EBAY_US", "production");
   });
+
+  it("uses the immediately preflighted inferred category when no category override is saved", async () => {
+    const item = {
+      ...readyItem(),
+      listingDrafts: [
+        {
+          ...readyItem().listingDrafts[0],
+          marketplaceDrafts: { ebay: { quantity: 1 } },
+        },
+      ],
+    };
+    const prisma = createPrisma({ item });
+    const deps = createDeps();
+    deps.env = productionEnabledEnv;
+
+    const result = await publishEbayListing(
+      prisma,
+      { userId: "user-1", inventoryItemId: "item-1" },
+      deps,
+    );
+
+    expect(result.status).toBe("published");
+    const client = (deps.createClient as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(client.createOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ categoryId: "15709", availableQuantity: 1 }),
+    );
+  });
 });

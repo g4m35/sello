@@ -292,7 +292,8 @@ export async function publishEbayListing(
   });
 
   const draft = item.listingDrafts[0];
-  const { categoryId, quantity } = ebayDraftFields(draft);
+  const { categoryId: savedCategoryId, quantity } = ebayDraftFields(draft);
+  const categoryId = savedCategoryId ?? preflight.preview.offer.categoryId;
   const resolvedQuantity = quantity ?? 1;
   const photos = item.photos.map((photo) => ({
     url: resolvePhotoUrl(photo, deps.env),
