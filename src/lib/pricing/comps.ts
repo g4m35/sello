@@ -215,8 +215,8 @@ function scoreConfidence(args: {
 
   score = Math.max(0, Math.min(1, Math.round(score * 100) / 100));
   let capReason: string | null = null;
-  if (soldCompCount === 0 && activeCompCount > 0 && score > 0.64) {
-    score = 0.64;
+  if (soldCompCount === 0 && activeCompCount > 0) {
+    if (score > 0.64) score = 0.64;
     capReason = "Confidence capped at medium because pricing is based on active market listings, not sold comps.";
     reasons.push(capReason);
   }
