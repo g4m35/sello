@@ -121,6 +121,48 @@ describe("publish API auth boundaries", () => {
     vi.unstubAllEnvs();
   });
 
+  it("rejects production eBay live publish attempts while the production flag is off", async () => {
+    const inventoryItemId = "44444444-4444-4444-8444-444444444444";
+    vi.stubEnv("EBAY_ENV", "production");
+    vi.stubEnv("EBAY_PRODUCTION_PUBLISH_ENABLED", "false");
+
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.getPrisma.mockReturnValue({
+      inventoryItem: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue({ id: inventoryItemId, status: "APPROVED" }),
+      },
+      marketplaceListing: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: "listing-prod-1" }),
+        update: vi.fn().mockResolvedValue({ id: "listing-prod-1" }),
+      },
+      publishAttempt: {
+        create: vi.fn().mockResolvedValue({ id: "attempt-prod-1" }),
+        update: vi.fn().mockResolvedValue({ id: "attempt-prod-1" }),
+      },
+      marketplaceEvent: {
+        create: vi.fn().mockResolvedValue({ id: "event-prod-1" }),
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId, marketplace: "ebay" }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.code).toBe("EBAY_PUBLISH_NOT_ENABLED");
+    expect(payload.marketplaceListingId).toBe("listing-prod-1");
+    expect(payload.publishAttemptId).toBe("attempt-prod-1");
+
+    vi.unstubAllEnvs();
+  });
+
   it("leaves non-eBay marketplaces as a typed NOT_IMPLEMENTED 501", async () => {
     const inventoryItemId = "33333333-3333-4333-8333-333333333333";
 

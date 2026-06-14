@@ -16,6 +16,7 @@ export const ebayPreflightMissingLabels: Record<string, string> = {
   price: "Price",
   condition: "Condition",
   ebay_category: "Choose an eBay category",
+  ebay_aspects: "A few item details (below)",
   photo: "At least one photo",
   quantity: "Valid quantity",
   ebay_connection: "eBay connection (connect in Settings)",
@@ -26,9 +27,7 @@ export const ebayPreflightMissingLabels: Record<string, string> = {
   merchantLocationKey: "eBay inventory location",
 };
 
-const warningLabels: Record<string, string> = {
-  quantity_defaulted_to_1: "No quantity set; the dry run assumes 1.",
-};
+const warningLabels: Record<string, string> = {};
 
 const confidenceLabels: Record<EbayCategoryResolution["confidence"], string> = {
   high: "high confidence",
@@ -41,21 +40,32 @@ export function EbayPreflightCard({
   itemId,
   token,
   savedCategoryId,
+  savedQuantity,
   onSelectCategory,
+  onSaveQuantity,
+  onSaveAspect,
 }: {
   itemId: string;
   token: string;
   /** Seller-saved eBay category override from the draft (empty when unset). */
   savedCategoryId: string;
+  /** Seller-saved eBay quantity; resale listings default to 1. */
+  savedQuantity: number;
   /** Persists a category choice through the editor's normal save flow. */
   onSelectCategory: (categoryId: string) => void;
+  /** Persists eBay quantity through the editor's normal save flow. */
+  onSaveQuantity: (quantity: number) => void;
+  /** Persists one eBay item detail (aspect name -> value) via the draft save flow. */
+  onSaveAspect: (name: string, value: string) => void;
 }) {
   const [result, setResult] = useState<EbayPreflightResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [advancedId, setAdvancedId] = useState("");
+  const [quantityDraft, setQuantityDraft] = useState(String(savedQuantity || 1));
+  const [aspectDrafts, setAspectDrafts] = useState<Record<string, string>>({});
 
-  async function runPreflight() {
+  async function runCheck() {
     setRunning(true);
     setError(null);
     try {
@@ -77,47 +87,62 @@ export function EbayPreflightCard({
   const needsCategoryChoice = Boolean(
     result && result.missing.includes("ebay_category"),
   );
+  const missingAspects = result?.aspects.missingRequired ?? [];
 
   return (
     <section className="card">
       <div className="card__head">
-        <span className="card__title">eBay publish dry run</span>
+        <span className="card__title">eBay publish readiness</span>
         {result && (
           <Badge
             status={result.ready ? "ready" : "draft"}
-            label={result.ready ? "Dry run passed" : "Needs review"}
+            label={result.ready ? "Ready for eBay" : "Needs review"}
           />
         )}
       </div>
       <div className="card__body stack-4">
         <div className="t-small muted">
-          Validates this listing against eBay rules and previews the exact
-          payloads Sello would send. Nothing is sent to eBay
-          {result?.environment === "production" || result == null
-            ? "; production publishing is not enabled yet."
-            : "."}
+          Checks everything eBay needs and previews exactly what Sello would
+          send. Nothing is sent to eBay; production publishing is not enabled
+          yet.
         </div>
 
         <div className="row" style={{ gap: 8 }}>
-          <Btn variant="secondary" size="sm" icon="spark" disabled={running} onClick={runPreflight}>
-            {running ? "Checking…" : "Run dry run"}
+          <Btn variant="secondary" size="sm" icon="spark" disabled={running} onClick={runCheck}>
+            {running ? "Checking..." : "Check eBay readiness"}
           </Btn>
           {result && (
             <span className="t-small muted">
-              {result.environment === "production"
-                ? "Production (publishing disabled)"
-                : "Sandbox"}
-              {" · "}
               {result.connected ? "eBay connected" : "eBay not connected"}
+              {" / "}Quantity: {result.quantity}
             </span>
           )}
+        </div>
+
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          <span className="t-small muted">Quantity</span>
+          <input
+            className="input"
+            style={{ width: 80 }}
+            inputMode="numeric"
+            value={quantityDraft}
+            onChange={(e) => setQuantityDraft(e.target.value.replace(/[^\d]/g, ""))}
+          />
+          <Btn
+            variant="secondary"
+            size="sm"
+            disabled={!/^\d+$/.test(quantityDraft) || Number(quantityDraft) <= 0}
+            onClick={() => onSaveQuantity(Number(quantityDraft))}
+          >
+            Save
+          </Btn>
         </div>
 
         {category?.resolvedId && (
           <div className="t-small muted">
             eBay category:{" "}
             <span style={{ fontWeight: 500 }}>
-              {category.resolvedName ?? "Custom"} · {category.resolvedId}
+              {category.resolvedName ?? "Custom"} / {category.resolvedId}
             </span>{" "}
             ({category.source === "saved" ? "your choice" : "inferred, "}
             {category.source === "saved" ? "" : confidenceLabels[category.confidence]})
@@ -150,12 +175,12 @@ export function EbayPreflightCard({
                   size="sm"
                   onClick={() => onSelectCategory(suggestion.id)}
                 >
-                  {suggestion.name} · {suggestion.id}
+                  {suggestion.name} / {suggestion.id}
                 </Btn>
               ))}
             </div>
             <div className="t-small muted">
-              Your choice saves with the draft; re-run the dry run after picking.
+              Your choice saves with the draft; check readiness again after picking.
             </div>
           </div>
         )}
@@ -182,6 +207,46 @@ export function EbayPreflightCard({
           </div>
         )}
 
+        {missingAspects.length > 0 && (
+          <div className="stack-4">
+            <div className="t-small" style={{ fontWeight: 500 }}>
+              eBay needs a few item details:
+            </div>
+            {missingAspects.map((aspect) => (
+              <div key={aspect.name} className="row" style={{ gap: 8, alignItems: "center" }}>
+                <span className="t-small muted" style={{ width: 180 }}>
+                  {aspect.label}
+                </span>
+                <input
+                  className="input"
+                  style={{ flex: 1, maxWidth: 220 }}
+                  maxLength={80}
+                  value={aspectDrafts[aspect.name] ?? ""}
+                  onChange={(e) =>
+                    setAspectDrafts((prev) => ({
+                      ...prev,
+                      [aspect.name]: e.target.value,
+                    }))
+                  }
+                />
+                <Btn
+                  variant="secondary"
+                  size="sm"
+                  disabled={!(aspectDrafts[aspect.name] ?? "").trim()}
+                  onClick={() =>
+                    onSaveAspect(aspect.name, (aspectDrafts[aspect.name] ?? "").trim())
+                  }
+                >
+                  Save
+                </Btn>
+              </div>
+            ))}
+            <div className="t-small muted">
+              Saved details persist with the draft; check readiness again after filling.
+            </div>
+          </div>
+        )}
+
         {result?.warnings.map((warning) => (
           <div key={warning} className="t-small muted">
             {warningLabels[warning] ?? warning}
@@ -191,7 +256,7 @@ export function EbayPreflightCard({
         {result?.ready && result.preview && (
           <details>
             <summary className="t-small" style={{ cursor: "pointer", fontWeight: 500 }}>
-              Preview payloads (SKU {result.preview.sku})
+              Technical preview (SKU {result.preview.sku})
             </summary>
             <pre
               className="t-small"

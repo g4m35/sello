@@ -93,13 +93,9 @@ export function validateEbayListingReadiness(
   }
 
   if (
-    input.draft.quantity === null ||
-    input.draft.quantity === undefined
-  ) {
-    warnings.push("quantity_defaulted_to_1");
-  } else if (
-    !Number.isInteger(input.draft.quantity) ||
-    input.draft.quantity <= 0
+    input.draft.quantity !== null &&
+    input.draft.quantity !== undefined &&
+    (!Number.isInteger(input.draft.quantity) || input.draft.quantity <= 0)
   ) {
     missing.push("quantity");
   }

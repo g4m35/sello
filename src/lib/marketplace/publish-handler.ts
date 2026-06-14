@@ -9,6 +9,7 @@ import { canPublish, toLifecycleState } from "@/lib/lifecycle/item-status";
 
 import { getMarketplaceAdapter, type PublishOutcome } from "./adapter";
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
+import { getEbayEnvironment } from "./adapters/ebay/config";
 import {
   defaultEbayPublishDeps,
   publishEbayListing,
@@ -53,30 +54,93 @@ export type PublishPrismaLike = {
     }): Promise<{ id: string; status: InventoryStatus } | null>;
   };
   marketplaceListing: {
+    findFirst?(args: {
+      where: {
+        inventoryItemId: string;
+        marketplace: Marketplace;
+        environment: string;
+      };
+      select?: {
+        id: true;
+        status?: true;
+        sku?: true;
+        externalOfferId?: true;
+        externalListingId?: true;
+        publishAttempts?: {
+          select: { status: true };
+          orderBy: { createdAt: "desc" };
+          take: number;
+        };
+      };
+    }): Promise<{
+      id: string;
+      status?: string;
+      sku?: string | null;
+      externalOfferId?: string | null;
+      externalListingId?: string | null;
+      publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
+    } | null>;
+    create?(args: {
+      data: {
+        inventoryItemId: string;
+        marketplace: Marketplace;
+        environment: string;
+        status?: "NOT_LISTED";
+      };
+      select?: {
+        id: true;
+        status?: true;
+        sku?: true;
+        externalOfferId?: true;
+        externalListingId?: true;
+        publishAttempts?: {
+          select: { status: true };
+          orderBy: { createdAt: "desc" };
+          take: number;
+        };
+      };
+    }): Promise<{
+      id: string;
+      status?: string;
+      sku?: string | null;
+      externalOfferId?: string | null;
+      externalListingId?: string | null;
+      publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
+    }>;
     upsert(args: {
       where: {
-        inventoryItemId_marketplace: {
+        inventoryItemId_marketplace_environment: {
           inventoryItemId: string;
           marketplace: Marketplace;
+          environment: string;
         };
       };
       create: {
         inventoryItemId: string;
         marketplace: Marketplace;
+        environment: string;
         status?: "NOT_LISTED";
       };
       update: Record<string, never>;
       select?: {
         id: true;
+        status?: true;
         sku?: true;
         externalOfferId?: true;
         externalListingId?: true;
+        publishAttempts?: {
+          select: { status: true };
+          orderBy: { createdAt: "desc" };
+          take: number;
+        };
       };
     }): Promise<{
       id: string;
+      status?: string;
       sku?: string | null;
       externalOfferId?: string | null;
       externalListingId?: string | null;
+      publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
     }>;
     update?(args: {
       where: { id: string };
@@ -88,11 +152,22 @@ export type PublishPrismaLike = {
       data: {
         marketplaceListingId: string;
         status: PublishAttemptStatus;
+        idempotencyKey?: string | null;
         code: string;
         reason: string | null;
-        adapterResult: Prisma.InputJsonValue;
+        adapterResult?: Prisma.InputJsonValue;
         requestedBy: string;
-        completedAt: Date;
+        completedAt?: Date | null;
+      };
+    }): Promise<{ id: string }>;
+    update?(args: {
+      where: { id: string };
+      data: {
+        status?: PublishAttemptStatus;
+        code?: string;
+        reason?: string | null;
+        adapterResult?: Prisma.InputJsonValue;
+        completedAt?: Date | null;
       };
     }): Promise<{ id: string }>;
   };
@@ -138,9 +213,9 @@ const defaultEbayPublish: EbayPublishFn = (prisma, input) =>
 
 // Persists a single publish attempt for an approved item. For non-eBay
 // marketplaces it returns the honest NOT_IMPLEMENTED outcome. For eBay it runs
-// the guarded sandbox publish flow (blocked unless the env flag is enabled) and
-// records the typed outcome. Throws typed AppError for 404/409 so the thin
-// route handler can map them uniformly.
+// the guarded environment-specific publish flow and records the typed outcome.
+// Throws typed AppError for 404/409 so the thin route handler can map them
+// uniformly.
 export async function executePublish(
   prisma: PublishPrismaLike,
   input: ExecutePublishInput,
@@ -165,29 +240,17 @@ export async function executePublish(
 
   assertPublishingPersistenceDelegates(prisma);
 
-  const listing = await prisma.marketplaceListing.upsert({
-    where: {
-      inventoryItemId_marketplace: {
-        inventoryItemId: item.id,
-        marketplace: input.marketplace,
-      },
-    },
-    create: {
-      inventoryItemId: item.id,
-      marketplace: input.marketplace,
-      status: "NOT_LISTED",
-    },
-    update: {},
-    select: {
-      id: true,
-      sku: true,
-      externalOfferId: true,
-      externalListingId: true,
-    },
-  });
+  const environment =
+    input.marketplace === "ebay" ? getEbayEnvironment() : "manual";
+  const listing = await getOrCreateMarketplaceListing(
+    prisma,
+    item.id,
+    input.marketplace,
+    environment,
+  );
 
   if (input.marketplace === "ebay") {
-    return executeEbayPublish(prisma, input, listing, ebayPublish);
+    return executeEbayPublish(prisma, input, listing, environment, ebayPublish);
   }
 
   const outcome = await resolveAdapter(input.marketplace).publishDraft({
@@ -231,18 +294,102 @@ export async function executePublish(
   });
 }
 
+async function getOrCreateMarketplaceListing(
+  prisma: PublishPrismaLike,
+  inventoryItemId: string,
+  marketplace: Marketplace,
+  environment: string,
+) {
+  const select = {
+    id: true,
+    status: true,
+    sku: true,
+    externalOfferId: true,
+    externalListingId: true,
+    publishAttempts: {
+      select: { status: true },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    },
+  } as const;
+
+  if (prisma.marketplaceListing.findFirst && prisma.marketplaceListing.create) {
+    const existing = await prisma.marketplaceListing.findFirst({
+      where: { inventoryItemId, marketplace, environment },
+      select,
+    });
+    if (existing) return existing;
+    return prisma.marketplaceListing.create({
+      data: { inventoryItemId, marketplace, environment, status: "NOT_LISTED" },
+      select,
+    });
+  }
+
+  return prisma.marketplaceListing.upsert({
+    where: {
+      inventoryItemId_marketplace_environment: {
+        inventoryItemId,
+        marketplace,
+        environment,
+      },
+    },
+    create: {
+      inventoryItemId,
+      marketplace,
+      environment,
+      status: "NOT_LISTED",
+    },
+    update: {},
+    select,
+  });
+}
+
 async function executeEbayPublish(
   prisma: PublishPrismaLike,
   input: ExecutePublishInput,
   listing: {
     id: string;
+    status?: string;
     sku?: string | null;
     externalOfferId?: string | null;
     externalListingId?: string | null;
+    publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
   },
+  environment: string,
   ebayPublish: EbayPublishFn,
 ): Promise<ExecutePublishResult> {
   assertEbayPublishNotDuplicate(listing);
+
+  const idempotencyKey = `${input.inventoryItemId}:ebay:${environment}`;
+  const startedAt = new Date();
+  const attempt = await withMigrationDetection(async () => {
+    const created = await prisma.publishAttempt.create({
+      data: {
+        marketplaceListingId: listing.id,
+        status: "RUNNING",
+        idempotencyKey,
+        code: "EBAY_PUBLISH_STARTED",
+        reason: null,
+        adapterResult: null as unknown as Prisma.InputJsonValue,
+        requestedBy: input.userId,
+        completedAt: null,
+      },
+    });
+    await prisma.marketplaceEvent.create({
+      data: {
+        marketplaceListingId: listing.id,
+        kind: "publish_started",
+        data: {
+          attemptId: created.id,
+          marketplace: "ebay",
+          environment,
+          idempotencyKey,
+          startedAt: startedAt.toISOString(),
+        },
+      },
+    });
+    return created;
+  });
 
   let result: EbayPublishResult;
   try {
@@ -251,22 +398,18 @@ async function executeEbayPublish(
       inventoryItemId: input.inventoryItemId,
     });
   } catch (error) {
-    await recordEbayFailure(prisma, input, listing.id, error);
+    await recordEbayFailure(prisma, listing.id, attempt.id, error);
     throw error;
   }
 
   if (result.status === "not_enabled") {
     return withMigrationDetection(async () => {
-      const attempt = await prisma.publishAttempt.create({
-        data: {
-          marketplaceListingId: listing.id,
-          status: "NOT_IMPLEMENTED",
-          code: result.code,
-          reason: result.message,
-          adapterResult: result as unknown as Prisma.InputJsonValue,
-          requestedBy: input.userId,
-          completedAt: new Date(),
-        },
+      await updatePublishAttempt(prisma, attempt.id, {
+        status: "NOT_IMPLEMENTED",
+        code: result.code,
+        reason: result.message,
+        adapterResult: result as unknown as Prisma.InputJsonValue,
+        completedAt: new Date(),
       });
 
       await prisma.marketplaceEvent.create({
@@ -277,13 +420,14 @@ async function executeEbayPublish(
             code: result.code,
             attemptId: attempt.id,
             marketplace: "ebay",
+            environment,
           },
         },
       });
 
       return {
         ok: true,
-        httpStatus: 200,
+        httpStatus: environment === "production" ? 403 : 200,
         outcome: result,
         marketplaceListingId: listing.id,
         publishAttemptId: attempt.id,
@@ -293,16 +437,12 @@ async function executeEbayPublish(
 
   // result.status === "published"
   return withMigrationDetection(async () => {
-    const attempt = await prisma.publishAttempt.create({
-      data: {
-        marketplaceListingId: listing.id,
-        status: "SUCCEEDED",
-        code: result.code,
-        reason: null,
-        adapterResult: result as unknown as Prisma.InputJsonValue,
-        requestedBy: input.userId,
-        completedAt: new Date(),
-      },
+    await updatePublishAttempt(prisma, attempt.id, {
+      status: "SUCCEEDED",
+      code: result.code,
+      reason: null,
+      adapterResult: result as unknown as Prisma.InputJsonValue,
+      completedAt: new Date(),
     });
 
     const steps: Array<{ kind: string; data: Prisma.InputJsonValue }> = [
@@ -358,19 +498,36 @@ async function executeEbayPublish(
 
 function assertEbayPublishNotDuplicate(listing: {
   id: string;
+  status?: string;
   sku?: string | null;
   externalOfferId?: string | null;
   externalListingId?: string | null;
+  publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
 }) {
-  if (!listing.externalListingId && !listing.externalOfferId) {
+  const blockedAttempt = listing.publishAttempts?.find((attempt) =>
+    ["QUEUED", "RUNNING", "SUCCEEDED"].includes(attempt.status),
+  );
+  if (blockedAttempt) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.alreadyPublished,
+      `This item already has an eBay publish attempt with status ${blockedAttempt.status}. Refusing to create a duplicate listing.`,
+      409,
+      {
+        marketplaceListingId: listing.id,
+        blockingAttemptStatus: blockedAttempt.status,
+      },
+    );
+  }
+
+  if (!listing.externalListingId && !listing.externalOfferId && listing.status !== "LISTED") {
     return;
   }
 
   throw new EbayIntegrationError(
     ebayErrorCodes.alreadyPublished,
     listing.externalListingId
-      ? "This item already has an eBay sandbox listing. Revise/relist is not implemented yet."
-      : "This item already has an eBay sandbox offer. Refusing to create a duplicate offer.",
+      ? "This item already has an eBay listing. Revise/relist is not implemented yet."
+      : "This item already has an eBay offer. Refusing to create a duplicate offer.",
     409,
     {
       marketplaceListingId: listing.id,
@@ -383,8 +540,8 @@ function assertEbayPublishNotDuplicate(listing: {
 
 async function recordEbayFailure(
   prisma: PublishPrismaLike,
-  input: ExecutePublishInput,
   marketplaceListingId: string,
+  publishAttemptId: string,
   error: unknown,
 ): Promise<void> {
   const code =
@@ -398,28 +555,41 @@ async function recordEbayFailure(
       : null;
 
   await withMigrationDetection(async () => {
-    const attempt = await prisma.publishAttempt.create({
-      data: {
-        marketplaceListingId,
-        status: "FAILED",
-        code,
-        reason,
-        adapterResult: { code, step } as unknown as Prisma.InputJsonValue,
-        requestedBy: input.userId,
-        completedAt: new Date(),
-      },
+    await updatePublishAttempt(prisma, publishAttemptId, {
+      status: "FAILED",
+      code,
+      reason,
+      adapterResult: { code, step } as unknown as Prisma.InputJsonValue,
+      completedAt: new Date(),
     });
 
     await prisma.marketplaceEvent.create({
       data: {
         marketplaceListingId,
         kind: "publish_failed",
-        data: { code, step, attemptId: attempt.id, marketplace: "ebay" },
+        data: { code, step, attemptId: publishAttemptId, marketplace: "ebay" },
       },
     });
 
-    return attempt;
+    return { id: publishAttemptId };
   });
+}
+
+async function updatePublishAttempt(
+  prisma: PublishPrismaLike,
+  id: string,
+  data: {
+    status: PublishAttemptStatus;
+    code: string;
+    reason: string | null;
+    adapterResult: Prisma.InputJsonValue;
+    completedAt: Date | null;
+  },
+) {
+  if (prisma.publishAttempt.update) {
+    return prisma.publishAttempt.update({ where: { id }, data });
+  }
+  return { id };
 }
 
 async function withMigrationDetection<T>(fn: () => Promise<T>): Promise<T> {

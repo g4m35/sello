@@ -159,7 +159,9 @@ export const api = {
       bulletPoints?: string[];
       recommendedPriceCents?: number | null;
       selectedMarketplaces?: string[];
-      marketplaceDrafts?: { ebay?: { categoryId: string } };
+      marketplaceDrafts?: {
+        ebay?: { categoryId: string; quantity?: number; aspects?: Record<string, string> };
+      };
       measurements?: Measurement[];
       flaws?: Flaw[];
       approve?: boolean;
@@ -230,7 +232,8 @@ export const api = {
     status: string;
     code: string;
     marketplace: string;
-    reason: string;
+    reason?: string;
+    message?: string;
   }> => {
     const res = await fetch("/api/listings/publish", {
       method: "POST",

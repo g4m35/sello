@@ -10,7 +10,15 @@ import {
 } from "./publish-handler";
 
 type FakeState = {
-  listings: Map<string, { id: string; inventoryItemId: string; marketplace: string }>;
+  listings: Map<
+    string,
+    {
+      id: string;
+      inventoryItemId: string;
+      marketplace: string;
+      environment: string;
+    }
+  >;
   attempts: Array<{
     id: string;
     marketplaceListingId: string;
@@ -49,13 +57,14 @@ function createFakePrisma(opts: {
     },
     marketplaceListing: {
       async upsert({ where, create }) {
-        const key = `${where.inventoryItemId_marketplace.inventoryItemId}|${where.inventoryItemId_marketplace.marketplace}`;
+        const key = `${where.inventoryItemId_marketplace_environment.inventoryItemId}|${where.inventoryItemId_marketplace_environment.marketplace}|${where.inventoryItemId_marketplace_environment.environment}`;
         if (!state.listings.has(key)) {
           const id = `listing-${state.listings.size + 1}`;
           state.listings.set(key, {
             id,
             inventoryItemId: create.inventoryItemId,
             marketplace: create.marketplace,
+            environment: "sandbox",
           });
         }
         return { id: state.listings.get(key)!.id };
@@ -243,19 +252,32 @@ describe("executePublish", () => {
 
 type EbayFakeListing = {
   id: string;
+  environment: string;
+  status: string;
   externalListingId: string | null;
   externalOfferId: string | null;
   sku: string | null;
+  publishAttempts?: Array<{ status: string }>;
 };
 
 type EbayFakeState = {
-  attempts: Array<{ status: string; code: string; reason: string | null }>;
+  attempts: Array<{
+    id: string;
+    status: string;
+    code: string;
+    reason: string | null;
+    idempotencyKey?: string | null;
+  }>;
   events: Array<{ kind: string; data: Record<string, unknown> }>;
   updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   listings: Map<string, EbayFakeListing>;
 };
 
-function createEbayFakePrisma(opts?: { existingListing?: Partial<EbayFakeListing> }) {
+function createEbayFakePrisma(opts?: {
+  existingListing?: Partial<EbayFakeListing>;
+  environment?: string;
+}) {
+  const environment = opts?.environment ?? "sandbox";
   const state: EbayFakeState = {
     attempts: [],
     events: [],
@@ -272,19 +294,58 @@ function createEbayFakePrisma(opts?: { existingListing?: Partial<EbayFakeListing
       },
     },
     marketplaceListing: {
+      async findFirst({
+        where,
+      }: {
+        where: {
+          inventoryItemId: string;
+          marketplace: string;
+          environment: string;
+        };
+      }) {
+        const k = `${where.inventoryItemId}|${where.marketplace}|${where.environment}`;
+        return state.listings.get(k) ?? null;
+      },
+      async create({
+        data,
+      }: {
+        data: { inventoryItemId: string; marketplace: string; environment: string };
+      }) {
+        const k = `${data.inventoryItemId}|${data.marketplace}|${data.environment}`;
+        const listing = {
+          id: opts?.existingListing?.id ?? `listing-${state.listings.size + 1}`,
+          environment: data.environment,
+          status: opts?.existingListing?.status ?? "NOT_LISTED",
+          externalListingId: opts?.existingListing?.externalListingId ?? null,
+          externalOfferId: opts?.existingListing?.externalOfferId ?? null,
+          sku: opts?.existingListing?.sku ?? null,
+          publishAttempts: opts?.existingListing?.publishAttempts ?? [],
+        };
+        state.listings.set(k, listing);
+        return listing;
+      },
       async upsert({
         where,
       }: {
-        where: { inventoryItemId_marketplace: { inventoryItemId: string; marketplace: string } };
-        create: { inventoryItemId: string; marketplace: string };
+        where: {
+          inventoryItemId_marketplace_environment: {
+            inventoryItemId: string;
+            marketplace: string;
+            environment: string;
+          };
+        };
+        create: { inventoryItemId: string; marketplace: string; environment: string };
       }) {
-        const k = `${where.inventoryItemId_marketplace.inventoryItemId}|${where.inventoryItemId_marketplace.marketplace}`;
+        const k = `${where.inventoryItemId_marketplace_environment.inventoryItemId}|${where.inventoryItemId_marketplace_environment.marketplace}|${where.inventoryItemId_marketplace_environment.environment}`;
         if (!state.listings.has(k)) {
           state.listings.set(k, {
             id: opts?.existingListing?.id ?? `listing-${state.listings.size + 1}`,
+            environment,
+            status: opts?.existingListing?.status ?? "NOT_LISTED",
             externalListingId: opts?.existingListing?.externalListingId ?? null,
             externalOfferId: opts?.existingListing?.externalOfferId ?? null,
             sku: opts?.existingListing?.sku ?? null,
+            publishAttempts: opts?.existingListing?.publishAttempts ?? [],
           });
         }
         return state.listings.get(k)!;
@@ -317,14 +378,36 @@ function createEbayFakePrisma(opts?: { existingListing?: Partial<EbayFakeListing
       async create({
         data,
       }: {
-        data: { status: string; code: string; reason: string | null };
+        data: {
+          status: string;
+          code: string;
+          reason: string | null;
+          idempotencyKey?: string | null;
+        };
       }) {
+        const id = `attempt-${state.attempts.length + 1}`;
         state.attempts.push({
+          id,
           status: data.status,
           code: data.code,
           reason: data.reason ?? null,
+          idempotencyKey: data.idempotencyKey ?? null,
         });
-        return { id: `attempt-${state.attempts.length}` };
+        return { id };
+      },
+      async update({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: { status?: string; code?: string; reason?: string | null };
+      }) {
+        const attempt = state.attempts.find((a) => a.id === where.id);
+        if (!attempt) throw new Error("attempt not found");
+        if (data.status) attempt.status = data.status;
+        if (data.code) attempt.code = data.code;
+        if ("reason" in data) attempt.reason = data.reason ?? null;
+        return { id: where.id };
       },
     },
     marketplaceEvent: {
@@ -385,6 +468,7 @@ describe("executePublish — eBay dispatch", () => {
     expect(result.offerId).toBe("offer-1");
     expect(result.listingId).toBe("listing-x");
 
+    expect(prisma._state.attempts[0].idempotencyKey).toBe("item-1:ebay:sandbox");
     expect(prisma._state.attempts[0].status).toBe("SUCCEEDED");
     const update = prisma._state.updates[0];
     expect(update.data.sku).toBe("percs_item-1");
@@ -400,10 +484,36 @@ describe("executePublish — eBay dispatch", () => {
     );
   });
 
+  it("creates the eBay PublishAttempt before outbound publishing runs", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockImplementation(async () => {
+      expect(prisma._state.attempts[0]).toMatchObject({
+        status: "RUNNING",
+        code: "EBAY_PUBLISH_STARTED",
+        idempotencyKey: "item-1:ebay:sandbox",
+      });
+      return {
+        status: "published",
+        code: "EBAY_PUBLISH_SUCCEEDED",
+        marketplace: "ebay",
+        environment: "sandbox",
+        sku: "percs_item-1",
+        offerId: "offer-1",
+        listingId: "listing-x",
+      };
+    });
+
+    await executePublish(prisma, input, undefined, ebayPublish);
+
+    expect(ebayPublish).toHaveBeenCalledOnce();
+    expect(prisma._state.events[0].kind).toBe("publish_started");
+  });
+
   it("blocks duplicate eBay publish when a listing ID already exists", async () => {
     const prisma = createEbayFakePrisma({
       existingListing: {
         id: "listing-1",
+        status: "LISTED",
         externalListingId: "ebay-listing-1",
         externalOfferId: "offer-1",
         sku: "percs_item-1",
@@ -426,9 +536,54 @@ describe("executePublish — eBay dispatch", () => {
     const prisma = createEbayFakePrisma({
       existingListing: {
         id: "listing-1",
+        status: "NOT_LISTED",
         externalListingId: null,
         externalOfferId: "offer-1",
         sku: "percs_item-1",
+      },
+    });
+    const ebayPublish = vi.fn();
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({
+      code: ebayErrorCodes.alreadyPublished,
+      status: 409,
+    });
+
+    expect(ebayPublish).not.toHaveBeenCalled();
+  });
+
+  it("blocks duplicate eBay publish when a pending attempt exists", async () => {
+    const prisma = createEbayFakePrisma({
+      existingListing: {
+        id: "listing-1",
+        externalListingId: null,
+        externalOfferId: null,
+        sku: null,
+        publishAttempts: [{ status: "RUNNING" }],
+      },
+    });
+    const ebayPublish = vi.fn();
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({
+      code: ebayErrorCodes.alreadyPublished,
+      status: 409,
+    });
+
+    expect(ebayPublish).not.toHaveBeenCalled();
+  });
+
+  it("blocks duplicate eBay publish when a succeeded attempt exists", async () => {
+    const prisma = createEbayFakePrisma({
+      existingListing: {
+        id: "listing-1",
+        externalListingId: null,
+        externalOfferId: null,
+        sku: null,
+        publishAttempts: [{ status: "SUCCEEDED" }],
       },
     });
     const ebayPublish = vi.fn();
