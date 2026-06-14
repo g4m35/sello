@@ -39,7 +39,20 @@ Flag still OFF; no live listing created.**
   `publish/route.test.ts`, `publish.test.ts`, and `preflight.test.ts` left
   intact. Full gate: lint (2 pre-existing warnings only), `vitest` 403 passing,
   `prisma validate`, `tsc --noEmit`, `next build` — all green.
-- Deploy + production verification details appended below once shipped.
+- Shipped: commit `eae252c` on `feature/first-live-publish-rehearsal`,
+  fast-forwarded to `main` and pushed (`e51976a..eae252c`), then
+  `vercel deploy --prod` (deployment `dpl_9hRQ3PEp4EVxiAZuBgYaFR3Y3Anj`,
+  `● Ready`, target production, aliased https://sello.wtf).
+- Production verification (unauthenticated, since this was an away session with
+  no live browser): `/` 307 -> `/dashboard` 200; `/inventory`, `/privacy`,
+  `/settings/marketplaces` 200; publish API is auth-gated
+  (`POST /api/listings/publish` -> 401 before any logic); no 5xx observed.
+  `EBAY_PRODUCTION_PUBLISH_ENABLED` is NOT set in any Vercel environment, so it
+  resolves OFF in production (the safest default) — the flag was not touched.
+  Authenticated UI checks (Ready-for-eBay badge, quantity 1, operations panel,
+  literal absence of the publish button in the DOM) could not be run without a
+  logged-in browser; the flag-off guarantee is enforced by config + code +
+  tests (`server-map.test.ts`, `publish/route.test.ts`).
 
 ## Previous update
 2026-06-14 — Codex. **Source reconciliation shipped: eBay live production code
