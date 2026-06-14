@@ -12,6 +12,29 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-14 — Codex. **Source reconciliation PR #29 prepared: eBay live
+production code + PriceComp v2 now coexist in one branch.**
+- PR #29 (`feature/reconcile-ebay-pricecomp` → `develop`) starts from
+  `develop @ 8203bddec8be861bb45e56cf46a3fe617e1a4762` and merges live eBay
+  production code `feature/ebay-required-aspects @
+  78009c32159fb2e4c06cd7a518e6eaf1650007aa`.
+- **Prod DB migration state is fully verified APPLIED** (direct, read-only
+  `_prisma_migrations` query before merge/deploy):
+  - `20260613020000_price_comp_v2_fields` — APPLIED.
+  - `20260612010000_guarded_ebay_production_publish` — APPLIED.
+  - `20260613010000_backfill_ebay_quantity` — APPLIED.
+  Because these migrations are already recorded in production, **do not run
+  `db:deploy` for this reconciliation deploy unless a fresh `prisma migrate status`
+  reports drift or pending migrations.**
+- Merge had no conflicts. Verification on the reconciliation branch passed:
+  `npx prisma format`, `npx prisma validate`, `npm run lint` (2 existing warnings
+  in `src/app/api/listings/draft/draft-actions.test.ts`), `npx prisma generate &&
+  npx tsc --noEmit`, `npm test` (60 files / 384 tests), and `npm run build`.
+- The remaining release step is source-only: merge PR #29, promote the reconciled
+  code to `main` if using `main` as production branch, then deploy production and
+  smoke test Sello. Do not enable `EBAY_PRODUCTION_PUBLISH_ENABLED`.
+
+## Previous update
 2026-06-13 — Claude. **PriceComp v2 release HELD after partial promotion;
 migration state now VERIFIED applied. Read this before deploying anything.**
 - **Prod DB migration state is fully verified APPLIED** (direct, read-only,
