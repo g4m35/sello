@@ -84,6 +84,9 @@ function channelsOf(item: ItemWithRelations, draft: ListingDraft | null): Channe
       name: adapter.displayName,
       status,
       publishImplemented: publishImplementedForView(mp),
+      environment: listing?.environment ?? null,
+      sku: listing?.sku ?? null,
+      externalOfferId: listing?.externalOfferId ?? null,
       externalListingId: listing?.externalListingId ?? null,
       lastError: listing?.lastError ?? null,
     };
@@ -200,15 +203,23 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
     itemTitle: draft?.title || item.productName,
     marketplace: mp,
     marketplaceName: marketplaceName(mp),
+    environment: listing.environment,
     status: designStatusFromAttempt(attempt.status),
     rawStatus: attempt.status,
+    listingStatus: listing.status,
     time: (attempt.startedAt ?? attempt.createdAt).toISOString(),
+    createdAt: attempt.createdAt.toISOString(),
+    updatedAt: attempt.completedAt?.toISOString() ?? null,
     durationMs:
       attempt.completedAt && attempt.startedAt
         ? attempt.completedAt.getTime() - attempt.startedAt.getTime()
         : null,
     reason: attempt.reason,
     code: attempt.code,
+    sku: listing.sku,
+    externalOfferId: listing.externalOfferId,
+    externalListingId: listing.externalListingId,
+    listingLastError: listing.lastError,
   };
 }
 

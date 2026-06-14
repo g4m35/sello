@@ -21,6 +21,9 @@ export type ChannelStateView = {
   name: string;
   status: DesignStatus;
   publishImplemented: boolean;
+  environment: string | null;
+  sku: string | null;
+  externalOfferId: string | null;
   externalListingId: string | null;
   lastError: string | null;
 };
@@ -58,12 +61,20 @@ export type AttemptView = {
   itemTitle: string;
   marketplace: string;
   marketplaceName: string;
+  environment: string;
   status: DesignStatus;
   rawStatus: string;
+  listingStatus: string;
   time: string;
+  createdAt: string;
+  updatedAt: string | null;
   durationMs: number | null;
   reason: string | null;
   code: string | null;
+  sku: string | null;
+  externalOfferId: string | null;
+  externalListingId: string | null;
+  listingLastError: string | null;
 };
 
 export type ReadinessView = {

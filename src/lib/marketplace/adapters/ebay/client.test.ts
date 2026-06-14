@@ -283,6 +283,31 @@ describe("eBay sandbox publish methods", () => {
     expect(result.listingId).toBe("listing-999");
   });
 
+  it("POSTs withdrawOffer to the withdraw path and returns the listingId when present", async () => {
+    const { client, calls } = recordingClient([
+      new Response(JSON.stringify({ listingId: "listing-999" }), { status: 200 }),
+    ]);
+
+    const result = await client.withdrawOffer("offer-123");
+
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].url).toBe(
+      "https://api.sandbox.ebay.com/sell/inventory/v1/offer/offer-123/withdraw",
+    );
+    expect(result.listingId).toBe("listing-999");
+  });
+
+  it("normalizes withdraw failures to a typed eBay delist error", async () => {
+    const { client } = recordingClient([
+      new Response(JSON.stringify({ errors: [{ errorId: 25725 }] }), { status: 400 }),
+    ]);
+
+    await expect(client.withdrawOffer("offer-123")).rejects.toMatchObject({
+      code: "EBAY_DELIST_FAILED",
+      status: 502,
+    });
+  });
+
   it("normalizes publish failures to a typed error without leaking the token", async () => {
     const { client } = recordingClient([
       new Response(JSON.stringify({ errors: [{ errorId: 25001 }] }), { status: 400 }),

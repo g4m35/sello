@@ -15,15 +15,17 @@ import { PublishModal } from "@/components/app/publish-modal";
 import { AutoPricing } from "@/components/app/auto-pricing";
 import { EbayPreflightCard } from "@/components/app/ebay-preflight-card";
 import {
+  confirmEbayDelist,
+  MarketplaceOperationsPanel,
+} from "@/components/app/marketplace-operations-panel";
+import {
   formatMoneyCents,
   estPayoutCents,
   conditionLabel,
   categoryLabel,
   relativeTime,
   splitTitle,
-  durationLabel,
 } from "@/lib/view/format";
-import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
 import { analyzeListing } from "@/lib/listing/intelligence";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import {
@@ -165,6 +167,7 @@ export default function ListingDetailPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [delistingEbay, setDelistingEbay] = useState(false);
   const [exportBusy, setExportBusy] = useState<ExportMarketplace | null>(null);
   const [exportResult, setExportResult] = useState<{
     marketplace: ExportMarketplace;
@@ -442,6 +445,24 @@ export default function ListingDetailPage() {
     },
     [token, id, reload],
   );
+
+  const runEbayDelist = useCallback(async () => {
+    if (!confirmEbayDelist()) return;
+    setDelistingEbay(true);
+    setNotice(null);
+    try {
+      await api.delistEbay(token, {
+        inventoryItemId: id,
+        marketplace: "ebay",
+        confirmLiveDelist: true,
+      });
+      reload();
+    } catch (e) {
+      setNotice((e as { error?: string })?.error ?? "Could not end the eBay listing.");
+    } finally {
+      setDelistingEbay(false);
+    }
+  }, [token, id, reload]);
 
   if (loading)
     return (
@@ -1264,33 +1285,12 @@ export default function ListingDetailPage() {
               </div>
             </section>
 
-            <section className="card">
-              <div className="card__head">
-                <span className="card__title">Recent activity</span>
-              </div>
-              <div className="card__body">
-                {item.attempts.length === 0 ? (
-                  <div className="t-small muted">No publish attempts yet.</div>
-                ) : (
-                  <div className="stack-4">
-                    {item.attempts.slice(0, 5).map((attempt) => (
-                      <div key={attempt.id} className="mp-row">
-                        <MpLogo id={attempt.marketplace} size={28} />
-                        <div className="mp-row__name">
-                          {DESIGN_STATUS_LABEL[attempt.status]}
-                        </div>
-                        <div className="mp-row__meta">
-                          {relativeTime(attempt.time)} · {durationLabel(attempt.durationMs)}
-                        </div>
-                        <div className="mp-row__action">
-                          <Badge status={attempt.status} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
+            <MarketplaceOperationsPanel
+              channels={item.channels}
+              attempts={item.attempts}
+              delisting={delistingEbay}
+              onDelistEbay={() => void runEbayDelist()}
+            />
           </div>
         </div>
       </main>

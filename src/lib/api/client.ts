@@ -206,6 +206,27 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  delistEbay: (
+    token: string,
+    body: {
+      inventoryItemId: string;
+      marketplace: "ebay";
+      confirmLiveDelist: true;
+    },
+  ) =>
+    request<{
+      ok: true;
+      status: "delisted";
+      code: string;
+      marketplace: "ebay";
+      environment: string;
+      marketplaceListingId: string;
+      publishAttemptId: string;
+    }>("/api/listings/delist", token, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // Copy/paste export text for marketplaces without a publish adapter. The
   // server only formats text; nothing is published.
   exportListing: (

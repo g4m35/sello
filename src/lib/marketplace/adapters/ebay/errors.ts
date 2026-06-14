@@ -15,6 +15,7 @@ export const ebayErrorCodes = {
   publishNotEnabled: "EBAY_PUBLISH_NOT_ENABLED",
   alreadyPublished: "EBAY_ALREADY_PUBLISHED",
   publishFailed: "EBAY_PUBLISH_FAILED",
+  delistFailed: "EBAY_DELIST_FAILED",
 } as const;
 
 export type EbayErrorCode =

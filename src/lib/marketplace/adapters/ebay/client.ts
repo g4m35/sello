@@ -208,13 +208,25 @@ export class EbaySandboxClient implements EbayApiClient {
     return (await response.json()) as T;
   }
 
-  // Mutating requests used by the publish flow. Failures normalize to a typed
-  // EBAY_PUBLISH_FAILED error carrying only the HTTP status, never the bearer
-  // token or request body, so error payloads can be surfaced safely.
+  async withdrawOffer(offerId: string): Promise<{ listingId: string | null }> {
+    const result = await this.send<{ listingId?: string }>(
+      "POST",
+      `/sell/inventory/v1/offer/${encodeURIComponent(offerId)}/withdraw`,
+      undefined,
+      ebayErrorCodes.delistFailed,
+    );
+    return { listingId: result?.listingId ?? null };
+  }
+
+  // Mutating requests used by the publish and delist flows. Failures normalize
+  // to typed eBay errors carrying only the HTTP status, never the bearer token
+  // or request body, so payloads can be surfaced safely.
   private async send<T>(
     method: "POST" | "PUT",
     path: string,
     body?: unknown,
+    errorCode: typeof ebayErrorCodes.publishFailed | typeof ebayErrorCodes.delistFailed =
+      ebayErrorCodes.publishFailed,
   ): Promise<T | null> {
     const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
       method,
@@ -229,8 +241,10 @@ export class EbaySandboxClient implements EbayApiClient {
 
     if (!response.ok) {
       throw new EbayIntegrationError(
-        ebayErrorCodes.publishFailed,
-        "eBay publish request failed.",
+        errorCode,
+        errorCode === ebayErrorCodes.delistFailed
+          ? "eBay delist request failed."
+          : "eBay publish request failed.",
         502,
         { status: response.status },
       );
