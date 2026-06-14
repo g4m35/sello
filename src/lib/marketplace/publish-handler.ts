@@ -546,7 +546,17 @@ async function recordEbayFailure(
 ): Promise<void> {
   const code =
     error instanceof EbayIntegrationError ? error.code : "EBAY_PUBLISH_FAILED";
-  const reason = error instanceof Error ? error.message : "eBay publish failed.";
+  const missing =
+    error instanceof EbayIntegrationError &&
+    Array.isArray(error.details?.missing)
+      ? error.details.missing.filter((id): id is string => typeof id === "string")
+      : [];
+  const reason =
+    error instanceof Error
+      ? missing.length > 0
+        ? `${error.message} Missing: ${missing.join(", ")}.`
+        : error.message
+      : "eBay publish failed.";
   const step =
     error instanceof EbayIntegrationError &&
     error.details &&
@@ -559,7 +569,7 @@ async function recordEbayFailure(
       status: "FAILED",
       code,
       reason,
-      adapterResult: { code, step } as unknown as Prisma.InputJsonValue,
+      adapterResult: { code, step, missing } as unknown as Prisma.InputJsonValue,
       completedAt: new Date(),
     });
 
@@ -567,7 +577,7 @@ async function recordEbayFailure(
       data: {
         marketplaceListingId,
         kind: "publish_failed",
-        data: { code, step, attemptId: publishAttemptId, marketplace: "ebay" },
+        data: { code, step, missing, attemptId: publishAttemptId, marketplace: "ebay" },
       },
     });
 

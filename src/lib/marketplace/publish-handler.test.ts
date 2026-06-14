@@ -666,7 +666,11 @@ describe("executePublish — eBay dispatch", () => {
 
     expect(prisma._state.attempts[0].status).toBe("FAILED");
     expect(prisma._state.attempts[0].code).toBe(ebayErrorCodes.readinessFailed);
+    expect(prisma._state.attempts[0].reason).toContain("Missing: title.");
     expect(prisma._state.events.some((e) => e.kind === "publish_failed")).toBe(true);
+    expect(
+      prisma._state.events.find((e) => e.kind === "publish_failed")?.data.missing,
+    ).toEqual(["title"]);
     expect(prisma._state.updates).toHaveLength(0);
   });
 
