@@ -184,6 +184,29 @@ describe("calculatePricing", () => {
     expect(s.confidenceReasons.join(" ")).toContain("Includes 1 sold comp");
   });
 
+  it("caps mixed recommendations below high confidence until at least 3 sold comps match", () => {
+    const s = calculatePricing([
+      comp({ priceCents: 21000, status: "sold", sourceType: "manual", matchScore: null }),
+      ...Array.from({ length: 11 }, (_, i) =>
+        comp({
+          priceCents: 14000 + i * 300,
+          status: "active",
+          brand: "The North Face",
+          size: "Large",
+          condition: "used_good",
+          matchScore: 0.9,
+        }),
+      ),
+    ]);
+
+    expect(s.soldCompCount).toBe(1);
+    expect(s.activeCompCount).toBe(11);
+    expect(s.pricingBasis).toBe("mixed_comps");
+    expect(s.confidence).toBe("medium");
+    expect(s.confidenceScore).toBeLessThan(0.7);
+    expect(s.confidenceCapReason).toContain("fewer than 3 sold comps");
+  });
+
   it("counts seller-entered sold comps without match scores as possible comps", () => {
     const s = calculatePricing([
       comp({ priceCents: 15000, status: "sold", sourceType: "manual", matchScore: null }),

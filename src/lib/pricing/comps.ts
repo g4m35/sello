@@ -220,6 +220,12 @@ function scoreConfidence(args: {
     capReason = "Confidence capped at medium because pricing is based on active market listings, not sold comps.";
     reasons.push(capReason);
   }
+  if (soldCompCount > 0 && soldCompCount < MIN_SOLD_FOR_PREFERENCE && activeCompCount > 0) {
+    if (score > 0.64) score = 0.64;
+    capReason =
+      "Confidence capped at medium because fewer than 3 sold comps matched; blending with active market listings.";
+    reasons.push(capReason);
+  }
   if (strongCompCount + possibleCompCount < 3 && score > 0.44) {
     score = 0.44;
     capReason = "Confidence capped below medium because fewer than 3 strong/possible comps matched.";
