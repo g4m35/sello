@@ -12,6 +12,70 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-14 — Codex. **Source reconciliation PR #29 prepared: eBay live
+production code + PriceComp v2 now coexist in one branch.**
+- PR #29 (`feature/reconcile-ebay-pricecomp` → `develop`) starts from
+  `develop @ 8203bddec8be861bb45e56cf46a3fe617e1a4762` and merges live eBay
+  production code `feature/ebay-required-aspects @
+  78009c32159fb2e4c06cd7a518e6eaf1650007aa`.
+- **Prod DB migration state is fully verified APPLIED** (direct, read-only
+  `_prisma_migrations` query before merge/deploy):
+  - `20260613020000_price_comp_v2_fields` — APPLIED.
+  - `20260612010000_guarded_ebay_production_publish` — APPLIED.
+  - `20260613010000_backfill_ebay_quantity` — APPLIED.
+  Because these migrations are already recorded in production, **do not run
+  `db:deploy` for this reconciliation deploy unless a fresh `prisma migrate status`
+  reports drift or pending migrations.**
+- Merge had no conflicts. Verification on the reconciliation branch passed:
+  `npx prisma format`, `npx prisma validate`, `npm run lint` (2 existing warnings
+  in `src/app/api/listings/draft/draft-actions.test.ts`), `npx prisma generate &&
+  npx tsc --noEmit`, `npm test` (60 files / 384 tests), and `npm run build`.
+- The remaining release step is source-only: merge PR #29, promote the reconciled
+  code to `main` if using `main` as production branch, then deploy production and
+  smoke test Sello. Do not enable `EBAY_PRODUCTION_PUBLISH_ENABLED`.
+
+## Previous update
+2026-06-13 — Claude. **PriceComp v2 release HELD after partial promotion;
+migration state now VERIFIED applied. Read this before deploying anything.**
+- **Prod DB migration state is fully verified APPLIED** (direct, read-only,
+  per-branch `prisma migrate status` against prod):
+  - `20260613020000_price_comp_v2_fields` — APPLIED.
+  - `20260612010000_guarded_ebay_production_publish` — APPLIED.
+  - `20260613010000_backfill_ebay_quantity` — APPLIED.
+  `migrate status` from `develop` (9 migrations) AND from
+  `feature/ebay-required-aspects` (10 migrations) BOTH report "Database schema is
+  up to date!", so the prod DB holds the **union** of the eBay migrations and the
+  PriceComp v2 migration. **Correction:** an earlier entry guessed the eBay
+  migrations "appeared unapplied" (inferred from develop's status) — that was WRONG;
+  they are applied.
+- **Live production = `dpl_BB7eRKiHMqKZ...`** (READY, target production, aliased to
+  `sello.wtf`, deployed via `vercel --prod` by codex), commit
+  **`78009c32159fb2e4c06cd7a518e6eaf1650007aa` (`78009c3`)** from
+  `feature/ebay-required-aspects`. Confirmed via the Vercel deployment record.
+- `develop` was merged into `main`; **`main` is now @
+  `1a80b5ef97fca50ff71a47b98f5fd4cc7c441d7d`** and contains PriceComp v2, but it was
+  **NOT deployed**. The `main` push did NOT auto-deploy — Vercel canceled the build
+  (`dpl_C5G5Tk68...`, CANCELED) via the repo's ignored-build-step; production
+  releases here require an explicit `vercel --prod`.
+- **Runtime: no risk.** Live code (`78009c3`) reads/writes
+  `MarketplaceListing.environment` and `PublishAttempt.idempotencyKey` in the eBay
+  publish path (`src/lib/marketplace/publish-handler.ts`); those columns exist in
+  prod (migrations applied), so production is self-consistent.
+- ⚠️ **Do NOT deploy the current `main`.** The ONLY remaining release risk is **code
+  divergence**: live prod runs `feature/ebay-required-aspects` code, while `main` has
+  PriceComp v2 but NOT that eBay code — deploying `main` as-is would roll back the live
+  eBay work. The prod DB is NOT a blocker (already migrated for both).
+- **Before PriceComp v2 can go live, reconcile `feature/ebay-required-aspects`
+  (`78009c3`) into `develop`/`main`.** A `git merge-tree` trial shows
+  `develop` + `feature/ebay-required-aspects` merges **conflict-free** (only
+  `prisma/schema.prisma` + `HANDOFF.md` touched by both, both auto-merge). Plan:
+  `docs/superpowers/plans/2026-06-13-reconcile-ebay-and-pricecomp.md`.
+- Because the prod DB already has all migrations, `db:deploy` during the combined
+  release is expected to be a **no-op** ("No pending migrations to apply") — but still
+  run and verify it before deploying.
+- This entry is a docs-only commit on `develop`; no branch merges, no deploy.
+
+## Previous update
 2026-06-13 — Claude. **PriceComp v2 merged into `develop`** (PR #28; develop @
 `f52b60b15115b44e264e0b942ffbc1abcb3e76bb`, includes review fix `cd9c998` that
 moves the auth/ownership check before body-parse on
