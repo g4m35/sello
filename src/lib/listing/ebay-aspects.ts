@@ -54,7 +54,7 @@ const APPAREL_ASPECTS: EbayAspectRequirement[] = [
   // eBay requires Size Type for apparel; "Regular" is the honest default and can
   // be overridden with a saved aspect for Big & Tall / Plus / Petite items.
   { name: "Size Type", label: "Size type", required: true },
-  { name: "Type", label: "Type", required: false },
+  { name: "Type", label: "Type", required: true },
   { name: "Style", label: "Style", required: false },
 ];
 

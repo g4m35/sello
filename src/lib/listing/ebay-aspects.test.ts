@@ -71,7 +71,7 @@ describe("eBay aspect fallback rules", () => {
     expect(result.values.Department).toBe("Men");
   });
 
-  it("requires and auto-resolves Department for single-gender apparel (57988)", () => {
+  it("requires and auto-resolves known single-gender apparel aspects (57988)", () => {
     // eBay rejects publishOffer for Men's Jackets & Coats without Department, so
     // it must be a resolved required aspect (auto-filled "Men" from the category)
     // rather than dropped on the assumption that the category implies it.
@@ -90,7 +90,9 @@ describe("eBay aspect fallback rules", () => {
       savedAspects: {},
     });
 
-    expect(result.missingRequired).toEqual([]);
+    expect(result.missingRequired).toEqual([
+      expect.objectContaining({ name: "Type", label: "Type" }),
+    ]);
     expect(result.values.Department).toBe("Men");
     expect(result.values.Size).toBe("S");
     expect(result.values.Color).toBe("Black");
