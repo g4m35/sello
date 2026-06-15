@@ -79,7 +79,7 @@ export type PublishPrismaLike = {
       sku?: string | null;
       externalOfferId?: string | null;
       externalListingId?: string | null;
-      publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
+      publishAttempts?: Array<{ status: PublishAttemptStatus | string; code?: string }>;
     } | null>;
     create?(args: {
       data: {
@@ -106,7 +106,7 @@ export type PublishPrismaLike = {
       sku?: string | null;
       externalOfferId?: string | null;
       externalListingId?: string | null;
-      publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
+      publishAttempts?: Array<{ status: PublishAttemptStatus | string; code?: string }>;
     }>;
     upsert(args: {
       where: {
@@ -141,7 +141,7 @@ export type PublishPrismaLike = {
       sku?: string | null;
       externalOfferId?: string | null;
       externalListingId?: string | null;
-      publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
+      publishAttempts?: Array<{ status: PublishAttemptStatus | string; code?: string }>;
     }>;
     update?(args: {
       where: { id: string };
@@ -308,7 +308,7 @@ async function getOrCreateMarketplaceListing(
     externalOfferId: true,
     externalListingId: true,
     publishAttempts: {
-      select: { status: true },
+      select: { status: true, code: true },
       orderBy: { createdAt: "desc" },
       take: 5,
     },
@@ -354,7 +354,7 @@ async function executeEbayPublish(
     sku?: string | null;
     externalOfferId?: string | null;
     externalListingId?: string | null;
-    publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
+    publishAttempts?: Array<{ status: PublishAttemptStatus | string; code?: string }>;
   },
   environment: string,
   ebayPublish: EbayPublishFn,
@@ -512,10 +512,17 @@ function assertEbayPublishNotDuplicate(listing: {
   sku?: string | null;
   externalOfferId?: string | null;
   externalListingId?: string | null;
-  publishAttempts?: Array<{ status: PublishAttemptStatus } | { status: string }>;
+  publishAttempts?: Array<{ status: PublishAttemptStatus | string; code?: string }>;
 }) {
-  const blockedAttempt = listing.publishAttempts?.find((attempt) =>
-    ["QUEUED", "RUNNING", "SUCCEEDED"].includes(attempt.status),
+  // Only an actual publish attempt (code EBAY_PUBLISH_*) blocks a re-publish.
+  // Orphan-cleanup and delist attempts share the PublishAttempt table and can be
+  // SUCCEEDED without a live listing existing; counting them here would leave an
+  // item permanently un-publishable after a cleanup.
+  const blockedAttempt = listing.publishAttempts?.find(
+    (attempt) =>
+      typeof attempt.code === "string" &&
+      attempt.code.startsWith("EBAY_PUBLISH") &&
+      ["QUEUED", "RUNNING", "SUCCEEDED"].includes(attempt.status),
   );
   if (blockedAttempt) {
     throw new EbayIntegrationError(

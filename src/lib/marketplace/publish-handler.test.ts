@@ -257,7 +257,7 @@ type EbayFakeListing = {
   externalListingId: string | null;
   externalOfferId: string | null;
   sku: string | null;
-  publishAttempts?: Array<{ status: string }>;
+  publishAttempts?: Array<{ status: string; code?: string }>;
 };
 
 type EbayFakeState = {
@@ -579,7 +579,7 @@ describe("executePublish — eBay dispatch", () => {
         externalListingId: null,
         externalOfferId: null,
         sku: null,
-        publishAttempts: [{ status: "RUNNING" }],
+        publishAttempts: [{ status: "RUNNING", code: "EBAY_PUBLISH_STARTED" }],
       },
     });
     const ebayPublish = vi.fn();
@@ -601,7 +601,7 @@ describe("executePublish — eBay dispatch", () => {
         externalListingId: null,
         externalOfferId: null,
         sku: null,
-        publishAttempts: [{ status: "SUCCEEDED" }],
+        publishAttempts: [{ status: "SUCCEEDED", code: "EBAY_PUBLISH_SUCCEEDED" }],
       },
     });
     const ebayPublish = vi.fn();
@@ -614,6 +614,36 @@ describe("executePublish — eBay dispatch", () => {
     });
 
     expect(ebayPublish).not.toHaveBeenCalled();
+  });
+
+  it("does NOT block publish when only a succeeded orphan-cleanup attempt exists", async () => {
+    // Orphan cleanup records a PublishAttempt with status SUCCEEDED but code
+    // EBAY_ORPHAN_CLEANUP_SUCCEEDED. That must not be mistaken for a live listing,
+    // otherwise an item can never be (re)published after its orphans are cleaned.
+    const prisma = createEbayFakePrisma({
+      existingListing: {
+        id: "listing-1",
+        externalListingId: null,
+        externalOfferId: null,
+        sku: null,
+        publishAttempts: [
+          { status: "SUCCEEDED", code: "EBAY_ORPHAN_CLEANUP_SUCCEEDED" },
+          { status: "FAILED", code: "EBAY_PUBLISH_FAILED" },
+        ],
+      },
+    });
+    const ebayPublish = vi.fn().mockResolvedValue({
+      status: "not_enabled",
+      code: ebayErrorCodes.publishNotEnabled,
+      marketplace: "ebay",
+      environment: "sandbox",
+      message: "disabled",
+    });
+
+    const result = await executePublish(prisma, input, undefined, ebayPublish);
+
+    expect(ebayPublish).toHaveBeenCalledTimes(1);
+    expect(result.outcome.code).toBe(ebayErrorCodes.publishNotEnabled);
   });
 
   it("allows retry after a pre-API readiness failure when no external IDs exist", async () => {
