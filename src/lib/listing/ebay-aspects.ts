@@ -35,23 +35,38 @@ const APPAREL_ASPECTS: EbayAspectRequirement[] = [
   { name: "Style", label: "Style", required: false },
 ];
 
-// Department is implied by single-gender categories, so it is not asked.
-const SINGLE_DEPARTMENT_APPAREL: EbayAspectRequirement[] = APPAREL_ASPECTS.filter(
-  (aspect) => aspect.name !== "Department",
-);
-
+// eBay requires the Department aspect in the publish payload even for
+// gender-specific categories (publishOffer rejects "Men's Jackets & Coats"/57988
+// with "item specific Department is missing"). Department therefore stays a
+// required aspect; it is auto-resolved from the category's inherent gender
+// (CATEGORY_DEPARTMENT) so the seller is still never asked for it.
 const ASPECTS_BY_CATEGORY: Record<string, EbayAspectRequirement[]> = {
   // Men's / Women's Athletic Shoes
   "15709": SHOE_ASPECTS,
   "95672": SHOE_ASPECTS,
   // Men's T-Shirts, Hoodies, Jeans, Jackets; Women's Tops, Jeans, Dresses
-  "15687": SINGLE_DEPARTMENT_APPAREL,
-  "155183": SINGLE_DEPARTMENT_APPAREL,
-  "11483": SINGLE_DEPARTMENT_APPAREL,
-  "57988": SINGLE_DEPARTMENT_APPAREL,
-  "53159": SINGLE_DEPARTMENT_APPAREL,
-  "11554": SINGLE_DEPARTMENT_APPAREL,
-  "63861": SINGLE_DEPARTMENT_APPAREL,
+  "15687": APPAREL_ASPECTS,
+  "155183": APPAREL_ASPECTS,
+  "11483": APPAREL_ASPECTS,
+  "57988": APPAREL_ASPECTS,
+  "53159": APPAREL_ASPECTS,
+  "11554": APPAREL_ASPECTS,
+  "63861": APPAREL_ASPECTS,
+};
+
+// Gender-specific category -> eBay Department value. Used to auto-fill the
+// Department aspect from the category alone when the listing's detected
+// department is "unknown", so single-gender categories never block on it.
+const CATEGORY_DEPARTMENT: Record<string, string> = {
+  "15709": "Men",
+  "95672": "Women",
+  "15687": "Men",
+  "155183": "Men",
+  "11483": "Men",
+  "57988": "Men",
+  "53159": "Women",
+  "11554": "Women",
+  "63861": "Women",
 };
 
 export function ebayAspectRequirementsFor(
@@ -91,9 +106,7 @@ function departmentAspectValue(
     case "unisex":
       return "Unisex Adult";
     case "unknown":
-      if (categoryId === "15709") return "Men";
-      if (categoryId === "95672") return "Women";
-      return null;
+      return categoryId ? CATEGORY_DEPARTMENT[categoryId] ?? null : null;
   }
 }
 

@@ -70,6 +70,31 @@ describe("eBay aspect fallback rules", () => {
     expect(result.values.Department).toBe("Men");
   });
 
+  it("requires and auto-resolves Department for single-gender apparel (57988)", () => {
+    // eBay rejects publishOffer for Men's Jackets & Coats without Department, so
+    // it must be a resolved required aspect (auto-filled "Men" from the category)
+    // rather than dropped on the assumption that the category implies it.
+    const requirements = ebayAspectRequirementsFor("57988");
+    expect(requirements).toContainEqual(
+      expect.objectContaining({ name: "Department", required: true }),
+    );
+
+    const result = resolveEbayAspects("57988", {
+      brand: "The North Face",
+      size: "S",
+      colorway: "Black",
+      department: "unknown",
+      measurementProfile: "outerwear",
+      itemSpecifics: {},
+      savedAspects: {},
+    });
+
+    expect(result.missingRequired).toEqual([]);
+    expect(result.values.Department).toBe("Men");
+    expect(result.values.Size).toBe("S");
+    expect(result.values.Color).toBe("Black");
+  });
+
   it("lets seller-saved aspect values satisfy missing requirements", () => {
     const result = resolveEbayAspects("15709", {
       brand: "Nike",
