@@ -76,12 +76,20 @@ export type EbayOfferPayload = {
   merchantLocationKey: string;
 };
 
+// eBay Inventory API condition enums (text, not numeric ids). Sello only lists
+// apparel/shoes/accessories on EBAY_US, where the sole valid used condition is
+// "Pre-owned" (condition id 3000 = USED_EXCELLENT). The media-only grades
+// USED_VERY_GOOD/USED_GOOD/USED_ACCEPTABLE (4000/5000/6000) are rejected at
+// publishOffer for these categories (e.g. 57988 -> "Condition information 5000 ...
+// is not a valid condition"), so all used grades collapse to USED_EXCELLENT; the
+// real wear level is conveyed by the description and flaws. The apparel-specific
+// PRE_OWNED_* enums are EBAY_AU-only and do not apply here.
 const conditionMap: Record<ItemCondition, string | null> = {
   new_with_tags: "NEW_WITH_TAGS",
   new_without_tags: "NEW_WITHOUT_TAGS",
   used_excellent: "USED_EXCELLENT",
-  used_good: "USED_GOOD",
-  used_fair: "USED_ACCEPTABLE",
+  used_good: "USED_EXCELLENT",
+  used_fair: "USED_EXCELLENT",
   for_parts: "FOR_PARTS_OR_NOT_WORKING",
   unknown: null,
 };

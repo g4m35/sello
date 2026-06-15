@@ -31,14 +31,14 @@ export type EbayPublishReviewResult =
   | { ready: true; review: EbayPublishReview }
   | { ready: false; missing: string[] };
 
+// Labels for the eBay condition enums the mapper actually emits. Used grades all
+// map to USED_EXCELLENT, which eBay shows as "Pre-owned" in apparel categories, so
+// the review mirrors what eBay displays rather than overstating a fixed grade.
 const conditionLabels: Record<string, string> = {
   NEW_WITH_TAGS: "New with tags",
   NEW_WITHOUT_TAGS: "New without tags",
   NEW: "New",
-  USED_EXCELLENT: "Used (excellent)",
-  USED_VERY_GOOD: "Used (very good)",
-  USED_GOOD: "Used (good)",
-  USED_ACCEPTABLE: "Used (acceptable)",
+  USED_EXCELLENT: "Pre-owned",
   FOR_PARTS_OR_NOT_WORKING: "For parts / not working",
 };
 

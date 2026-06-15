@@ -88,6 +88,32 @@ describe("buildEbayInventoryItemPayload", () => {
     buildEbayInventoryItemPayload(input);
     expect(JSON.stringify(input)).toBe(snapshot);
   });
+
+  it("maps every used grade to the apparel-valid Pre-owned condition (USED_EXCELLENT/3000)", () => {
+    // eBay US apparel/shoes/accessories categories only accept condition id 3000
+    // ("Pre-owned") for used items. The media-only USED_VERY_GOOD/USED_GOOD/
+    // USED_ACCEPTABLE (4000/5000/6000) are rejected at publishOffer (e.g. category
+    // 57988 -> "Condition information 5000 ... is not a valid condition"), so all
+    // used grades collapse to USED_EXCELLENT.
+    for (const condition of ["used_excellent", "used_good", "used_fair"] as const) {
+      const input = baseInput();
+      input.item.condition = condition;
+      expect(buildEbayInventoryItemPayload(input).condition).toBe("USED_EXCELLENT");
+    }
+  });
+
+  it("maps the new conditions to their eBay enums", () => {
+    const cases: Record<string, string> = {
+      new_with_tags: "NEW_WITH_TAGS",
+      new_without_tags: "NEW_WITHOUT_TAGS",
+      for_parts: "FOR_PARTS_OR_NOT_WORKING",
+    };
+    for (const [condition, expected] of Object.entries(cases)) {
+      const input = baseInput();
+      input.item.condition = condition as typeof input.item.condition;
+      expect(buildEbayInventoryItemPayload(input).condition).toBe(expected);
+    }
+  });
 });
 
 describe("buildEbayOfferPayload", () => {
