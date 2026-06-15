@@ -12,7 +12,7 @@ const STATE_TO_DESIGN: Record<ItemLifecycleState, DesignStatus> = {
   ready: "ready",
   active: "published",
   sold: "published",
-  delisted: "draft",
+  delisted: "delisted",
   error: "failed",
 };
 
@@ -28,7 +28,7 @@ const LISTING_TO_DESIGN: Record<MarketplaceListingStatus, DesignStatus> = {
   LISTED: "published",
   SOLD: "published",
   DELISTING: "publishing",
-  DELISTED: "draft",
+  DELISTED: "delisted",
   FAILED: "failed",
 };
 
@@ -36,17 +36,41 @@ export function designStatusFromListing(status: MarketplaceListingStatus): Desig
   return LISTING_TO_DESIGN[status];
 }
 
+export type AttemptDesignContext = {
+  code?: string | null;
+  listingStatus?: MarketplaceListingStatus | string | null;
+  externalOfferId?: string | null;
+  externalListingId?: string | null;
+};
+
 // Publish attempt status -> design variant. NOT_IMPLEMENTED surfaces honestly
-// as "noimpl" so the UI never presents publishing as functional.
+// as "noimpl" so the UI never presents publishing as functional. A successful
+// operational attempt is only "published" when it is a real publish success with
+// stored marketplace identifiers.
 const ATTEMPT_TO_DESIGN: Record<PublishAttemptStatus, DesignStatus> = {
   NOT_IMPLEMENTED: "noimpl",
   QUEUED: "publishing",
   RUNNING: "publishing",
-  SUCCEEDED: "published",
+  SUCCEEDED: "ready",
   FAILED: "failed",
 };
 
-export function designStatusFromAttempt(status: PublishAttemptStatus): DesignStatus {
+export function designStatusFromAttempt(
+  status: PublishAttemptStatus,
+  context: AttemptDesignContext = {},
+): DesignStatus {
+  if (status !== "SUCCEEDED") return ATTEMPT_TO_DESIGN[status];
+  if (context.code?.startsWith("EBAY_DELIST") || context.listingStatus === "DELISTED") {
+    return "delisted";
+  }
+  if (
+    context.code?.startsWith("EBAY_PUBLISH") &&
+    (context.listingStatus === "LISTED" || context.listingStatus === "SOLD") &&
+    context.externalOfferId &&
+    context.externalListingId
+  ) {
+    return "published";
+  }
   return ATTEMPT_TO_DESIGN[status];
 }
 
@@ -54,7 +78,8 @@ export const DESIGN_STATUS_LABEL: Record<DesignStatus, string> = {
   draft: "Draft",
   ready: "Ready",
   publishing: "Publishing",
-  published: "Live",
+  published: "Published",
+  delisted: "Delisted",
   failed: "Failed",
   noimpl: "Not implemented",
 };

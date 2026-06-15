@@ -5,14 +5,16 @@ import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
  * Design-language status used by the Counter UI badges/dots. These are the six
  * visual states from the design system. They are DERIVED from the real backend
  * enums (InventoryStatus, MarketplaceListingStatus, PublishAttemptStatus) — see
- * lib/view/status.ts. "noimpl" reflects an adapter whose publish capability is
- * false (publishing is intentionally not implemented yet).
+ * lib/view/status.ts. "delisted" is explicit so ended marketplace listings are
+ * never softened into draft/not-published language. "noimpl" reflects an adapter
+ * whose publish capability is false (publishing is intentionally not implemented yet).
  */
 export type DesignStatus =
   | "draft"
   | "ready"
   | "publishing"
   | "published"
+  | "delisted"
   | "failed"
   | "noimpl";
 

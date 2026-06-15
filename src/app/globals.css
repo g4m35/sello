@@ -47,6 +47,10 @@
   --status-published-ink: #FAF9F5;
   --status-published-dot: #5C8438;
 
+  --status-delisted-bg:   #F2F0E8;
+  --status-delisted-ink:  #6F6F6A;
+  --status-delisted-dot:  #8F8A7A;
+
   --status-failed-bg:     #FBE9E7;
   --status-failed-ink:    #8C1814;
   --status-failed-dot:    #C8201C;
@@ -245,6 +249,8 @@ img { display: block; max-width: 100%; }
 .badge--publishing .badge__dot { background: var(--status-publishing-dot); animation: pulse 1.2s var(--ease) infinite; }
 .badge--published { background: var(--status-published-bg); color: var(--status-published-ink); }
 .badge--published .badge__dot { background: var(--status-published-dot); }
+.badge--delisted { background: var(--status-delisted-bg); color: var(--status-delisted-ink); }
+.badge--delisted .badge__dot { background: var(--status-delisted-dot); }
 .badge--failed { background: var(--status-failed-bg); color: var(--status-failed-ink); }
 .badge--failed .badge__dot { background: var(--status-failed-dot); }
 .badge--noimpl { background: var(--status-noimpl-bg); color: var(--status-noimpl-ink); }
@@ -327,6 +333,7 @@ img { display: block; max-width: 100%; }
 .mp-dot--ready { background: var(--status-ready-bg); color: var(--status-ready-ink); border-color: transparent; }
 .mp-dot--publishing { background: var(--status-publishing-bg); color: var(--status-publishing-ink); border-color: transparent; }
 .mp-dot--published { background: var(--ink); color: var(--ink-on-inv); border-color: transparent; }
+.mp-dot--delisted { background: var(--status-delisted-bg); color: var(--status-delisted-ink); border-color: transparent; }
 .mp-dot--failed { background: var(--status-failed-bg); color: var(--status-failed-ink); border-color: transparent; }
 .mp-dot--draft { background: var(--surface-sunk); color: var(--ink-3); }
 .mp-dot--noimpl { background: var(--surface); color: var(--ink-4); border-style: dashed; }

@@ -212,7 +212,12 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
     marketplace: mp,
     marketplaceName: marketplaceName(mp),
     environment: listing.environment,
-    status: designStatusFromAttempt(attempt.status),
+    status: designStatusFromAttempt(attempt.status, {
+      code: attempt.code,
+      listingStatus: listing.status,
+      externalOfferId: listing.externalOfferId,
+      externalListingId: listing.externalListingId,
+    }),
     rawStatus: attempt.status,
     listingStatus: listing.status,
     time: (attempt.startedAt ?? attempt.createdAt).toISOString(),

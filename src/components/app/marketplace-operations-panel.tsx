@@ -8,6 +8,7 @@ import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
 import type {
   AttemptView,
   ChannelStateView,
+  DesignStatus,
   EbayOrphanArtifactView,
 } from "@/lib/view/types";
 
@@ -17,12 +18,20 @@ function titleCase(value: string | null | undefined): string {
 }
 
 function operationsStatus(channel: ChannelStateView | null): string {
-  if (!channel) return "Draft";
+  if (!channel) return "Not published";
   if (channel.status === "ready") return "Ready";
   if (channel.status === "publishing") return "Publishing";
   if (channel.status === "published") return "Published";
+  if (channel.status === "delisted") return "Delisted";
   if (channel.status === "failed") return "Failed";
-  return "Draft";
+  return "Not published";
+}
+
+function attemptDisplay(attempt: AttemptView): { status: DesignStatus; label: string } {
+  if (attempt.rawStatus === "SUCCEEDED" && attempt.code?.startsWith("EBAY_ORPHAN_CLEANUP")) {
+    return { status: "ready", label: "Cleanup complete" };
+  }
+  return { status: attempt.status, label: DESIGN_STATUS_LABEL[attempt.status] };
 }
 
 export function confirmEbayDelist(
@@ -63,6 +72,7 @@ export function MarketplaceOperationsPanel({
   onCleanupEbayOrphans: () => void;
 }) {
   const latestAttempt = attempts[0] ?? null;
+  const latestAttemptDisplay = latestAttempt ? attemptDisplay(latestAttempt) : null;
   const ebay = channels.find((channel) => channel.marketplace === "ebay") ?? null;
   const canDelistEbay =
     ebay?.status === "published" &&
@@ -105,14 +115,17 @@ export function MarketplaceOperationsPanel({
             <div className="mp-row">
               <MpLogo id={latestAttempt.marketplace} size={28} />
               <div className="mp-row__name">
-                {latestAttempt.marketplaceName} · {DESIGN_STATUS_LABEL[latestAttempt.status]}
+                {latestAttempt.marketplaceName} · {latestAttemptDisplay?.label}
               </div>
               <div className="mp-row__meta">
                 {titleCase(latestAttempt.environment)} · {relativeTime(latestAttempt.time)} ·{" "}
                 {durationLabel(latestAttempt.durationMs)}
               </div>
               <div className="mp-row__action">
-                <Badge status={latestAttempt.status} />
+                <Badge
+                  status={latestAttemptDisplay?.status}
+                  label={latestAttemptDisplay?.label}
+                />
               </div>
             </div>
           </div>
@@ -149,21 +162,23 @@ export function MarketplaceOperationsPanel({
               Show publish history
             </summary>
             <div className="stack-2" style={{ marginTop: 8 }}>
-              {attempts.slice(1, 8).map((attempt) => (
-                <div key={attempt.id} className="mp-row">
-                  <MpLogo id={attempt.marketplace} size={24} />
-                  <div className="mp-row__name">
-                    {marketplaceName(attempt.marketplace)} ·{" "}
-                    {DESIGN_STATUS_LABEL[attempt.status]}
+              {attempts.slice(1, 8).map((attempt) => {
+                const display = attemptDisplay(attempt);
+                return (
+                  <div key={attempt.id} className="mp-row">
+                    <MpLogo id={attempt.marketplace} size={24} />
+                    <div className="mp-row__name">
+                      {marketplaceName(attempt.marketplace)} · {display.label}
+                    </div>
+                    <div className="mp-row__meta">
+                      {titleCase(attempt.environment)} · {relativeTime(attempt.time)}
+                    </div>
+                    <div className="mp-row__action">
+                      <Badge status={display.status} label={display.label} />
+                    </div>
                   </div>
-                  <div className="mp-row__meta">
-                    {titleCase(attempt.environment)} · {relativeTime(attempt.time)}
-                  </div>
-                  <div className="mp-row__action">
-                    <Badge status={attempt.status} />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </details>
         )}

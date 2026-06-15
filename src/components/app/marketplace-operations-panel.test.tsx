@@ -77,12 +77,150 @@ describe("MarketplaceOperationsPanel", () => {
     expect(html).toContain("offer-1");
     expect(html).toContain("Listing ID");
     expect(html).toContain("ebay-listing-1");
+    expect(html).toContain("Published");
+    expect(html).not.toContain(">Live<");
   });
 
-  it("hides eBay delist when the eBay listing is not published", () => {
+  it("does not render Live for an unpublished item with no attempts", () => {
     const html = renderToStaticMarkup(
       <MarketplaceOperationsPanel
-        channels={[channel({ status: "ready", externalListingId: null })]}
+        channels={[]}
+        attempts={[]}
+        onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
+        delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
+      />,
+    );
+
+    expect(html).toContain("Not published");
+    expect(html).toContain("No publish attempts yet.");
+    expect(html).not.toContain(">Live<");
+    expect(html).not.toContain("End eBay listing");
+  });
+
+  it("does not render Live or delist controls when publishing is flag-disabled", () => {
+    const html = renderToStaticMarkup(
+      <MarketplaceOperationsPanel
+        channels={[
+          channel({
+            status: "ready",
+            publishImplemented: false,
+            externalListingId: null,
+            externalOfferId: null,
+          }),
+        ]}
+        attempts={[]}
+        onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
+        delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
+      />,
+    );
+
+    expect(html).toContain("Ready");
+    expect(html).not.toContain(">Live<");
+    expect(html).not.toContain("Create live eBay listing");
+    expect(html).not.toContain("End eBay listing");
+  });
+
+  it("shows Failed for a failed publish attempt", () => {
+    const html = renderToStaticMarkup(
+      <MarketplaceOperationsPanel
+        channels={[channel({ status: "failed", externalListingId: null, externalOfferId: null })]}
+        attempts={[
+          attempt({
+            status: "failed",
+            rawStatus: "FAILED",
+            code: "EBAY_PUBLISH_FAILED",
+            reason: "Policy missing.",
+          }),
+        ]}
+        onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
+        delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
+      />,
+    );
+
+    expect(html).toContain("eBay · Failed");
+    expect(html).not.toContain(">Live<");
+  });
+
+  it("shows Publishing for a pending or running publish attempt", () => {
+    const html = renderToStaticMarkup(
+      <MarketplaceOperationsPanel
+        channels={[channel({ status: "publishing" })]}
+        attempts={[
+          attempt({
+            status: "publishing",
+            rawStatus: "RUNNING",
+            code: "EBAY_PUBLISH_STARTED",
+            externalOfferId: null,
+            externalListingId: null,
+          }),
+        ]}
+        onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
+        delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
+      />,
+    );
+
+    expect(html).toContain("eBay · Publishing");
+    expect(html).not.toContain(">Live<");
+  });
+
+  it("shows Delisted and hides delist controls for an ended listing", () => {
+    const html = renderToStaticMarkup(
+      <MarketplaceOperationsPanel
+        channels={[
+          channel({
+            status: "delisted",
+            externalOfferId: "offer-1",
+            externalListingId: "ebay-listing-1",
+          }),
+        ]}
+        attempts={[
+          attempt({
+            status: "delisted",
+            rawStatus: "SUCCEEDED",
+            code: "EBAY_DELIST_SUCCEEDED",
+            listingStatus: "DELISTED",
+          }),
+        ]}
+        onDelistEbay={() => undefined}
+        onScanEbayOrphans={() => undefined}
+        onCleanupEbayOrphans={() => undefined}
+        delisting={false}
+        orphanScan={null}
+        scanningOrphans={false}
+        cleaningOrphans={false}
+      />,
+    );
+
+    expect(html).toContain("Production · Delisted");
+    expect(html).toContain("eBay · Delisted");
+    expect(html).not.toContain("End eBay listing");
+    expect(html).not.toContain(">Live<");
+  });
+
+  it("hides eBay delist when stored live listing identifiers are missing", () => {
+    const html = renderToStaticMarkup(
+      <MarketplaceOperationsPanel
+        channels={[channel({ status: "published", externalListingId: null })]}
         attempts={[]}
         onDelistEbay={() => undefined}
         onScanEbayOrphans={() => undefined}
