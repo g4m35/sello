@@ -12,28 +12,93 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-14 — Codex. **Gemini authentication-note validation fix local; Sello tab
-preserved; no deploy.**
+2026-06-14 — Claude. **Second controlled live-eBay-publish test. Pipeline proven;
+NO live listing created (blocked on incomplete eBay required aspects). 4 real bugs
+fixed and DEPLOYED TO PROD — but they live only on local branch
+`fix/ebay-apparel-condition`, NOT on `main`/`develop` (CODE DIVERGENCE, read below).
+Production flag is OFF again.**
+
+- **Listing used:** TNF Black Nuptse Puffer Jacket, item `9fa01f5b-77f6-4594-87fd-ef701d64564d`,
+  $165, seller `4372cfcf-…`. SKU `percs9fa01f5b77f6459487fdef701d64564d`. Owner set
+  Size=S (was the only readiness gap). It is the cheapest viable real item; no
+  truly "cheap" item exists in inventory (only other ready item is a $1500 Travis
+  Scott shoe, excluded by the non-goal).
+- **Flag:** was set `true` + prod redeployed for the window; after the test the
+  var was **removed** from Vercel production and prod redeployed
+  (`resale-crosslister-5ugpy4dk9`, aliased sello.wtf). Verified in the authenticated
+  UI that the Publish button is **gone** with the flag off. Gotcha: `vercel env
+  pull` masks sensitive vars to empty, so the flag value is NOT readable via CLI —
+  confirm via the UI button presence, not pull.
+- **Publish result:** FAILED — no live listing. Each attempt got further as bugs
+  were fixed; final blocker is the `Type` item-specific. Stored IDs: none (SKU is
+  recorded on the MarketplaceListing row; Offer/Listing IDs not stored). Orphan
+  inventory item + unpublished offer were created on each failed publishOffer and
+  **cleaned up** every time; final eBay orphan scan = Inventory item / Offer /
+  Live listing all "Not found" (eBay is clean).
+- **4 bugs fixed (TDD + full gate green each: lint, tsc, 447 vitest, build), branch
+  `fix/ebay-apparel-condition`:**
+  1. `a1f65dc` eBay condition for apparel: used grades → `USED_EXCELLENT` (3000
+     "Pre-owned"); media `USED_GOOD`(5000)/`USED_ACCEPTABLE`(6000) are invalid for
+     clothing (cat 57988). Review label now "Pre-owned". (`mapper.ts`,
+     `publish-review.ts`)
+  2. `f280e09` publish duplicate guard counted the orphan-cleanup SUCCEEDED
+     PublishAttempt as a publish → item became un-publishable after cleanup. Now only
+     `code.startsWith("EBAY_PUBLISH")` attempts block. (`publish-handler.ts`)
+  3. `2d154b1` Department aspect was dropped for single-gender apparel categories;
+     eBay requires it. Now required + auto-resolved from category gender
+     (CATEGORY_DEPARTMENT). (`ebay-aspects.ts`)
+  4. `6891be0` Size Type aspect missing for apparel; now required + default
+     "Regular". (`ebay-aspects.ts`)
+- ⚠️ **CODE DIVERGENCE — reconcile before any `main` deploy.** These 4 commits were
+  deployed to prod via `vercel deploy --prod` from the working tree but are **only on
+  the local branch `fix/ebay-apparel-condition` (not pushed, not on `main`/`develop`)**.
+  Production currently runs these fixes; `main` does NOT. Deploying `main` as-is would
+  ROLL BACK all 4 fixes. Next agent: get owner approval, then merge
+  `fix/ebay-apparel-condition` → develop → main and push, OR re-apply.
+- **Remaining blocker (the real next milestone):** category 57988 also requires the
+  `Type` item-specific (e.g. "Puffer"), which has no honest auto-default — it needs
+  per-item seller input. The local `ASPECTS_BY_CATEGORY` table is an approximation;
+  the correct fix is to source the real required set from eBay's
+  `getItemAspectsForCategory` (Metadata API) and add a seller-facing field for
+  aspects Sello can't resolve (Type, etc.). Until then, apparel live-publish will
+  keep failing on Type.
+- **Minor issues noted (not fixed):** (a) the operations panel renders the
+  orphan-cleanup SUCCEEDED attempt with a misleading green "Live" badge (cosmetic);
+  (b) `POST /api/listings/publish` returns 502 for eBay user-error 400s (missing
+  aspect) — arguably should be a 4xx; the error body is surfaced correctly either way.
+- **Vercel logs:** no error/fatal; 3 expected `502`s on `/api/listings/publish`
+  (the Department/Size Type/Type aspect failures). The token auto-refresh works (the
+  expired access token refreshed fine; orphan scan made authorized eBay calls).
+
+## Previous update
+2026-06-14 — Codex. **Gemini authentication-note validation fix promoted and
+deployed.**
 - Root cause: Gemini structured-output schema allowed unconstrained
   `identification.authenticationNotes` strings, while Zod enforced
   `max(240)`, so a long but otherwise usable note made draft generation fail
   with `Gemini JSON failed validation`.
-- Fix on local branch `feature/gemini-auth-notes-validation`: `src/lib/ai/listing-draft.ts`
-  now advertises `minLength: "1"` / `maxLength: "240"` for short AI note/warning
-  strings in the Gemini response schema and clips overlong generated
-  authentication notes/warnings to the app limit before strict validation.
+- Fix commit `b1f5873` was fast-forwarded through `develop` and `main`, pushed,
+  and deployed to production (`dpl_CcYZa6GtUsBUmwwgrfTE8jhVJEyY`,
+  `https://resale-crosslister-gqckp6pk1-jaky.vercel.app`, aliased
+  `https://sello.wtf`). `src/lib/ai/listing-draft.ts` now advertises
+  `minLength: "1"` / `maxLength: "240"` for short AI note/warning strings in the
+  Gemini response schema and clips overlong generated authentication
+  notes/warnings to the app limit before strict validation.
   Malformed JSON and shape/type failures still fail loudly.
 - Tests added in `src/lib/ai/listing-draft.test.ts` for the exact oversized
   authentication-note failure and for the outbound Gemini schema limit.
 - Verification passed: focused `npx vitest run src/lib/ai/listing-draft.test.ts`,
   `npm run lint` (2 pre-existing warnings in `draft-actions.test.ts`), `npm test`
   (64 files / 417 tests), `npx prisma validate`, and `npm run build`.
-- Chrome production tab `https://sello.wtf/inventory/new` was claimed and released
-  as handoff. It still shows the selected photo, the old validation error, and
-  `Try again` / `Identify & create draft`. Production was NOT redeployed, so
-  clicking it now would still exercise the old deployed parser.
-- Blocked on owner: explicit approval to deploy/promote this branch before retrying
-  the still-loaded production image on `sello.wtf`.
+- `db:deploy` was NOT run; the diff against pre-deploy `origin/main` had no
+  Prisma/schema/migration changes.
+- Production retry used the already-open Chrome tab with the still-loaded image,
+  clicked `Try again`, and succeeded: the app navigated to
+  `https://sello.wtf/inventory/9fa01f5b-77f6-4594-87fd-ef701d64564d` and rendered
+  a draft for "The North Face Black Nuptse Puffer Jacket" with no Gemini
+  validation error visible.
+- Vercel log checks after retry (`--level error`, `--query error`, `--status-code
+  400`, `--status-code 500`) returned no matching entries.
 
 ## Previous update
 2026-06-14 — Claude. **First-live-eBay-publish rehearsal + safety hardening.
