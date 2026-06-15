@@ -40,6 +40,16 @@ export type EbayTokenResponse = {
   scope?: string;
 };
 
+export type EbayTaxonomyAspect = {
+  localizedAspectName?: string;
+  aspectConstraint?: {
+    aspectRequired?: boolean;
+    aspectUsage?: string;
+    aspectMode?: string;
+  };
+  aspectValues?: Array<{ localizedValue?: string }>;
+};
+
 export type EbayPaymentPolicy = {
   paymentPolicyId?: string;
   name?: string;

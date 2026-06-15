@@ -346,6 +346,122 @@ describe("preflightEbayListing", () => {
     expect(result.preview!.inventoryItem.product.aspects.Color).toEqual(["Aqua"]);
   });
 
+  it("uses live Taxonomy requirements when supplied and blocks on unknown required Type", async () => {
+    const base = readyItem();
+    const item = {
+      ...base,
+      brand: "The North Face",
+      condition: "used_good" as const,
+      size: "S",
+      colorway: "Black",
+      listingDrafts: [
+        {
+          ...base.listingDrafts[0],
+          title: "The North Face Black Nuptse Puffer Jacket",
+          description: "Classic black Nuptse jacket.",
+          itemSpecifics: {},
+          marketplaceDrafts: { ebay: { categoryId: "57988", quantity: 1 } },
+        },
+      ],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+      {
+        aspectRequirementProvider: async () => ({
+          source: "taxonomy",
+          requirements: [
+            { name: "Brand", label: "Brand", required: true },
+            { name: "Department", label: "Department (Men/Women)", required: true },
+            { name: "Size", label: "Size", required: true },
+            { name: "Color", label: "Color", required: true },
+            { name: "Size Type", label: "Size type", required: true },
+            {
+              name: "Type",
+              label: "Type",
+              required: true,
+              values: ["Puffer Jacket", "Windbreaker"],
+              selectionOnly: true,
+            },
+          ],
+        }),
+      },
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.aspects.source).toBe("taxonomy");
+    expect(result.missing).toContain("ebay_aspects");
+    expect(result.aspects.values).toMatchObject({
+      Brand: "The North Face",
+      Department: "Men",
+      Size: "S",
+      Color: "Black",
+      "Size Type": "Regular",
+    });
+    expect(result.aspects.values.Type).toBeUndefined();
+    expect(result.aspects.missingRequired).toEqual([
+      expect.objectContaining({
+        name: "Type",
+        values: ["Puffer Jacket", "Windbreaker"],
+      }),
+    ]);
+    expect(result.preview).toBeNull();
+  });
+
+  it("includes seller-filled Taxonomy aspects in the exact preview payload", async () => {
+    const base = readyItem();
+    const item = {
+      ...base,
+      brand: "The North Face",
+      condition: "used_good" as const,
+      size: "S",
+      colorway: "Black",
+      listingDrafts: [
+        {
+          ...base.listingDrafts[0],
+          title: "The North Face Black Nuptse Puffer Jacket",
+          description: "Classic black Nuptse jacket.",
+          itemSpecifics: {},
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: "57988",
+              quantity: 1,
+              aspects: { Type: "Puffer Jacket" },
+            },
+          },
+        },
+      ],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+      {
+        aspectRequirementProvider: async () => ({
+          source: "taxonomy",
+          requirements: [
+            { name: "Brand", label: "Brand", required: true },
+            { name: "Department", label: "Department (Men/Women)", required: true },
+            { name: "Size", label: "Size", required: true },
+            { name: "Color", label: "Color", required: true },
+            { name: "Size Type", label: "Size type", required: true },
+            { name: "Type", label: "Type", required: true },
+          ],
+        }),
+      },
+    );
+
+    expect(result.ready).toBe(true);
+    expect(result.aspects.source).toBe("taxonomy");
+    expect(result.aspects.missingRequired).toEqual([]);
+    expect(result.preview!.inventoryItem.product.aspects.Type).toEqual([
+      "Puffer Jacket",
+    ]);
+  });
+
   it("blocks with a category choice and suggestions for ambiguous items", async () => {
     const base = readyItem();
     const item = {

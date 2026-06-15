@@ -16,6 +16,7 @@ import type {
   EbayOfferLookup,
   EbayPaymentPolicy,
   EbayReturnPolicy,
+  EbayTaxonomyAspect,
   EbayTokenResponse,
 } from "./types";
 
@@ -93,6 +94,13 @@ export class EbaySandboxClient implements EbayApiClient {
       "/sell/inventory/v1/location",
     );
     return payload.locations ?? [];
+  }
+
+  async getItemAspectsForCategory(categoryId: string): Promise<EbayTaxonomyAspect[]> {
+    const payload = await this.get<{ aspects?: EbayTaxonomyAspect[] }>(
+      `/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`,
+    );
+    return payload.aspects ?? [];
   }
 
   // Seller setup action: creates an Inventory API ship-from location. eBay
@@ -544,5 +552,34 @@ export async function getUsableEbayAccessToken(
     },
   });
 
+  return payload.access_token;
+}
+
+export async function getEbayApplicationAccessToken(
+  config: EbayConfig,
+  fetchImpl: typeof fetch = fetch,
+) {
+  const response = await fetchImpl(tokenUrls[config.environment], {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      scope: "https://api.ebay.com/oauth/api_scope",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.tokenExchangeFailed,
+      `eBay application token request failed (HTTP ${response.status}).`,
+      502,
+      { status: response.status },
+    );
+  }
+
+  const payload = (await response.json()) as EbayTokenResponse;
   return payload.access_token;
 }

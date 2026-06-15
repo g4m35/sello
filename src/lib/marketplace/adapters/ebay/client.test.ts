@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   EbaySandboxClient,
+  getEbayApplicationAccessToken,
   getUsableEbayAccessToken,
   type EbayTokenPrismaLike,
 } from "./client";
@@ -185,6 +186,49 @@ describe("eBay sandbox client", () => {
     expect(urls[0].startsWith("https://api.sandbox.ebay.com/")).toBe(true);
   });
 
+  it("fetches Taxonomy aspects for a category with marketplace headers", async () => {
+    const urls: string[] = [];
+    const inits: RequestInit[] = [];
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      urls.push(String(url));
+      inits.push(init ?? {});
+      return new Response(
+        JSON.stringify({
+          aspects: [
+            {
+              localizedAspectName: "Type",
+              aspectConstraint: { aspectRequired: true },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    const client = new EbaySandboxClient(
+      "secret-access-token",
+      "EBAY_US",
+      fetchImpl,
+      "production",
+    );
+
+    const aspects = await client.getItemAspectsForCategory("57988");
+
+    expect(urls[0]).toBe(
+      "https://api.ebay.com/commerce/taxonomy/v1/category_tree/0/get_item_aspects_for_category?category_id=57988",
+    );
+    expect(inits[0].headers).toMatchObject({
+      Authorization: "Bearer secret-access-token",
+      "Accept-Language": "en-US",
+      "Content-Language": "en-US",
+    });
+    expect(aspects).toEqual([
+      {
+        localizedAspectName: "Type",
+        aspectConstraint: { aspectRequired: true },
+      },
+    ]);
+  });
+
   it("refreshes expired access tokens and stores encrypted replacement tokens", async () => {
     const update = vi.fn().mockResolvedValue({});
     const prisma: EbayTokenPrismaLike = {
@@ -219,6 +263,27 @@ describe("eBay sandbox client", () => {
     expect(decryptEbayToken(data.accessTokenEnc, key)).toBe("fresh-access-token");
     expect(decryptEbayToken(data.refreshTokenEnc, key)).toBe(
       "fresh-refresh-token",
+    );
+  });
+
+  it("gets an application access token for read-only Taxonomy calls", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const token = await getEbayApplicationAccessToken(config, async (url, init) => {
+      calls.push({ url: String(url), init });
+      return new Response(JSON.stringify({ access_token: "app-token", expires_in: 7200 }), {
+        status: 200,
+      });
+    });
+
+    expect(token).toBe("app-token");
+    expect(calls[0].url).toBe(
+      "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
+    );
+    expect(calls[0].init?.body?.toString()).toContain(
+      "grant_type=client_credentials",
+    );
+    expect(calls[0].init?.body?.toString()).toContain(
+      "scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope",
     );
   });
 });

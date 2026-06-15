@@ -88,6 +88,10 @@ export function EbayPreflightCard({
     result && result.missing.includes("ebay_category"),
   );
   const missingAspects = result?.aspects.missingRequired ?? [];
+  const aspectSourceLabel =
+    result?.aspects.source === "taxonomy"
+      ? "eBay Taxonomy requirements"
+      : "local eBay detail fallback";
 
   return (
     <section className="card">
@@ -212,15 +216,32 @@ export function EbayPreflightCard({
             <div className="t-small" style={{ fontWeight: 500 }}>
               eBay needs a few item details:
             </div>
+            {result && (
+              <div className="t-small muted">
+                Source: {aspectSourceLabel}
+              </div>
+            )}
             {missingAspects.map((aspect) => (
               <div key={aspect.name} className="row" style={{ gap: 8, alignItems: "center" }}>
                 <span className="t-small muted" style={{ width: 180 }}>
                   {aspect.label}
                 </span>
+                {aspect.values && aspect.values.length > 0 && (
+                  <datalist id={`ebay-aspect-${aspect.name.replace(/[^a-z0-9_-]/gi, "-")}`}>
+                    {aspect.values.slice(0, 50).map((value) => (
+                      <option key={value} value={value} />
+                    ))}
+                  </datalist>
+                )}
                 <input
                   className="input"
                   style={{ flex: 1, maxWidth: 220 }}
                   maxLength={80}
+                  list={
+                    aspect.values && aspect.values.length > 0
+                      ? `ebay-aspect-${aspect.name.replace(/[^a-z0-9_-]/gi, "-")}`
+                      : undefined
+                  }
                   value={aspectDrafts[aspect.name] ?? ""}
                   onChange={(e) =>
                     setAspectDrafts((prev) => ({
@@ -239,6 +260,12 @@ export function EbayPreflightCard({
                 >
                   Save
                 </Btn>
+                {aspect.values && aspect.values.length > 0 && (
+                  <span className="t-small muted">
+                    {aspect.values.slice(0, 3).join(", ")}
+                    {aspect.values.length > 3 ? "..." : ""}
+                  </span>
+                )}
               </div>
             ))}
             <div className="t-small muted">

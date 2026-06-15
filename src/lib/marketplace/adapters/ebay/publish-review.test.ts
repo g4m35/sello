@@ -28,7 +28,7 @@ function readyPreflight(
     itemType: "sneakers",
     measurementProfile: "shoes",
     quantity: 1,
-    aspects: { values: {}, missingRequired: [], missingRecommended: [] },
+    aspects: { source: "local", values: {}, missingRequired: [], missingRecommended: [] },
     preview: {
       sku: "percs_item-1",
       steps: ["createOrReplaceInventoryItem", "createOffer", "publishOffer"],

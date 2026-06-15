@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ebayAspectRequirementsFromTaxonomy,
   ebayAspectRequirementsFor,
   resolveEbayAspects,
 } from "./ebay-aspects";
@@ -109,5 +110,65 @@ describe("eBay aspect fallback rules", () => {
 
     expect(result.missingRequired).toEqual([]);
     expect(result.values["US Shoe Size"]).toBe("10.5");
+  });
+
+  it("turns eBay Taxonomy metadata into required seller-facing aspects", () => {
+    const requirements = ebayAspectRequirementsFromTaxonomy([
+      {
+        localizedAspectName: "Type",
+        aspectConstraint: {
+          aspectRequired: true,
+          aspectUsage: "RECOMMENDED",
+          aspectMode: "SELECTION_ONLY",
+        },
+        aspectValues: [
+          { localizedValue: "Puffer Jacket" },
+          { localizedValue: "Windbreaker" },
+          { localizedValue: "Puffer Jacket" },
+        ],
+      },
+      {
+        localizedAspectName: "Style",
+        aspectConstraint: { aspectRequired: false, aspectUsage: "OPTIONAL" },
+      },
+    ]);
+
+    expect(requirements).toEqual([
+      {
+        name: "Type",
+        label: "Type",
+        required: true,
+        selectionOnly: true,
+        values: ["Puffer Jacket", "Windbreaker"],
+      },
+    ]);
+  });
+
+  it("does not invent item-specific apparel Type from Taxonomy requirements", () => {
+    const result = resolveEbayAspects(
+      "57988",
+      {
+        brand: "The North Face",
+        size: "S",
+        colorway: "Black",
+        department: "unknown",
+        measurementProfile: "outerwear",
+        itemSpecifics: {},
+        savedAspects: {},
+      },
+      {
+        source: "taxonomy",
+        requirements: [
+          { name: "Brand", label: "Brand", required: true },
+          { name: "Type", label: "Type", required: true, values: ["Puffer Jacket"] },
+        ],
+      },
+    );
+
+    expect(result.values.Brand).toBe("The North Face");
+    expect(result.values.Type).toBeUndefined();
+    expect(result.missingRequired).toEqual([
+      expect.objectContaining({ name: "Type", label: "Type" }),
+    ]);
   });
 });

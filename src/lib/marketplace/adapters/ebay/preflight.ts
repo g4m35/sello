@@ -3,6 +3,7 @@ import { AppError } from "@/lib/errors";
 import {
   resolveEbayAspects,
   type EbayAspectRequirement,
+  type EbayAspectRequirementSet,
 } from "@/lib/listing/ebay-aspects";
 import {
   analyzeListing,
@@ -105,6 +106,7 @@ export type EbayPreflightResult = {
   quantity: number;
   /** Required/recommended eBay item specifics for the resolved category. */
   aspects: {
+    source: EbayAspectRequirementSet["source"];
     values: Record<string, string>;
     missingRequired: EbayAspectRequirement[];
     missingRecommended: EbayAspectRequirement[];
@@ -120,6 +122,14 @@ export type EbayPreflightResult = {
 export type EbayPreflightInput = {
   userId: string;
   inventoryItemId: string;
+};
+
+export type EbayAspectRequirementProvider = (
+  categoryId: string,
+) => Promise<EbayAspectRequirementSet | null>;
+
+export type EbayPreflightOptions = {
+  aspectRequirementProvider?: EbayAspectRequirementProvider;
 };
 
 function asStringRecord(value: unknown): Record<string, string> {
@@ -171,6 +181,7 @@ export async function preflightEbayListing(
   prisma: EbayPreflightPrismaLike,
   input: EbayPreflightInput,
   env: EbayEnv = process.env,
+  options: EbayPreflightOptions = {},
 ): Promise<EbayPreflightResult> {
   const environment = getEbayEnvironment(env);
   // Preflight is zero-write; this only reports whether the matching publish
@@ -229,6 +240,10 @@ export async function preflightEbayListing(
     savedEbayCategoryId: savedCategoryId,
   });
   const categoryId = intelligence.ebayCategory.resolvedId;
+  const aspectRequirementSet =
+    categoryId && options.aspectRequirementProvider
+      ? await options.aspectRequirementProvider(categoryId)
+      : null;
 
   // Required item specifics for the resolved category, satisfied from data
   // Sello already has (brand, size, color, inferred department, saved aspect
@@ -241,7 +256,8 @@ export async function preflightEbayListing(
     measurementProfile: intelligence.measurementProfile,
     itemSpecifics: asStringRecord(draft?.itemSpecifics),
     savedAspects,
-  });
+  }, aspectRequirementSet ?? undefined);
+  const aspectSource = aspectRequirementSet?.source ?? "local";
 
   // Resale default: one of each item. Explicit, never a hidden assumption.
   const resolvedQuantity = quantity ?? 1;
@@ -285,7 +301,7 @@ export async function preflightEbayListing(
       itemType: intelligence.itemType,
       measurementProfile: intelligence.measurementProfile,
       quantity: resolvedQuantity,
-      aspects,
+      aspects: { source: aspectSource, ...aspects },
       preview: null,
     };
   }
@@ -339,7 +355,7 @@ export async function preflightEbayListing(
     itemType: intelligence.itemType,
     measurementProfile: intelligence.measurementProfile,
     quantity: resolvedQuantity,
-    aspects,
+    aspects: { source: aspectSource, ...aspects },
     preview: {
       sku: resolveEbaySku(mapperInput.item),
       steps: ["createOrReplaceInventoryItem", "createOffer", "publishOffer"],

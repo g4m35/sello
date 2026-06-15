@@ -1,9 +1,8 @@
-// Required eBay item specifics (aspects) for the deterministic local category
-// map. Pure and offline: this is the same strategy as category inference:
-// cover the core resale assortment locally, keep the eBay Taxonomy API
-// (getItemAspectsForCategory) as the future long-tail path (see
-// docs/SELLO_ROADMAP.md). Values are resolved from data Sello already has;
-// only genuinely unknown values are asked of the seller.
+// Required eBay item specifics (aspects). Sello prefers the eBay Taxonomy API
+// getItemAspectsForCategory response when available, then falls back to this
+// deterministic local category map so readiness remains safe if eBay metadata is
+// temporarily unavailable. Values are resolved from data Sello already has; only
+// genuinely unknown values are asked of the seller.
 
 import type { Department, MeasurementProfile } from "./intelligence";
 
@@ -13,6 +12,27 @@ export type EbayAspectRequirement = {
   /** Plain-language label shown to sellers. */
   label: string;
   required: boolean;
+  /** Suggested/allowed values from eBay Taxonomy, when available. */
+  values?: string[];
+  /** eBay says sellers should choose from the provided values. */
+  selectionOnly?: boolean;
+};
+
+export type EbayAspectRequirementsSource = "taxonomy" | "local";
+
+export type EbayAspectRequirementSet = {
+  source: EbayAspectRequirementsSource;
+  requirements: EbayAspectRequirement[];
+};
+
+export type EbayTaxonomyAspect = {
+  localizedAspectName?: string;
+  aspectConstraint?: {
+    aspectRequired?: boolean;
+    aspectUsage?: string;
+    aspectMode?: string;
+  };
+  aspectValues?: Array<{ localizedValue?: string }>;
 };
 
 const SHOE_ASPECTS: EbayAspectRequirement[] = [
@@ -77,6 +97,47 @@ export function ebayAspectRequirementsFor(
 ): EbayAspectRequirement[] {
   if (!categoryId) return [];
   return ASPECTS_BY_CATEGORY[categoryId] ?? [];
+}
+
+const labelOverrides: Record<string, string> = {
+  "US Shoe Size": "Shoe size",
+  Department: "Department (Men/Women)",
+  Type: "Type",
+};
+
+function labelForAspect(name: string) {
+  return labelOverrides[name] ?? name;
+}
+
+export function ebayAspectRequirementsFromTaxonomy(
+  aspects: EbayTaxonomyAspect[],
+): EbayAspectRequirement[] {
+  return aspects
+    .map((aspect): EbayAspectRequirement | null => {
+      const name = aspect.localizedAspectName?.trim();
+      if (!name) return null;
+      const constraint = aspect.aspectConstraint ?? {};
+      const required = constraint.aspectRequired === true;
+      const recommended = constraint.aspectUsage === "RECOMMENDED";
+      if (!required && !recommended) return null;
+      const values = Array.from(
+        new Set(
+          (aspect.aspectValues ?? [])
+            .map((value) => value.localizedValue?.trim())
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+      return {
+        name,
+        label: labelForAspect(name),
+        required,
+        ...(values.length > 0 ? { values } : {}),
+        ...(constraint.aspectMode === "SELECTION_ONLY"
+          ? { selectionOnly: true }
+          : {}),
+      };
+    })
+    .filter((aspect): aspect is EbayAspectRequirement => Boolean(aspect));
 }
 
 export type EbayAspectSourceData = {
@@ -152,7 +213,7 @@ function resolveValue(
       return departmentAspectValue(data.department, categoryId);
     case "Size Type":
       // Default to Regular; a saved aspect (checked above) overrides it.
-      return "Regular";
+      return aspect.values && !aspect.values.includes("Regular") ? null : "Regular";
     case "Style":
       return data.measurementProfile === "shoes" ? "Sneaker" : null;
     case "Type":
@@ -165,8 +226,10 @@ function resolveValue(
 export function resolveEbayAspects(
   categoryId: string | null,
   data: EbayAspectSourceData,
+  requirementSet?: EbayAspectRequirementSet,
 ): EbayAspectResolution {
-  const requirements = ebayAspectRequirementsFor(categoryId);
+  const requirements =
+    requirementSet?.requirements ?? ebayAspectRequirementsFor(categoryId);
   const values: Record<string, string> = {};
   const missingRequired: EbayAspectRequirement[] = [];
   const missingRecommended: EbayAspectRequirement[] = [];
