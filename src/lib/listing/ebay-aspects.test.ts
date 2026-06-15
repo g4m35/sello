@@ -93,6 +93,7 @@ describe("eBay aspect fallback rules", () => {
     expect(result.values.Department).toBe("Men");
     expect(result.values.Size).toBe("S");
     expect(result.values.Color).toBe("Black");
+    expect(result.values["Size Type"]).toBe("Regular");
   });
 
   it("lets seller-saved aspect values satisfy missing requirements", () => {

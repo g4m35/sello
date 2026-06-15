@@ -31,6 +31,9 @@ const APPAREL_ASPECTS: EbayAspectRequirement[] = [
   { name: "Size", label: "Size", required: true },
   { name: "Department", label: "Department (Men/Women)", required: true },
   { name: "Color", label: "Color", required: true },
+  // eBay requires Size Type for apparel; "Regular" is the honest default and can
+  // be overridden with a saved aspect for Big & Tall / Plus / Petite items.
+  { name: "Size Type", label: "Size type", required: true },
   { name: "Type", label: "Type", required: false },
   { name: "Style", label: "Style", required: false },
 ];
@@ -147,6 +150,9 @@ function resolveValue(
       return data.colorway?.trim() || null;
     case "Department":
       return departmentAspectValue(data.department, categoryId);
+    case "Size Type":
+      // Default to Regular; a saved aspect (checked above) overrides it.
+      return "Regular";
     case "Style":
       return data.measurementProfile === "shoes" ? "Sneaker" : null;
     case "Type":
