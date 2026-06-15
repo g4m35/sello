@@ -12,6 +12,33 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-15 — Codex. **TNF Nuptse controlled live-publish prep paused before final confirmation.**
+User approved using the TNF Nuptse jacket as the first controlled live eBay test
+item, but the live publish itself was not executed because the required final
+explicit browser confirmation was not provided in-session. Prepared item
+`9fa01f5b-77f6-4594-87fd-ef701d64564d` / draft
+`ac334778-0563-4cd4-91ff-8d4cb5647a4f`: saved eBay category `57988`
+(`Men's Jackets & Coats`), quantity `1`, and eBay aspects `Type=Puffer Jacket`,
+`Style=Puffer Jacket`, `Outer Shell Material=Nylon`. Production-mode preflight
+with the publish flag off returned ready with no missing fields; preview SKU was
+`percs9fa01f5b77f6459487fdef701d64564d`, price `$165.00`, condition
+`USED_EXCELLENT`, one image, required policy IDs present, and merchant location
+present. Existing production eBay marketplace row remained `NOT_LISTED` with
+no stored offer/listing IDs. Temporarily added
+`EBAY_PRODUCTION_PUBLISH_ENABLED=true` in Vercel Production and deployed
+`dpl_2Mxae2wwsu2rAjv5JcAbaVfpbFN6`; browser showed the Publish button. No
+publish modal confirmation was clicked and no eBay write was attempted. Safety
+cleanup: removed `EBAY_PRODUCTION_PUBLISH_ENABLED`, redeployed
+`dpl_Dryn8sSr9rRPvuSmNHi2epDj8QPp`, and confirmed the env var is absent from
+Vercel Production. No Seller Hub verification or delist was performed because no
+listing was created. Vercel logs for both deploys showed no error-level logs and
+no queried 4xx/5xx records. Note: local `.env.local` could not decrypt the
+production eBay token for orphan scan, and Vercel env pull exposed empty local
+values for eBay secrets, so orphan scan was not completed outside the browser
+route. Next safe action: when the owner is present, re-enable the flag, redeploy,
+open the TNF draft, click Publish, review the modal, tick the live listing
+confirmation, then click Create live eBay listing exactly once.
+
 2026-06-14 — Claude. **Second controlled live-eBay-publish test. Pipeline proven;
 NO live listing created (blocked on incomplete eBay required aspects). 4 real bugs
 fixed and DEPLOYED TO PROD — but they live only on local branch
