@@ -2,17 +2,23 @@ import { createHash } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { Prisma } from "@/generated/prisma/client";
 import { getPrisma } from "@/lib/prisma";
+import {
+  defaultVerifyEbaySignature,
+  processEbayAccountDeletion,
+  type AccountDeletionPrismaLike,
+} from "@/lib/marketplace/adapters/ebay/account-deletion";
 
 // Public, unauthenticated endpoint required for eBay production compliance
 // (Marketplace Account Deletion / Closure notifications).
 //
 // GET  -> challenge verification (SHA-256 of challengeCode + token + endpoint).
-// POST -> receive a deletion notification, acknowledge immediately, and best-effort
-//         purge the matching local eBay connection. Acknowledgement never fails.
+// POST -> receive a deletion notification, acknowledge immediately, and — only
+//         after verifying eBay's X-EBAY-SIGNATURE — purge the matching local
+//         eBay connection. The acknowledgement never fails; unverified requests
+//         do no database work.
 //
-// No auth, no cookies, no redirects.
+// No cookies, no redirects. POST authenticity comes from the signed notification.
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
@@ -40,60 +46,21 @@ export async function GET(request: Request) {
   return NextResponse.json({ challengeResponse }, { status: 200 });
 }
 
-type DeletionPayload = {
-  notification?: {
-    notificationId?: string;
-    data?: { userId?: string; username?: string; eiasToken?: string };
-  };
-};
-
-// Best-effort local cleanup + audit. Throwing here must never block the ack.
-async function applyAccountDeletion(body: DeletionPayload | null): Promise<void> {
-  const notification = body?.notification;
-  const data = notification?.data;
-  const identifiers = [data?.userId, data?.username, data?.eiasToken].filter(
-    (v): v is string => typeof v === "string" && v.length > 0,
-  );
-
-  const prisma = getPrisma();
-  let matched = 0;
-
-  if (identifiers.length > 0) {
-    const connections = await prisma.marketplaceConnection.findMany({
-      where: { marketplace: "ebay", externalUserId: { in: identifiers } },
-      select: { id: true },
-    });
-    matched = connections.length;
-    if (matched > 0) {
-      // Deleting the connection removes the stored (encrypted) eBay tokens and
-      // cascades to EbaySellerConfig — the local data tied to that eBay account.
-      await prisma.marketplaceConnection.deleteMany({
-        where: { id: { in: connections.map((c) => c.id) } },
-      });
-    }
-  }
-
-  // Audit record without storing the deleted user's identifiers (privacy-safe).
-  await prisma.jobLog.create({
-    data: {
-      queueName: "compliance",
-      jobName: "ebay_account_deletion",
-      status: "SUCCEEDED",
-      payload: {
-        provider: "ebay",
-        notificationId: notification?.notificationId ?? null,
-        matchedConnections: matched,
-      } as Prisma.InputJsonValue,
-    },
-  });
-}
-
 export async function POST(request: Request) {
+  // Read the EXACT raw body bytes: signature verification must run over what
+  // eBay signed, not a re-serialized parse.
+  const rawBody = await request.text();
+  const signatureHeader = request.headers.get("x-ebay-signature");
+
   try {
-    const body = (await request.json().catch(() => null)) as DeletionPayload | null;
-    await applyAccountDeletion(body);
+    await processEbayAccountDeletion(rawBody, signatureHeader, {
+      prisma: getPrisma() as unknown as AccountDeletionPrismaLike,
+      verifySignature: defaultVerifyEbaySignature,
+    });
   } catch {
-    // eBay requires a prompt 200; local cleanup/logging failures must not block it.
+    // eBay requires a prompt 2xx; local verify/cleanup/logging failures must not
+    // block the acknowledgement.
   }
+
   return NextResponse.json({ ok: true }, { status: 200 });
 }

@@ -277,6 +277,7 @@ type EbayFakeState = {
 function createEbayFakePrisma(opts?: {
   existingListing?: Partial<EbayFakeListing>;
   environment?: string;
+  rejectActiveAttempt?: boolean;
 }) {
   const environment = opts?.environment ?? "sandbox";
   const state: EbayFakeState = {
@@ -386,6 +387,15 @@ function createEbayFakePrisma(opts?: {
           idempotencyKey?: string | null;
         };
       }) {
+        // Simulate the partial unique index rejecting a duplicate active attempt.
+        if (opts?.rejectActiveAttempt && data.status === "RUNNING") {
+          throw Object.assign(
+            new Error(
+              "Unique constraint failed on the fields: (`marketplaceListingId`,`idempotencyKey`)",
+            ),
+            { code: "P2002" },
+          );
+        }
         const id = `attempt-${state.attempts.length + 1}`;
         state.attempts.push({
           id,
@@ -693,6 +703,25 @@ describe("executePublish — eBay dispatch", () => {
     ).rejects.toMatchObject({ code: ebayErrorCodes.alreadyPublished });
 
     expect(ebayPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps a DB unique-constraint violation on the active attempt to a 409 already-published error", async () => {
+    // The partial unique index on PublishAttempt(marketplaceListingId, idempotencyKey)
+    // is the real concurrency guard: when two publishes race past the in-memory
+    // check, the DB rejects the second active attempt. That loser must surface as
+    // the typed already-published 409, not a raw P2002, and must NOT publish.
+    const prisma = createEbayFakePrisma({ rejectActiveAttempt: true });
+    const ebayPublish = vi.fn();
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({
+      code: ebayErrorCodes.alreadyPublished,
+      status: 409,
+    });
+
+    expect(ebayPublish).not.toHaveBeenCalled();
+    expect(prisma._state.updates).toHaveLength(0);
   });
 
   it("persists a FAILED attempt and failed event, then rethrows on readiness failure", async () => {

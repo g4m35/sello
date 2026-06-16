@@ -42,7 +42,7 @@ export async function GET(
         where: { inventoryItemId: id, source: { startsWith: "auto:" } },
       });
       if (autoComps === 0) {
-        await runCompFetch(prisma, id).catch(() => undefined);
+        await runCompFetch(prisma, id, user.id).catch(() => undefined);
       }
     }
 

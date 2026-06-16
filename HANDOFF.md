@@ -12,6 +12,60 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-16 — Claude. **Security-hardening branch `feature/security-hardening-review-fixes`
+off `develop`; PR opened into `develop`. No deploy, no DB migration applied, no keys rotated.**
+Fixed the findings from the full security review (TDD throughout):
+
+- **CSV formula injection (MEDIUM, fixed):** extracted `csvCell`/`toCsv` into
+  `src/lib/view/csv.ts`; cells starting with `= + - @`, tab, or CR are now
+  single-quote-prefixed so spreadsheets treat them as text.
+- **Publish/delist duplicate side effects (MEDIUM, fixed):** new partial unique
+  index migration `20260616130000_add_publish_attempt_idempotency_unique` on
+  `PublishAttempt(marketplaceListingId, idempotencyKey) WHERE status IN
+  (QUEUED,RUNNING,SUCCEEDED)`. Handlers map the P2002 race-loser to the existing
+  typed 409. **Migration CREATED ONLY — not applied** (shows as pending in
+  `prisma migrate status`).
+- **eBay account-deletion webhook (MEDIUM, fixed):** added ECDSA/SHA1
+  `X-EBAY-SIGNATURE` verification over the raw body (`notification-signature.ts`
+  + `account-deletion.ts`, fail-closed, getPublicKey via a new client-credentials
+  app token). POST does no DB work unless the signature is valid; still returns
+  200; GET challenge unchanged. `externalUserId` deliberately still NOT wired.
+- **runCompFetch (LOW, fixed):** now takes `sellerId` and uses a scoped
+  `findFirst`; all three callers updated.
+- **RLS breadth (LOW):** plan only — `docs/RLS_HARDENING_PLAN.md` (defense-in-depth,
+  app uses `resale_app` which bypasses RLS).
+- **Dependabot (fixed):** esbuild 0.28.0→0.28.1 (lockfile only) clears both open
+  alerts (GHSA-gv7w-rqvm-qjhr high, GHSA-g7r4-m6w7-qqqr low); dev-only.
+
+Gate green on the branch: `prisma format`/`validate`, `lint` (2 known warnings in
+`draft-actions.test.ts`), `tsc --noEmit`, `npm test`, `npm run build`.
+
+**Review pass (PR #31):** one regression caught and fixed — the new partial unique
+index originally also covered orphan-cleanup attempts, which are intentionally
+repeatable (stable `...:orphan-cleanup` key, SUCCEEDED), so a second cleanup would
+have thrown an unhandled P2002 (500). Index now excludes those keys
+(`AND idempotencyKey NOT LIKE '%:orphan-cleanup'`); orphan-cleanup keeps its exact
+pre-PR behavior, publish/delist stay constrained. Re-gated green: 75 files / 503
+tests, build OK, migration still pending/not applied. Merged into `develop`.
+
+**Blocked on owner (do NOT do unattended):**
+1. Apply the new migration to prod ONLY after confirming there are no duplicate
+   active `PublishAttempt` rows (query in the migration header). Failure to create
+   the index does not mutate data.
+2. Before wiring `externalUserId` (deferred Finding 4): validate the eBay signature
+   verifier against real notification traffic AND add the `commerce.identity.readonly`
+   OAuth scope (current scopes are only `sell.inventory`/`sell.account`; new scope =
+   seller re-consent). Also confirm Identity API `userId` == deletion-notification
+   `userId`.
+3. **Rotate the secrets** that lived in the stray `.env.localll.local` (now deleted;
+   it was git-ignored and never committed): Supabase service-role key, Gemini API
+   key, DB pooler/direct URLs, KV/Redis tokens, Vercel OIDC token.
+
+Also remaining (outside the 2 Dependabot alerts, NOT acted on): `npm audit` still
+flags `hono` (high), `vite` (high, dev-only), `js-yaml`, `protobufjs` — review
+separately; a broad `npm audit fix` could disturb the build.
+
+## Previous update
 2026-06-16 — Codex. **Code reconciliation branch prepared from latest `develop`; no deploy.**
 Created/reset `feature/reconcile-ebay-pricecomp` from `origin/develop` at
 `e577694` and merged `origin/feature/ebay-required-aspects`; the merge was

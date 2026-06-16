@@ -18,6 +18,7 @@ import {
   relativeTime,
 } from "@/lib/view/format";
 import { SORT_OPTIONS, sortItems, type SortValue } from "@/lib/view/sort-items";
+import { toCsv } from "@/lib/view/csv";
 import type { ItemView } from "@/lib/view/types";
 
 type TabValue = "all" | "draft" | "ready" | "active" | "sold" | "error";
@@ -30,32 +31,6 @@ const TAB_LABEL: Record<TabValue, string> = {
   sold: "Sold",
   error: "Needs attention",
 };
-
-function csvCell(value: unknown): string {
-  const s = String(value ?? "");
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function toCsv(rows: ItemView[]): string {
-  const header = [
-    "id", "title", "brand", "category", "condition", "size", "color",
-    "price_usd", "status", "photos", "updated_at",
-  ];
-  const lines = [header.join(",")];
-  for (const it of rows) {
-    lines.push(
-      [
-        it.id, it.title, it.brand ?? "", it.category, it.condition, it.size ?? "",
-        it.colorway ?? "",
-        it.priceCents != null ? (it.priceCents / 100).toFixed(2) : "",
-        it.statusLabel, it.photoCount, it.updatedAt,
-      ]
-        .map(csvCell)
-        .join(","),
-    );
-  }
-  return lines.join("\n");
-}
 
 function matchesSearch(item: ItemView, q: string): boolean {
   if (!q) return true;
