@@ -38,8 +38,15 @@ Fixed the findings from the full security review (TDD throughout):
   alerts (GHSA-gv7w-rqvm-qjhr high, GHSA-g7r4-m6w7-qqqr low); dev-only.
 
 Gate green on the branch: `prisma format`/`validate`, `lint` (2 known warnings in
-`draft-actions.test.ts`), `tsc --noEmit`, `npm test` (75 files / 502 tests),
-`npm run build`.
+`draft-actions.test.ts`), `tsc --noEmit`, `npm test`, `npm run build`.
+
+**Review pass (PR #31):** one regression caught and fixed — the new partial unique
+index originally also covered orphan-cleanup attempts, which are intentionally
+repeatable (stable `...:orphan-cleanup` key, SUCCEEDED), so a second cleanup would
+have thrown an unhandled P2002 (500). Index now excludes those keys
+(`AND idempotencyKey NOT LIKE '%:orphan-cleanup'`); orphan-cleanup keeps its exact
+pre-PR behavior, publish/delist stay constrained. Re-gated green: 75 files / 503
+tests, build OK, migration still pending/not applied. Merged into `develop`.
 
 **Blocked on owner (do NOT do unattended):**
 1. Apply the new migration to prod ONLY after confirming there are no duplicate
