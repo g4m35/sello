@@ -1,0 +1,6 @@
+# HANDOFF.md is an append-only handoff log edited on every branch and by both
+# agents, so the same top section diverges constantly. Use git's built-in
+# `union` merge driver: on a merge, keep BOTH sides' lines instead of emitting
+# conflict markers. This means cross-branch merges never stop on HANDOFF.md.
+# (Occasional duplicate lines may appear and can be tidied in a later edit.)
+HANDOFF.md merge=union
