@@ -257,6 +257,11 @@ model PublishAttempt {
   startedAt            DateTime             @default(now())
   completedAt          DateTime?
   createdAt            DateTime             @default(now())
+  // A partial UNIQUE index on (marketplaceListingId, idempotencyKey) WHERE
+  // status IN ('QUEUED','RUNNING','SUCCEEDED') enforces at most one active or
+  // successful publish/delist attempt per listing+key (the concurrency guard
+  // against duplicate eBay side effects). Prisma cannot express partial unique
+  // indexes, so it lives in migration 20260616130000_add_publish_attempt_idempotency_unique.
 
   @@index([marketplaceListingId, createdAt])
   @@index([requestedBy, createdAt])

@@ -17,6 +17,7 @@ import {
 import {
   PublishingMigrationMissingError,
   publishingMigrationMissingCode,
+  isUniqueConstraintViolation,
 } from "./publish-handler";
 
 export type DelistPrismaLike = {
@@ -163,40 +164,56 @@ export async function executeEbayDelist(
 
   const idempotencyKey = `${input.inventoryItemId}:ebay:${environment}:delist`;
   const startedAt = new Date();
-  const attempt = await withMigrationDetection(async () => {
-    const created = await prisma.publishAttempt.create({
-      data: {
-        marketplaceListingId: listing.id,
-        status: "RUNNING",
-        idempotencyKey,
-        code: "EBAY_DELIST_STARTED",
-        reason: null,
-        adapterResult: null as unknown as Prisma.InputJsonValue,
-        requestedBy: input.userId,
-        completedAt: null,
-      },
-    });
-    await prisma.marketplaceEvent.create({
-      data: {
-        marketplaceListingId: listing.id,
-        kind: "delist_started",
+  let attempt: { id: string };
+  try {
+    attempt = await withMigrationDetection(async () => {
+      const created = await prisma.publishAttempt.create({
         data: {
-          attemptId: created.id,
-          marketplace: "ebay",
-          environment,
+          marketplaceListingId: listing.id,
+          status: "RUNNING",
           idempotencyKey,
-          offerId: listing.externalOfferId,
-          listingId: listing.externalListingId,
-          startedAt: startedAt.toISOString(),
+          code: "EBAY_DELIST_STARTED",
+          reason: null,
+          adapterResult: null as unknown as Prisma.InputJsonValue,
+          requestedBy: input.userId,
+          completedAt: null,
         },
-      },
+      });
+      await prisma.marketplaceEvent.create({
+        data: {
+          marketplaceListingId: listing.id,
+          kind: "delist_started",
+          data: {
+            attemptId: created.id,
+            marketplace: "ebay",
+            environment,
+            idempotencyKey,
+            offerId: listing.externalOfferId,
+            listingId: listing.externalListingId,
+            startedAt: startedAt.toISOString(),
+          },
+        },
+      });
+      await prisma.marketplaceListing.update({
+        where: { id: listing.id },
+        data: { status: "DELISTING", lastError: null },
+      });
+      return created;
     });
-    await prisma.marketplaceListing.update({
-      where: { id: listing.id },
-      data: { status: "DELISTING", lastError: null },
-    });
-    return created;
-  });
+  } catch (error) {
+    // The same partial unique index that guards publish guards delist: two
+    // concurrent delists that race past assertCanDelist collide here, before any
+    // outbound eBay withdraw call. Surface the loser as the typed 409.
+    if (isUniqueConstraintViolation(error)) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.delistFailed,
+        "An eBay delist operation is already running for this item.",
+        409,
+        { marketplaceListingId: listing.id, idempotencyKey },
+      );
+    }
+    throw error;
+  }
 
   let result: EbayDelistResult;
   try {
