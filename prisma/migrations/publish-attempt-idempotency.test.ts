@@ -31,4 +31,12 @@ describe("PublishAttempt active-idempotency unique index migration", () => {
     expect(where).not.toContain("'FAILED'");
     expect(where).not.toContain("'NOT_IMPLEMENTED'");
   });
+
+  it("excludes orphan-cleanup keys so repeatable cleanups are not blocked", () => {
+    // Orphan cleanup intentionally re-runs (orphans recur) and writes a SUCCEEDED
+    // attempt with a stable "...:orphan-cleanup" key; it must NOT be constrained,
+    // or a second cleanup would hit the unique index. Publish/delist keys are.
+    const where = sql.slice(sql.indexOf("WHERE"));
+    expect(where).toContain("NOT LIKE '%:orphan-cleanup'");
+  });
 });

@@ -12,10 +12,15 @@
 -- idempotencyKey). FAILED and NOT_IMPLEMENTED rows are intentionally excluded so
 -- that legitimate retries after a failure remain allowed, and so non-eBay
 -- NOT_IMPLEMENTED attempts never collide. Each operation uses a distinct
--- idempotencyKey suffix ("...:delist", "...:orphan-cleanup"), so publish,
--- delist, and orphan-cleanup never collide with one another. Rows with a NULL
--- idempotencyKey stay allowed (NULLs are distinct in a unique index), covering
--- legacy and non-eBay attempts.
+-- idempotencyKey suffix ("...:delist", "...:orphan-cleanup"), so publish and
+-- delist never collide with one another.
+--
+-- Orphan-cleanup ("...:orphan-cleanup") is deliberately EXCLUDED: unlike publish
+-- and delist, it is meant to run repeatedly (orphans recur) and writes a
+-- SUCCEEDED attempt with a stable key, so constraining it would make a second
+-- cleanup fail. This index targets only the non-repeatable publish/delist
+-- operations. Rows with a NULL idempotencyKey are likewise excluded (NULLs are
+-- distinct anyway), covering legacy and non-eBay attempts.
 --
 -- Prisma's schema language cannot express a partial (WHERE-filtered) unique
 -- index, so this is applied as raw SQL and is not represented in schema.prisma.
@@ -27,8 +32,10 @@
 --     FROM "PublishAttempt"
 --     WHERE "status" IN ('QUEUED','RUNNING','SUCCEEDED')
 --       AND "idempotencyKey" IS NOT NULL
+--       AND "idempotencyKey" NOT LIKE '%:orphan-cleanup'
 --     GROUP BY 1, 2 HAVING count(*) > 1;
 
 CREATE UNIQUE INDEX "PublishAttempt_active_idempotency_key"
     ON "PublishAttempt" ("marketplaceListingId", "idempotencyKey")
-    WHERE "status" IN ('QUEUED', 'RUNNING', 'SUCCEEDED');
+    WHERE "status" IN ('QUEUED', 'RUNNING', 'SUCCEEDED')
+      AND "idempotencyKey" NOT LIKE '%:orphan-cleanup';
