@@ -12,6 +12,90 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-16 — Codex. **PR #31 security hardening promoted, production migration applied, throwaway eBay publish attempted once, eBay rejected policy wording, unpublished artifacts cleaned, production flag OFF.**
+Started from `develop` at `60b579f` (`Merge PR #31: security hardening review
+fixes`). Full develop gate passed: `npx prisma format`, `npx prisma validate`,
+`npm run lint` (same two known `_m`/`_f` warnings in
+`src/app/api/listings/draft/draft-actions.test.ts`), `npx tsc --noEmit`,
+`npm test` (75 files / 503 tests), and `npm run build`. `npx prisma migrate
+status` showed one pending migration:
+`20260616130000_add_publish_attempt_idempotency_unique`.
+
+Production migration precheck for duplicate active publish idempotency keys
+returned `duplicateGroups: 0`, so `npm run db:deploy` was run and applied only
+`20260616130000_add_publish_attempt_idempotency_unique`. Follow-up
+`npx prisma migrate status` reported the schema up to date, and direct index
+verification found `PublishAttempt_active_idempotency_key`.
+
+Merged `origin/develop` into `main` with merge commit
+`c994f457631574e0c96c989dfff9e62d43cd4071`
+(`[deploy] Promote PR #31 security hardening to production`) and pushed `main`.
+Final main gate passed: `npx prisma validate`, `npm run lint` (same two known
+warnings), `npx tsc --noEmit`, `npm test` (75 files / 503 tests), and
+`npm run build`. Production deploy `dpl_DRHtJoAu1kQ6RLXqJbWMZJXKGSdR`
+(`https://resale-crosslister-ltm3yiii7-jaky.vercel.app`) reached `READY` and
+was aliased to `https://sello.wtf`.
+
+Unauthenticated production smoke passed: `/` redirected to `/dashboard`,
+`/dashboard`, `/inventory`, `/inventory/new`, `/settings/marketplaces`, and
+`/privacy` loaded; `/api/listings/comps` and
+`/api/marketplaces/ebay/readiness` returned `401`; invalid eBay account-deletion
+POST returned `200 {"ok":true}`. Authenticated smoke with the owner's Chrome
+session verified inventory loads, the eBay readiness card renders, publish is
+hidden while `EBAY_PRODUCTION_PUBLISH_ENABLED` is absent, and PriceComp v2 can
+add a manual sold comp, update the summary to `1 sold/completed`, reject/toggle
+the comp out, and then leave no temporary comp row.
+
+Created a clearly labeled throwaway test item
+`3fd6d243-dbce-4f02-953b-8367774d5305` / draft
+`0635e246-a381-4bcf-8cff-fffded96a844` with generated test image, title
+`SELLO TEST LISTING DO NOT BUY Black Puffer Jacket`, category `57988`, quantity
+`1`, condition `Pre-owned`, price `$1.00`, and saved eBay aspects. With the
+production flag off, readiness returned `Ready for eBay`, technical preview SKU
+`percs3fd6d243dbce4f02953b8367774d5305`, and read-only orphan scan was clean
+before any write.
+
+Temporarily added `EBAY_PRODUCTION_PUBLISH_ENABLED=true` and deployed the live
+window as `dpl_3sDBNffdq2hEUp4WYMSPhW1bVPaw`
+(`https://resale-crosslister-r6x6n20v0-jaky.vercel.app`, aliased to
+`https://sello.wtf`). The final modal was verified before the single write
+click: marketplace `eBay (Production)`, title
+`SELLO TEST LISTING DO NOT BUY Black Puffer Jacket`, price `$1.00`, category
+`Men's Jackets & Coats / 57988`, quantity `1`, condition `Pre-owned`, payment
+policy `290647555015`, fulfillment policy `290647591015`, return policy
+`290647677015`, and inventory location `sello-default-location`. Ticked the
+explicit live-listing checkbox and clicked `Create live eBay listing` exactly
+once.
+
+Publish result: failed at eBay `publishOffer` after `inventory_item` and `offer`
+succeeded. Sanitized eBay error: `HTTP 400 — Cannot revise listing. The item
+cannot be listed or modified. The title and/or description may contain improper
+words, or the listing or seller may be in violation of eBay policy.` Sello kept
+the marketplace row `NOT_LISTED` with no stored Offer ID and no Listing/Item ID.
+Read-only orphan scan found unpublished inventory and offer `188638618011` with
+`Live listing: Not found`; used Sello's guarded orphan cleanup endpoint, which
+recorded `EBAY_ORPHAN_CLEANUP_SUCCEEDED`. Final scan returned inventory item
+`Not found`, offers `[]`, live listing `false`, cleanup unavailable.
+
+Final safety: removed `EBAY_PRODUCTION_PUBLISH_ENABLED`, redeployed production as
+`dpl_GFCzDcH6De1JsZ8bZAbyrZ5Ln8F8`
+(`https://resale-crosslister-lpp3a7yio-jaky.vercel.app`, aliased to
+`https://sello.wtf`), confirmed the env var is absent, and confirmed DB state for
+the throwaway item is `NOT_LISTED`, SKU retained, no external offer/listing IDs,
+latest attempts = cleanup `SUCCEEDED` then publish `FAILED`. Vercel production
+error-level logs for the last hour returned no records; explicit `status:400`,
+`status:500 error`, and `error` searches also returned no records. GitHub noted
+remaining dependency vulnerabilities after pushing `main`; leave npm audit work
+as a separate follow-up.
+
+Exact next action: do not retry the same throwaway title/description. Create the
+next eBay test listing with policy-safe wording (avoid `DO NOT BUY`, "test", and
+other non-sale language in title/description), then run the same guarded flow
+once. Security follow-ups still open: externalUserId binding, real eBay deletion
+notification validation, key rotation, remaining npm audit items, and the RLS
+hardening plan.
+
+## Previous update
 2026-06-16 — Codex. **TNF Nuptse live publish succeeded once, stored IDs, then was ended through Sello; production flag OFF.**
 Owner confirmed the seller-account blocker was likely cleared by creating a
 normal eBay listing manually, then asked to rerun the controlled Sello flow.
