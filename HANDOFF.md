@@ -147,6 +147,35 @@ route. Next safe action: when the owner is present, re-enable the flag, redeploy
 open the TNF draft, click Publish, review the modal, tick the live listing
 confirmation, then click Create live eBay listing exactly once.
 
+## Previous update
+2026-06-16 — Codex. **Code reconciliation branch prepared from latest `develop`; no deploy.**
+Created/reset `feature/reconcile-ebay-pricecomp` from `origin/develop` at
+`e577694` and merged `origin/feature/ebay-required-aspects`; the merge was
+already contained in `develop` and reported `Already up to date` with no
+conflicts. To preserve the later live eBay required-aspects fix that existed on
+`main` but not `develop`, cherry-picked `2e964e6` (`Fix eBay saved aspect
+publish payload`) onto the branch. The resulting code diff is limited to six
+eBay aspect/publish payload files and preserves PriceComp v2 migrations and comp
+APIs from `develop`.
+
+Verification passed on the branch: `npx prisma format`, `npx prisma validate`,
+`npm run lint` (2 known warnings in `draft-actions.test.ts`), `npx tsc
+--noEmit`, `npm test` (71 files / 469 tests), and `npm run build`. No
+`db:deploy` was run and no Vercel deploy was run. Final migration list remains:
+`20260518162000_init`, `20260518170000_add_price_comp`,
+`20260520210000_add_publish_persistence`,
+`20260529223000_add_ebay_sandbox_connections`,
+`20260530000000_add_ebay_listing_publish_fields`,
+`20260531000000_enable_ebay_connection_rls`,
+`20260606030000_fix_ebay_advisor_findings`,
+`20260609120000_add_draft_measurements_flaws`,
+`20260612010000_guarded_ebay_production_publish`,
+`20260613010000_backfill_ebay_quantity`,
+`20260613020000_price_comp_v2_fields`,
+`20260614120000_add_comp_search_runs`. Next action: review/merge the PR into
+`develop`; do not deploy from this branch directly.
+
+## Previous update
 2026-06-14 — Claude. **Second controlled live-eBay-publish test. Pipeline proven;
 NO live listing created (blocked on incomplete eBay required aspects). 4 real bugs
 fixed and DEPLOYED TO PROD — but they live only on local branch
