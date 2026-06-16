@@ -12,6 +12,41 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-16 — Codex. **TNF Nuptse controlled live eBay publish attempted exactly once; no live listing created; orphan artifacts cleaned; production flag OFF.**
+Owner gave the exact final confirmation phrase for the TNF Nuptse live publish
+test. Temporarily added `EBAY_PRODUCTION_PUBLISH_ENABLED=true` in Vercel
+Production and deployed `dpl_8Uz6x5m3xP3qKHk6dQ69161BqCmy`
+(`https://resale-crosslister-mpfrl62tp-jaky.vercel.app`, aliased to
+`https://sello.wtf`). Opened item
+`9fa01f5b-77f6-4594-87fd-ef701d64564d` / draft
+`ac334778-0563-4cd4-91ff-8d4cb5647a4f` in production and verified the final
+modal before the write: marketplace `eBay (Production)`, title `The North Face
+Black Nuptse Puffer Jacket`, price `$165.00`, category `Men's Jackets & Coats /
+57988`, quantity `1`, condition `Pre-owned`, and payment/fulfillment/return
+policy IDs plus inventory location present. Ticked the explicit live-listing
+checkbox and clicked `Create live eBay listing` exactly once at
+`2026-06-16T02:33:15.738Z`.
+
+Publish result: failed at eBay `publishOffer` after `inventory_item` and
+`offer` steps succeeded; no live listing was created. Sanitized eBay error:
+`API_INVENTORY 25002 / HTTP 400 — The item specific Outer Shell Material is
+missing. Add Outer Shell Material to this listing, enter a valid value, and then
+try again.` Sello marketplace listing remained `NOT_LISTED`; SKU
+`percs9fa01f5b77f6459487fdef701d64564d`; no stored Offer ID; no stored
+Listing/Item ID. Read-only orphan scan found unpublished inventory/offer
+artifact `188138721011` with live listing `Not found`; used Sello's guarded
+cleanup flow after its browser confirmation that it would not continue if a live
+listing was detected. Cleanup succeeded at `2026-06-16T02:39:56Z`; final scan
+showed inventory item `Not found`, offer IDs `Not found`, live listing `Not
+found`. Removed `EBAY_PRODUCTION_PUBLISH_ENABLED`, redeployed
+`dpl_EKGfMzUmvALmLrSv34RF16ytoVR7`
+(`https://resale-crosslister-66k0zq6vh-jaky.vercel.app`, aliased to
+`https://sello.wtf`), and confirmed the env var is absent from Vercel
+Production. Vercel error-level and queried 4xx/5xx logs for both deploys showed
+no records. Exact next action: fix the eBay aspect mapping so saved `Outer Shell
+Material=Nylon` is included in the publish payload/item specifics, then run
+readiness again before any future live publish attempt.
+
 2026-06-15 — Codex. **TNF Nuptse controlled live-publish prep paused before final confirmation.**
 User approved using the TNF Nuptse jacket as the first controlled live eBay test
 item, but the live publish itself was not executed because the required final
