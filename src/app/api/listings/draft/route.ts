@@ -155,7 +155,7 @@ export async function POST(request: Request) {
 
     // Best-effort: gather automatic comps now that the item is identified.
     // No-op (and fast) when no comp source is configured; never blocks the draft.
-    await runCompFetch(prisma, createdInventoryItemId).catch(() => undefined);
+    await runCompFetch(prisma, createdInventoryItemId, user.id).catch(() => undefined);
 
     return NextResponse.json({
       inventoryItem,

@@ -363,34 +363,51 @@ async function executeEbayPublish(
 
   const idempotencyKey = `${input.inventoryItemId}:ebay:${environment}`;
   const startedAt = new Date();
-  const attempt = await withMigrationDetection(async () => {
-    const created = await prisma.publishAttempt.create({
-      data: {
-        marketplaceListingId: listing.id,
-        status: "RUNNING",
-        idempotencyKey,
-        code: "EBAY_PUBLISH_STARTED",
-        reason: null,
-        adapterResult: null as unknown as Prisma.InputJsonValue,
-        requestedBy: input.userId,
-        completedAt: null,
-      },
-    });
-    await prisma.marketplaceEvent.create({
-      data: {
-        marketplaceListingId: listing.id,
-        kind: "publish_started",
+  let attempt: { id: string };
+  try {
+    attempt = await withMigrationDetection(async () => {
+      const created = await prisma.publishAttempt.create({
         data: {
-          attemptId: created.id,
-          marketplace: "ebay",
-          environment,
+          marketplaceListingId: listing.id,
+          status: "RUNNING",
           idempotencyKey,
-          startedAt: startedAt.toISOString(),
+          code: "EBAY_PUBLISH_STARTED",
+          reason: null,
+          adapterResult: null as unknown as Prisma.InputJsonValue,
+          requestedBy: input.userId,
+          completedAt: null,
         },
-      },
+      });
+      await prisma.marketplaceEvent.create({
+        data: {
+          marketplaceListingId: listing.id,
+          kind: "publish_started",
+          data: {
+            attemptId: created.id,
+            marketplace: "ebay",
+            environment,
+            idempotencyKey,
+            startedAt: startedAt.toISOString(),
+          },
+        },
+      });
+      return created;
     });
-    return created;
-  });
+  } catch (error) {
+    // The partial unique index on PublishAttempt(marketplaceListingId,
+    // idempotencyKey) WHERE status IN (QUEUED, RUNNING, SUCCEEDED) is the DB-level
+    // guard against two concurrent publishes both passing the in-memory check.
+    // The race loser hits the constraint here, before any outbound eBay call.
+    if (isUniqueConstraintViolation(error)) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.alreadyPublished,
+        "This item already has an in-flight or completed eBay publish attempt. Refusing to create a duplicate listing.",
+        409,
+        { marketplaceListingId: listing.id, idempotencyKey },
+      );
+    }
+    throw error;
+  }
 
   let result: EbayPublishResult;
   try {
@@ -710,6 +727,14 @@ function assertPublishingPersistenceDelegates(
   ) {
     throw new PublishingMigrationMissingError();
   }
+}
+
+// Prisma surfaces a unique-constraint breach as P2002; the raw Postgres code is
+// 23505. Either reaching us from the active-attempt insert means the partial
+// unique index rejected a duplicate active publish/delist.
+export function isUniqueConstraintViolation(error: unknown): boolean {
+  const code = getNestedErrorCode(error);
+  return code === "P2002" || code === "23505";
 }
 
 function isMissingPublishingPersistenceError(error: unknown) {

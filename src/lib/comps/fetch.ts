@@ -59,14 +59,16 @@ function emptySummary() {
 
 // Runs every enabled comp source for an item, dedupes + trims outliers, and
 // replaces the item's automatic comps (source "auto:*"). Manual comps, if any,
-// are left untouched. Ownership must be verified by the caller.
+// are left untouched. The lookup is scoped to the owning seller so the helper is
+// safe even if a caller forgets to verify ownership first.
 export async function runCompFetch(
   prisma: Db,
   inventoryItemId: string,
+  sellerId: string,
   options: RunCompFetchOptions = {},
 ): Promise<CompFetchResult> {
-  const item = await prisma.inventoryItem.findUnique({
-    where: { id: inventoryItemId },
+  const item = await prisma.inventoryItem.findFirst({
+    where: { id: inventoryItemId, sellerId },
     include: { listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } },
   });
   if (!item) {

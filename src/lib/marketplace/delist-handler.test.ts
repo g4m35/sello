@@ -34,6 +34,7 @@ type FakeState = {
 function createPrisma(opts: {
   itemStatus?: InventoryStatus;
   listing?: Partial<FakeListing> | null;
+  rejectActiveAttempt?: boolean;
 }): DelistPrismaLike & { _state: FakeState } {
   const state: FakeState = {
     listing:
@@ -90,6 +91,15 @@ function createPrisma(opts: {
     },
     publishAttempt: {
       async create({ data }) {
+        // Simulate the partial unique index rejecting a duplicate active attempt.
+        if (opts.rejectActiveAttempt && data.status === "RUNNING") {
+          throw Object.assign(
+            new Error(
+              "Unique constraint failed on the fields: (`marketplaceListingId`,`idempotencyKey`)",
+            ),
+            { code: "P2002" },
+          );
+        }
         const attempt = {
           id: `attempt-${state.attempts.length + 1}`,
           status: data.status,
@@ -245,6 +255,18 @@ describe("executeEbayDelist", () => {
     const delist = vi.fn();
 
     await expect(executeEbayDelist(prisma, input, delist)).rejects.toMatchObject({
+      status: 409,
+    });
+
+    expect(delist).not.toHaveBeenCalled();
+  });
+
+  it("maps a DB unique-constraint violation on the active attempt to a typed 409", async () => {
+    const prisma = createPrisma({ rejectActiveAttempt: true });
+    const delist = vi.fn();
+
+    await expect(executeEbayDelist(prisma, input, delist)).rejects.toMatchObject({
+      code: ebayErrorCodes.delistFailed,
       status: 409,
     });
 
