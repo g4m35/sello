@@ -12,6 +12,48 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-16 — Codex. **TNF Nuptse live publish succeeded once, stored IDs, then was ended through Sello; production flag OFF.**
+Owner confirmed the seller-account blocker was likely cleared by creating a
+normal eBay listing manually, then asked to rerun the controlled Sello flow.
+Confirmed the production publish flag was off/absent, then temporarily added
+`EBAY_PRODUCTION_PUBLISH_ENABLED=true` and deployed the controlled live window as
+`dpl_2SkZKmpbyYDzNxr52BHwNmUvp6wp`
+(`https://resale-crosslister-4wt3u2111-jaky.vercel.app`, aliased to
+`https://sello.wtf`). Opened the TNF Nuptse item
+`9fa01f5b-77f6-4594-87fd-ef701d64564d` / draft
+`ac334778-0563-4cd4-91ff-8d4cb5647a4f` and verified the final modal before the
+single write click: marketplace `eBay (Production)`, title `The North Face Black
+Nuptse Puffer Jacket`, price `$165.00`, category `Men's Jackets & Coats /
+57988`, quantity `1`, condition `Pre-owned`, payment policy `290647555015`,
+fulfillment policy `290647591015`, return policy `290647677015`, and inventory
+location `sello-default-location`. Ticked the explicit live-listing checkbox and
+clicked `Create live eBay listing` exactly once.
+
+Publish result: succeeded. Sello stored SKU
+`percs9fa01f5b77f6459487fdef701d64564d`, Offer ID `188443366011`, and Listing
+ID `800190457084`. Sello operations showed `Production · Published` only after
+those IDs were present. eBay public/Seller view showed the item live with title
+`The North Face Black Nuptse Puffer Jacket`, price `US $165.00`, and custom label
+matching the SKU.
+
+Immediate cleanup: used Sello's `End eBay listing` action, accepted the native
+confirmation text that this ends the live eBay listing, and Sello recorded
+`Production · Delisted` / latest attempt `eBay · Delisted` in `1.6s`. eBay item
+page then showed: `You ended this listing on Tue, Jun 16 at 7:30 AM by indicating
+this item is no longer available` and status `ENDED`. Final safety: removed
+`EBAY_PRODUCTION_PUBLISH_ENABLED`, redeployed production as
+`dpl_Gaa9x3Ax3vJVEQGa2BkudPyUdLR1`
+(`https://resale-crosslister-e8fo9sqbz-jaky.vercel.app`, aliased to
+`https://sello.wtf`), confirmed the env var is absent, confirmed the live Publish
+button disappeared while the operations panel remains `Delisted`, and checked
+Vercel runtime logs for the final deployment with no error/fatal/5xx matches.
+No `db:deploy` was run.
+
+Exact next action: leave the TNF page as-is in Sello (`Production · Delisted`);
+for the next live publish, create or choose a new test item so this ended listing
+is not reused.
+
+## Previous update
 2026-06-16 — Codex. **TNF Nuptse live publish retried once after an app fix; eBay now blocks on seller account setup; no live listing created; orphan artifacts cleaned; production flag OFF.**
 Owner asked to retry until success and use subagents. Subagent investigation
 found the first 2026-06-16 blocker was an app bug: saved eBay Taxonomy aspects
