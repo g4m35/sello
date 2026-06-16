@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       throw new AppError("Item not found", 404);
     }
 
-    const result = await runCompFetch(prisma, inventoryItemId);
+    const result = await runCompFetch(prisma, inventoryItemId, user.id);
     return NextResponse.json(result);
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;

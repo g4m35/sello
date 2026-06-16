@@ -49,25 +49,30 @@ describe("runCompFetch", () => {
 
     const prisma = {
       inventoryItem: {
-        findUnique: vi.fn(async () => ({
-          id: "item-1",
-          productName: "The North Face Black Nuptse Puffer Jacket",
-          brand: "The North Face",
-          styleCode: null,
-          size: "Large",
-          category: "streetwear",
-          colorway: "Black",
-          condition: "used_good",
-          recommendedPriceCents: null,
-          listingDrafts: [
-            {
-              id: "draft-1",
-              title: "The North Face Black Nuptse Puffer Jacket",
-              description: "Black Nuptse puffer jacket.",
-              recommendedPriceCents: null,
-            },
-          ],
-        })),
+        findFirst: vi.fn(
+          async ({ where }: { where: { id: string; sellerId: string } }) =>
+            where.id === "item-1" && where.sellerId === "seller-1"
+              ? {
+                  id: "item-1",
+                  productName: "The North Face Black Nuptse Puffer Jacket",
+                  brand: "The North Face",
+                  styleCode: null,
+                  size: "Large",
+                  category: "streetwear",
+                  colorway: "Black",
+                  condition: "used_good",
+                  recommendedPriceCents: null,
+                  listingDrafts: [
+                    {
+                      id: "draft-1",
+                      title: "The North Face Black Nuptse Puffer Jacket",
+                      description: "Black Nuptse puffer jacket.",
+                      recommendedPriceCents: null,
+                    },
+                  ],
+                }
+              : null,
+        ),
         update: vi.fn(async () => ({})),
       },
       listingDraft: {
@@ -86,7 +91,9 @@ describe("runCompFetch", () => {
       },
     };
 
-    const result = await runCompFetch(prisma as never, "item-1", { sources: [source] });
+    const result = await runCompFetch(prisma as never, "item-1", "seller-1", {
+      sources: [source],
+    });
 
     expect(source.fetchComps).toHaveBeenCalledTimes(1);
     expect(prisma.compSearchRun.create).toHaveBeenCalledWith({
@@ -119,5 +126,49 @@ describe("runCompFetch", () => {
     expect(result.status).toBe("auto_priced");
     expect(result.accepted).toBe(5);
     expect(result.rejected).toBe(1);
+  });
+
+  it("is a no-op for an item that does not belong to the seller", async () => {
+    const source: CompSource = {
+      id: "test-source",
+      displayName: "Test source",
+      sold: true,
+      resultKind: "sold_comps",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => [comp(1)]),
+    };
+
+    const prisma = {
+      inventoryItem: {
+        // Scoped lookup: a foreign seller's id never resolves this item.
+        findFirst: vi.fn(
+          async ({ where }: { where: { id: string; sellerId: string } }) =>
+            where.id === "item-1" && where.sellerId === "owner"
+              ? { id: "item-1", productName: "x", listingDrafts: [] }
+              : null,
+        ),
+        update: vi.fn(async () => ({})),
+      },
+      listingDraft: { update: vi.fn(async () => ({})) },
+      priceComp: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async () => ({ count: 0 })),
+        findMany: vi.fn(async () => []),
+      },
+      compSearchRun: { create: vi.fn(async () => ({ id: "run-1" })) },
+    };
+
+    const result = await runCompFetch(prisma as never, "item-1", "attacker", {
+      sources: [source],
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.sourceErrors).toEqual([
+      { source: "sello", message: "Item not found." },
+    ]);
+    expect(source.fetchComps).not.toHaveBeenCalled();
+    expect(prisma.priceComp.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.priceComp.createMany).not.toHaveBeenCalled();
+    expect(prisma.compSearchRun.create).not.toHaveBeenCalled();
   });
 });
