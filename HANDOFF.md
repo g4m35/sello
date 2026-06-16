@@ -12,6 +12,92 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-16 — Codex. **First policy-safe Sello live eBay publish succeeded, duplicate guard verified, listing ended, orphan cleanup clean, production flag OFF.**
+Controlled item:
+`7d70b619-c473-40ca-b601-1a3956161862` / draft
+`fd027d61-187f-46e2-85fb-331778e59107`, title
+`Black Cotton T-Shirt Size Medium`, description
+`Pre-owned black cotton T-shirt in good condition. See photos for details. Ships quickly.`,
+condition `used_good` / eBay `Pre-owned`, quantity `1`, price `$4.99`,
+category `15687` (`Men's T-Shirts`), SKU
+`percs7d70b619c47340cab6011a3956161862`, saved aspects `Brand=Unbranded`,
+`Size=Medium`, `Department=Men`, `Color=Black`, `Size Type=Regular`,
+`Type=T-Shirt`, `Style=Basic`. Used the owner-provided black-shirt screenshot.
+Because normal listing photos are in a private Supabase bucket while the eBay
+mapper emits public object URLs, created a dedicated public bucket
+`sello-ebay-public-listing-photos` and moved this one controlled item photo
+there; preflight verified image URL `200`.
+
+Phase 1 clean-state checks passed before publishing: stale failed item
+`3fd6d243-dbce-4f02-953b-8367774d5305` remained `NOT_LISTED`, no stored offer or
+listing IDs, deployed orphan scan returned `inventoryItemFound=false`,
+`offers=[]`, `liveListingFound=false`, `cleanupAvailable=false`, Vercel
+production error logs for the last two hours returned no records, and
+`EBAY_PRODUCTION_PUBLISH_ENABLED` was absent from Vercel Production.
+
+Readiness/preflight for the shirt passed before enabling live publish:
+production environment, connected, `ready=true`, `publishingEnabled=false`, no
+missing fields, taxonomy aspect source, quantity `1`, category `15687`, price
+`4.99`, and public image status `200`. A manual PriceComp row was added. Note:
+opening the deployed detail route once triggered the production auto eBay Browse
+comp fetch despite the "do not start external comp scraping" instruction; those
+25 `auto:` comps and the associated `CompSearchRun` were immediately deleted,
+leaving only the manual comp.
+
+Temporarily added `EBAY_PRODUCTION_PUBLISH_ENABLED=true`, pushed empty deploy
+commit `b179ea7` (`chore: enable controlled ebay publish [deploy]`), and
+published through production deployment `dpl_J4BB4jVhmhP6c4VmPf4yk4NzAMHy`
+(`https://resale-crosslister-e3aj8jpms-jaky.vercel.app`, aliased to
+`https://sello.wtf`). Rechecked preflight after deploy:
+`publishingEnabled=true`, `ready=true`, no missing fields.
+
+Single live publish succeeded through Sello's production API:
+Offer ID `188679941011`, Listing ID `800192483433`,
+MarketplaceListing `c61f63c3-f128-4de9-991a-f14678471dbe`,
+PublishAttempt `727ee801-f16a-4715-bb34-1052eea730df`. DB state after publish:
+one production eBay marketplace row, status `LISTED`, stored SKU/offer/listing
+IDs, `lastError=null`, exactly one `EBAY_PUBLISH_SUCCEEDED` attempt. Deployed
+orphan scan while live showed inventory item found, offer `PUBLISHED`, listing
+status `ACTIVE`, and `cleanupAvailable=false`.
+
+Duplicate protection worked: a second production publish POST returned typed
+`409` / `EBAY_ALREADY_PUBLISHED` with message
+`This item already has an eBay publish attempt with status SUCCEEDED. Refusing to create a duplicate listing.`
+Follow-up DB check still showed one marketplace listing, one eBay publish
+attempt, and the same offer/listing IDs.
+
+Delist/cleanup succeeded. Sello delist endpoint returned `200` /
+`EBAY_DELIST_SUCCEEDED` with delist attempt
+`b46b8394-50b4-4df3-8d94-8ef846bc110e`; DB marketplace row changed to
+`DELISTED`. eBay scan then showed offer `UNPUBLISHED` / listing `ENDED`, but the
+orphan scanner treated any returned listing id as live and blocked cleanup. Fixed
+that bug in commit `62e5e45`
+(`fix: treat ended ebay offers as cleanup candidates [deploy]`): only
+`PUBLISHED` offers or `ACTIVE` listing status count as live; added regression for
+`UNPUBLISHED` + `ENDED`. Verification passed:
+`npx vitest run src/lib/marketplace/adapters/ebay/orphans.test.ts` and
+`npx eslint src/lib/marketplace/adapters/ebay/orphans.ts src/lib/marketplace/adapters/ebay/orphans.test.ts`.
+
+Removed `EBAY_PRODUCTION_PUBLISH_ENABLED` before deploying the cleanup fix.
+Deployment `dpl_8yapdEzhRxMq1CQ1BxPcxCaBg1et`
+(`https://resale-crosslister-7xrj5tu6l-jaky.vercel.app`, aliased to
+`https://sello.wtf`) reached Ready with preflight confirming
+`publishingEnabled=false`. Guarded orphan cleanup then succeeded with attempt
+`34aee13b-bbe5-4cb3-a2df-b00a0cf10386`, deleting the ended offer/inventory
+artifacts. Final read-only scan returned `inventoryItemFound=false`,
+`offers=[]`, `liveListingFound=false`, `cleanupAvailable=false`. Vercel
+Production env listing confirms `EBAY_PRODUCTION_PUBLISH_ENABLED` absent.
+
+Remaining notes/blockers: master `InventoryItem.status` remained `APPROVED`
+while the eBay channel row is `DELISTED`; seller-facing channel state is correct,
+but master status sync after publish/delist is a follow-up. The normal app photo
+upload path still writes to the private bucket; future real eBay publishing
+should formalize an eBay-visible media path instead of manual bucket movement.
+Security follow-ups still open: externalUserId binding, real eBay deletion
+notification validation, key rotation, remaining npm audit items, and RLS
+hardening.
+
+## Previous update
 2026-06-16 — Codex. **PR #31 security hardening promoted, production migration applied, throwaway eBay publish attempted once, eBay rejected policy wording, unpublished artifacts cleaned, production flag OFF.**
 Started from `develop` at `60b579f` (`Merge PR #31: security hardening review
 fixes`). Full develop gate passed: `npx prisma format`, `npx prisma validate`,
@@ -697,15 +783,25 @@ next step: sign in on sello.wtf → Settings → Connect eBay and complete conse
 on auth.ebay.com.
 
 ## Current state
-- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project `jaky/resale-crosslister`), `origin/main` @ `a45294a` (untouched); `origin/develop` @ `f52b60b` (PriceComp v2 merged, awaiting promotion + `db:deploy`).
-- Production eBay OAuth/readiness live; publishing remains sandbox-only by design (hard gate in `publish.ts`). Production publish is the next deliberate build, not a flag flip.
-- Latest readiness diagnosis: OAuth is connected, but the deployed auto-refresh now returns `POST /api/marketplaces/ebay/readiness` 502 with `eBay API request failed`; production policy/location missing state is still not proven real until the eBay Account/Inventory API call succeeds.
-- `develop` and `main` are effectively level (prod is current). Work in `worktrees/ui` (`feature/ui`).
-- Worktrees: `resale-crosslister` → `develop`; `worktrees/ui` → `feature/ui` (active feature work).
-- README on `develop` has been refreshed from the owner-provided Sello draft.
-- Open PR **#1** (pre-existing "chore: optimize repo workflow") into `develop`.
-- CodeRabbit auto-reviews enabled on `develop`.
-- Gate on `develop`/`main`: `lint`, `tsc`, `vitest` (266 tests), `prisma validate`, `build` all green.
+- Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
+  `jaky/resale-crosslister`), `origin/main` currently includes the live
+  publish/cleanup run commits through `62e5e45`; a HANDOFF-only closeout commit
+  may be on top if this file was just pushed.
+- Production eBay OAuth/readiness and guarded live publish path are working.
+  `EBAY_PRODUCTION_PUBLISH_ENABLED` is currently absent from Vercel Production,
+  so production publish is blocked/hidden again by default.
+- First policy-safe Sello live eBay publish succeeded on item
+  `7d70b619-c473-40ca-b601-1a3956161862`, then duplicate publish was rejected
+  with typed 409, the listing was ended, ended offer/inventory artifacts were
+  cleaned, and the final eBay scan was clean.
+- Cleanup scanner fix is live: ended/unpublished offers are cleanup candidates;
+  only `PUBLISHED` offers or `ACTIVE` listing status count as live.
+- Public Supabase bucket `sello-ebay-public-listing-photos` exists from this run
+  for the controlled eBay-visible shirt photo. Normal uploads still use the
+  private listing-photo bucket unless future code changes formalize this.
+- Remaining known runtime/state gap: master `InventoryItem.status` stayed
+  `APPROVED` while the eBay channel row moved `LISTED` -> `DELISTED`; channel
+  state is correct, but master lifecycle sync is still worth fixing.
 
 ## Shipped to prod (all live now)
 - Full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
@@ -714,6 +810,10 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-16 (Codex): first policy-safe live eBay publish through Sello
+  succeeded for `Black Cotton T-Shirt Size Medium`; duplicate guard returned
+  typed 409; Sello delist succeeded; fixed ended-offer cleanup detection; guarded
+  cleanup succeeded; final orphan scan clean; production publish flag absent.
 - 2026-06-12 (Claude): PriceComp v2 on `feature/price-comp-v2` (not merged/deployed). Additive migration `20260613020000_price_comp_v2_fields` + median-anchored pricing (sold-preference, usedInPricing/ignoredAsOutlier exclusion, confidenceScore + reasons, sold/active counts), `PATCH`/`DELETE /api/listings/comps/[compId]` (seller-scoped), upgraded comps panel (platform/status/edit/delete/toggles/median/counts/reasons, pure views split into `comps-pricing-view.tsx`), and 5 env-gated provider stubs (Apify eBay sold, Grailed sold, Poshmark sold, Depop active, Google Lens). Backward compatible (old manual comps still calculate). Gate green (lint 2 pre-existing warnings, tsc, 356 tests, prisma validate, build). Migration not yet applied to any DB. Plan in `docs/superpowers/plans/2026-06-12-price-comp-v2.md`.
 - 2026-06-10 (Codex): authenticated production smoke with owner's signed-in Chrome session. Pass: dashboard, Inventory list, listing editor panels/photos, measurement add-save-reload-delete, flaw add-save-reload-delete, copy-only language, no published claims, Settings shell. Partial/fail: Depop/Poshmark/Grailed copy worked and warned, but the only visible sneaker item has no size/measurements, so exports lacked a Measurements section and warned `Missing size`; Poshmark had Brand/Size/Condition/Details and no hashtags but no Measurements section. Settings -> Marketplaces rendered connected/setup-incomplete state but auto-refresh produced a Vercel prod `POST /api/marketplaces/ebay/readiness` 502 and inline `Error: eBay API request failed.` Browser console had only unrelated Chrome extension `ethereum` injection errors. No app code changed; HANDOFF only.
 - 2026-06-10 (Claude): production smoke test (read-only). Verified on sello.wtf: `/` 307→`/dashboard`, app shells render (client-side auth gate by design), `/privacy` 200, all data APIs 401 unauthenticated (export route included; auth checked before marketplace validation), no secrets in responses, **zero error/fatal/5xx Vercel production logs in 24h**. Local `develop` synced to `6faaf77` (prod `main @ a45294a` contains it). Authenticated UI flows (measurements/flaws editors, copy exports, eBay settings) not exercised: browser access was declined this session; owner should click through them once or grant browser access next time. No regression found; no code changed. Note: the 2 lint warnings are unused `_m`/`_f` in `draft-actions.test.ts` (cosmetic, fold into the next feature branch).
@@ -732,20 +832,29 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
-- **Comp source key** (to light up automatic pricing): `STOCKX_API_KEY` (primary sold, needs partner approval), or `EBAY_BROWSE_CLIENT_ID`/`EBAY_BROWSE_CLIENT_SECRET` (interim active, prod keyset), or a third-party aggregator key. Add in Vercel env.
-- **eBay production seller setup / readiness refresh**: auto-refresh currently fails against eBay with a production 502 (`eBay API request failed`) before Sello can prove which policy/location items are missing. Investigate the eBay API response/status, scopes, and seller-account readiness; once refresh succeeds, if payment, fulfillment, return policy, or inventory location remain missing, the owner needs to create them in eBay Seller Hub for the connected production seller account, then click Refresh Readiness.
-- **eBay production publishing**: code decision + build (OAuth is done; publish gate stays locked until built and approved).
+- **Live eBay publishing:** working, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED`
+  absent unless the owner explicitly approves another controlled live run.
+- **Comp source policy:** production has eBay Browse auto comps enabled. Be careful:
+  opening detail routes can trigger `runCompFetch`. Disable or guard this before
+  any run where the owner says no external comp collection.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
-- **`.env.example`**: still needs the two `EBAY_MARKETPLACE_DELETION_*` lines (agents are sandbox-blocked from editing env files; owner adds them).
-- **Account-deletion go-live**: set `EBAY_MARKETPLACE_DELETION_VERIFICATION_TOKEN` (owner-chosen, 32–80 chars) and `EBAY_MARKETPLACE_DELETION_ENDPOINT` (= `https://sello.wtf/api/marketplaces/ebay/account-deletion`) in Vercel Production, deploy, then register URL + token in the eBay developer portal.
+- **Security follow-ups:** externalUserId binding, real eBay deletion
+  notification validation, key rotation, remaining npm audit items, and RLS
+  hardening.
 
 ## Next up (priority order)
-1. Investigate authenticated smoke findings: eBay readiness refresh 502 on `POST /api/marketplaces/ebay/readiness`, and decide whether copy exports should always include a Measurements section even for sneaker items with no measurements.
-2. Wire the **StockX comp source** (env-gated by `STOCKX_API_KEY`) following the `CompSource` pattern in `src/lib/comps/`. eBay Browse source already implemented. Stays honest/empty without a key.
-3. **Real eBay publishing**: production OAuth consent + Sell Inventory/Offer publish path, replacing the 501 stub, gated on prod eBay credentials.
-4. **Stripe subscriptions** (gated on Stripe keys).
-5. **Background worker host** + inventory sync (sold detection, double-sell prevention).
+1. Fix master lifecycle sync for live publish/delist so `InventoryItem.status`
+   tracks channel state intentionally, or explicitly document why the master item
+   remains `APPROVED` after an eBay delist.
+2. Formalize the eBay-visible media path: either upload publishable photos to a
+   dedicated public bucket or generate durable eBay-safe media URLs, instead of
+   manually moving controlled-run photos.
+3. Add a guard/setting so authenticated item-detail loads cannot unexpectedly
+   trigger external comp collection during production smoke runs.
+4. Continue security follow-ups: externalUserId binding, real eBay deletion
+   notification validation, key rotation, npm audit items, RLS hardening.
+5. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).
