@@ -137,13 +137,17 @@ function buildAspects(input: EbayMapperInput): Record<string, string[]> {
       aspects[key] = [value];
     }
   }
-  if (input.item.brand && input.item.brand.trim().length > 0) {
+  if (!aspects.Brand && input.item.brand && input.item.brand.trim().length > 0) {
     aspects.Brand = [input.item.brand];
   }
-  if (input.item.size && input.item.size.trim().length > 0) {
+  if (!aspects.Size && input.item.size && input.item.size.trim().length > 0) {
     aspects.Size = [input.item.size];
   }
-  if (input.item.colorway && input.item.colorway.trim().length > 0) {
+  if (
+    !aspects.Colorway &&
+    input.item.colorway &&
+    input.item.colorway.trim().length > 0
+  ) {
     aspects.Colorway = [input.item.colorway];
   }
   return aspects;
