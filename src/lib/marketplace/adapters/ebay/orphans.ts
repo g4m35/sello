@@ -186,12 +186,7 @@ export async function scanEbayOrphanArtifacts(
     client.getOffersBySku(sku),
   ]);
   const normalizedOffers = offers.map(normalizeOffer);
-  const liveListingFound = normalizedOffers.some(
-    (offer) =>
-      Boolean(offer.listingId) ||
-      offer.listingStatus?.toUpperCase() === "ACTIVE" ||
-      offer.status?.toUpperCase() === "PUBLISHED",
-  );
+  const liveListingFound = normalizedOffers.some(isLiveOffer);
   const cleanupAvailable =
     !liveListingFound && (Boolean(inventoryItem) || normalizedOffers.length > 0);
   return {
@@ -444,6 +439,13 @@ function normalizeOffer(offer: EbayOfferLookup): EbayOrphanScanResult["offers"][
     listingId: offer.listing?.listingId ?? null,
     listingStatus: offer.listing?.listingStatus ?? null,
   };
+}
+
+function isLiveOffer(offer: EbayOrphanScanResult["offers"][number]): boolean {
+  const status = offer.status?.toUpperCase() ?? null;
+  const listingStatus = offer.listingStatus?.toUpperCase() ?? null;
+
+  return status === "PUBLISHED" || listingStatus === "ACTIVE";
 }
 
 function errorDetails(error: unknown): Record<string, unknown> {

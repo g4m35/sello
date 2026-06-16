@@ -192,6 +192,40 @@ describe("eBay orphan publish artifact recovery", () => {
     );
   });
 
+  it("allows cleanup for ended listing artifacts", async () => {
+    const prisma = createFakePrisma();
+    const client = {
+      getInventoryItem: vi.fn().mockResolvedValue({ sku: "percsitem1" }),
+      getOffersBySku: vi.fn().mockResolvedValue([
+        {
+          offerId: "offer-1",
+          status: "UNPUBLISHED",
+          listing: { listingId: "listing-1", listingStatus: "ENDED" },
+        },
+      ]),
+      deleteOffer: vi.fn().mockResolvedValue(undefined),
+      deleteInventoryItem: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await cleanupEbayOrphanArtifacts(
+      prisma,
+      {
+        userId: "user-1",
+        inventoryItemId: "item-1",
+        confirmCleanup: true,
+      },
+      {
+        env: testEnv,
+        resolveAccessToken: vi.fn().mockResolvedValue("token"),
+        createClient: vi.fn().mockReturnValue(client),
+      },
+    );
+
+    expect(result.status).toBe("cleaned");
+    expect(client.deleteOffer).toHaveBeenCalledWith("offer-1");
+    expect(client.deleteInventoryItem).toHaveBeenCalledWith("percsitem1");
+  });
+
   it("refuses cleanup when a live listing is detected", async () => {
     const prisma = createFakePrisma();
     const client = {
