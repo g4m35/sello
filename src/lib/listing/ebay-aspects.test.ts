@@ -114,6 +114,29 @@ describe("eBay aspect fallback rules", () => {
     expect(result.values["US Shoe Size"]).toBe("10.5");
   });
 
+  it("preserves seller-saved Taxonomy aspects outside the local fallback list", () => {
+    const result = resolveEbayAspects("57988", {
+      brand: "The North Face",
+      size: "S",
+      colorway: "Black",
+      department: "unknown",
+      measurementProfile: "outerwear",
+      itemSpecifics: {},
+      savedAspects: {
+        Type: "Puffer Jacket",
+        Style: "Puffer Jacket",
+        "Outer Shell Material": "Nylon",
+      },
+    });
+
+    expect(result.missingRequired).toEqual([]);
+    expect(result.values).toMatchObject({
+      Type: "Puffer Jacket",
+      Style: "Puffer Jacket",
+      "Outer Shell Material": "Nylon",
+    });
+  });
+
   it("turns eBay Taxonomy metadata into required seller-facing aspects", () => {
     const requirements = ebayAspectRequirementsFromTaxonomy([
       {

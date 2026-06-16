@@ -307,4 +307,56 @@ describe("publishEbayListing — happy path", () => {
       expect.objectContaining({ categoryId: "15709", availableQuantity: 1 }),
     );
   });
+
+  it("sends seller-saved eBay aspects in the inventory item payload", async () => {
+    const item = {
+      ...readyItem(),
+      brand: "The North Face",
+      condition: "used_good" as const,
+      size: "S",
+      colorway: "Black",
+      listingDrafts: [
+        {
+          ...readyItem().listingDrafts[0],
+          title: "The North Face Black Nuptse Puffer Jacket",
+          description: "Classic black Nuptse jacket.",
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: "57988",
+              quantity: 1,
+              aspects: {
+                Type: "Puffer Jacket",
+                Style: "Puffer Jacket",
+                "Outer Shell Material": "Nylon",
+              },
+            },
+          },
+        },
+      ],
+    };
+    const prisma = createPrisma({ item });
+    const deps = createDeps();
+    deps.env = productionEnabledEnv;
+
+    const result = await publishEbayListing(
+      prisma,
+      { userId: "user-1", inventoryItemId: "item-1" },
+      deps,
+    );
+
+    expect(result.status).toBe("published");
+    const client = (deps.createClient as ReturnType<typeof vi.fn>).mock.results[0].value;
+    expect(client.createOrReplaceInventoryItem).toHaveBeenCalledWith(
+      "percsitem1",
+      expect.objectContaining({
+        product: expect.objectContaining({
+          aspects: expect.objectContaining({
+            Type: ["Puffer Jacket"],
+            Style: ["Puffer Jacket"],
+            "Outer Shell Material": ["Nylon"],
+          }),
+        }),
+      }),
+    );
+  });
 });

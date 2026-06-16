@@ -231,6 +231,13 @@ export function resolveEbayAspects(
   const requirements =
     requirementSet?.requirements ?? ebayAspectRequirementsFor(categoryId);
   const values: Record<string, string> = {};
+  for (const [name, value] of Object.entries(data.savedAspects)) {
+    const trimmedName = name.trim();
+    const trimmedValue = value.trim();
+    if (trimmedName && trimmedValue) {
+      values[trimmedName] = trimmedValue;
+    }
+  }
   const missingRequired: EbayAspectRequirement[] = [];
   const missingRecommended: EbayAspectRequirement[] = [];
 

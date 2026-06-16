@@ -75,6 +75,24 @@ describe("buildEbayInventoryItemPayload", () => {
     expect(payload.product.aspects.Department).toEqual(["Men"]);
   });
 
+  it("does not overwrite seller-supplied aspects with item defaults", () => {
+    const input = baseInput();
+    input.item.brand = "Nike";
+    input.item.size = "US 10";
+    input.item.colorway = "Noise Aqua";
+    input.draft.itemSpecifics = {
+      Brand: "The North Face",
+      Size: "S",
+      Colorway: "Black",
+    };
+
+    const payload = buildEbayInventoryItemPayload(input);
+
+    expect(payload.product.aspects.Brand).toEqual(["The North Face"]);
+    expect(payload.product.aspects.Size).toEqual(["S"]);
+    expect(payload.product.aspects.Colorway).toEqual(["Black"]);
+  });
+
   it("defaults quantity to 1 when absent", () => {
     const input = baseInput();
     input.draft.quantity = null;
