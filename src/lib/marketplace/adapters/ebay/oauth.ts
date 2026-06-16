@@ -131,6 +131,45 @@ export async function exchangeAuthorizationCode(
   return (await response.json()) as EbayTokenResponse;
 }
 
+// Application (client-credentials) access token. Used for app-scoped calls that
+// are not tied to a connected seller, such as the Notification API getPublicKey
+// endpoint required to validate inbound eBay notifications.
+export async function fetchEbayApplicationToken(
+  config: EbayConfig,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const response = await fetchImpl(tokenUrls[config.environment], {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      scope: "https://api.ebay.com/oauth/api_scope",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.tokenExchangeFailed,
+      "eBay application token request failed.",
+      502,
+      { status: response.status },
+    );
+  }
+
+  const json = (await response.json()) as { access_token?: string };
+  if (!json.access_token) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.tokenExchangeFailed,
+      "eBay application token response did not include an access token.",
+      502,
+    );
+  }
+  return json.access_token;
+}
+
 function sign(value: string, secret: string) {
   return createHmac("sha256", secret).update(value).digest("base64url");
 }
