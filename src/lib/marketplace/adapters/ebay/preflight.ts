@@ -20,7 +20,11 @@ import {
   validateEbayListingReadiness,
   type EbayListingReadinessResult,
 } from "./listing-readiness";
-import { resolveEbayPhotoUrls } from "./media";
+import {
+  prepareEbayVisibleImages,
+  type EbayMediaPrismaLike,
+  type EbayStorageLike,
+} from "./media";
 import {
   buildEbayInventoryItemPayload,
   buildEbayOfferPayload,
@@ -30,10 +34,10 @@ import {
 } from "./mapper";
 import type { EbayEnvironment, EbayMarketplaceId } from "./types";
 
-// Publish preflight (dry run). Validates a listing against the exact same
-// rules and payload builders the real publish flow uses and shows what WOULD be
-// sent to eBay, but performs zero outbound network calls of any kind: no token
-// resolution, no eBay client, no fetch. This module can never create a listing.
+// Publish preflight. Validates a listing against the exact same rules and
+// payload builders the real publish flow uses and shows what WOULD be sent to
+// eBay. It can prepare durable public marketplace image derivatives, but it
+// never creates or modifies an eBay inventory item, offer, or listing.
 
 type EbayEnv = Record<string, string | undefined>;
 
@@ -55,10 +59,18 @@ type ItemRow = {
   size: string | null;
   colorway: string | null;
   listingDrafts: DraftRow[];
-  photos: { storageBucket: string; storagePath: string }[];
+  photos: {
+    id: string;
+    inventoryItemId?: string;
+    storageBucket: string;
+    storagePath: string;
+    mimeType?: string;
+    originalName?: string;
+    position?: number;
+  }[];
 };
 
-export type EbayPreflightPrismaLike = {
+export type EbayPreflightPrismaLike = EbayMediaPrismaLike & {
   inventoryItem: {
     findFirst(args: {
       where: { id: string; sellerId: string };
@@ -131,6 +143,10 @@ export type EbayAspectRequirementProvider = (
 
 export type EbayPreflightOptions = {
   aspectRequirementProvider?: EbayAspectRequirementProvider;
+  media?: {
+    storage?: EbayStorageLike;
+    randomId?: () => string;
+  };
 };
 
 function asStringRecord(value: unknown): Record<string, string> {
@@ -211,7 +227,14 @@ export async function preflightEbayListing(
   const draft = item.listingDrafts[0];
   const { categoryId: savedCategoryId, quantity, aspects: savedAspects } =
     ebayDraftFields(draft);
-  const photoResolution = resolveEbayPhotoUrls(item.photos, env);
+  const photoResolution = await prepareEbayVisibleImages(prisma, {
+    userId: input.userId,
+    item,
+    environment,
+    env,
+    storage: options.media?.storage,
+    randomId: options.media?.randomId,
+  });
   const photos = photoResolution.photos;
 
   // Listing intelligence: sellers should never need raw eBay category IDs.
@@ -283,7 +306,7 @@ export async function preflightEbayListing(
         ...missing,
         ...missingAspectIds,
       ],
-      warnings: readiness.warnings,
+      warnings: [...readiness.warnings, ...photoResolution.errors],
       category: intelligence.ebayCategory,
       itemType: intelligence.itemType,
       measurementProfile: intelligence.measurementProfile,
@@ -337,7 +360,7 @@ export async function preflightEbayListing(
     connected: true,
     ready: true,
     missing: [],
-    warnings: readiness.warnings,
+    warnings: [...readiness.warnings, ...photoResolution.errors],
     category: intelligence.ebayCategory,
     itemType: intelligence.itemType,
     measurementProfile: intelligence.measurementProfile,

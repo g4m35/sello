@@ -24,6 +24,11 @@ const productionEnabledEnv = {
   EBAY_PRODUCTION_PUBLISH_ENABLED: "true",
 };
 
+const sandboxDerivativeUrl =
+  "https://project.supabase.co/storage/v1/object/public/ebay-public/ebay/sandbox/item-1/photo-1/derivative.jpg";
+const productionDerivativeUrl =
+  "https://project.supabase.co/storage/v1/object/public/ebay-public/ebay/production/item-1/photo-1/derivative.jpg";
+
 function readyItem() {
   return {
     id: "item-1",
@@ -41,7 +46,17 @@ function readyItem() {
         marketplaceDrafts: { ebay: { categoryId: "15709", quantity: 1 } },
       },
     ],
-    photos: [{ storageBucket: "ebay-public", storagePath: "p1.jpg" }],
+    photos: [
+      {
+        id: "photo-1",
+        inventoryItemId: "item-1",
+        storageBucket: "listing-photos",
+        storagePath: "user-1/item-1/private-front.jpg",
+        mimeType: "image/jpeg",
+        originalName: "front of shirt.jpg",
+        position: 0,
+      },
+    ],
   };
 }
 
@@ -71,7 +86,29 @@ function createPrisma(overrides?: {
   item?: unknown;
   connection?: unknown;
   sellerConfig?: unknown;
+  images?: unknown[];
 }): EbayPublishPrismaLike {
+  const images =
+    overrides && "images" in overrides
+      ? overrides.images
+      : [
+          {
+            itemPhotoId: "photo-1",
+            marketplace: "ebay",
+            environment: "sandbox",
+            storagePath: "ebay/sandbox/item-1/photo-1/derivative.jpg",
+            publicUrl: sandboxDerivativeUrl,
+            status: "READY",
+          },
+          {
+            itemPhotoId: "photo-1",
+            marketplace: "ebay",
+            environment: "production",
+            storagePath: "ebay/production/item-1/photo-1/derivative.jpg",
+            publicUrl: productionDerivativeUrl,
+            status: "READY",
+          },
+        ];
   return {
     inventoryItem: {
       findFirst: vi
@@ -96,8 +133,29 @@ function createPrisma(overrides?: {
         .mockResolvedValue(
           overrides && "sellerConfig" in overrides
             ? overrides.sellerConfig
-            : sellerConfigRow(),
+          : sellerConfigRow(),
         ),
+    },
+    marketplaceImage: {
+      findMany: vi.fn(async ({ where }) =>
+        (images ?? []).filter((image) => {
+          const row = image as {
+            inventoryItemId?: string;
+            itemPhotoId?: string;
+            marketplace?: string;
+            environment?: string;
+          };
+          return (
+            (row.inventoryItemId === undefined ||
+              row.inventoryItemId === where.inventoryItemId) &&
+            row.marketplace === where.marketplace &&
+            row.environment === where.environment &&
+            (!where.itemPhotoId?.in ||
+              (row.itemPhotoId && where.itemPhotoId.in.includes(row.itemPhotoId)))
+          );
+        }),
+      ),
+      upsert: vi.fn(async ({ create }) => create),
     },
   } as unknown as EbayPublishPrismaLike;
 }
@@ -259,6 +317,20 @@ describe("publishEbayListing — happy path", () => {
 
     const client = (deps.createClient as ReturnType<typeof vi.fn>).mock.results[0].value;
     expect(client.createOrReplaceInventoryItem).toHaveBeenCalledOnce();
+    expect(client.createOrReplaceInventoryItem).toHaveBeenCalledWith(
+      "percsitem1",
+      expect.objectContaining({
+        product: expect.objectContaining({
+          imageUrls: [sandboxDerivativeUrl],
+        }),
+      }),
+    );
+    expect(JSON.stringify(client.createOrReplaceInventoryItem.mock.calls)).not.toContain(
+      "listing-photos",
+    );
+    expect(JSON.stringify(client.createOrReplaceInventoryItem.mock.calls)).not.toContain(
+      "private-front",
+    );
     expect(client.createOffer).toHaveBeenCalledOnce();
     expect(client.publishOffer).toHaveBeenCalledWith("offer-1");
   });

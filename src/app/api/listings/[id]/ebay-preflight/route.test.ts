@@ -24,6 +24,8 @@ function preflightRequest() {
 const params = { params: Promise.resolve({ id: "item-1" }) };
 const key =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const derivativeUrl =
+  "https://project.supabase.co/storage/v1/object/public/ebay-public/ebay/production/item-1/photo-1/derivative.jpg";
 
 function readyPrisma(overrides: Record<string, unknown> = {}) {
   return {
@@ -44,7 +46,17 @@ function readyPrisma(overrides: Record<string, unknown> = {}) {
             marketplaceDrafts: { ebay: { categoryId: "15709", quantity: 1 } },
           },
         ],
-        photos: [{ storageBucket: "ebay-public", storagePath: "p1.jpg" }],
+        photos: [
+          {
+            id: "photo-1",
+            inventoryItemId: "item-1",
+            storageBucket: "listing-photos",
+            storagePath: "user-1/item-1/private-front.jpg",
+            mimeType: "image/jpeg",
+            originalName: "front.jpg",
+            position: 0,
+          },
+        ],
         ...overrides,
       }),
     },
@@ -59,6 +71,19 @@ function readyPrisma(overrides: Record<string, unknown> = {}) {
         returnPolicyId: "ret-1",
         merchantLocationKey: "sello-default-location",
       }),
+    },
+    marketplaceImage: {
+      findMany: vi.fn().mockResolvedValue([
+        {
+          itemPhotoId: "photo-1",
+          marketplace: "ebay",
+          environment: "production",
+          storagePath: "ebay/production/item-1/photo-1/derivative.jpg",
+          publicUrl: derivativeUrl,
+          status: "READY",
+        },
+      ]),
+      upsert: vi.fn(async ({ create }) => create),
     },
   };
 }

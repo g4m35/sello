@@ -12,6 +12,47 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-17 — Codex. **eBay-visible derivative media pipeline implemented on `feature/ebay-media-derivatives`; no deploy, no production env changes.**
+Branch was created from latest `develop` at
+`b5a79033afcf49d86662eab3fda61062c435d3e6`. PR:
+https://github.com/g4m35/resale-crosslister/pull/36.
+
+- Added additive migration
+  `20260617120000_add_marketplace_images` with `MarketplaceImage` and
+  `MarketplaceImageStatus`. Reuse is unique by
+  `itemPhotoId + marketplace + environment`; lookup is indexed by
+  `inventoryItemId + marketplace + environment + status`. RLS is enabled.
+- Original uploads remain in the private app photo bucket
+  `SUPABASE_STORAGE_BUCKET`. The listing detail/editor route still uses
+  Supabase signed URLs for private photo display.
+- Added `prepareEbayVisibleImages`, which seller-scopes the item, checks
+  `EBAY_PUBLIC_IMAGE_BUCKET`, reuses existing `READY` derivative rows, or copies
+  supported JPEG/PNG/WEBP originals to opaque public paths:
+  `ebay/{environment}/{inventoryItemId}/{itemPhotoId}/{random-token}.{ext}`.
+  Original filenames are not used in public paths.
+- eBay preflight now prepares/reuses durable public derivative URLs and blocks
+  with `ebay_public_photo` when bucket env/config, persisted photos, MIME type,
+  or storage copy fails. eBay publish now consumes the immediately preflighted
+  public derivative URLs and never maps private signed URLs into the eBay
+  payload.
+- `.env.example` documents `EBAY_PUBLIC_IMAGE_BUCKET`; docs now include required
+  Supabase bucket settings and rollout checklist. Production bucket creation and
+  env setup were intentionally not performed.
+
+Gates run: `npx prisma format` (pass), `npx prisma validate` (pass),
+`npm run lint` (pass with the same two pre-existing `_m`/`_f` warnings in
+`src/app/api/listings/draft/draft-actions.test.ts`), `npx tsc --noEmit` (pass),
+`npm test` (79 files / 523 tests), `npm run build` (pass), and
+`npx prisma migrate status` (expected nonzero: new migration
+`20260617120000_add_marketplace_images` is pending and was not applied).
+
+Next up: review/merge the PR into `develop`, then in a separate approved rollout
+apply the migration via `prisma migrate deploy`, create/configure the public
+Supabase derivative bucket, set `EBAY_PUBLIC_IMAGE_BUCKET`, keep
+`EBAY_PRODUCTION_PUBLISH_ENABLED` off, and run authenticated readiness to prove
+private originals produce public derivative URLs before any live publish window.
+
+## Previous update
 2026-06-16 — Codex. **Post-eBay-run stabilization pass implemented on `feature/post-ebay-run-polish`; no deploy, no production migration.**
 Branch was created from latest `develop` after fast-forwarding the live-run
 `main` closeout back into `develop`. Changes made:

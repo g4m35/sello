@@ -81,6 +81,13 @@ enum JobStatus {
   FAILED
 }
 
+enum MarketplaceImageStatus {
+  READY
+  STALE
+  DELETED
+  FAILED
+}
+
 enum PublishAttemptStatus {
   NOT_IMPLEMENTED
   QUEUED
@@ -107,6 +114,7 @@ model InventoryItem {
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   photos                ItemPhoto[]
+  marketplaceImages     MarketplaceImage[]
   aiOutputs             AiOutput[]
   listingDrafts         ListingDraft[]
   marketplaceListings   MarketplaceListing[]
@@ -119,18 +127,37 @@ model InventoryItem {
 }
 
 model ItemPhoto {
-  id              String        @id @default(uuid()) @db.Uuid
-  inventoryItemId String        @db.Uuid
-  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
-  storageBucket   String
-  storagePath     String
-  mimeType        String
-  originalName    String
-  position        Int
-  createdAt       DateTime      @default(now())
+  id                String             @id @default(uuid()) @db.Uuid
+  inventoryItemId   String             @db.Uuid
+  inventoryItem     InventoryItem      @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  storageBucket     String
+  storagePath       String
+  mimeType          String
+  originalName      String
+  position          Int
+  createdAt         DateTime           @default(now())
+  marketplaceImages MarketplaceImage[]
 
   @@unique([storageBucket, storagePath])
   @@index([inventoryItemId])
+}
+
+model MarketplaceImage {
+  id              String                 @id @default(uuid()) @db.Uuid
+  inventoryItemId String                 @db.Uuid
+  inventoryItem   InventoryItem          @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  itemPhotoId     String                 @db.Uuid
+  itemPhoto       ItemPhoto              @relation(fields: [itemPhotoId], references: [id], onDelete: Cascade)
+  marketplace     Marketplace
+  environment     String                 @default("sandbox")
+  storagePath     String
+  publicUrl       String
+  status          MarketplaceImageStatus @default(READY)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@unique([itemPhotoId, marketplace, environment])
+  @@index([inventoryItemId, marketplace, environment, status])
 }
 
 model AiOutput {
