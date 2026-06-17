@@ -77,6 +77,68 @@ describe("runCompFetch", () => {
     });
   });
 
+  it("allows an explicit refresh to run while automatic discovery remains off", async () => {
+    vi.stubEnv("COMPS_AUTO_DISCOVERY_ENABLED", "false");
+    vi.stubEnv("PRICE_COMP_AUTO_DISCOVERY_ENABLED", "false");
+    const createdRows: unknown[] = [];
+    const source: CompSource = {
+      id: "test-source",
+      displayName: "Test source",
+      sold: true,
+      resultKind: "sold_comps",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => [comp(1), comp(2), comp(3)]),
+    };
+
+    const prisma = {
+      inventoryItem: {
+        findFirst: vi.fn(async () => ({
+          id: "item-1",
+          productName: "The North Face Black Nuptse Puffer Jacket",
+          brand: "The North Face",
+          styleCode: null,
+          size: "Large",
+          category: "streetwear",
+          colorway: "Black",
+          condition: "used_good",
+          recommendedPriceCents: 18000,
+          listingDrafts: [],
+        })),
+      },
+      listingDraft: { update: vi.fn(async () => ({})) },
+      priceComp: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }: { data: unknown[] }) => {
+          createdRows.push(...data);
+          return { count: data.length };
+        }),
+        findMany: vi.fn(async () => createdRows),
+      },
+      compSearchRun: {
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "run-1",
+          ...data,
+        })),
+      },
+    };
+
+    const result = await runCompFetch(prisma as never, "item-1", "seller-1", {
+      force: true,
+      sources: [source],
+    });
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(result.fetched).toBe(3);
+    expect(prisma.compSearchRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        inventoryItemId: "item-1",
+        autoDiscoveryEnabled: false,
+        sourceCount: 1,
+        fetchedCount: 3,
+      }),
+    });
+  });
+
   it("persists source run metadata, stores accepted/rejected comps, and auto-fills high-confidence pricing", async () => {
     const createdRows: unknown[] = [];
     const source: CompSource = {

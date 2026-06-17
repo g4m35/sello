@@ -32,6 +32,7 @@ export type CompFetchResult = {
 
 export type RunCompFetchOptions = {
   sources?: CompSource[];
+  force?: boolean;
 };
 
 export function isAutoDiscoveryEnabled(): boolean {
@@ -87,6 +88,7 @@ export async function runCompFetch(
     };
   }
 
+  const autoDiscoveryEnabled = isAutoDiscoveryEnabled();
   const sources = options.sources ?? enabledCompSources();
   const draft = item.listingDrafts[0] ?? null;
   const query = buildCompQuery({
@@ -103,12 +105,12 @@ export async function runCompFetch(
     Boolean,
   );
 
-  if (!isAutoDiscoveryEnabled() && !options.sources) {
+  if (!autoDiscoveryEnabled && !options.sources && !options.force) {
     await prisma.compSearchRun.create({
       data: {
         inventoryItemId,
         status: "disabled",
-        autoDiscoveryEnabled: false,
+        autoDiscoveryEnabled,
         sourceCount: 0,
         fetchedCount: 0,
         acceptedCount: 0,
@@ -139,7 +141,7 @@ export async function runCompFetch(
       data: {
         inventoryItemId,
         status: "source_unavailable",
-        autoDiscoveryEnabled: true,
+        autoDiscoveryEnabled,
         sourceCount: 0,
         fetchedCount: 0,
         acceptedCount: 0,
@@ -265,7 +267,7 @@ export async function runCompFetch(
     data: {
       inventoryItemId,
       status,
-      autoDiscoveryEnabled: true,
+      autoDiscoveryEnabled,
       sourceCount: sources.length,
       fetchedCount: comps.length,
       acceptedCount: accepted,

@@ -54,6 +54,7 @@ describe("explicit comp refresh route", () => {
       prisma,
       "item-1",
       "user-1",
+      { force: true },
     );
   });
 

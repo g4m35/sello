@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await runCompFetch(prisma, inventoryItemId, user.id);
+    const result = await runCompFetch(prisma, inventoryItemId, user.id, { force: true });
     return NextResponse.json(result);
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
