@@ -143,6 +143,101 @@ describe("calculatePricing", () => {
     expect(s.pricingBasis).toBe("sold_comps");
   });
 
+  it("caps many possible sold matches at medium confidence", () => {
+    const today = new Date();
+    const s = calculatePricing(
+      Array.from({ length: 20 }, (_, i) =>
+        comp({
+          priceCents: 1200 + i * 15,
+          status: "sold",
+          soldDate: today,
+          brand: "Generic",
+          size: "M",
+          condition: "used_good",
+          matchScore: 0.55,
+        }),
+      ),
+    );
+
+    expect(s.soldCompCount).toBe(20);
+    expect(s.strongCompCount).toBe(0);
+    expect(s.possibleCompCount).toBe(20);
+    expect(s.confidence).toBe("medium");
+    expect(s.confidenceScore).toBeLessThan(0.7);
+    expect(s.confidenceReasons.join(" ")).toContain("Only possible matches found");
+  });
+
+  it("keeps weak generic shirt comps from producing high confidence", () => {
+    const today = new Date();
+    const s = calculatePricing(
+      [
+        "Pro Club Men's Heavyweight T-Shirt Crew Neck Plain Blank Short Sleeve Tee",
+        "Zenana Crew Neck Short Sleeve T Shirt Basic Plain Solid Top Cotton",
+        "Gildan Men's Dryblend Plain Crew Neck Short Sleeves T-Shirt",
+        "True Classic Men's T-Shirt Short Sleeve Athletic Cut Crew Neck Basics Tee",
+        "Nike Dri-FIT Men’s Gray T-Shirt L Crew Neck Short Sleeve",
+      ].map((title, i) =>
+        comp({
+          priceCents: 850 + i * 180,
+          totalPriceCents: 1000 + i * 220,
+          status: "sold",
+          soldDate: today,
+          brand: title.split(" ")[0],
+          size: null,
+          condition: "unknown",
+          matchScore: 0.54,
+        }),
+      ),
+    );
+
+    expect(s.confidence).not.toBe("high");
+    expect(s.confidenceReasons.join(" ")).toContain("Generic item identity");
+    expect(s.confidenceReasons.join(" ")).toContain("No exact brand/model match");
+  });
+
+  it("lets a strong same-brand sold cluster reach high confidence", () => {
+    const today = new Date();
+    const s = calculatePricing(
+      Array.from({ length: 6 }, (_, i) =>
+        comp({
+          priceCents: 18000 + i * 250,
+          status: "sold",
+          soldDate: today,
+          brand: "The North Face",
+          size: "Large",
+          condition: "used_good",
+          matchScore: 0.86,
+        }),
+      ),
+    );
+
+    expect(s.confidence).toBe("high");
+    expect(s.confidenceReasons.join(" ")).toContain("Strong sold-comp cluster");
+  });
+
+  it("downgrades wide sold-comp spreads below high confidence", () => {
+    const s = calculatePricing([
+      comp({ priceCents: 5000, status: "sold", matchScore: 0.9 }),
+      comp({ priceCents: 7000, status: "sold", matchScore: 0.9 }),
+      comp({ priceCents: 9000, status: "sold", matchScore: 0.9 }),
+      comp({ priceCents: 45000, status: "sold", matchScore: 0.9 }),
+      comp({ priceCents: 60000, status: "sold", matchScore: 0.9 }),
+    ]);
+
+    expect(s.confidence).not.toBe("high");
+    expect(s.confidenceReasons.join(" ")).toContain("Wide price spread");
+  });
+
+  it("downgrades low sold-comp counts", () => {
+    const s = calculatePricing([
+      comp({ priceCents: 10000, status: "sold", matchScore: 0.9 }),
+      comp({ priceCents: 11000, status: "sold", matchScore: 0.9 }),
+    ]);
+
+    expect(s.confidence).toBe("low");
+    expect(s.confidenceReasons.join(" ")).toContain("Low sold-comp count");
+  });
+
   it("returns low confidence for a single active asking-price comp", () => {
     const s = calculatePricing([comp({ priceCents: 10000, status: "active" })]);
     expect(s.confidence).toBe("low");

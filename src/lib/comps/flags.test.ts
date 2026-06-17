@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  compsAutoMinIdentityConfidence,
+  compsMaxProviderResults,
+  compsMaxQueryVariants,
   isApifyEbaySoldEnabled,
   isCompsAutoDiscoveryEnabled,
   isEbayActiveEnabled,
@@ -74,6 +77,29 @@ describe("comps provider flags", () => {
         isSerpapiEbayActiveEnabled({ COMPS_SERPAPI_EBAY_ACTIVE_ENABLED: "true", SERPAPI_API_KEY: "k" }),
       ).toBe(true);
       expect(isSerpapiEbayActiveEnabled({ COMPS_SERPAPI_EBAY_ACTIVE_ENABLED: "true" })).toBe(false);
+    });
+  });
+
+  describe("cost and identity controls", () => {
+    it("uses conservative defaults", () => {
+      expect(compsMaxProviderResults({})).toBe(20);
+      expect(compsMaxQueryVariants({})).toBe(2);
+      expect(compsAutoMinIdentityConfidence({})).toBe(0.55);
+    });
+
+    it("clamps provider and query caps", () => {
+      expect(compsMaxProviderResults({ COMPS_MAX_PROVIDER_RESULTS: "999" })).toBe(30);
+      expect(compsMaxProviderResults({ COMPS_MAX_PROVIDER_RESULTS: "0" })).toBe(1);
+      expect(compsMaxQueryVariants({ COMPS_MAX_QUERY_VARIANTS: "999" })).toBe(3);
+      expect(compsMaxQueryVariants({ COMPS_MAX_QUERY_VARIANTS: "0" })).toBe(1);
+    });
+
+    it("falls back for invalid values and clamps identity confidence", () => {
+      expect(compsMaxProviderResults({ COMPS_MAX_PROVIDER_RESULTS: "many" })).toBe(20);
+      expect(compsMaxQueryVariants({ COMPS_MAX_QUERY_VARIANTS: "many" })).toBe(2);
+      expect(compsAutoMinIdentityConfidence({ COMPS_AUTO_MIN_IDENTITY_CONFIDENCE: "2" })).toBe(1);
+      expect(compsAutoMinIdentityConfidence({ COMPS_AUTO_MIN_IDENTITY_CONFIDENCE: "-1" })).toBe(0);
+      expect(compsAutoMinIdentityConfidence({ COMPS_AUTO_MIN_IDENTITY_CONFIDENCE: "nope" })).toBe(0.55);
     });
   });
 });

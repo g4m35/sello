@@ -1,5 +1,9 @@
 import type { Prisma } from "@/generated/prisma/client";
-import { isCompsAutoDiscoveryEnabled } from "@/lib/comps/flags";
+import {
+  compsAutoMinIdentityConfidence,
+  compsMaxQueryVariants,
+  isCompsAutoDiscoveryEnabled,
+} from "@/lib/comps/flags";
 import { buildCompQuery } from "@/lib/comps/match";
 import { dedupeComps, toPriceCompCreate, trimOutliers } from "@/lib/comps/normalize";
 import { enabledCompSources } from "@/lib/comps/registry";
@@ -18,6 +22,7 @@ export type CompFetchResult = {
   enabled: number;
   status:
     | "disabled"
+    | "skipped_weak_identity"
     | "source_unavailable"
     | "no_comps_found"
     | "needs_review"
@@ -59,6 +64,34 @@ function emptySummary() {
   return summarizeComps([]);
 }
 
+function capQueryVariants(query: ReturnType<typeof buildCompQuery>) {
+  const maxVariants = compsMaxQueryVariants();
+  const variants = query.variants?.slice(0, maxVariants);
+  return {
+    ...query,
+    variants,
+  };
+}
+
+function isUnknownBrand(brand: string | null | undefined): boolean {
+  const normalized = (brand ?? "").trim().toLowerCase();
+  return normalized.length === 0 || normalized === "unknown" || normalized === "unbranded";
+}
+
+function hasMeaningfulIdentity(item: {
+  brand?: string | null;
+  styleCode?: string | null;
+  size?: string | null;
+  confidence?: number | null;
+}) {
+  if ((item.styleCode ?? "").trim().length > 0) return true;
+  const minConfidence = compsAutoMinIdentityConfidence();
+  const hasKnownBrand = !isUnknownBrand(item.brand);
+  const hasSize = (item.size ?? "").trim().length > 0;
+  const confidence = typeof item.confidence === "number" ? item.confidence : 0;
+  return hasKnownBrand && hasSize && confidence >= minConfidence;
+}
+
 // Runs every enabled comp source for an item, dedupes + trims outliers, and
 // replaces the item's automatic comps (source "auto:*"). Manual comps, if any,
 // are left untouched. The lookup is scoped to the owning seller so the helper is
@@ -91,7 +124,7 @@ export async function runCompFetch(
   const autoDiscoveryEnabled = isAutoDiscoveryEnabled();
   const sources = options.sources ?? enabledCompSources();
   const draft = item.listingDrafts[0] ?? null;
-  const query = buildCompQuery({
+  const query = capQueryVariants(buildCompQuery({
     productName: draft?.title || item.productName,
     brand: item.brand,
     styleCode: item.styleCode,
@@ -100,7 +133,7 @@ export async function runCompFetch(
     colorway: item.colorway,
     condition: item.condition,
     description: draft?.description ?? null,
-  });
+  }));
   const queries = (query.variants?.map((variant) => variant.keywords) ?? [query.keywords]).filter(
     Boolean,
   );
@@ -131,6 +164,47 @@ export async function runCompFetch(
       status: "disabled",
       queries,
       sourceErrors: [],
+      summary: emptySummary(),
+      appliedPriceCents: null,
+    };
+  }
+
+  if (autoDiscoveryEnabled && !options.force && !hasMeaningfulIdentity(item)) {
+    await prisma.compSearchRun.create({
+      data: {
+        inventoryItemId,
+        status: "skipped_weak_identity",
+        autoDiscoveryEnabled,
+        sourceCount: 0,
+        fetchedCount: 0,
+        acceptedCount: 0,
+        rejectedCount: 0,
+        recommendedPriceCents: null,
+        confidence: "none",
+        queries: queries as Prisma.InputJsonValue,
+        sourcesChecked: [],
+        sourceErrors: [
+          {
+            source: "sello",
+            message: "Automatic comps skipped until item identity is specific enough.",
+          },
+        ],
+      },
+    });
+    return {
+      fetched: 0,
+      accepted: 0,
+      rejected: 0,
+      sources: [],
+      enabled: 0,
+      status: "skipped_weak_identity",
+      queries,
+      sourceErrors: [
+        {
+          source: "sello",
+          message: "Automatic comps skipped until item identity is specific enough.",
+        },
+      ],
       summary: emptySummary(),
       appliedPriceCents: null,
     };

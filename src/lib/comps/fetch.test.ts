@@ -139,6 +139,171 @@ describe("runCompFetch", () => {
     });
   });
 
+  it("skips automatic paid providers for weak generic item identity", async () => {
+    vi.stubEnv("COMPS_AUTO_DISCOVERY_ENABLED", "true");
+    vi.stubEnv("COMPS_AUTO_MIN_IDENTITY_CONFIDENCE", "0.55");
+    const source: CompSource = {
+      id: "test-source",
+      displayName: "Test source",
+      sold: true,
+      resultKind: "sold_comps",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => [comp(1)]),
+    };
+
+    const prisma = {
+      inventoryItem: {
+        findFirst: vi.fn(async () => ({
+          id: "item-1",
+          productName: "Basic Black Crew Neck Short Sleeve T-Shirt",
+          brand: "Unknown",
+          styleCode: null,
+          size: null,
+          category: "streetwear",
+          colorway: "Black",
+          condition: "unknown",
+          confidence: 0.3,
+          recommendedPriceCents: null,
+          listingDrafts: [
+            {
+              title: "Basic Black Crew Neck Short Sleeve T-Shirt",
+              description: "Plain black shirt.",
+              recommendedPriceCents: null,
+            },
+          ],
+        })),
+      },
+      priceComp: {
+        deleteMany: vi.fn(),
+        createMany: vi.fn(),
+      },
+      compSearchRun: {
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "run-1",
+          ...data,
+        })),
+      },
+    };
+
+    const result = await runCompFetch(prisma as never, "item-1", "seller-1", {
+      sources: [source],
+    });
+
+    expect(result.status).toBe("skipped_weak_identity");
+    expect(source.fetchComps).not.toHaveBeenCalled();
+    expect(prisma.priceComp.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.compSearchRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: "skipped_weak_identity",
+        sourceCount: 0,
+        fetchedCount: 0,
+        confidence: "none",
+      }),
+    });
+  });
+
+  it("lets manual Refresh bypass weak auto identity gating", async () => {
+    vi.stubEnv("COMPS_AUTO_DISCOVERY_ENABLED", "true");
+    vi.stubEnv("COMPS_AUTO_MIN_IDENTITY_CONFIDENCE", "0.9");
+    const createdRows: unknown[] = [];
+    const source: CompSource = {
+      id: "test-source",
+      displayName: "Test source",
+      sold: true,
+      resultKind: "sold_comps",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => [comp(1), comp(2), comp(3)]),
+    };
+
+    const prisma = {
+      inventoryItem: {
+        findFirst: vi.fn(async () => ({
+          id: "item-1",
+          productName: "Basic Black Crew Neck Short Sleeve T-Shirt",
+          brand: "Unknown",
+          styleCode: null,
+          size: null,
+          category: "streetwear",
+          colorway: "Black",
+          condition: "unknown",
+          confidence: 0.1,
+          recommendedPriceCents: 1200,
+          listingDrafts: [],
+        })),
+      },
+      listingDraft: { update: vi.fn(async () => ({})) },
+      priceComp: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async ({ data }: { data: unknown[] }) => {
+          createdRows.push(...data);
+          return { count: data.length };
+        }),
+        findMany: vi.fn(async () => createdRows),
+      },
+      compSearchRun: {
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "run-1",
+          ...data,
+        })),
+      },
+    };
+
+    const result = await runCompFetch(prisma as never, "item-1", "seller-1", {
+      force: true,
+      sources: [source],
+    });
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(result.status).not.toBe("skipped_weak_identity");
+    expect(result.fetched).toBe(3);
+  });
+
+  it("caps query variants before calling providers", async () => {
+    vi.stubEnv("COMPS_AUTO_DISCOVERY_ENABLED", "true");
+    vi.stubEnv("COMPS_MAX_QUERY_VARIANTS", "1");
+    const source: CompSource = {
+      id: "test-source",
+      displayName: "Test source",
+      sold: true,
+      resultKind: "sold_comps",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => []),
+    };
+    const prisma = {
+      inventoryItem: {
+        findFirst: vi.fn(async () => ({
+          id: "item-1",
+          productName: "The North Face Black Nuptse Puffer Jacket",
+          brand: "The North Face",
+          styleCode: null,
+          size: "Large",
+          category: "streetwear",
+          colorway: "Black",
+          condition: "used_good",
+          confidence: 0.9,
+          recommendedPriceCents: null,
+          listingDrafts: [],
+        })),
+      },
+      priceComp: { deleteMany: vi.fn(), createMany: vi.fn(), findMany: vi.fn(async () => []) },
+      compSearchRun: { create: vi.fn(async () => ({ id: "run-1" })) },
+    };
+
+    const result = await runCompFetch(prisma as never, "item-1", "seller-1", {
+      sources: [source],
+    });
+
+    expect(result.queries).toHaveLength(1);
+    expect(source.fetchComps).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variants: expect.arrayContaining([expect.objectContaining({ kind: "strict" })]),
+      }),
+    );
+    expect(source.fetchComps).toHaveBeenCalledWith(
+      expect.objectContaining({ variants: expect.not.arrayContaining([expect.objectContaining({ kind: "broad" })]) }),
+    );
+  });
+
   it("persists source run metadata, stores accepted/rejected comps, and auto-fills high-confidence pricing", async () => {
     const createdRows: unknown[] = [];
     const source: CompSource = {
