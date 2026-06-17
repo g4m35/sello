@@ -127,6 +127,7 @@ export const api = {
         lastRunAt: string | null;
         acceptedCount?: number | null;
         rejectedCount?: number | null;
+        cooldownSecondsRemaining?: number;
       };
     }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token),
 
@@ -178,6 +179,13 @@ export const api = {
       comps: PriceCompRow[];
       summary: CompsSummary;
     }>(`/api/listings/comps/${compId}`, token, { method: "PATCH", body: JSON.stringify(body) }),
+
+  deleteComp: (token: string, compId: string) =>
+    request<{
+      inventoryItemId: string;
+      comps: PriceCompRow[];
+      summary: CompsSummary;
+    }>(`/api/listings/comps/${compId}`, token, { method: "DELETE" }),
 
   refreshComps: (token: string, inventoryItemId: string) =>
     request<{

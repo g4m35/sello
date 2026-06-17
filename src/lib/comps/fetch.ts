@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import { isCompsAutoDiscoveryEnabled } from "@/lib/comps/flags";
 import { buildCompQuery } from "@/lib/comps/match";
 import { dedupeComps, toPriceCompCreate, trimOutliers } from "@/lib/comps/normalize";
 import { enabledCompSources } from "@/lib/comps/registry";
@@ -34,7 +35,7 @@ export type RunCompFetchOptions = {
 };
 
 export function isAutoDiscoveryEnabled(): boolean {
-  return process.env.PRICE_COMP_AUTO_DISCOVERY_ENABLED === "true";
+  return isCompsAutoDiscoveryEnabled();
 }
 
 function errorMessage(error: unknown): string {

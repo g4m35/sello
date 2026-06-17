@@ -13,6 +13,9 @@ const productionEnv = {
   EBAY_SANDBOX_PUBLISH_ENABLED: "true",
 };
 
+const derivativeUrl =
+  "https://project.supabase.co/storage/v1/object/public/ebay-public/ebay/production/item-1/photo-1/derivative.jpg";
+
 function readyItem() {
   return {
     id: "item-1",
@@ -30,7 +33,17 @@ function readyItem() {
         marketplaceDrafts: { ebay: { categoryId: "15709", quantity: 1 } },
       },
     ],
-    photos: [{ storageBucket: "ebay-public", storagePath: "p1.jpg" }],
+    photos: [
+      {
+        id: "photo-1",
+        inventoryItemId: "item-1",
+        storageBucket: "listing-photos",
+        storagePath: "user-1/item-1/private-front.jpg",
+        mimeType: "image/jpeg",
+        originalName: "front of shirt.jpg",
+        position: 0,
+      },
+    ],
   };
 }
 
@@ -38,7 +51,21 @@ function createPrisma(overrides?: {
   item?: unknown;
   connection?: unknown;
   sellerConfig?: unknown;
+  images?: unknown[];
 }): EbayPreflightPrismaLike {
+  const images =
+    overrides && "images" in overrides
+      ? overrides.images
+      : [
+          {
+            itemPhotoId: "photo-1",
+            marketplace: "ebay",
+            environment: "production",
+            storagePath: "ebay/production/item-1/photo-1/derivative.jpg",
+            publicUrl: derivativeUrl,
+            status: "READY",
+          },
+        ];
   return {
     inventoryItem: {
       findFirst: vi
@@ -68,6 +95,27 @@ function createPrisma(overrides?: {
               merchantLocationKey: "sello-default-location",
             },
       ),
+    },
+    marketplaceImage: {
+      findMany: vi.fn(async ({ where }) =>
+        (images ?? []).filter((image) => {
+          const row = image as {
+            inventoryItemId?: string;
+            itemPhotoId?: string;
+            marketplace?: string;
+            environment?: string;
+          };
+          return (
+            (row.inventoryItemId === undefined ||
+              row.inventoryItemId === where.inventoryItemId) &&
+            row.marketplace === where.marketplace &&
+            row.environment === where.environment &&
+            (!where.itemPhotoId?.in ||
+              (row.itemPhotoId && where.itemPhotoId.in.includes(row.itemPhotoId)))
+          );
+        }),
+      ),
+      upsert: vi.fn(async ({ create }) => create),
     },
   } as unknown as EbayPreflightPrismaLike;
 }
@@ -141,7 +189,7 @@ describe("preflightEbayListing", () => {
           "US Shoe Size": ["10"],
         },
         imageUrls: [
-          "https://project.supabase.co/storage/v1/object/public/ebay-public/p1.jpg",
+          derivativeUrl,
         ],
       },
     });
@@ -190,24 +238,57 @@ describe("preflightEbayListing", () => {
     );
   });
 
-  it("blocks private app photo buckets instead of sending private URLs to eBay", async () => {
+  it("prepares private app photos without sending private URLs to eBay", async () => {
     const item = {
       ...readyItem(),
-      photos: [{ storageBucket: "private-item-photos", storagePath: "raw/shirt.jpg" }],
+      photos: [
+        {
+          id: "photo-private",
+          inventoryItemId: "item-1",
+          storageBucket: "private-item-photos",
+          storagePath: "raw/shirt.jpg",
+          mimeType: "image/jpeg",
+          originalName: "shirt.jpg",
+          position: 0,
+        },
+      ],
     };
 
     const result = await preflightEbayListing(
-      createPrisma({ item }),
+      createPrisma({ item, images: [] }),
       { userId: "user-1", inventoryItemId: "item-1" },
       productionEnv,
+      {
+        media: {
+          storage: {
+            from: vi.fn(() => ({
+              copy: vi.fn().mockResolvedValue({ data: {}, error: null }),
+            })),
+          },
+          randomId: () => "opaque-token",
+        },
+      },
+    );
+
+    expect(result.ready).toBe(true);
+    expect(result.preview!.inventoryItem.product.imageUrls).toEqual([
+      "https://project.supabase.co/storage/v1/object/public/ebay-public/ebay/production/item-1/photo-private/opaque-token.jpg",
+    ]);
+    expect(JSON.stringify(result.preview)).not.toContain("private-item-photos");
+    expect(JSON.stringify(result.preview)).not.toContain("raw/shirt.jpg");
+  });
+
+  it("blocks with ebay_public_photo when public image storage is not configured", async () => {
+    const result = await preflightEbayListing(
+      createPrisma(),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      { EBAY_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co" },
     );
 
     expect(result.ready).toBe(false);
     expect(result.preview).toBeNull();
-    expect(result.missing).toEqual(
-      expect.arrayContaining(["ebay_public_photo"]),
-    );
-    expect(JSON.stringify(result)).not.toContain("private-item-photos");
+    expect(result.missing).toContain("ebay_public_photo");
+    expect(result.warnings).toContain("eBay-visible image storage is not configured.");
   });
 
   it("uses the saved category override before any inference", async () => {
@@ -606,12 +687,25 @@ describe("preflightEbayListing", () => {
     };
 
     const result = await preflightEbayListing(
-      createPrisma(),
+      createPrisma({
+        images: [
+          {
+            itemPhotoId: "photo-1",
+            marketplace: "ebay",
+            environment: "sandbox",
+            storagePath: "ebay/sandbox/item-1/photo-1/derivative.jpg",
+            publicUrl:
+              "https://project.supabase.co/storage/v1/object/public/ebay-public/ebay/sandbox/item-1/photo-1/derivative.jpg",
+            status: "READY",
+          },
+        ],
+      }),
       { userId: "user-1", inventoryItemId: "item-1" },
       sandboxEnv,
     );
 
     expect(result.environment).toBe("sandbox");
     expect(result.publishingEnabled).toBe(true);
+    expect(result.ready).toBe(true);
   });
 });

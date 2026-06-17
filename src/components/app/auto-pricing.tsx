@@ -6,7 +6,7 @@ import { Banner, Btn } from "@/components/ui/primitives";
 import { useSession } from "@/components/providers/session-provider";
 import { api, type PriceCompRow } from "@/lib/api/client";
 import { getAutoCompStatusCopy } from "@/lib/comps/status";
-import { formatMoneyCents } from "@/lib/view/format";
+import { formatMoneyCents, relativeTime } from "@/lib/view/format";
 
 type Summary = {
   status: string;
@@ -39,6 +39,7 @@ type Discovery = {
   lastRunAt: string | null;
   acceptedCount?: number | null;
   rejectedCount?: number | null;
+  cooldownSecondsRemaining?: number;
 };
 
 type ManualCompForm = {
@@ -221,9 +222,57 @@ export function AutoPricing({
     }
   }
 
+  async function includeComp(comp: PriceCompRow) {
+    setBusyCompId(comp.id);
+    setNote(null);
+    try {
+      const res = await api.updateComp(token, comp.id, {
+        usedInPricing: true,
+        ignoredAsOutlier: false,
+        notes: comp.notes
+          ? `${comp.notes} Re-included in pricing review.`
+          : "Re-included in pricing review.",
+      });
+      setSummary(res.summary);
+      setComps(res.comps);
+      setNote("Comp re-included in automatic pricing.");
+    } catch (e) {
+      setNote((e as { error?: string })?.error ?? "Could not include comp.");
+    } finally {
+      setBusyCompId(null);
+    }
+  }
+
+  async function deleteComp(comp: PriceCompRow) {
+    setBusyCompId(comp.id);
+    setNote(null);
+    try {
+      const res = await api.deleteComp(token, comp.id);
+      setSummary(res.summary);
+      setComps(res.comps);
+      setNote("Comp deleted.");
+    } catch (e) {
+      setNote((e as { error?: string })?.error ?? "Could not delete comp.");
+    } finally {
+      setBusyCompId(null);
+    }
+  }
+
+  const cooldownRemaining = discovery?.cooldownSecondsRemaining ?? 0;
+  const refreshDisabled = refreshing || cooldownRemaining > 0;
   const refreshBtn = (
-    <Btn variant="secondary" size="sm" icon="refresh" onClick={refresh} disabled={refreshing}>
-      {refreshing ? "Fetching…" : "Refresh comps"}
+    <Btn
+      variant="secondary"
+      size="sm"
+      icon="refresh"
+      onClick={refresh}
+      disabled={refreshDisabled}
+    >
+      {refreshing
+        ? "Fetching…"
+        : cooldownRemaining > 0
+          ? `Refresh in ${cooldownRemaining}s`
+          : "Refresh comps"}
     </Btn>
   );
 
@@ -256,6 +305,12 @@ export function AutoPricing({
         </div>
       )}
       <div>Sources: {sourceList}</div>
+      {discovery.lastRunAt && (
+        <div>
+          Last auto run: {relativeTime(discovery.lastRunAt)}
+          {cooldownRemaining > 0 ? ` · refresh cooldown ${cooldownRemaining}s` : ""}
+        </div>
+      )}
       {queryList.length > 0 && (
         <div>
           Queries: {queryList.join(" · ")}
@@ -355,26 +410,60 @@ export function AutoPricing({
                   <div className="t-micro">
                     {comp.source.replace(/^auto:/, "")} · {compKindLabel(comp)} · {classification}
                     {comp.matchScore != null ? ` · ${Math.round(comp.matchScore * 100)}%` : ""}
+                    {comp.soldDate
+                      ? ` · sold ${new Date(comp.soldDate).toLocaleDateString()}`
+                      : ""}
+                    {` · ${
+                      comp.usedInPricing
+                        ? "used in pricing"
+                        : comp.ignoredAsOutlier
+                          ? "excluded (outlier)"
+                          : "excluded"
+                    }`}
                   </div>
                   {reasons.length > 0 && <div className="t-small muted">{reasons.join(" · ")}</div>}
                 </div>
                 <div className="stack-1" style={{ alignItems: "end" }}>
                   <div className="t-num">{formatMoneyCents(total)}</div>
+                  <div className="t-micro muted">
+                    {formatMoneyCents(comp.priceCents)} + {formatMoneyCents(comp.shippingCents)} ship
+                  </div>
                   {comp.url && (
                     <a className="t-micro" href={comp.url} target="_blank" rel="noreferrer">
                       Open
                     </a>
                   )}
-                  {comp.usedInPricing && (
-                    <Btn
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => rejectComp(comp)}
-                      disabled={busyCompId === comp.id}
-                    >
-                      {busyCompId === comp.id ? "Rejecting…" : "Reject"}
-                    </Btn>
-                  )}
+                  <div className="row" style={{ gap: 6 }}>
+                    {comp.usedInPricing ? (
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => rejectComp(comp)}
+                        disabled={busyCompId === comp.id}
+                      >
+                        {busyCompId === comp.id ? "…" : "Exclude"}
+                      </Btn>
+                    ) : (
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => includeComp(comp)}
+                        disabled={busyCompId === comp.id}
+                      >
+                        {busyCompId === comp.id ? "…" : "Include"}
+                      </Btn>
+                    )}
+                    {comp.sourceType === "manual" && (
+                      <Btn
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => deleteComp(comp)}
+                        disabled={busyCompId === comp.id}
+                      >
+                        Delete
+                      </Btn>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

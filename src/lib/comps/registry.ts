@@ -5,6 +5,7 @@ import { ebayMarketplaceInsightsSource } from "@/lib/comps/sources/ebay-marketpl
 import { googleLensSource } from "@/lib/comps/sources/google-lens";
 import { grailedSoldSource } from "@/lib/comps/sources/grailed-sold";
 import { poshmarkSoldSource } from "@/lib/comps/sources/poshmark-sold";
+import { serpapiEbayActiveSource } from "@/lib/comps/sources/serpapi-ebay-active";
 import { stockxSource } from "@/lib/comps/sources/stockx";
 import type { CompSource } from "@/lib/comps/source";
 
@@ -19,6 +20,7 @@ export const COMP_SOURCES: CompSource[] = [
   grailedSoldSource,
   poshmarkSoldSource,
   ebayBrowseSource,
+  serpapiEbayActiveSource,
   depopActiveSource,
   googleLensSource,
 ];
