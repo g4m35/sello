@@ -34,13 +34,22 @@ PR fills the functional gaps:
 Gate green: prisma validate, lint (2 known warnings), tsc, `npm test` (83 files /
 550 tests), build. No new migration (PriceComp v2 + CompSearchRun already exist).
 
-**Blocked on owner:** (1) `.env.example` could not be edited in-sandbox (`.env*`
-guarded) — add the `COMPS_*` block from `docs/COMPS_PROVIDERS.md`. (2) Configure an
-Apify eBay-sold actor + `APIFY_TOKEN`, then enable providers one at a time and flip
-`COMPS_AUTO_DISCOVERY_ENABLED=true` last; live data can't be validated in-sandbox.
-**Remaining (not done this pass):** the Phase 8 pricing-UI overhaul (provider
-breakdown / last-run / exclusion controls) and the full Phase 9 test matrix beyond
-the core new tests.
+**Update (PR #37 continued):** built the pricing UI controls — `AutoPricing` now
+shows last auto-run time + refresh cooldown (disables Refresh with a countdown),
+adds include/exclude + delete-manual controls and per-comp sold date / price+ship
+/ used-vs-excluded badges; GET `/comps` returns `cooldownSecondsRemaining`; added
+`deleteComp` to the API client. Added a sanitized Apify payload fixture + mapper
+test, `docs/COMPS_LIVE_VALIDATION.md` (live validation NOT faked — no creds
+in-sandbox), and extended the passive-fetch guard to the inventory-list route.
+Gate green: 84 files / 553 tests, build OK, no new migration.
+
+**Blocked on owner:** (1) `.env.example` still couldn't be edited in-sandbox
+(`.env*` guarded) — paste the `COMPS_*` block from `docs/COMPS_PROVIDERS.md`.
+(2) Run the live Apify validation per `docs/COMPS_LIVE_VALIDATION.md` (configure
+actor + `APIFY_TOKEN`, one staging refresh, confirm payload shape), then flip
+`COMPS_AUTO_DISCOVERY_ENABLED=true`. **Remaining:** live Apify run unproven
+(needs owner creds); a deeper UI redesign was intentionally avoided (kept the
+existing panel, added the missing controls).
 
 ## Last updated (previous)
 2026-06-17 — Codex. **eBay-visible derivative media pipeline implemented on `feature/ebay-media-derivatives`; no deploy, no production env changes.**
