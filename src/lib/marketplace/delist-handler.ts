@@ -5,6 +5,7 @@ import type {
   PublishAttemptStatus,
 } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
+import { syncMasterStatusAfterMarketplaceDelist } from "@/lib/marketplace/lifecycle-sync";
 
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
 import { getEbayEnvironment } from "./adapters/ebay/config";
@@ -26,6 +27,10 @@ export type DelistPrismaLike = {
       where: { id: string; sellerId: string };
       select?: { id: true; status?: true; sellerId?: true };
     }): Promise<{ id: string; status?: InventoryStatus; sellerId?: string } | null>;
+    update(args: {
+      where: { id: string };
+      data: { status: InventoryStatus };
+    }): Promise<unknown>;
   };
   marketplaceListing: {
     findFirst(args: {
@@ -60,6 +65,10 @@ export type DelistPrismaLike = {
       where: { id: string };
       data: Record<string, unknown>;
     }): Promise<{ id: string }>;
+    findMany(args: {
+      where: { inventoryItemId: string };
+      select: { status: true };
+    }): Promise<Array<{ status: string }>>;
   };
   publishAttempt: {
     create(args: {
@@ -262,6 +271,7 @@ export async function executeEbayDelist(
         lastError: null,
       },
     });
+    await syncMasterStatusAfterMarketplaceDelist(prisma, input.inventoryItemId);
 
     return {
       ok: true as const,

@@ -15,6 +15,7 @@ const enabledEnv = {
   EBAY_TOKEN_ENCRYPTION_KEY: key,
   EBAY_SANDBOX_PUBLISH_ENABLED: "true",
   NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+  EBAY_PUBLIC_IMAGE_BUCKET: "ebay-public",
 };
 
 const productionEnabledEnv = {
@@ -40,7 +41,7 @@ function readyItem() {
         marketplaceDrafts: { ebay: { categoryId: "15709", quantity: 1 } },
       },
     ],
-    photos: [{ storageBucket: "b", storagePath: "p1.jpg" }],
+    photos: [{ storageBucket: "ebay-public", storagePath: "p1.jpg" }],
   };
 }
 

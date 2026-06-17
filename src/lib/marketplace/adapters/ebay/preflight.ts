@@ -20,6 +20,7 @@ import {
   validateEbayListingReadiness,
   type EbayListingReadinessResult,
 } from "./listing-readiness";
+import { resolveEbayPhotoUrls } from "./media";
 import {
   buildEbayInventoryItemPayload,
   buildEbayOfferPayload,
@@ -165,18 +166,6 @@ function ebayDraftFields(draft: DraftRow | undefined): {
   };
 }
 
-function resolvePhotoUrl(
-  photo: { storageBucket: string; storagePath: string },
-  env: EbayEnv,
-): string | null {
-  const base = env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base || base.trim().length === 0) {
-    return null;
-  }
-  const trimmed = base.replace(/\/$/, "");
-  return `${trimmed}/storage/v1/object/public/${photo.storageBucket}/${photo.storagePath}`;
-}
-
 export async function preflightEbayListing(
   prisma: EbayPreflightPrismaLike,
   input: EbayPreflightInput,
@@ -222,9 +211,8 @@ export async function preflightEbayListing(
   const draft = item.listingDrafts[0];
   const { categoryId: savedCategoryId, quantity, aspects: savedAspects } =
     ebayDraftFields(draft);
-  const photos = item.photos.map((photo) => ({
-    url: resolvePhotoUrl(photo, env),
-  }));
+  const photoResolution = resolveEbayPhotoUrls(item.photos, env);
+  const photos = photoResolution.photos;
 
   // Listing intelligence: sellers should never need raw eBay category IDs.
   // A saved override always wins; otherwise a high-confidence inference is
@@ -279,6 +267,7 @@ export async function preflightEbayListing(
 
   const missingAspectIds =
     aspects.missingRequired.length > 0 ? ["ebay_aspects"] : [];
+  const missing = normalizeMissingIds(readiness.missing, photoResolution.missing);
 
   if (!readiness.ready || missingAspectIds.length > 0) {
     return {
@@ -291,9 +280,7 @@ export async function preflightEbayListing(
       // "categoryId" is the validator's internal id; sellers see a category
       // CHOICE (with suggestions), not a raw marketplace ID problem.
       missing: [
-        ...readiness.missing.map((id) =>
-          id === "categoryId" ? "ebay_category" : id,
-        ),
+        ...missing,
         ...missingAspectIds,
       ],
       warnings: readiness.warnings,
@@ -363,4 +350,14 @@ export async function preflightEbayListing(
       offer: buildEbayOfferPayload(mapperInput),
     },
   };
+}
+
+function normalizeMissingIds(
+  readinessMissing: string[],
+  mediaMissing: string[],
+): string[] {
+  const out = readinessMissing
+    .map((id) => (id === "categoryId" ? "ebay_category" : id))
+    .filter((id) => !(id === "photo" && mediaMissing.length > 0));
+  return [...out, ...mediaMissing];
 }

@@ -271,6 +271,7 @@ type EbayFakeState = {
   }>;
   events: Array<{ kind: string; data: Record<string, unknown> }>;
   updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  inventoryUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   listings: Map<string, EbayFakeListing>;
 };
 
@@ -284,6 +285,7 @@ function createEbayFakePrisma(opts?: {
     attempts: [],
     events: [],
     updates: [],
+    inventoryUpdates: [],
     listings: new Map(),
   };
 
@@ -293,6 +295,16 @@ function createEbayFakePrisma(opts?: {
       async findFirst({ where }: { where: { id: string; sellerId: string } }) {
         if (where.id !== "item-1" || where.sellerId !== "user-1") return null;
         return { id: "item-1", status: "APPROVED" as InventoryStatus };
+      },
+      async update({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: Record<string, unknown>;
+      }) {
+        state.inventoryUpdates.push({ where, data });
+        return { id: where.id };
       },
     },
     marketplaceListing: {
@@ -501,6 +513,9 @@ describe("executePublish — eBay dispatch", () => {
     expect(update.data.externalOfferId).toBe("offer-1");
     expect(update.data.externalListingId).toBe("listing-x");
     expect(update.data.status).toBe("LISTED");
+    expect(prisma._state.inventoryUpdates).toEqual([
+      { where: { id: "item-1" }, data: { status: "LISTED" } },
+    ]);
     expect(prisma._state.events.map((e) => e.kind)).toEqual(
       expect.arrayContaining([
         "ebay_inventory_item_created",

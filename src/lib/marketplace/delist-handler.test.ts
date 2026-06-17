@@ -20,6 +20,7 @@ type FakeListing = {
 
 type FakeState = {
   listing: FakeListing | null;
+  otherMarketplaceStatuses: string[];
   attempts: Array<{
     id: string;
     status: PublishAttemptStatus;
@@ -29,11 +30,13 @@ type FakeState = {
   }>;
   events: Array<{ kind: string; data: Record<string, unknown> }>;
   updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  inventoryUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
 };
 
 function createPrisma(opts: {
   itemStatus?: InventoryStatus;
   listing?: Partial<FakeListing> | null;
+  otherMarketplaceStatuses?: string[];
   rejectActiveAttempt?: boolean;
 }): DelistPrismaLike & { _state: FakeState } {
   const state: FakeState = {
@@ -53,9 +56,11 @@ function createPrisma(opts: {
             publishAttempts: [],
             ...opts.listing,
           },
+    otherMarketplaceStatuses: opts.otherMarketplaceStatuses ?? [],
     attempts: [],
     events: [],
     updates: [],
+    inventoryUpdates: [],
   };
 
   return {
@@ -64,6 +69,10 @@ function createPrisma(opts: {
       async findFirst({ where }) {
         if (where.id !== "item-1" || where.sellerId !== "user-1") return null;
         return { id: "item-1", status: opts.itemStatus ?? "LISTED" };
+      },
+      async update({ where, data }) {
+        state.inventoryUpdates.push({ where, data });
+        return { id: where.id };
       },
     },
     marketplaceListing: {
@@ -87,6 +96,12 @@ function createPrisma(opts: {
           }
         }
         return { id: where.id };
+      },
+      async findMany() {
+        return [
+          ...(state.listing ? [{ status: state.listing.status }] : []),
+          ...state.otherMarketplaceStatuses.map((status) => ({ status })),
+        ];
       },
     },
     publishAttempt: {
@@ -216,9 +231,33 @@ describe("executeEbayDelist", () => {
       status: "DELISTED",
       lastError: null,
     });
+    expect(prisma._state.inventoryUpdates).toEqual([
+      { where: { id: "item-1" }, data: { status: "DELISTED" } },
+    ]);
     expect(prisma._state.events.map((e) => e.kind)).toEqual(
       expect.arrayContaining(["delist_started", "ebay_offer_withdrawn"]),
     );
+  });
+
+  it("keeps the master item LISTED when another marketplace channel remains active", async () => {
+    const prisma = createPrisma({ otherMarketplaceStatuses: ["LISTED"] });
+
+    await executeEbayDelist(
+      prisma,
+      input,
+      vi.fn().mockResolvedValue({
+        status: "delisted",
+        code: "EBAY_DELIST_SUCCEEDED",
+        marketplace: "ebay",
+        environment: "sandbox",
+        offerId: "offer-1",
+        listingId: "ebay-listing-1",
+      }),
+    );
+
+    expect(prisma._state.inventoryUpdates).toEqual([
+      { where: { id: "item-1" }, data: { status: "LISTED" } },
+    ]);
   });
 
   it("persists failure and leaves the listing published when eBay rejects delist", async () => {

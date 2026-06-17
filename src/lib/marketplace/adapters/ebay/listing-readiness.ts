@@ -53,6 +53,20 @@ function hasText(value: string | null | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+const unsafeSaleWordingPatterns = [
+  /\btest\b/i,
+  /do\s+not\s+buy/i,
+  /\bdummy\b/i,
+  /\bfake\b/i,
+  /\bplaceholder\b/i,
+  /not\s+for\s+sale/i,
+];
+
+function hasUnsafeSaleWording(...values: Array<string | null | undefined>) {
+  const text = values.filter(hasText).join(" ");
+  return unsafeSaleWordingPatterns.some((pattern) => pattern.test(text));
+}
+
 export function validateEbayListingReadiness(
   input: EbayListingReadinessInput,
 ): EbayListingReadinessResult {
@@ -69,6 +83,10 @@ export function validateEbayListingReadiness(
 
   if (!hasText(input.draft.description)) {
     missing.push("description");
+  }
+
+  if (hasUnsafeSaleWording(input.draft.title, input.draft.description)) {
+    missing.push("sale_wording");
   }
 
   if (

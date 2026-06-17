@@ -8,6 +8,7 @@ import {
 const productionEnv = {
   EBAY_ENV: "production",
   NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+  EBAY_PUBLIC_IMAGE_BUCKET: "ebay-public",
   // Deliberately set: the sandbox flag must never enable anything in production.
   EBAY_SANDBOX_PUBLISH_ENABLED: "true",
 };
@@ -29,7 +30,7 @@ function readyItem() {
         marketplaceDrafts: { ebay: { categoryId: "15709", quantity: 1 } },
       },
     ],
-    photos: [{ storageBucket: "b", storagePath: "p1.jpg" }],
+    photos: [{ storageBucket: "ebay-public", storagePath: "p1.jpg" }],
   };
 }
 
@@ -140,7 +141,7 @@ describe("preflightEbayListing", () => {
           "US Shoe Size": ["10"],
         },
         imageUrls: [
-          "https://project.supabase.co/storage/v1/object/public/b/p1.jpg",
+          "https://project.supabase.co/storage/v1/object/public/ebay-public/p1.jpg",
         ],
       },
     });
@@ -187,6 +188,26 @@ describe("preflightEbayListing", () => {
         "photo",
       ]),
     );
+  });
+
+  it("blocks private app photo buckets instead of sending private URLs to eBay", async () => {
+    const item = {
+      ...readyItem(),
+      photos: [{ storageBucket: "private-item-photos", storagePath: "raw/shirt.jpg" }],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.preview).toBeNull();
+    expect(result.missing).toEqual(
+      expect.arrayContaining(["ebay_public_photo"]),
+    );
+    expect(JSON.stringify(result)).not.toContain("private-item-photos");
   });
 
   it("uses the saved category override before any inference", async () => {
@@ -557,7 +578,11 @@ describe("preflightEbayListing", () => {
       preflightEbayListing(
         createPrisma(),
         { userId: "user-1", inventoryItemId: "item-1" },
-        { EBAY_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: "https://p.supabase.co" },
+        {
+          EBAY_ENV: "production",
+          NEXT_PUBLIC_SUPABASE_URL: "https://p.supabase.co",
+          EBAY_PUBLIC_IMAGE_BUCKET: "ebay-public",
+        },
       ),
     ).resolves.toMatchObject({ ready: true });
   });
@@ -576,6 +601,7 @@ describe("preflightEbayListing", () => {
     const sandboxEnv = {
       EBAY_ENV: "sandbox",
       NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+      EBAY_PUBLIC_IMAGE_BUCKET: "ebay-public",
       EBAY_SANDBOX_PUBLISH_ENABLED: "true",
     };
 

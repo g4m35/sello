@@ -20,6 +20,7 @@ import {
   type EbayInventoryItemPayload,
   type EbayOfferPayload,
 } from "./mapper";
+import { resolveEbayPhotoUrls } from "./media";
 import { preflightEbayListing } from "./preflight";
 import type { EbayConfig, EbayMarketplaceId } from "./types";
 
@@ -198,21 +199,6 @@ function ebayDraftFields(draft: DraftRow | undefined): {
   };
 }
 
-// Builds a public Supabase storage URL for an item photo. Returns null when the
-// Supabase base URL is unavailable so readiness flags the missing photo rather
-// than emitting a malformed URL to eBay.
-function resolvePhotoUrl(
-  photo: { storageBucket: string; storagePath: string },
-  env: EbayEnv,
-): string | null {
-  const base = env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!base || base.trim().length === 0) {
-    return null;
-  }
-  const trimmed = base.replace(/\/$/, "");
-  return `${trimmed}/storage/v1/object/public/${photo.storageBucket}/${photo.storagePath}`;
-}
-
 export async function publishEbayListing(
   prisma: EbayPublishPrismaLike,
   input: EbayPublishInput,
@@ -304,9 +290,7 @@ export async function publishEbayListing(
       ? savedCategoryId
       : preflight.preview.offer.categoryId;
   const resolvedQuantity = quantity ?? 1;
-  const photos = item.photos.map((photo) => ({
-    url: resolvePhotoUrl(photo, deps.env),
-  }));
+  const photos = resolveEbayPhotoUrls(item.photos, deps.env).photos;
 
   const readiness: EbayListingReadinessResult = validateEbayListingReadiness({
     userId: input.userId,

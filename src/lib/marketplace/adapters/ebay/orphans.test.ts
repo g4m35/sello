@@ -25,6 +25,7 @@ function createFakePrisma() {
       publishAttempts: [] as Array<{ status: string; code: string }>,
     },
     updates: [] as Array<Record<string, unknown>>,
+    inventoryUpdates: [] as Array<Record<string, unknown>>,
   };
 
   const prisma = {
@@ -40,6 +41,10 @@ function createFakePrisma() {
           colorway: "Brown",
           listingDrafts: [{ title: "Reverse Mocha" }],
         };
+      },
+      async update({ data }: { data: Record<string, unknown> }) {
+        state.inventoryUpdates.push(data);
+        return { id: "item-1" };
       },
     },
     marketplaceConnection: {
@@ -67,7 +72,11 @@ function createFakePrisma() {
       },
       async update({ data }: { data: Record<string, unknown> }) {
         state.updates.push(data);
+        if (typeof data.status === "string") state.listing.status = data.status;
         return { id: state.listing.id };
+      },
+      async findMany() {
+        return [{ status: state.listing.status }];
       },
     },
     publishAttempt: {
@@ -190,6 +199,36 @@ describe("eBay orphan publish artifact recovery", () => {
         "ebay_orphan_cleanup_succeeded",
       ]),
     );
+    expect(prisma._state.inventoryUpdates).toEqual([]);
+  });
+
+  it("syncs master status after cleanup when the channel is already delisted", async () => {
+    const prisma = createFakePrisma();
+    prisma._state.listing.status = "DELISTED";
+    const client = {
+      getInventoryItem: vi.fn().mockResolvedValue({ sku: "percsitem1" }),
+      getOffersBySku: vi
+        .fn()
+        .mockResolvedValue([{ offerId: "offer-1", status: "UNPUBLISHED" }]),
+      deleteOffer: vi.fn().mockResolvedValue(undefined),
+      deleteInventoryItem: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await cleanupEbayOrphanArtifacts(
+      prisma,
+      {
+        userId: "user-1",
+        inventoryItemId: "item-1",
+        confirmCleanup: true,
+      },
+      {
+        env: testEnv,
+        resolveAccessToken: vi.fn().mockResolvedValue("token"),
+        createClient: vi.fn().mockReturnValue(client),
+      },
+    );
+
+    expect(prisma._state.inventoryUpdates).toEqual([{ status: "DELISTED" }]);
   });
 
   it("allows cleanup for ended listing artifacts", async () => {
