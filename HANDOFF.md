@@ -12,6 +12,62 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-17 — Codex. **Full Auto Price Comps + marketplace image migration rolled
+out to production; auto-discovery remains enabled after manual validation.**
+Starting point was `develop` commit
+`1f6a8bc39ac9ff78d0f98fe8e87e04cc9463859e` (PR #37 merge). Latest `develop`
+gate passed before promotion: `npx prisma format`, `npx prisma validate`,
+`npm run lint` (same two existing `_m`/`_f` warnings in
+`src/app/api/listings/draft/draft-actions.test.ts`), `npx tsc --noEmit`,
+`npm test` (84 files / 554 tests), `npm run build`, and
+`npx prisma migrate status` (only pending migration was
+`20260617120000_add_marketplace_images`).
+
+Production migration deploy: `npm run db:deploy` applied
+`20260617120000_add_marketplace_images`; follow-up `npx prisma migrate status`
+reported `Database schema is up to date!`. No `prisma db push` was run.
+
+Production rollout commits/deployments:
+- `12b95c5` — `[deploy] Full Auto Price Comps production rollout`, Vercel
+  `dpl_6j6FztbNxHtrNLPH2pqc7nYmjP6N`.
+- `8649a92` — `[deploy] Allow manual comp refresh with auto discovery off`,
+  Vercel `dpl_HTctch2DCaxgX4KB3bpXQDWBSk6o`. This hotfix intentionally lets the
+  explicit seller Refresh comps route call paid providers while
+  `COMPS_AUTO_DISCOVERY_ENABLED=false`; draft auto-discovery stays gated.
+- `1323b26` — `[deploy] Enable comps auto discovery`, final live Vercel
+  deployment `dpl_CSNtFhJkFf31uD3eArBxPn95PzEY`,
+  `https://resale-crosslister-88a89441q-jaky.vercel.app`, target `production`,
+  status `Ready`, aliased to `https://sello.wtf`.
+
+Production env state verified by name only: `COMPS_APIFY_EBAY_SOLD_ENABLED`
+present/enabled, `APIFY_TOKEN` present, `APIFY_EBAY_SOLD_ACTOR` present,
+`COMPS_REFRESH_COOLDOWN_SECONDS=60`, `COMPS_AUTO_DISCOVERY_ENABLED=true`,
+`PRICE_COMP_AUTO_DISCOVERY_ENABLED=true`, eBay active comps disabled, SerpApi
+disabled, `EBAY_PRODUCTION_PUBLISH_ENABLED` absent, and
+`EBAY_PUBLIC_IMAGE_BUCKET` absent. Live eBay publishing therefore remains off;
+if publish were later re-enabled before the public image bucket is configured,
+readiness/preflight should still block on `ebay_public_photo`.
+
+Manual Refresh comps validation passed first on production with auto-discovery
+off. North Face item `9fa01f5b-77f6-4594-87fd-ef701d64564d`: 30 fetched,
+28 accepted, 2 rejected, 30 comp rows, high confidence, recommended price
+`14020` cents, rawJson stored, cooldown shown, no token-like text in logs/output.
+Manual-preservation validation then passed on shirt item
+`7d70b619-c473-40ca-b601-1a3956161862`: 30 fetched, 28 accepted, 2 rejected,
+31 total comp rows, 1 preserved manual row (`manual:controlled-live-publish`),
+29 rows used in pricing, high confidence, recommended price `2193` cents.
+Reloading item/detail and visiting inventory did not create new `CompSearchRun`
+rows.
+
+Auto-discovery was enabled only after manual Refresh passed. Created production
+draft item `5acdb635-1d42-46b9-bce9-dce3c751d9f8` from the black shirt photo;
+draft generation succeeded, then one auto comp run started after draft creation:
+30 fetched, 23 accepted, 7 rejected, 30 comp rows, high confidence, recommended
+price `1430` cents, status `auto_priced`, rawJson stored, cooldown shown in UI.
+Passive reload/detail/inventory checks kept the run count at 1. Vercel error
+logs for the final deployment showed 0 error-level records, no fatal records,
+and no token-like text.
+
 2026-06-17 — Codex. **PR #35 post-eBay-run stabilization deployed to production.**
 PR #35 (`feature/post-ebay-run-polish`) was merged into `develop` at
 `b5a79033afcf49d86662eab3fda61062c435d3e6`, promoted to `main`, and deployed
@@ -990,16 +1046,15 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Production code deployment is
-  `dpl_2V27PtRar6na8Bq2W656xN4ywmpq` from main commit `c8fd322`; a later
-  HANDOFF-only commit may be on top of `origin/main` without a production
-  redeploy.
-  `jaky/resale-crosslister`), `origin/main` currently includes the live
-  publish/cleanup run commits through `62e5e45`; a HANDOFF-only closeout commit
-  may be on top if this file was just pushed.
-- Current working branch: `feature/full-auto-price-comps` / PR #37 into
-  `develop`, open and intentionally not merged/deployed. Live Apify provider
-  validation and DB-backed comp persistence validation have passed with no
-  secrets printed and temporary DB rows cleaned up.
+  `dpl_CSNtFhJkFf31uD3eArBxPn95PzEY` from main commit `1323b26`, aliased to
+  `https://sello.wtf`; later HANDOFF-only commits may be on top of `origin/main`
+  without a production redeploy.
+- PR #36 marketplace-image migration
+  `20260617120000_add_marketplace_images` is applied in production and Prisma
+  migration status is up to date.
+- PR #37 Full Auto Price Comps is merged, promoted, and live. Production
+  manual Refresh comps and draft auto-discovery both validated successfully
+  against Apify eBay sold comps. Auto-discovery remains enabled after validation.
 - Production eBay OAuth/readiness and guarded live publish path are working.
   `EBAY_PRODUCTION_PUBLISH_ENABLED` is currently absent from Vercel Production,
   so production publish is blocked/hidden again by default.
@@ -1012,19 +1067,33 @@ on auth.ebay.com.
 - PR #35 stabilization is deployed: master lifecycle sync is fixed for eBay
   publish/delist, passive detail loads no longer trigger external comp provider
   fetches, and obvious unsafe eBay non-sale wording is blocked in readiness.
-- Public Supabase bucket `sello-ebay-public-listing-photos` exists from the
-  live run for the controlled eBay-visible shirt photo, but Vercel Production
-  does not currently have `EBAY_PUBLIC_IMAGE_BUCKET` configured. eBay publish is
-  therefore disabled by `EBAY_PRODUCTION_PUBLISH_ENABLED` being absent, and would
-  also block on `ebay_public_photo` if the publish flag were enabled first.
+- `EBAY_PUBLIC_IMAGE_BUCKET` is still absent from Vercel Production. eBay
+  publish is disabled by `EBAY_PRODUCTION_PUBLISH_ENABLED` being absent, and
+  would also block on `ebay_public_photo` if the publish flag were enabled before
+  public image storage is configured.
 
 ## Shipped to prod (all live now)
-- Full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
+- Full app UI, Phase 0, Full Auto Price Comps with Apify eBay sold provider
+  (manual Refresh and draft auto-discovery enabled).
 - T1–T7 (lifecycle mark-sold/delist, responsive layout, auto-fetch comps, inventory
   grid/sort/pagination, photo set-cover, consistent loading/error states, tests).
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-17 (Codex): rolled out Full Auto Price Comps and the pending PR #36
+  media migration to production. Applied
+  `20260617120000_add_marketplace_images` with `npm run db:deploy`; production
+  Prisma migration status is up to date. Final live deployment:
+  `dpl_CSNtFhJkFf31uD3eArBxPn95PzEY`, main `1323b26`, aliased to `sello.wtf`.
+  Manual Refresh validation passed first with auto-discovery off (North Face:
+  30 fetched / 28 accepted / 2 rejected / high confidence / `14020` cents;
+  black shirt with preserved manual comp: 30 fetched / 28 accepted / 2 rejected /
+  31 total rows / high confidence / `2193` cents). Auto-discovery was then
+  enabled and validated on new draft item
+  `5acdb635-1d42-46b9-bce9-dce3c751d9f8` (30 fetched / 23 accepted /
+  7 rejected / high confidence / `1430` cents). Passive reload/detail/inventory
+  checks did not create new comp runs. Final Vercel error logs: 0 error-level
+  records, no fatal records, no token-like text.
 - 2026-06-17 (Codex): deployed PR #35 stabilization to production. PR merged
   into `develop` at `b5a7903`, promoted to `main`, empty `[deploy]` trigger
   `c8fd322` produced Vercel deployment `dpl_2V27PtRar6na8Bq2W656xN4ywmpq`
@@ -1064,15 +1133,16 @@ on auth.ebay.com.
 ## Blocked on owner (credentials / decisions — not code)
 - **Live eBay publishing:** working, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED`
   absent unless the owner explicitly approves another controlled live run.
-- **Comp source policy:** production has eBay Browse auto comps enabled, but
-  passive item-detail loads no longer call `runCompFetch`; provider fetches
-  remain behind explicit refresh/admin/job paths.
-- **PR #37 merge/deploy decision:** full-auto price comps are validated locally
-  and against live Apify, but PR #37 is still open by instruction. Merge/deploy
-  needs explicit owner approval.
-- **Comp source production rollout:** production/provider env should be set only
-  deliberately. Keep `COMPS_AUTO_DISCOVERY_ENABLED=false` until the owner wants
-  automatic paid provider calls after draft generation.
+- **eBay public image bucket:** `EBAY_PUBLIC_IMAGE_BUCKET` is still absent from
+  Vercel Production. Do not re-enable live eBay publish until the public bucket
+  is configured and readiness/preflight proves durable eBay-visible image URLs.
+- **Comp provider spend/quality:** Apify eBay sold comps are live for manual
+  Refresh and draft auto-discovery. Watch Apify usage and result quality; turn
+  `COMPS_AUTO_DISCOVERY_ENABLED=false` if costs, noise, or latency become a
+  concern.
+- **Production validation draft:** item
+  `5acdb635-1d42-46b9-bce9-dce3c751d9f8` was created for auto-discovery smoke
+  and remains in production unless the owner wants it archived/deleted.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
@@ -1080,23 +1150,18 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Productize the full eBay-visible derivative media pipeline from
-   `docs/EBAY_MEDIA_PIPELINE_PLAN.md` with an additive migration and explicit
-   production approval before applying it.
-2. Add `EBAY_PUBLIC_IMAGE_BUCKET` to Vercel Production only when the derivative
-   media path is ready; until then eBay publish should remain disabled.
-3. Continue security follow-ups: externalUserId binding, real eBay deletion
-1. Final review PR #37 (`feature/full-auto-price-comps`) and merge to `develop`
-   only after owner approval; do not deploy as part of the review by default.
-2. Decide the staged provider rollout: set Apify/COMPS vars in staging first,
-   keep `COMPS_AUTO_DISCOVERY_ENABLED=false`, then enable auto-discovery only
-   after cost/rate behavior is accepted.
-3. Productize the full eBay-visible derivative media pipeline from
-   `docs/EBAY_MEDIA_PIPELINE_PLAN.md` with an additive migration and explicit
-   production approval before applying it.
-4. Continue security follow-ups: externalUserId binding, real eBay deletion
+1. Monitor Apify cost/latency/quality now that draft auto-discovery is live;
+   disable `COMPS_AUTO_DISCOVERY_ENABLED` if it is noisy or expensive.
+2. Configure `EBAY_PUBLIC_IMAGE_BUCKET` in Vercel Production only after the
+   public Supabase derivative bucket settings are confirmed, then run eBay media
+   readiness without enabling live publish.
+3. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+   controlled live eBay run.
+4. Clean up or archive the production validation draft item
+   `5acdb635-1d42-46b9-bce9-dce3c751d9f8` if the owner does not want it retained.
+5. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-5. Stripe subscriptions and background worker host + inventory sync.
+6. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).
