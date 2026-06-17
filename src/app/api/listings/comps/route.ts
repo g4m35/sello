@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import type { Prisma } from "@/generated/prisma/client";
+import {
+  compsRefreshCooldownMs,
+  evaluateRefreshCooldown,
+} from "@/lib/comps/cooldown";
 import { isAutoDiscoveryEnabled } from "@/lib/comps/fetch";
 import { enabledCompSources } from "@/lib/comps/registry";
 import { AppError, getErrorMessage } from "@/lib/errors";
@@ -58,6 +62,11 @@ export async function GET(request: Request) {
     ]);
     const summary = summarizeComps(comps);
     const enabledSources = enabledCompSources().map((source) => source.id);
+    const cooldown = evaluateRefreshCooldown({
+      lastRunAt: lastRun?.createdAt ?? null,
+      now: new Date(),
+      cooldownMs: compsRefreshCooldownMs(),
+    });
 
     return NextResponse.json({
       inventoryItemId: inventoryItem.id,
@@ -80,6 +89,7 @@ export async function GET(request: Request) {
         lastRunAt: lastRun?.createdAt ?? null,
         acceptedCount: lastRun?.acceptedCount ?? null,
         rejectedCount: lastRun?.rejectedCount ?? null,
+        cooldownSecondsRemaining: cooldown.allowed ? 0 : cooldown.retryAfterSeconds,
       },
     });
   } catch (error) {
