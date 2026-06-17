@@ -1136,25 +1136,37 @@ on auth.ebay.com.
 
 ## Shipped to prod (all live now)
 - Full app UI, Phase 0, Full Auto Price Comps with Apify eBay sold provider
-  (manual Refresh enabled; draft auto-discovery disabled by cost/quality
-  decision).
+  (manual Refresh enabled; draft auto-discovery enabled only for strong
+  identity items under strict Apify caps).
 - T1–T7 (lifecycle mark-sold/delist, responsive layout, auto-fetch comps, inventory
   grid/sort/pagination, photo set-cover, consistent loading/error states, tests).
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
-- 2026-06-17 (Codex): started Comp Cost + Confidence Hardening on
-  `feature/comp-confidence-cost-controls` (not deployed, not merged). Added
-  conservative comp cost controls (`COMPS_MAX_PROVIDER_RESULTS=20`,
-  `COMPS_MAX_QUERY_VARIANTS=2`, `COMPS_AUTO_MIN_IDENTITY_CONFIDENCE=0.55`),
-  automatic weak-identity skip for generic draft-triggered paid comp runs,
-  Apify request/result caps, stricter match scoring for generic apparel and
-  size mismatches, confidence caps for possible-only / wide-spread / low-count
-  sold comps, medium-confidence "needs review" copy, a paid-provider refresh
-  warning, and eBay no-photo preflight mapping to `ebay_public_photo`. No
-  migration added. Production env should remain
-  `COMPS_AUTO_DISCOVERY_ENABLED=false` until this PR is reviewed, merged,
-  deployed, and manual Refresh quality/cost is revalidated.
+- 2026-06-17 (Codex): reviewed, merged, and deployed PR #38 Comp Cost +
+  Confidence Hardening. PR merge commit `507a91e`; final main commit
+  `908bded`; final production deployment
+  `dpl_J9X8eo53dH1muXsjGfucyvciKUGe` is READY and aliased to `sello.wtf`.
+  Gates passed on PR branch and main: prisma format/validate, lint (same two
+  existing warnings in `draft-actions.test.ts`), tsc, 571 tests, build, migrate
+  status. No migration added. Final production env: `COMPS_AUTO_DISCOVERY_ENABLED=true`,
+  `COMPS_APIFY_EBAY_SOLD_ENABLED=true`, `COMPS_MAX_PROVIDER_RESULTS=10`,
+  `COMPS_MAX_QUERY_VARIANTS=1`, `COMPS_AUTO_MIN_IDENTITY_CONFIDENCE=0.85`,
+  `COMPS_REFRESH_COOLDOWN_SECONDS=60`, `COMPS_EBAY_ACTIVE_ENABLED=false`,
+  `COMPS_SERPAPI_EBAY_ACTIVE_ENABLED=false`, and
+  `EBAY_PRODUCTION_PUBLISH_ENABLED` absent. Production validation: generic
+  black shirt `7d70b619-c473-40ca-b601-1a3956161862` skipped with
+  `skipped_weak_identity`, zero provider calls, and one query; branded North
+  Face item `9fa01f5b-77f6-4594-87fd-ef701d64564d` ran Apify with final caps
+  (10 fetched / 6 accepted / 4 rejected), medium confidence, recommended price
+  `13146` cents, cooldown visible in UI, and passive dashboard/inventory/detail
+  navigation created no extra runs. Apify run cost stayed high at about
+  `$0.3201` even with `maxItems=10` (previous same-day reference `$0.3641`),
+  so auto-discovery remains enabled only because the identity gate is now
+  strict; monitor spend closely. Chrome file upload permission blocked a fresh
+  new-photo AI draft validation, so the auto path was validated by controlled
+  production-backed `runCompFetch` calls rather than a new uploaded item. Vercel
+  recent log scan found no error/fatal/500/token-like lines.
 - 2026-06-17 (Codex): monitored post-auto-comps production, disabled
   auto-discovery, cleaned validation data, and configured the eBay public image
   bucket. One auto run since deployment: 30 fetched / 23 accepted / 7 rejected /
@@ -1224,10 +1236,10 @@ on auth.ebay.com.
   derivative preflight passed, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent
   unless the owner explicitly approves another controlled live run.
 - **Comp provider spend/quality:** Apify eBay sold comps are live only for
-  manual Refresh. Draft auto-discovery is disabled because the observed cost per
-  auto run was about `$0.3641`; keep it disabled until
-  `feature/comp-confidence-cost-controls` lands and production manual Refresh is
-  revalidated with the lower caps.
+  manual Refresh and very strong auto-discovery candidates. Draft auto-discovery
+  is enabled, but Apify still costs about `$0.32` per paid run even at
+  `COMPS_MAX_PROVIDER_RESULTS=10`; find a cheaper sold-comp source/actor or add
+  budget controls before increasing volume.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
@@ -1235,8 +1247,9 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
-   revalidate manual Refresh before considering draft auto-discovery again.
+1. Add a hard daily/weekly Apify budget or per-seller auto-run quota before any
+   larger intake flow; current per-paid-run cost is still too high for Bulk
+   Intake scale.
 2. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
 3. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
