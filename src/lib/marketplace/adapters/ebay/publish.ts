@@ -20,7 +20,7 @@ import {
   type EbayInventoryItemPayload,
   type EbayOfferPayload,
 } from "./mapper";
-import { resolveEbayPhotoUrls } from "./media";
+import type { EbayMediaPrismaLike, EbayStorageLike } from "./media";
 import { preflightEbayListing } from "./preflight";
 import type { EbayConfig, EbayMarketplaceId } from "./types";
 
@@ -49,7 +49,14 @@ type ItemRow = {
   size: string | null;
   colorway: string | null;
   listingDrafts: DraftRow[];
-  photos: { storageBucket: string; storagePath: string }[];
+  photos: {
+    id: string;
+    storageBucket: string;
+    storagePath: string;
+    mimeType?: string;
+    originalName?: string;
+    position?: number;
+  }[];
 };
 
 type ConnectionRow = {
@@ -70,7 +77,7 @@ type SellerConfigRow = {
   merchantLocationKey: string | null;
 } | null;
 
-export type EbayPublishPrismaLike = {
+export type EbayPublishPrismaLike = EbayMediaPrismaLike & {
   inventoryItem: {
     findFirst(args: {
       where: { id: string; sellerId: string };
@@ -121,6 +128,10 @@ export type EbayPublishDeps = {
     marketplaceId: EbayMarketplaceId,
     environment: "sandbox" | "production",
   ) => EbayPublishClient;
+  media?: {
+    storage?: EbayStorageLike;
+    randomId?: () => string;
+  };
 };
 
 export type EbayPublishInput = {
@@ -232,7 +243,9 @@ export async function publishEbayListing(
 
   const config = getEbayConfig(deps.env);
 
-  const preflight = await preflightEbayListing(prisma, input, deps.env);
+  const preflight = await preflightEbayListing(prisma, input, deps.env, {
+    media: deps.media,
+  });
   if (!preflight.ready || !preflight.preview) {
     if (preflight.missing.includes("ebay_connection")) {
       throw new EbayIntegrationError(
@@ -290,7 +303,9 @@ export async function publishEbayListing(
       ? savedCategoryId
       : preflight.preview.offer.categoryId;
   const resolvedQuantity = quantity ?? 1;
-  const photos = resolveEbayPhotoUrls(item.photos, deps.env).photos;
+  const photos = preflight.preview.inventoryItem.product.imageUrls.map((url) => ({
+    url,
+  }));
 
   const readiness: EbayListingReadinessResult = validateEbayListingReadiness({
     userId: input.userId,
