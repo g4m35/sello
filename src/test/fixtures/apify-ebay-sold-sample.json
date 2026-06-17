@@ -1,0 +1,39 @@
+[
+  {
+    "itemId": "v1|296123456789|0",
+    "title": "The North Face Nuptse 700 Black Puffer Jacket Mens Large",
+    "soldPrice": "$182.50",
+    "shippingPrice": "9.99",
+    "soldDate": "2026-06-04",
+    "itemUrl": "https://www.ebay.com/itm/296123456789",
+    "image": "https://i.ebayimg.com/images/g/abc/s-l500.jpg",
+    "condition": "Pre-owned",
+    "brand": "The North Face",
+    "size": "L"
+  },
+  {
+    "id": "296987654321",
+    "title": "TNF Nuptse Black Puffer M Excellent",
+    "price": { "value": "165.00", "currency": "USD" },
+    "url": "https://www.ebay.com/itm/296987654321",
+    "endDate": "2026-05-21T00:00:00.000Z",
+    "condition": "Pre-owned - Excellent"
+  },
+  {
+    "title": "North Face Nuptse 1996 Black Large NWT",
+    "soldPrice": 240,
+    "soldDate": "2026-06-10",
+    "link": "https://www.ebay.com/itm/295111222333",
+    "thumbnail": "https://i.ebayimg.com/images/g/xyz/s-l225.jpg",
+    "condition": "New with tags"
+  },
+  {
+    "title": "Wrong currency listing",
+    "price": { "value": "150.00", "currency": "GBP" },
+    "url": "https://www.ebay.co.uk/itm/1"
+  },
+  {
+    "title": "No price item",
+    "url": "https://www.ebay.com/itm/2"
+  }
+]

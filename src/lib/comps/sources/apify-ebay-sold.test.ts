@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -74,6 +77,26 @@ describe("mapApifyEbaySoldItems", () => {
       shippingCents: 0,
       sold: true,
     });
+  });
+
+  it("maps a realistic sanitized actor payload fixture", () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        join(process.cwd(), "src/test/fixtures/apify-ebay-sold-sample.json"),
+        "utf8",
+      ),
+    ) as unknown[];
+
+    const comps = mapApifyEbaySoldItems(fixture, query);
+
+    // 3 usable USD-priced items; the GBP and the price-less rows are dropped.
+    expect(comps).toHaveLength(3);
+    expect(comps.every((c) => c.sold === true && c.currency === "USD")).toBe(true);
+    expect(comps.map((c) => c.priceCents)).toEqual([18250, 16500, 24000]);
+    expect(comps[0].soldDate).toMatch(/^2026-06-04/);
+    expect(comps[2].condition).toBe("new_with_tags");
+    // Raw payload is preserved per comp for debugging.
+    expect(comps[0].rawJson).toEqual(fixture[0]);
   });
 
   it("skips items with no usable price or title", () => {

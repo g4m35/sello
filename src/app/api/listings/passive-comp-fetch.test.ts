@@ -22,6 +22,12 @@ describe("no passive comp fetch on detail/editor load", () => {
     expect(sql).not.toContain("runCompFetch");
   });
 
+  it("the inventory list route never calls runCompFetch (no fetch on dashboard/inventory load)", () => {
+    const sql = source("src/app/api/listings/route.ts");
+    expect(sql).not.toContain("runCompFetch");
+    expect(sql).not.toContain("enabledCompSources");
+  });
+
   it("auto comp fetching is wired only to the draft and refresh POST routes", () => {
     expect(source("src/app/api/listings/draft/route.ts")).toContain("runCompFetch");
     expect(source("src/app/api/listings/comps/refresh/route.ts")).toContain("runCompFetch");
