@@ -12,6 +12,64 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-17 — Codex. **Post-auto-comps monitoring completed; auto-discovery
+disabled for cost/quality; eBay public image bucket configured and derivative
+preflight validated without live publish.**
+
+Monitoring window started at production deployment
+`dpl_CSNtFhJkFf31uD3eArBxPn95PzEY` (`2026-06-17T16:58:03Z`). Production DB had
+one post-deploy auto-discovery run before cleanup: status `auto_priced`, source
+`apify-ebay-sold`, 30 fetched, 23 accepted, 7 rejected, high confidence,
+recommended price `1430` cents, no provider errors. Passive GET check loaded
+inventory, detail/editor, and dashboard in the signed-in Chrome session; the
+`CompSearchRun` count stayed unchanged. Vercel logs had 0 error-level records
+and no token-like strings. The PriceComp panel showed manual Refresh still
+available.
+
+Apify cost sanity: Apify API showed the single post-deploy actor run
+`SUCCEEDED` and cost about `$0.3641`. That is too expensive for automatic calls
+on every draft. Quality review also showed all accepted comps for the unbranded
+black shirt were only `possible` matches while the panel still reported high
+confidence; several rejected higher-end/branded shirts were correctly filtered
+as outliers. Decision: disable auto-discovery in Production and keep explicit
+manual Refresh enabled. Production envs `COMPS_AUTO_DISCOVERY_ENABLED=false` and
+`PRICE_COMP_AUTO_DISCOVERY_ENABLED=false` were set without printing values, then
+deployed via `06acb28` (`[deploy] Disable comps auto discovery by default`),
+Vercel `dpl_7YQvTkvZg8kjH5JMf3NUsKPV7FS2`.
+
+Validation draft cleanup: item `5acdb635-1d42-46b9-bce9-dce3c751d9f8` was
+confirmed disposable (draft, no marketplace listings, no marketplace images),
+then removed. Cascaded cleanup verified: item/photos/draft/30 comps/1 comp run
+all at 0 afterward.
+
+eBay public image bucket rollout prep: Supabase bucket
+`sello-ebay-public-listing-photos` already existed, public read enabled, allowed
+MIME types JPEG/PNG/WEBP, separate from private `listing-photos`. Storage policy
+check showed no client write policies on `storage.objects`; service-role upload
+worked, public read returned 200, and anonymous upload was denied. Production
+`EBAY_PUBLIC_IMAGE_BUCKET=sello-ebay-public-listing-photos` was set without
+printing values and deployed via `ebd91e7`
+(`[deploy] Configure eBay public image bucket`), final live Vercel deployment
+`dpl_8WGo6XPBjUKRdQLMyrKnXF7w3onB`,
+`https://resale-crosslister-6sajherwn-jaky.vercel.app`, target `production`,
+status `Ready`, aliased to `https://sello.wtf`.
+
+Derivative validation without live publish: ran production eBay preflight helper
+against approved North Face item `9fa01f5b-77f6-4594-87fd-ef701d64564d`, whose
+original photo is private bucket `listing-photos`. Preflight returned ready,
+created one production `MarketplaceImage` row, generated an opaque public path
+under `ebay/production/...`, public URL returned 200, and the preflight payload
+used the public bucket URL only: no private bucket, no private storage path, and
+no original filename. A temporary no-photo item was created and deleted to check
+blocking behavior; it blocked clearly, but the current missing id is the generic
+`photo` check rather than `ebay_public_photo`.
+
+Final Production env state by name: `COMPS_APIFY_EBAY_SOLD_ENABLED` present,
+Apify token/actor present, `COMPS_AUTO_DISCOVERY_ENABLED=false`,
+`PRICE_COMP_AUTO_DISCOVERY_ENABLED=false`, eBay active comps disabled, SerpApi
+disabled, `EBAY_PUBLIC_IMAGE_BUCKET` present, and
+`EBAY_PRODUCTION_PUBLISH_ENABLED` absent. Live eBay publishing remains disabled.
+
 2026-06-17 — Codex. **Full Auto Price Comps + marketplace image migration rolled
 out to production; auto-discovery remains enabled after manual validation.**
 Starting point was `develop` commit
@@ -1046,15 +1104,18 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Production code deployment is
-  `dpl_CSNtFhJkFf31uD3eArBxPn95PzEY` from main commit `1323b26`, aliased to
+  `dpl_8WGo6XPBjUKRdQLMyrKnXF7w3onB` from main commit `ebd91e7`, aliased to
   `https://sello.wtf`; later HANDOFF-only commits may be on top of `origin/main`
   without a production redeploy.
 - PR #36 marketplace-image migration
   `20260617120000_add_marketplace_images` is applied in production and Prisma
   migration status is up to date.
 - PR #37 Full Auto Price Comps is merged, promoted, and live. Production
-  manual Refresh comps and draft auto-discovery both validated successfully
-  against Apify eBay sold comps. Auto-discovery remains enabled after validation.
+  manual Refresh comps validated successfully against Apify eBay sold comps.
+  Draft auto-discovery also validated, but was disabled afterward because the
+  observed Apify cost was about `$0.3641` for one draft run and quality was only
+  possible-match level while reporting high confidence. Manual Refresh remains
+  enabled.
 - Production eBay OAuth/readiness and guarded live publish path are working.
   `EBAY_PRODUCTION_PUBLISH_ENABLED` is currently absent from Vercel Production,
   so production publish is blocked/hidden again by default.
@@ -1067,19 +1128,35 @@ on auth.ebay.com.
 - PR #35 stabilization is deployed: master lifecycle sync is fixed for eBay
   publish/delist, passive detail loads no longer trigger external comp provider
   fetches, and obvious unsafe eBay non-sale wording is blocked in readiness.
-- `EBAY_PUBLIC_IMAGE_BUCKET` is still absent from Vercel Production. eBay
-  publish is disabled by `EBAY_PRODUCTION_PUBLISH_ENABLED` being absent, and
-  would also block on `ebay_public_photo` if the publish flag were enabled before
-  public image storage is configured.
+- `EBAY_PUBLIC_IMAGE_BUCKET` is configured in Vercel Production as
+  `sello-ebay-public-listing-photos`. The bucket has public read, server/service
+  writes, and production preflight created a public derivative from a private
+  original photo. Live eBay publish is still disabled because
+  `EBAY_PRODUCTION_PUBLISH_ENABLED` remains absent.
 
 ## Shipped to prod (all live now)
 - Full app UI, Phase 0, Full Auto Price Comps with Apify eBay sold provider
-  (manual Refresh and draft auto-discovery enabled).
+  (manual Refresh enabled; draft auto-discovery disabled by cost/quality
+  decision).
 - T1–T7 (lifecycle mark-sold/delist, responsive layout, auto-fetch comps, inventory
   grid/sort/pagination, photo set-cover, consistent loading/error states, tests).
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-17 (Codex): monitored post-auto-comps production, disabled
+  auto-discovery, cleaned validation data, and configured the eBay public image
+  bucket. One auto run since deployment: 30 fetched / 23 accepted / 7 rejected /
+  high confidence / `1430` cents / no provider errors. Apify run cost about
+  `$0.3641`, so `COMPS_AUTO_DISCOVERY_ENABLED=false` and
+  `PRICE_COMP_AUTO_DISCOVERY_ENABLED=false` were deployed in
+  `dpl_7YQvTkvZg8kjH5JMf3NUsKPV7FS2`; manual Refresh remains available. Deleted
+  validation draft `5acdb635-1d42-46b9-bce9-dce3c751d9f8` and verified cascaded
+  DB cleanup. Configured `EBAY_PUBLIC_IMAGE_BUCKET` to
+  `sello-ebay-public-listing-photos` and deployed
+  `dpl_8WGo6XPBjUKRdQLMyrKnXF7w3onB`. Derivative preflight on private-photo
+  North Face item created one production `MarketplaceImage` row with a public
+  URL returning 200; payload did not expose private bucket/path/original
+  filename. Live eBay publish flag remains absent.
 - 2026-06-17 (Codex): rolled out Full Auto Price Comps and the pending PR #36
   media migration to production. Applied
   `20260617120000_add_marketplace_images` with `npm run db:deploy`; production
@@ -1131,18 +1208,14 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
-- **Live eBay publishing:** working, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED`
-  absent unless the owner explicitly approves another controlled live run.
-- **eBay public image bucket:** `EBAY_PUBLIC_IMAGE_BUCKET` is still absent from
-  Vercel Production. Do not re-enable live eBay publish until the public bucket
-  is configured and readiness/preflight proves durable eBay-visible image URLs.
-- **Comp provider spend/quality:** Apify eBay sold comps are live for manual
-  Refresh and draft auto-discovery. Watch Apify usage and result quality; turn
-  `COMPS_AUTO_DISCOVERY_ENABLED=false` if costs, noise, or latency become a
-  concern.
-- **Production validation draft:** item
-  `5acdb635-1d42-46b9-bce9-dce3c751d9f8` was created for auto-discovery smoke
-  and remains in production unless the owner wants it archived/deleted.
+- **Live eBay publishing:** `EBAY_PUBLIC_IMAGE_BUCKET` is now configured and
+  derivative preflight passed, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent
+  unless the owner explicitly approves another controlled live run.
+- **Comp provider spend/quality:** Apify eBay sold comps are live only for
+  manual Refresh. Draft auto-discovery is disabled because the observed cost per
+  auto run was about `$0.3641` and quality needs scoring/confidence tuning.
+- **No-photo preflight label:** a no-photo preflight blocks clearly, but the
+  current missing id is generic `photo`, not `ebay_public_photo`.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
@@ -1150,15 +1223,15 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Monitor Apify cost/latency/quality now that draft auto-discovery is live;
-   disable `COMPS_AUTO_DISCOVERY_ENABLED` if it is noisy or expensive.
-2. Configure `EBAY_PUBLIC_IMAGE_BUCKET` in Vercel Production only after the
-   public Supabase derivative bucket settings are confirmed, then run eBay media
-   readiness without enabling live publish.
-3. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+1. Tune Full Auto Price Comps scoring/confidence before re-enabling draft
+   auto-discovery: avoid high confidence when all accepted comps are only
+   possible matches, and add cost controls/budgets.
+2. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
-4. Clean up or archive the production validation draft item
-   `5acdb635-1d42-46b9-bce9-dce3c751d9f8` if the owner does not want it retained.
+3. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+   UI and verify the public derivative row is reused for the target item.
+4. Consider mapping the no-photo preflight miss to `ebay_public_photo` if the UI
+   copy expects that specific id.
 5. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
 6. Stripe subscriptions and background worker host + inventory sync.
