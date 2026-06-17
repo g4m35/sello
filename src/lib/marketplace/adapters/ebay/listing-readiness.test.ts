@@ -52,6 +52,15 @@ describe("validateEbayListingReadiness", () => {
     expect(result.missing).toContain("title");
   });
 
+  it("blocks policy-unsafe non-sale wording before any eBay API call", () => {
+    const input = baseInput();
+    input.draft.title = "Sello Test Listing Do Not Buy";
+    input.draft.description = "Placeholder item for testing.";
+    const result = validateEbayListingReadiness(input);
+    expect(result.ready).toBe(false);
+    expect(result.missing).toContain("sale_wording");
+  });
+
   it("flags a missing description", () => {
     const input = baseInput();
     input.draft.description = "";

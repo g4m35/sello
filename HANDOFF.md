@@ -12,6 +12,35 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-16 — Codex. **Post-eBay-run stabilization pass implemented on `feature/post-ebay-run-polish`; no deploy, no production migration.**
+Branch was created from latest `develop` after fast-forwarding the live-run
+`main` closeout back into `develop`. Changes made:
+
+- Added shared marketplace lifecycle sync helper. Successful eBay publish now
+  updates master `InventoryItem.status` to `LISTED`; successful eBay delist
+  updates the eBay channel to `DELISTED` and sets master status to `DELISTED`
+  only when no active marketplace channels remain, otherwise keeps master
+  `LISTED`. Orphan cleanup syncs only when channel state already proves the item
+  is/was delisted, so failed unpublished cleanup does not demote an approved item.
+- Added eBay sale-wording guard in readiness/preflight for obvious non-sale
+  wording: `test`, `do not buy`, `dummy`, `fake`, `placeholder`,
+  `not for sale`; UI labels this as `Normal sale wording`.
+- Removed passive external comp fetching from `GET /api/listings/[id]`. External
+  providers now stay behind explicit refresh/admin/job paths; the existing
+  explicit `POST /api/listings/comps/refresh` path remains seller-scoped.
+- Added eBay media guard: preflight/publish only accept photos in configured
+  public marketplace bucket `EBAY_PUBLIC_IMAGE_BUCKET`; private item-photo
+  buckets are blocked with `ebay_public_photo` before any eBay API call. Full
+  derivative pipeline plan is in `docs/EBAY_MEDIA_PIPELINE_PLAN.md`; no schema
+  migration was created.
+
+Gates run on this branch: `npx prisma format`, `npx prisma validate`,
+`npm run lint` (pass with the same two pre-existing `_m`/`_f` warnings in
+`src/app/api/listings/draft/draft-actions.test.ts`), `npx tsc --noEmit`,
+`npm test` (77 files / 511 tests), `npm run build`, and
+`npx prisma migrate status` (`Database schema is up to date!`).
+
+## Previous update
 2026-06-16 — Codex. **First policy-safe Sello live eBay publish succeeded, duplicate guard verified, listing ended, orphan cleanup clean, production flag OFF.**
 Controlled item:
 `7d70b619-c473-40ca-b601-1a3956161862` / draft
@@ -796,12 +825,13 @@ on auth.ebay.com.
   cleaned, and the final eBay scan was clean.
 - Cleanup scanner fix is live: ended/unpublished offers are cleanup candidates;
   only `PUBLISHED` offers or `ACTIVE` listing status count as live.
-- Public Supabase bucket `sello-ebay-public-listing-photos` exists from this run
-  for the controlled eBay-visible shirt photo. Normal uploads still use the
-  private listing-photo bucket unless future code changes formalize this.
-- Remaining known runtime/state gap: master `InventoryItem.status` stayed
-  `APPROVED` while the eBay channel row moved `LISTED` -> `DELISTED`; channel
-  state is correct, but master lifecycle sync is still worth fixing.
+- On branch `feature/post-ebay-run-polish`, master lifecycle sync is fixed for
+  eBay publish/delist and passive detail loads no longer trigger external comp
+  provider fetches. This branch is not deployed or merged yet.
+- Public Supabase bucket `sello-ebay-public-listing-photos` exists from the
+  live run for the controlled eBay-visible shirt photo. The stabilization branch
+  adds a guard requiring `EBAY_PUBLIC_IMAGE_BUCKET` for eBay preflight/publish,
+  but the full reusable public derivative image pipeline remains future work.
 
 ## Shipped to prod (all live now)
 - Full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
@@ -810,6 +840,13 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-16 (Codex): post-eBay-run stabilization on
+  `feature/post-ebay-run-polish` (not deployed): shared master/channel lifecycle
+  sync, eBay public-photo guard + derivative pipeline plan, passive detail route
+  no longer auto-fetches comps, explicit comp refresh remains seller-scoped, and
+  eBay readiness blocks obvious non-sale/test wording. Gates green: prisma
+  format/validate, lint (same 2 known warnings), tsc, 511 tests, build, migrate
+  status.
 - 2026-06-16 (Codex): first policy-safe live eBay publish through Sello
   succeeded for `Black Cotton T-Shirt Size Medium`; duplicate guard returned
   typed 409; Sello delist succeeded; fixed ended-offer cleanup detection; guarded
@@ -834,9 +871,10 @@ on auth.ebay.com.
 ## Blocked on owner (credentials / decisions — not code)
 - **Live eBay publishing:** working, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED`
   absent unless the owner explicitly approves another controlled live run.
-- **Comp source policy:** production has eBay Browse auto comps enabled. Be careful:
-  opening detail routes can trigger `runCompFetch`. Disable or guard this before
-  any run where the owner says no external comp collection.
+- **Comp source policy:** production has eBay Browse auto comps enabled. On
+  `feature/post-ebay-run-polish`, passive item-detail loads no longer call
+  `runCompFetch`; provider fetches remain behind explicit refresh/admin/job
+  paths.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
@@ -844,17 +882,14 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Fix master lifecycle sync for live publish/delist so `InventoryItem.status`
-   tracks channel state intentionally, or explicitly document why the master item
-   remains `APPROVED` after an eBay delist.
-2. Formalize the eBay-visible media path: either upload publishable photos to a
-   dedicated public bucket or generate durable eBay-safe media URLs, instead of
-   manually moving controlled-run photos.
-3. Add a guard/setting so authenticated item-detail loads cannot unexpectedly
-   trigger external comp collection during production smoke runs.
-4. Continue security follow-ups: externalUserId binding, real eBay deletion
+1. Review PR for `feature/post-ebay-run-polish`, merge to `develop` when ready,
+   then decide separately whether/when to promote to production.
+2. Productize the full eBay-visible derivative media pipeline from
+   `docs/EBAY_MEDIA_PIPELINE_PLAN.md` with an additive migration and explicit
+   production approval before applying it.
+3. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-5. Stripe subscriptions and background worker host + inventory sync.
+4. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).

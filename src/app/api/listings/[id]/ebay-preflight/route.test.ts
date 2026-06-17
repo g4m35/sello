@@ -44,7 +44,7 @@ function readyPrisma(overrides: Record<string, unknown> = {}) {
             marketplaceDrafts: { ebay: { categoryId: "15709", quantity: 1 } },
           },
         ],
-        photos: [{ storageBucket: "b", storagePath: "p1.jpg" }],
+        photos: [{ storageBucket: "ebay-public", storagePath: "p1.jpg" }],
         ...overrides,
       }),
     },
@@ -69,6 +69,7 @@ describe("eBay preflight route", () => {
     vi.restoreAllMocks();
     process.env.EBAY_ENV = "production";
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://project.supabase.co";
+    process.env.EBAY_PUBLIC_IMAGE_BUCKET = "ebay-public";
     delete process.env.EBAY_CLIENT_ID;
     delete process.env.EBAY_CLIENT_SECRET;
     delete process.env.EBAY_REDIRECT_URI_NAME;

@@ -6,6 +6,7 @@ import type {
 import type { Marketplace } from "@/lib/ai/listing-draft";
 import { AppError } from "@/lib/errors";
 import { canPublish, toLifecycleState } from "@/lib/lifecycle/item-status";
+import { syncMasterStatusAfterMarketplacePublish } from "@/lib/marketplace/lifecycle-sync";
 
 import { getMarketplaceAdapter, type PublishOutcome } from "./adapter";
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
@@ -53,6 +54,10 @@ export type PublishPrismaLike = {
       where: { id: string; sellerId: string };
       select?: { id: true; status: true };
     }): Promise<{ id: string; status: InventoryStatus } | null>;
+    update?(args: {
+      where: { id: string };
+      data: { status: InventoryStatus };
+    }): Promise<unknown>;
   };
   marketplaceListing: {
     findFirst?(args: {
@@ -508,6 +513,16 @@ async function executeEbayPublish(
           lastError: null,
         },
       });
+    }
+    if (prisma.inventoryItem.update) {
+      await syncMasterStatusAfterMarketplacePublish(
+        {
+          inventoryItem: {
+            update: prisma.inventoryItem.update.bind(prisma.inventoryItem),
+          },
+        },
+        input.inventoryItemId,
+      );
     }
 
     return {

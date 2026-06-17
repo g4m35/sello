@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
-import { runCompFetch } from "@/lib/comps/fetch";
-import { enabledCompSources } from "@/lib/comps/registry";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { ItemUpdateSchema } from "@/lib/listing-item-update";
 import { getPrisma } from "@/lib/prisma";
@@ -33,17 +31,6 @@ export async function GET(
 
     if (!item) {
       throw new AppError("Item not found", 404);
-    }
-
-    // First load with comp sources configured but no comps yet: gather them now.
-    // Skipped entirely (no latency) when no source is enabled.
-    if (enabledCompSources().length > 0) {
-      const autoComps = await prisma.priceComp.count({
-        where: { inventoryItemId: id, source: { startsWith: "auto:" } },
-      });
-      if (autoComps === 0) {
-        await runCompFetch(prisma, id, user.id).catch(() => undefined);
-      }
     }
 
     const attempts = await prisma.publishAttempt.findMany({

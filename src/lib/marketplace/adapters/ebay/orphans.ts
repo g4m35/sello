@@ -1,9 +1,11 @@
 import type {
+  InventoryStatus,
   ItemCondition,
   Prisma,
   PublishAttemptStatus,
 } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
+import { syncMasterStatusAfterMarketplaceCleanup } from "@/lib/marketplace/lifecycle-sync";
 
 import { EbaySandboxClient, getUsableEbayAccessToken } from "./client";
 import { getEbayConfig, getEbayEnvironment } from "./config";
@@ -53,6 +55,10 @@ export type EbayOrphanPrismaLike = {
       include?: unknown;
       select?: unknown;
     }): Promise<ItemRow | null>;
+    update(args: {
+      where: { id: string };
+      data: { status: InventoryStatus };
+    }): Promise<unknown>;
   };
   marketplaceConnection: {
     findUnique(args: {
@@ -90,6 +96,10 @@ export type EbayOrphanPrismaLike = {
       select?: unknown;
     }): Promise<MarketplaceListingRow>;
     update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<{ id: string }>;
+    findMany(args: {
+      where: { inventoryItemId: string };
+      select: { status: true };
+    }): Promise<Array<{ status: string }>>;
   };
   publishAttempt: {
     create(args: {
@@ -327,6 +337,7 @@ export async function cleanupEbayOrphanArtifacts(
       lastError: null,
     },
   });
+  await syncMasterStatusAfterMarketplaceCleanup(prisma, input.inventoryItemId);
 
   return {
     ok: true as const,
