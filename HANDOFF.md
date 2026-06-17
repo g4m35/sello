@@ -14,7 +14,8 @@ before finishing.**
 ## Last updated
 2026-06-17 — Codex. **eBay-visible derivative media pipeline implemented on `feature/ebay-media-derivatives`; no deploy, no production env changes.**
 Branch was created from latest `develop` at
-`b5a79033afcf49d86662eab3fda61062c435d3e6`. PR URL: pending.
+`b5a79033afcf49d86662eab3fda61062c435d3e6`. PR:
+https://github.com/g4m35/resale-crosslister/pull/36.
 
 - Added additive migration
   `20260617120000_add_marketplace_images` with `MarketplaceImage` and
