@@ -35,6 +35,15 @@ describe("getAutoCompStatusCopy", () => {
     expect(copy.desc).toContain("Review the range");
   });
 
+  it("does not call medium confidence authoritative", () => {
+    const copy = getAutoCompStatusCopy(
+      { status: "found_comps", autoDiscoveryEnabled: true, enabledSources: ["apify-ebay-sold"] },
+      { validComps: 20, confidence: "medium", soldCompCount: 20, activeCompCount: 0 },
+    );
+    expect(copy.title).toBe("Sold comps need review");
+    expect(copy.desc).toContain("match quality");
+  });
+
   it("does not label active-listing-only estimates as sold comps", () => {
     const copy = getAutoCompStatusCopy(
       { status: "found_comps", autoDiscoveryEnabled: true, enabledSources: ["ebay-browse"] },

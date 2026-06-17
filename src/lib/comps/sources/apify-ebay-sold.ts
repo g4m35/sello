@@ -1,4 +1,4 @@
-import { isApifyEbaySoldEnabled } from "@/lib/comps/flags";
+import { compsMaxProviderResults, isApifyEbaySoldEnabled } from "@/lib/comps/flags";
 import type { CompQuery, NormalizedComp, SoldCompSource } from "@/lib/comps/source";
 
 // eBay sold-listings comps via an Apify actor (third-party scraper service —
@@ -17,7 +17,6 @@ type Env = Record<string, string | undefined>;
 
 const SOURCE_ID = "apify-ebay-sold";
 const DEFAULT_TIMEOUT_MS = 12_000;
-const MAX_ITEMS = 30;
 
 export type ApifyEbaySoldDeps = {
   env?: Env;
@@ -96,7 +95,11 @@ function httpUrl(value: unknown): string | null {
   return str && /^https?:\/\//i.test(str) ? str : null;
 }
 
-export function mapApifyEbaySoldItems(items: unknown[], query: CompQuery): NormalizedComp[] {
+export function mapApifyEbaySoldItems(
+  items: unknown[],
+  query: CompQuery,
+  maxItems = compsMaxProviderResults(),
+): NormalizedComp[] {
   const out: NormalizedComp[] = [];
   for (const raw of items) {
     if (!raw || typeof raw !== "object") continue;
@@ -138,7 +141,7 @@ export function mapApifyEbaySoldItems(items: unknown[], query: CompQuery): Norma
       category: query.category,
       rawJson: raw,
     });
-    if (out.length >= MAX_ITEMS) break;
+    if (out.length >= maxItems) break;
   }
   return out;
 }
@@ -163,6 +166,7 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
       const token = env.APIFY_TOKEN;
       const actor = env.APIFY_EBAY_SOLD_ACTOR?.trim();
       if (!token || !actor) return [];
+      const maxItems = compsMaxProviderResults(env);
 
       const keywords = query.variants?.[0]?.keywords ?? query.keywords;
       const controller = new AbortController();
@@ -178,7 +182,7 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
           body: JSON.stringify({
             keywords: [keywords],
             searchTerms: [keywords],
-            maxItems: MAX_ITEMS,
+            maxItems,
             soldItems: true,
             ebayDomain: "ebay.com",
           }),
@@ -190,7 +194,7 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
           : Array.isArray((json as { items?: unknown[] })?.items)
             ? (json as { items: unknown[] }).items
             : [];
-        return mapApifyEbaySoldItems(items, query);
+        return mapApifyEbaySoldItems(items, query, maxItems);
       } catch {
         return [];
       } finally {

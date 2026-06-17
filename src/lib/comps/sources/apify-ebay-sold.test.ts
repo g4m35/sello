@@ -173,12 +173,36 @@ describe("createApifyEbaySoldSource", () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({
       keywords: ["the north face nuptse black puffer jacket sold"],
       searchTerms: ["the north face nuptse black puffer jacket sold"],
-      maxItems: 30,
+      maxItems: 20,
       soldItems: true,
       ebayDomain: "ebay.com",
     });
     // Token must never be placed in the URL.
     expect(String(url)).not.toContain("secret-apify-token");
+  });
+
+  it("honors COMPS_MAX_PROVIDER_RESULTS in the actor request and returned rows", async () => {
+    const fetchImpl = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
+      async () =>
+        okResponse(
+          Array.from({ length: 5 }, (_, i) => ({
+            id: String(i + 1),
+            title: `The North Face Nuptse Black Jacket ${i + 1}`,
+            soldPrice: 200 + i,
+            url: `https://www.ebay.com/itm/${i + 1}`,
+          })),
+        ),
+    );
+    const source = createApifyEbaySoldSource({
+      env: { ...enabledEnv, COMPS_MAX_PROVIDER_RESULTS: "2" },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const comps = await source.fetchComps(query);
+
+    expect(comps).toHaveLength(2);
+    const [, init] = fetchImpl.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({ maxItems: 2 });
   });
 
   it("returns [] (never throws) when the actor call fails", async () => {

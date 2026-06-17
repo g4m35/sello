@@ -94,7 +94,7 @@ describe("prepareEbayVisibleImages", () => {
     expect(prisma.marketplaceImage.upsert).not.toHaveBeenCalled();
   });
 
-  it("reports no durable image when an item has no photos", async () => {
+  it("reports missing eBay-visible image when an item has no photos", async () => {
     const { prisma, item } = createPrisma({ photos: [] });
 
     const result = await prepareEbayVisibleImages(prisma, {
@@ -106,8 +106,10 @@ describe("prepareEbayVisibleImages", () => {
     });
 
     expect(result.photos).toEqual([]);
-    expect(result.missing).toEqual([]);
-    expect(result.errors).toEqual([]);
+    expect(result.missing).toEqual([ebayPublicPhotoMissingCode]);
+    expect(result.errors).toEqual([
+      "Add at least one photo so Sello can prepare an eBay-visible listing image.",
+    ]);
   });
 
   it("reuses existing ready derivatives without copying storage again", async () => {

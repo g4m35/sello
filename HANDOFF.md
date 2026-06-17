@@ -1143,6 +1143,18 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-17 (Codex): started Comp Cost + Confidence Hardening on
+  `feature/comp-confidence-cost-controls` (not deployed, not merged). Added
+  conservative comp cost controls (`COMPS_MAX_PROVIDER_RESULTS=20`,
+  `COMPS_MAX_QUERY_VARIANTS=2`, `COMPS_AUTO_MIN_IDENTITY_CONFIDENCE=0.55`),
+  automatic weak-identity skip for generic draft-triggered paid comp runs,
+  Apify request/result caps, stricter match scoring for generic apparel and
+  size mismatches, confidence caps for possible-only / wide-spread / low-count
+  sold comps, medium-confidence "needs review" copy, a paid-provider refresh
+  warning, and eBay no-photo preflight mapping to `ebay_public_photo`. No
+  migration added. Production env should remain
+  `COMPS_AUTO_DISCOVERY_ENABLED=false` until this PR is reviewed, merged,
+  deployed, and manual Refresh quality/cost is revalidated.
 - 2026-06-17 (Codex): monitored post-auto-comps production, disabled
   auto-discovery, cleaned validation data, and configured the eBay public image
   bucket. One auto run since deployment: 30 fetched / 23 accepted / 7 rejected /
@@ -1213,9 +1225,9 @@ on auth.ebay.com.
   unless the owner explicitly approves another controlled live run.
 - **Comp provider spend/quality:** Apify eBay sold comps are live only for
   manual Refresh. Draft auto-discovery is disabled because the observed cost per
-  auto run was about `$0.3641` and quality needs scoring/confidence tuning.
-- **No-photo preflight label:** a no-photo preflight blocks clearly, but the
-  current missing id is generic `photo`, not `ebay_public_photo`.
+  auto run was about `$0.3641`; keep it disabled until
+  `feature/comp-confidence-cost-controls` lands and production manual Refresh is
+  revalidated with the lower caps.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
@@ -1223,18 +1235,15 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Tune Full Auto Price Comps scoring/confidence before re-enabling draft
-   auto-discovery: avoid high confidence when all accepted comps are only
-   possible matches, and add cost controls/budgets.
+1. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+   revalidate manual Refresh before considering draft auto-discovery again.
 2. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
 3. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
-4. Consider mapping the no-photo preflight miss to `ebay_public_photo` if the UI
-   copy expects that specific id.
-5. Continue security follow-ups: externalUserId binding, real eBay deletion
+4. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-6. Stripe subscriptions and background worker host + inventory sync.
+5. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).

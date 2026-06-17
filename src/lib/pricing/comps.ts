@@ -162,12 +162,13 @@ function scoreConfidence(args: {
   const scored = set.filter(
     (c) => typeof c.matchScore === "number" && Number.isFinite(c.matchScore),
   );
+  let averageMatchScore: number | null = null;
   if (scored.length > 0) {
-    const avg = scored.reduce((sum, c) => sum + (c.matchScore as number), 0) / scored.length;
-    if (avg >= 0.8) {
+    averageMatchScore = scored.reduce((sum, c) => sum + (c.matchScore as number), 0) / scored.length;
+    if (averageMatchScore >= 0.8) {
       score += 0.15;
       reasons.push("Strong title/style match across comps.");
-    } else if (avg >= 0.5) {
+    } else if (averageMatchScore >= 0.5) {
       score += 0.07;
       reasons.push("Moderate comp match.");
     } else {
@@ -215,15 +216,45 @@ function scoreConfidence(args: {
 
   score = Math.max(0, Math.min(1, Math.round(score * 100) / 100));
   let capReason: string | null = null;
+  const mostlyPossibleMatches = strongCompCount === 0 && possibleCompCount > 0;
+  if (mostlyPossibleMatches) {
+    if (score > 0.64) score = 0.64;
+    capReason = "Only possible matches found; confidence capped below high.";
+    reasons.push(capReason);
+    reasons.push("No exact brand/model match.");
+  }
+  if (mostlyPossibleMatches && (averageMatchScore == null || averageMatchScore < 0.6)) {
+    if (score > 0.54) score = 0.54;
+    capReason = "Generic item identity; confidence capped until stronger brand/model signals match.";
+    reasons.push(capReason);
+  }
+  if (usingSold && soldCompCount >= 5 && strongCompCount >= 5 && (averageMatchScore ?? 0) >= 0.8) {
+    reasons.push("Strong sold-comp cluster.");
+  }
+  if (usingSold && spread > WIDE_SPREAD_RATIO) {
+    if (score > 0.64) score = 0.64;
+    capReason = "Wide price spread; confidence capped below high.";
+    reasons.push(capReason);
+  }
   if (soldCompCount === 0 && activeCompCount > 0) {
     if (score > 0.64) score = 0.64;
     capReason = "Confidence capped at medium because pricing is based on active market listings, not sold comps.";
+    reasons.push(capReason);
+  }
+  if (soldCompCount > 0 && soldCompCount < MIN_SOLD_FOR_PREFERENCE && activeCompCount === 0) {
+    if (score > 0.44) score = 0.44;
+    capReason = "Low sold-comp count; confidence capped below medium.";
     reasons.push(capReason);
   }
   if (soldCompCount > 0 && soldCompCount < MIN_SOLD_FOR_PREFERENCE && activeCompCount > 0) {
     if (score > 0.64) score = 0.64;
     capReason =
       "Confidence capped at medium because fewer than 3 sold comps matched; blending with active market listings.";
+    reasons.push(capReason);
+  }
+  if (usingSold && ((averageMatchScore ?? 0) < 0.72 || strongCompCount < 3)) {
+    if (score > 0.64) score = 0.64;
+    capReason = "Confidence capped below high until average match quality is strong.";
     reasons.push(capReason);
   }
   if (strongCompCount + possibleCompCount < 3 && score > 0.44) {

@@ -69,4 +69,45 @@ describe("scoreCompMatch", () => {
     expect(scored.score).toBeLessThan(0.3);
     expect(scored.reasons).toContain("Brand differs.");
   });
+
+  it("penalizes generic plain-shirt matches without brand or model signals", () => {
+    const scored = scoreCompMatch(
+      {
+        productName: "Basic Black Crew Neck Short Sleeve T-Shirt",
+        brand: "Unknown",
+        styleCode: null,
+        size: null,
+        category: "streetwear",
+        colorway: "Black",
+        condition: "unknown",
+      },
+      comp({
+        title: "Pro Club Men's Heavyweight T-Shirt Crew Neck Plain Blank Short Sleeve Tee S-10XL",
+        brand: "Pro Club",
+        size: null,
+        condition: "unknown",
+        sold: true,
+      }),
+    );
+
+    expect(scored.classification).toBe("weak");
+    expect(scored.score).toBeLessThan(0.45);
+    expect(scored.reasons.join(" ")).toContain("Generic item identity");
+  });
+
+  it("keeps a production-like North Face comp strong", () => {
+    const scored = scoreCompMatch(
+      item,
+      comp({
+        title: "The North Face 1996 Retro Nuptse Puffer Jacket Black Mens Large",
+        brand: "The North Face",
+        size: "Large",
+        condition: "used_good",
+        sold: true,
+      }),
+    );
+
+    expect(scored.classification).toBe("strong");
+    expect(scored.score).toBeGreaterThanOrEqual(0.72);
+  });
 });
