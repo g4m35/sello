@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCompFetch } from "@/lib/comps/fetch";
 import type { CompSource, NormalizedComp } from "@/lib/comps/source";
@@ -24,6 +24,59 @@ function comp(index: number, overrides: Partial<NormalizedComp> = {}): Normalize
 }
 
 describe("runCompFetch", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("records disabled and does not call providers when the master switch is off", async () => {
+    vi.stubEnv("COMPS_AUTO_DISCOVERY_ENABLED", "false");
+    vi.stubEnv("PRICE_COMP_AUTO_DISCOVERY_ENABLED", "false");
+
+    const prisma = {
+      inventoryItem: {
+        findFirst: vi.fn(async () => ({
+          id: "item-1",
+          productName: "The North Face Black Nuptse Puffer Jacket",
+          brand: "The North Face",
+          styleCode: null,
+          size: "Large",
+          category: "streetwear",
+          colorway: "Black",
+          condition: "used_good",
+          recommendedPriceCents: null,
+          listingDrafts: [],
+        })),
+      },
+      priceComp: {
+        deleteMany: vi.fn(),
+        createMany: vi.fn(),
+      },
+      compSearchRun: {
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "run-1",
+          ...data,
+        })),
+      },
+    };
+
+    const result = await runCompFetch(prisma as never, "item-1", "seller-1");
+
+    expect(result.status).toBe("disabled");
+    expect(result.enabled).toBe(0);
+    expect(result.sources).toEqual([]);
+    expect(prisma.priceComp.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.priceComp.createMany).not.toHaveBeenCalled();
+    expect(prisma.compSearchRun.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        inventoryItemId: "item-1",
+        status: "disabled",
+        autoDiscoveryEnabled: false,
+        sourceCount: 0,
+        fetchedCount: 0,
+      }),
+    });
+  });
+
   it("persists source run metadata, stores accepted/rejected comps, and auto-fills high-confidence pricing", async () => {
     const createdRows: unknown[] = [];
     const source: CompSource = {

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 
+import {
+  compsRefreshCooldownMs,
+  evaluateRefreshCooldown,
+} from "@/lib/comps/cooldown";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
@@ -25,6 +29,27 @@ export async function POST(request: Request) {
     });
     if (!item) {
       throw new AppError("Item not found", 404);
+    }
+
+    // Cooldown: spam-clicking Refresh must not fire repeated paid provider calls.
+    const lastRun = await prisma.compSearchRun.findFirst({
+      where: { inventoryItemId },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    const cooldown = evaluateRefreshCooldown({
+      lastRunAt: lastRun?.createdAt ?? null,
+      now: new Date(),
+      cooldownMs: compsRefreshCooldownMs(),
+    });
+    if (!cooldown.allowed) {
+      return NextResponse.json(
+        {
+          error: `Comps were just refreshed. Try again in ${cooldown.retryAfterSeconds}s.`,
+          retryAfterSeconds: cooldown.retryAfterSeconds,
+        },
+        { status: 429, headers: { "Retry-After": String(cooldown.retryAfterSeconds) } },
+      );
     }
 
     const result = await runCompFetch(prisma, inventoryItemId, user.id);

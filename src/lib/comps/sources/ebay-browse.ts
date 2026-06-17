@@ -1,3 +1,4 @@
+import { isEbayActiveEnabled } from "@/lib/comps/flags";
 import type { CompQuery, CompSource, NormalizedComp } from "@/lib/comps/source";
 
 // Interim comp source: eBay Browse API (active listings = asking prices, not
@@ -21,10 +22,6 @@ type EbayItemSummary = {
 };
 
 const DEFAULT_TIMEOUT_MS = 6_000;
-
-function enabledFlag(name: string): boolean {
-  return process.env[name] === "true";
-}
 
 function credentials(): { clientId: string; clientSecret: string } | null {
   const clientId = process.env.EBAY_BROWSE_CLIENT_ID || process.env.EBAY_CLIENT_ID;
@@ -84,11 +81,10 @@ export const ebayBrowseSource: CompSource = {
   resultKind: "active_listings",
 
   isEnabled() {
-    return Boolean(
-      enabledFlag("PRICE_COMP_AUTO_DISCOVERY_ENABLED") &&
-        enabledFlag("PRICE_COMP_EBAY_SEARCH_ENABLED") &&
-        credentials(),
-    );
+    // Provider gate only: the COMPS_EBAY_ACTIVE_ENABLED flag (or legacy
+    // PRICE_COMP_EBAY_SEARCH_ENABLED) plus Browse credentials. The global
+    // auto-discovery kill switch is enforced centrally in runCompFetch.
+    return isEbayActiveEnabled();
   },
 
   async fetchComps(query: CompQuery): Promise<NormalizedComp[]> {

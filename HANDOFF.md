@@ -12,6 +12,91 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-17 — Codex. **PR #37 live Apify + DB-backed comp validation completed on `feature/full-auto-price-comps`; no merge, no deploy.**
+Used local credential file `.env.localll.local` without printing secrets. Live
+actor `caffein.dev/ebay-sold-listings` validated through the provider with query
+`Nike hoodie mens medium`: provider enabled, token kept out of URL/output, 30
+sold comps returned, cap at 30 confirmed, USD price/shipping fields mapped,
+external IDs present, sold dates and image URLs present after mapper fix,
+conditions mapped, and raw provider payload preserved per comp.
+
+Fixes pushed/ready for PR #37:
+- Apify actor input now sends `keywords` as an array, matching the live actor
+  contract (`keywords: [keywords]` plus `searchTerms: [keywords]`).
+- Mapper now accepts the live actor shape: `endedAt` for sold date,
+  `thumbnailUrl` for image, and separate `soldCurrency` / `shippingCurrency`
+  guards while preserving USD-only behavior.
+- Sanitized fixture/test updated with the live payload shape; no secrets stored.
+- `.env.example` now includes the canonical `COMPS_*` / Apify / SerpApi block.
+
+Local DB-backed validation was rerun after the owner fixed the runtime
+`resale_app` pooler credential in `.env.localll.local`. Sanitized connectivity
+confirmed `DATABASE_URL` present, pooler-backed, runtime role, no placeholder,
+and Prisma connected as `resale_app` without printing the URL/password. Manual
+refresh path validation created one temporary item (`6ae60bba-1d18-4e76-96cf-4f912ec7f348`),
+ran only `apify-ebay-sold`, then deleted the item. Result: `auto_priced`,
+30 fetched, 26 accepted, 4 rejected, 31 total comp rows including 1 preserved
+manual comp, 30 automatic rows, 31 sold / 0 active, 27 used in pricing, rawJson
+stored for every automatic row, cap at 30 confirmed, high confidence, recommended
+price `4067` cents, and cleanup verified `itemDeleted: true`.
+
+Auto-discovery registry path was also validated locally with
+`COMPS_AUTO_DISCOVERY_ENABLED=true` only in-process (no env file/prod change),
+with active/SerpApi providers forced off. Enabled sources resolved to
+`["apify-ebay-sold"]`; the temporary auto item returned `auto_priced`, 30 fetched,
+26 accepted, 4 rejected, high confidence, recommended price `4175` cents, and
+cleanup verified. Passive-fetch guard remains covered by tests: item detail,
+comps GET, and inventory list routes do not call `runCompFetch`; only draft POST
+and explicit refresh POST are wired.
+
+Gates run after the live mapper fix: `npx prisma format` (pass),
+`npx prisma validate` (pass), `npm run lint` (pass with the same two existing
+`_m`/`_f` warnings), `npx tsc --noEmit` (pass), `npm test` (84 files / 553
+tests), `npm run build` (pass), and `npx prisma migrate status` (nonzero:
+pending `20260617120000_add_marketplace_images`, from the eBay media branch,
+not from PR #37).
+
+## Last updated (previous)
+2026-06-17 — Claude. **Full Auto Price Comps — Apify sold provider + flags/cooldown
+on `feature/full-auto-price-comps`; PR opened into `develop`. No deploy, no new
+migration, no provider env set.**
+Audit found the comps system already ~85% built (query variants, normalize/dedupe,
+IQR outliers, full match scoring, sophisticated pricing with confidence reasons,
+auto-trigger after draft, and the passive detail-load fetch already removed). This
+PR fills the functional gaps:
+- **Apify eBay sold provider** implemented (was a stub returning `[]`):
+  `run-sync-get-dataset-items`, token in the Authorization header (never logged),
+  tolerant sold-comp mapping, rawJson stored, failure-safe (`[]` on any error).
+  Needs `APIFY_TOKEN` + `APIFY_EBAY_SOLD_ACTOR` to return live data.
+- **Centralized COMPS_* flags** (`src/lib/comps/flags.ts`) with legacy `PRICE_COMP_*`
+  aliases: `COMPS_AUTO_DISCOVERY_ENABLED` (master kill switch),
+  `COMPS_APIFY_EBAY_SOLD_ENABLED`, `COMPS_EBAY_ACTIVE_ENABLED`,
+  `COMPS_SERPAPI_EBAY_ACTIVE_ENABLED`. eBay Browse rewired to the new flag.
+- **Refresh cooldown** (`COMPS_REFRESH_COOLDOWN_SECONDS`, default 60, 0 disables)
+  → 429 + Retry-After; one-shot auto run unaffected.
+- **SerpApi active** dormant stub (optional). **No-passive-fetch** regression test.
+- Docs: `docs/COMPS_PROVIDERS.md` (flags, costs, rollout, kill switch).
+Gate green: prisma validate, lint (2 known warnings), tsc, `npm test` (83 files /
+550 tests), build. No new migration (PriceComp v2 + CompSearchRun already exist).
+
+**Update (PR #37 continued):** built the pricing UI controls — `AutoPricing` now
+shows last auto-run time + refresh cooldown (disables Refresh with a countdown),
+adds include/exclude + delete-manual controls and per-comp sold date / price+ship
+/ used-vs-excluded badges; GET `/comps` returns `cooldownSecondsRemaining`; added
+`deleteComp` to the API client. Added a sanitized Apify payload fixture + mapper
+test, `docs/COMPS_LIVE_VALIDATION.md` (live validation NOT faked — no creds
+in-sandbox), and extended the passive-fetch guard to the inventory-list route.
+Gate green: 84 files / 553 tests, build OK, no new migration.
+
+**Blocked on owner:** (1) `.env.example` still couldn't be edited in-sandbox
+(`.env*` guarded) — paste the `COMPS_*` block from `docs/COMPS_PROVIDERS.md`.
+(2) Run the live Apify validation per `docs/COMPS_LIVE_VALIDATION.md` (configure
+actor + `APIFY_TOKEN`, one staging refresh, confirm payload shape), then flip
+`COMPS_AUTO_DISCOVERY_ENABLED=true`. **Remaining:** live Apify run unproven
+(needs owner creds); a deeper UI redesign was intentionally avoided (kept the
+existing panel, added the missing controls).
+
+## Last updated (previous)
 2026-06-17 — Codex. **eBay-visible derivative media pipeline implemented on `feature/ebay-media-derivatives`; no deploy, no production env changes.**
 Branch was created from latest `develop` at
 `b5a79033afcf49d86662eab3fda61062c435d3e6`. PR:
@@ -857,6 +942,10 @@ on auth.ebay.com.
   `jaky/resale-crosslister`), `origin/main` currently includes the live
   publish/cleanup run commits through `62e5e45`; a HANDOFF-only closeout commit
   may be on top if this file was just pushed.
+- Current working branch: `feature/full-auto-price-comps` / PR #37 into
+  `develop`, open and intentionally not merged/deployed. Live Apify provider
+  validation and DB-backed comp persistence validation have passed with no
+  secrets printed and temporary DB rows cleaned up.
 - Production eBay OAuth/readiness and guarded live publish path are working.
   `EBAY_PRODUCTION_PUBLISH_ENABLED` is currently absent from Vercel Production,
   so production publish is blocked/hidden again by default.
@@ -912,10 +1001,12 @@ on auth.ebay.com.
 ## Blocked on owner (credentials / decisions — not code)
 - **Live eBay publishing:** working, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED`
   absent unless the owner explicitly approves another controlled live run.
-- **Comp source policy:** production has eBay Browse auto comps enabled. On
-  `feature/post-ebay-run-polish`, passive item-detail loads no longer call
-  `runCompFetch`; provider fetches remain behind explicit refresh/admin/job
-  paths.
+- **PR #37 merge/deploy decision:** full-auto price comps are validated locally
+  and against live Apify, but PR #37 is still open by instruction. Merge/deploy
+  needs explicit owner approval.
+- **Comp source production rollout:** production/provider env should be set only
+  deliberately. Keep `COMPS_AUTO_DISCOVERY_ENABLED=false` until the owner wants
+  automatic paid provider calls after draft generation.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
@@ -923,14 +1014,17 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Review PR for `feature/post-ebay-run-polish`, merge to `develop` when ready,
-   then decide separately whether/when to promote to production.
-2. Productize the full eBay-visible derivative media pipeline from
+1. Final review PR #37 (`feature/full-auto-price-comps`) and merge to `develop`
+   only after owner approval; do not deploy as part of the review by default.
+2. Decide the staged provider rollout: set Apify/COMPS vars in staging first,
+   keep `COMPS_AUTO_DISCOVERY_ENABLED=false`, then enable auto-discovery only
+   after cost/rate behavior is accepted.
+3. Productize the full eBay-visible derivative media pipeline from
    `docs/EBAY_MEDIA_PIPELINE_PLAN.md` with an additive migration and explicit
    production approval before applying it.
-3. Continue security follow-ups: externalUserId binding, real eBay deletion
+4. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-4. Stripe subscriptions and background worker host + inventory sync.
+5. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).
