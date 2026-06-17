@@ -12,6 +12,37 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-17 — Claude. **Full Auto Price Comps — Apify sold provider + flags/cooldown
+on `feature/full-auto-price-comps`; PR opened into `develop`. No deploy, no new
+migration, no provider env set.**
+Audit found the comps system already ~85% built (query variants, normalize/dedupe,
+IQR outliers, full match scoring, sophisticated pricing with confidence reasons,
+auto-trigger after draft, and the passive detail-load fetch already removed). This
+PR fills the functional gaps:
+- **Apify eBay sold provider** implemented (was a stub returning `[]`):
+  `run-sync-get-dataset-items`, token in the Authorization header (never logged),
+  tolerant sold-comp mapping, rawJson stored, failure-safe (`[]` on any error).
+  Needs `APIFY_TOKEN` + `APIFY_EBAY_SOLD_ACTOR` to return live data.
+- **Centralized COMPS_* flags** (`src/lib/comps/flags.ts`) with legacy `PRICE_COMP_*`
+  aliases: `COMPS_AUTO_DISCOVERY_ENABLED` (master kill switch),
+  `COMPS_APIFY_EBAY_SOLD_ENABLED`, `COMPS_EBAY_ACTIVE_ENABLED`,
+  `COMPS_SERPAPI_EBAY_ACTIVE_ENABLED`. eBay Browse rewired to the new flag.
+- **Refresh cooldown** (`COMPS_REFRESH_COOLDOWN_SECONDS`, default 60, 0 disables)
+  → 429 + Retry-After; one-shot auto run unaffected.
+- **SerpApi active** dormant stub (optional). **No-passive-fetch** regression test.
+- Docs: `docs/COMPS_PROVIDERS.md` (flags, costs, rollout, kill switch).
+Gate green: prisma validate, lint (2 known warnings), tsc, `npm test` (83 files /
+550 tests), build. No new migration (PriceComp v2 + CompSearchRun already exist).
+
+**Blocked on owner:** (1) `.env.example` could not be edited in-sandbox (`.env*`
+guarded) — add the `COMPS_*` block from `docs/COMPS_PROVIDERS.md`. (2) Configure an
+Apify eBay-sold actor + `APIFY_TOKEN`, then enable providers one at a time and flip
+`COMPS_AUTO_DISCOVERY_ENABLED=true` last; live data can't be validated in-sandbox.
+**Remaining (not done this pass):** the Phase 8 pricing-UI overhaul (provider
+breakdown / last-run / exclusion controls) and the full Phase 9 test matrix beyond
+the core new tests.
+
+## Last updated (previous)
 2026-06-17 — Codex. **eBay-visible derivative media pipeline implemented on `feature/ebay-media-derivatives`; no deploy, no production env changes.**
 Branch was created from latest `develop` at
 `b5a79033afcf49d86662eab3fda61062c435d3e6`. PR:
