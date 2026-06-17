@@ -34,6 +34,25 @@ const STOP_WORDS = new Set([
   "sneakers",
 ]);
 
+const UNKNOWN_BRANDS = new Set(["unknown", "unbranded", "generic", "no brand"]);
+
+const GENERIC_APPAREL_TOKENS = new Set([
+  "basic",
+  "blank",
+  "cotton",
+  "crew",
+  "heavyweight",
+  "neck",
+  "plain",
+  "shirt",
+  "short",
+  "sleeve",
+  "solid",
+  "tee",
+  "top",
+  "tshirt",
+]);
+
 function norm(value: string | null | undefined): string {
   return (value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -61,6 +80,23 @@ function includesNorm(haystack: string | null | undefined, needle: string | null
   return Boolean(h && n && h.includes(n));
 }
 
+function knownBrand(value: string | null | undefined): string | null {
+  const normalized = norm(value);
+  if (!normalized || UNKNOWN_BRANDS.has(normalized)) return null;
+  return normalized;
+}
+
+function hasGenericApparelIdentity(item: ScoreItemInput, titleOverlap: number): boolean {
+  if (knownBrand(item.brand) || item.styleCode) return false;
+  const itemTokens = tokens(item.productName);
+  if (itemTokens.size === 0) return false;
+  let genericTokenCount = 0;
+  for (const token of itemTokens) {
+    if (GENERIC_APPAREL_TOKENS.has(token)) genericTokenCount += 1;
+  }
+  return genericTokenCount >= 3 && titleOverlap > 0;
+}
+
 function classify(score: number): MatchClassification {
   if (score >= 0.72) return "strong";
   if (score >= 0.45) return "possible";
@@ -71,14 +107,16 @@ function classify(score: number): MatchClassification {
 export function scoreCompMatch(item: ScoreItemInput, comp: NormalizedComp): MatchScore {
   let score = 0;
   const reasons: string[] = [];
+  const itemBrand = knownBrand(item.brand);
+  const compBrand = knownBrand(comp.brand);
 
-  if (item.brand && comp.brand && norm(item.brand) === norm(comp.brand)) {
+  if (itemBrand && compBrand && itemBrand === compBrand) {
     score += 0.28;
     reasons.push("Brand matches.");
-  } else if (item.brand && includesNorm(comp.title, item.brand)) {
+  } else if (itemBrand && includesNorm(comp.title, item.brand)) {
     score += 0.22;
     reasons.push("Brand appears in title.");
-  } else if (item.brand || comp.brand) {
+  } else if (itemBrand && compBrand) {
     score -= 0.18;
     reasons.push("Brand differs.");
   }
@@ -100,6 +138,11 @@ export function scoreCompMatch(item: ScoreItemInput, comp: NormalizedComp): Matc
     reasons.push("Weak title token overlap.");
   }
 
+  if (itemBrand && titleOverlap >= 0.5) {
+    score += 0.06;
+    reasons.push("Core product tokens match.");
+  }
+
   if (item.colorway && includesNorm(comp.title, item.colorway)) {
     score += 0.08;
     reasons.push("Colorway appears in title.");
@@ -108,6 +151,9 @@ export function scoreCompMatch(item: ScoreItemInput, comp: NormalizedComp): Matc
   if (item.size && comp.size && norm(item.size) === norm(comp.size)) {
     score += 0.08;
     reasons.push("Size matches.");
+  } else if (item.size && comp.size) {
+    score -= 0.12;
+    reasons.push("Size differs.");
   } else if (item.size && includesNorm(comp.title, item.size)) {
     score += 0.06;
     reasons.push("Size appears in title.");
@@ -131,6 +177,12 @@ export function scoreCompMatch(item: ScoreItemInput, comp: NormalizedComp): Matc
   if (comp.sold) {
     score += 0.04;
     reasons.push("Sold comp.");
+  }
+
+  if (hasGenericApparelIdentity(item, titleOverlap)) {
+    if (titleOverlap >= 0.35) score = Math.max(score, 0.32);
+    score = Math.min(score, 0.42);
+    reasons.push("Generic item identity; brand or model signal is missing.");
   }
 
   score = Math.max(0, Math.min(1, Math.round(score * 100) / 100));

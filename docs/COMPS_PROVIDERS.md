@@ -67,6 +67,22 @@ The manual "Refresh comps" POST returns `429` (with `Retry-After`) inside the
 window so spam-clicking cannot fire repeated paid provider calls. The one-shot
 auto run after draft generation is not throttled.
 
+## Cost and quality controls
+
+```
+COMPS_MAX_PROVIDER_RESULTS="20"          # default 20; max 30
+COMPS_MAX_QUERY_VARIANTS="2"             # default 2; max 3
+COMPS_AUTO_MIN_IDENTITY_CONFIDENCE="0.55" # default 0.55; 0..1
+```
+
+Automatic draft-triggered runs skip paid providers when the item identity is too
+generic, such as an unknown-brand basic shirt with no style/model signal. Manual
+"Refresh comps" can still run after the seller confirms the item details.
+
+Provider payloads are capped before storage and pricing. Confidence is capped
+below high when all accepted comps are only possible matches, price spread is
+wide, sold count is low, or average match quality is weak.
+
 ## `.env.example` additions (apply manually)
 
 Add under the existing price-comp block (the legacy `PRICE_COMP_*` names still
@@ -81,6 +97,9 @@ APIFY_EBAY_SOLD_ACTOR="[apify_actor_id_or_slug]"
 COMPS_SERPAPI_EBAY_ACTIVE_ENABLED="false"
 SERPAPI_API_KEY="[OPTIONAL_SERPAPI_API_KEY]"
 COMPS_REFRESH_COOLDOWN_SECONDS="60"
+COMPS_MAX_PROVIDER_RESULTS="20"
+COMPS_MAX_QUERY_VARIANTS="2"
+COMPS_AUTO_MIN_IDENTITY_CONFIDENCE="0.55"
 ```
 
 ## Production rollout checklist
@@ -91,9 +110,12 @@ COMPS_REFRESH_COOLDOWN_SECONDS="60"
 3. Turn on **one** provider at a time:
    - `COMPS_EBAY_ACTIVE_ENABLED="true"` (cheap; validate active context first), then
    - `COMPS_APIFY_EBAY_SOLD_ENABLED="true"` (validate sold mapping + cost).
-4. Set `COMPS_AUTO_DISCOVERY_ENABLED="true"` last to enable the auto run.
-5. Verify on a real item: draft → comps populate → confidence/reasons look sane.
-6. Keep `COMPS_REFRESH_COOLDOWN_SECONDS` at 60+ in production.
+4. Validate manual Refresh cost and quality with `COMPS_MAX_PROVIDER_RESULTS=20`
+   and `COMPS_MAX_QUERY_VARIANTS=2`.
+5. Set `COMPS_AUTO_DISCOVERY_ENABLED="true"` last to enable the auto run only if
+   cost and confidence output are acceptable.
+6. Verify on a real item: draft → comps populate → confidence/reasons look sane.
+7. Keep `COMPS_REFRESH_COOLDOWN_SECONDS` at 60+ in production.
 
 ## Kill switch / disable
 

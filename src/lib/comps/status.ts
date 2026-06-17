@@ -81,6 +81,14 @@ export function getAutoCompStatusCopy(
           "Sello blended available sold comps with active market listings because sold data is still sparse.",
       };
     }
+    if (summary.confidence !== "high") {
+      return {
+        variant: "warn" as const,
+        title: "Sold comps need review",
+        desc:
+          "Sold comps were found, but match quality or price spread needs a seller review before trusting the recommendation.",
+      };
+    }
     return {
       variant: "info" as const,
       title: "Sold comps found",

@@ -233,9 +233,28 @@ describe("preflightEbayListing", () => {
         "price",
         "condition",
         "ebay_category",
-        "photo",
+        "ebay_public_photo",
       ]),
     );
+    expect(result.missing).not.toContain("photo");
+  });
+
+  it("reports no eBay-visible photo as ebay_public_photo in eBay preflight", async () => {
+    const item = {
+      ...readyItem(),
+      photos: [],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+    );
+
+    expect(result.ready).toBe(false);
+    expect(result.preview).toBeNull();
+    expect(result.missing).toContain("ebay_public_photo");
+    expect(result.missing).not.toContain("photo");
   });
 
   it("prepares private app photos without sending private URLs to eBay", async () => {

@@ -150,7 +150,11 @@ export async function prepareEbayVisibleImages(
   }
 
   if (item.photos.length === 0) {
-    return { photos: [], missing: [], errors: [] };
+    return {
+      photos: [],
+      missing: [ebayPublicPhotoMissingCode],
+      errors: ["Add at least one photo so Sello can prepare an eBay-visible listing image."],
+    };
   }
 
   const base = env.NEXT_PUBLIC_SUPABASE_URL?.trim();

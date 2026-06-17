@@ -291,6 +291,9 @@ export function AutoPricing({
   const basis = basisLabel(summary);
   const soldCount = summary.soldCompCount ?? 0;
   const activeCount = summary.activeCompCount ?? 0;
+  const paidProvidersEnabled = discovery.enabledSources.some((source) =>
+    source.toLowerCase().includes("apify"),
+  );
 
   const details = (
     <div className="stack-2">
@@ -314,6 +317,11 @@ export function AutoPricing({
       {queryList.length > 0 && (
         <div>
           Queries: {queryList.join(" · ")}
+        </div>
+      )}
+      {paidProvidersEnabled && (
+        <div>
+          Refresh comps may run a paid provider. Confirm item details before refreshing.
         </div>
       )}
       {discovery.sourceErrors.length > 0 && (
