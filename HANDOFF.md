@@ -12,6 +12,38 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-17 — Codex. **PR #37 live Apify validation completed on `feature/full-auto-price-comps`; no merge, no deploy.**
+Used local credential file `.env.localll.local` without printing secrets. Live
+actor `caffein.dev/ebay-sold-listings` validated through the provider with query
+`Nike hoodie mens medium`: provider enabled, token kept out of URL/output, 30
+sold comps returned, cap at 30 confirmed, USD price/shipping fields mapped,
+external IDs present, sold dates and image URLs present after mapper fix,
+conditions mapped, and raw provider payload preserved per comp.
+
+Fixes pushed/ready for PR #37:
+- Apify actor input now sends `keywords` as an array, matching the live actor
+  contract (`keywords: [keywords]` plus `searchTerms: [keywords]`).
+- Mapper now accepts the live actor shape: `endedAt` for sold date,
+  `thumbnailUrl` for image, and separate `soldCurrency` / `shippingCurrency`
+  guards while preserving USD-only behavior.
+- Sanitized fixture/test updated with the live payload shape; no secrets stored.
+- `.env.example` now includes the canonical `COMPS_*` / Apify / SerpApi block.
+
+Local DB-backed end-to-end comp persistence could not complete because the
+current local `DATABASE_URL` credentials fail authentication. The attempted
+temporary item flow was cleaned up by failing before any row was created. Still
+needs rerun against a working local/staging DB to prove `CompSearchRun`,
+`PriceComp` persistence, cooldown UI data, and auto-trigger after draft
+generation. Passive-fetch guard remains covered by tests.
+
+Gates run after the live mapper fix: `npx prisma format` (pass),
+`npx prisma validate` (pass), `npm run lint` (pass with the same two existing
+`_m`/`_f` warnings), `npx tsc --noEmit` (pass), `npm test` (84 files / 553
+tests), `npm run build` (pass), and `npx prisma migrate status` (nonzero:
+pending `20260617120000_add_marketplace_images`, from the eBay media branch,
+not from PR #37).
+
+## Last updated (previous)
 2026-06-17 — Claude. **Full Auto Price Comps — Apify sold provider + flags/cooldown
 on `feature/full-auto-price-comps`; PR opened into `develop`. No deploy, no new
 migration, no provider env set.**

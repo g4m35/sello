@@ -89,12 +89,19 @@ describe("mapApifyEbaySoldItems", () => {
 
     const comps = mapApifyEbaySoldItems(fixture, query);
 
-    // 3 usable USD-priced items; the GBP and the price-less rows are dropped.
-    expect(comps).toHaveLength(3);
+    // 4 usable USD-priced items; GBP and price-less rows are dropped.
+    expect(comps).toHaveLength(4);
     expect(comps.every((c) => c.sold === true && c.currency === "USD")).toBe(true);
-    expect(comps.map((c) => c.priceCents)).toEqual([18250, 16500, 24000]);
+    expect(comps.map((c) => c.priceCents)).toEqual([18250, 16500, 24000, 5280]);
     expect(comps[0].soldDate).toMatch(/^2026-06-04/);
     expect(comps[2].condition).toBe("new_with_tags");
+    expect(comps[3]).toMatchObject({
+      externalId: "296555666777",
+      shippingCents: 850,
+      soldDate: "2026-06-12T18:14:00.000Z",
+      imageUrl: "https://i.ebayimg.com/images/g/live/s-l500.jpg",
+      condition: "used_good",
+    });
     // Raw payload is preserved per comp for debugging.
     expect(comps[0].rawJson).toEqual(fixture[0]);
   });
@@ -163,6 +170,13 @@ describe("createApifyEbaySoldSource", () => {
     expect(url).toContain("api.apify.com/v2/acts/acme~ebay-sold-scraper/run-sync-get-dataset-items");
     const headers = (init?.headers ?? {}) as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer secret-apify-token");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      keywords: ["the north face nuptse black puffer jacket sold"],
+      searchTerms: ["the north face nuptse black puffer jacket sold"],
+      maxItems: 30,
+      soldItems: true,
+      ebayDomain: "ebay.com",
+    });
     // Token must never be placed in the URL.
     expect(String(url)).not.toContain("secret-apify-token");
   });

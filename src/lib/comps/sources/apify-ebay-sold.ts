@@ -65,6 +65,15 @@ function priceToCents(value: unknown): number | null {
   return null;
 }
 
+function priceToUsdCents(value: unknown, currencyValue?: unknown): number | null {
+  const currency =
+    typeof currencyValue === "string" && currencyValue.trim().length > 0
+      ? currencyValue.trim().toUpperCase()
+      : null;
+  if (currency && currency !== "USD") return null;
+  return priceToCents(value);
+}
+
 function conditionFromText(value: unknown): NormalizedComp["condition"] {
   const text = (typeof value === "string" ? value : "").toLowerCase();
   if (text.includes("new with tag")) return "new_with_tags";
@@ -96,10 +105,17 @@ export function mapApifyEbaySoldItems(items: unknown[], query: CompQuery): Norma
     const title = firstString(item.title, item.name);
     if (!title) continue;
 
-    const priceCents = priceToCents(item.soldPrice ?? item.price ?? item.priceWithCurrency);
+    const priceCents = priceToUsdCents(
+      item.soldPrice ?? item.price ?? item.priceWithCurrency,
+      item.soldCurrency ?? item.currency,
+    );
     if (priceCents == null) continue;
 
-    const shippingCents = priceToCents(item.shippingPrice ?? item.shipping ?? item.shippingCost) ?? 0;
+    const shippingCents =
+      priceToUsdCents(
+        item.shippingPrice ?? item.shipping ?? item.shippingCost,
+        item.shippingCurrency ?? item.currency,
+      ) ?? 0;
 
     out.push({
       source: SOURCE_ID,
@@ -108,9 +124,13 @@ export function mapApifyEbaySoldItems(items: unknown[], query: CompQuery): Norma
       priceCents,
       shippingCents,
       currency: "USD",
-      soldDate: isoDate(item.soldDate ?? item.dateSold ?? item.endDate ?? item.endTime),
+      soldDate: isoDate(
+        item.soldDate ?? item.dateSold ?? item.endDate ?? item.endTime ?? item.endedAt,
+      ),
       url: httpUrl(item.url ?? item.itemUrl ?? item.link),
-      imageUrl: httpUrl(item.image ?? item.imageUrl ?? item.thumbnail ?? item.galleryURL),
+      imageUrl: httpUrl(
+        item.image ?? item.imageUrl ?? item.thumbnail ?? item.thumbnailUrl ?? item.galleryURL,
+      ),
       sold: true,
       condition: conditionFromText(item.condition),
       brand: firstString(item.brand) ?? query.brand ?? null,
@@ -156,7 +176,7 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            keywords,
+            keywords: [keywords],
             searchTerms: [keywords],
             maxItems: MAX_ITEMS,
             soldItems: true,
