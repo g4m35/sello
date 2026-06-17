@@ -12,6 +12,58 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-17 — Codex. **PR #35 post-eBay-run stabilization deployed to production.**
+PR #35 (`feature/post-ebay-run-polish`) was merged into `develop` at
+`b5a79033afcf49d86662eab3fda61062c435d3e6`, promoted to `main`, and deployed
+with empty trigger commit `c8fd322cbb36aace54bd8b116a4545d00739ecb7`
+(`chore: trigger production deploy [deploy]`) after the first production
+deployment was canceled by the ignored-build step. Live Vercel deployment:
+`dpl_2V27PtRar6na8Bq2W656xN4ywmpq`,
+`https://resale-crosslister-8ouav51ti-jaky.vercel.app`, target `production`,
+status `Ready`, aliased to `https://sello.wtf`.
+
+Deployed changes:
+
+- Added shared marketplace lifecycle sync helper. Successful eBay publish now
+  updates master `InventoryItem.status` to `LISTED`; successful eBay delist
+  updates the eBay channel to `DELISTED` and sets master status to `DELISTED`
+  only when no active marketplace channels remain, otherwise keeps master
+  `LISTED`. Orphan cleanup syncs only when channel state already proves the item
+  is/was delisted, so failed unpublished cleanup does not demote an approved item.
+- Added eBay sale-wording guard in readiness/preflight for obvious non-sale
+  wording: `test`, `do not buy`, `dummy`, `fake`, `placeholder`,
+  `not for sale`; UI labels this as `Normal sale wording`.
+- Removed passive external comp fetching from `GET /api/listings/[id]`. External
+  providers now stay behind explicit refresh/admin/job paths; the existing
+  explicit `POST /api/listings/comps/refresh` path remains seller-scoped.
+- Added eBay media guard: preflight/publish only accept photos in configured
+  public marketplace bucket `EBAY_PUBLIC_IMAGE_BUCKET`; private item-photo
+  buckets are blocked with `ebay_public_photo` before any eBay API call. Full
+  derivative pipeline plan is in `docs/EBAY_MEDIA_PIPELINE_PLAN.md`; no schema
+  migration was created.
+
+Gates run on this branch: `npx prisma format`, `npx prisma validate`,
+`npm run lint` (pass with the same two pre-existing `_m`/`_f` warnings in
+`src/app/api/listings/draft/draft-actions.test.ts`), `npx tsc --noEmit`,
+`npm test` (77 files / 511 tests), `npm run build`, and
+`npx prisma migrate status` (`Database schema is up to date!`).
+The same full gate passed on `develop`, and the final production gate passed on
+`main` before push: Prisma validate, lint, TypeScript, tests, build, and migrate
+status. No migration was added or applied.
+
+Production smoke: `/` returns `307 -> /dashboard`; `/privacy`, `/dashboard`,
+`/inventory`, `/settings`, and `/settings/marketplaces` return `200`;
+unauthenticated `/api/listings` returns the expected `401`. The Playwright
+browser context was signed out, so authenticated inventory/editor/PriceComp/eBay
+preflight UI smoke was not available in this run. Vercel production logs for the
+last 15 minutes showed no `error`, `fatal`, or `500` records. Vercel Production
+env names show `EBAY_ENV` present, `EBAY_PUBLIC_IMAGE_BUCKET` absent, and
+`EBAY_PRODUCTION_PUBLISH_ENABLED` absent. Expected eBay publish behavior after
+this deploy: production publish remains disabled by flag; if the flag is later
+enabled before `EBAY_PUBLIC_IMAGE_BUCKET` is configured, eBay preflight/publish
+will intentionally block on `ebay_public_photo`.
+
+## Previous update
 2026-06-16 — Codex. **Post-eBay-run stabilization pass implemented on `feature/post-ebay-run-polish`; no deploy, no production migration.**
 Branch was created from latest `develop` after fast-forwarding the live-run
 `main` closeout back into `develop`. Changes made:
@@ -40,7 +92,7 @@ Gates run on this branch: `npx prisma format`, `npx prisma validate`,
 `npm test` (77 files / 511 tests), `npm run build`, and
 `npx prisma migrate status` (`Database schema is up to date!`).
 
-## Previous update
+## Earlier update
 2026-06-16 — Codex. **First policy-safe Sello live eBay publish succeeded, duplicate guard verified, listing ended, orphan cleanup clean, production flag OFF.**
 Controlled item:
 `7d70b619-c473-40ca-b601-1a3956161862` / draft
@@ -813,9 +865,10 @@ on auth.ebay.com.
 
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
-  `jaky/resale-crosslister`), `origin/main` currently includes the live
-  publish/cleanup run commits through `62e5e45`; a HANDOFF-only closeout commit
-  may be on top if this file was just pushed.
+  `jaky/resale-crosslister`). Production code deployment is
+  `dpl_2V27PtRar6na8Bq2W656xN4ywmpq` from main commit `c8fd322`; a later
+  HANDOFF-only commit may be on top of `origin/main` without a production
+  redeploy.
 - Production eBay OAuth/readiness and guarded live publish path are working.
   `EBAY_PRODUCTION_PUBLISH_ENABLED` is currently absent from Vercel Production,
   so production publish is blocked/hidden again by default.
@@ -825,13 +878,14 @@ on auth.ebay.com.
   cleaned, and the final eBay scan was clean.
 - Cleanup scanner fix is live: ended/unpublished offers are cleanup candidates;
   only `PUBLISHED` offers or `ACTIVE` listing status count as live.
-- On branch `feature/post-ebay-run-polish`, master lifecycle sync is fixed for
-  eBay publish/delist and passive detail loads no longer trigger external comp
-  provider fetches. This branch is not deployed or merged yet.
+- PR #35 stabilization is deployed: master lifecycle sync is fixed for eBay
+  publish/delist, passive detail loads no longer trigger external comp provider
+  fetches, and obvious unsafe eBay non-sale wording is blocked in readiness.
 - Public Supabase bucket `sello-ebay-public-listing-photos` exists from the
-  live run for the controlled eBay-visible shirt photo. The stabilization branch
-  adds a guard requiring `EBAY_PUBLIC_IMAGE_BUCKET` for eBay preflight/publish,
-  but the full reusable public derivative image pipeline remains future work.
+  live run for the controlled eBay-visible shirt photo, but Vercel Production
+  does not currently have `EBAY_PUBLIC_IMAGE_BUCKET` configured. eBay publish is
+  therefore disabled by `EBAY_PRODUCTION_PUBLISH_ENABLED` being absent, and would
+  also block on `ebay_public_photo` if the publish flag were enabled first.
 
 ## Shipped to prod (all live now)
 - Full app UI, Phase 0, Phase 1 comps pipeline (dormant — no comp source key).
@@ -840,8 +894,16 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-17 (Codex): deployed PR #35 stabilization to production. PR merged
+  into `develop` at `b5a7903`, promoted to `main`, empty `[deploy]` trigger
+  `c8fd322` produced Vercel deployment `dpl_2V27PtRar6na8Bq2W656xN4ywmpq`
+  aliased to `sello.wtf`. Full develop gate and final main gate passed; no
+  migration added/applied. Smoke: public/app shell routes 200/307 as expected,
+  unauth API 401, no production error/fatal/500 logs in 15m. Authenticated
+  browser session was unavailable in Playwright, so seller-scoped editor smoke
+  was not exercised live.
 - 2026-06-16 (Codex): post-eBay-run stabilization on
-  `feature/post-ebay-run-polish` (not deployed): shared master/channel lifecycle
+  `feature/post-ebay-run-polish`: shared master/channel lifecycle
   sync, eBay public-photo guard + derivative pipeline plan, passive detail route
   no longer auto-fetches comps, explicit comp refresh remains seller-scoped, and
   eBay readiness blocks obvious non-sale/test wording. Gates green: prisma
@@ -871,10 +933,9 @@ on auth.ebay.com.
 ## Blocked on owner (credentials / decisions — not code)
 - **Live eBay publishing:** working, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED`
   absent unless the owner explicitly approves another controlled live run.
-- **Comp source policy:** production has eBay Browse auto comps enabled. On
-  `feature/post-ebay-run-polish`, passive item-detail loads no longer call
-  `runCompFetch`; provider fetches remain behind explicit refresh/admin/job
-  paths.
+- **Comp source policy:** production has eBay Browse auto comps enabled, but
+  passive item-detail loads no longer call `runCompFetch`; provider fetches
+  remain behind explicit refresh/admin/job paths.
 - **Stripe keys** for monetization.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
@@ -882,11 +943,11 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Review PR for `feature/post-ebay-run-polish`, merge to `develop` when ready,
-   then decide separately whether/when to promote to production.
-2. Productize the full eBay-visible derivative media pipeline from
+1. Productize the full eBay-visible derivative media pipeline from
    `docs/EBAY_MEDIA_PIPELINE_PLAN.md` with an additive migration and explicit
    production approval before applying it.
+2. Add `EBAY_PUBLIC_IMAGE_BUCKET` to Vercel Production only when the derivative
+   media path is ready; until then eBay publish should remain disabled.
 3. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
 4. Stripe subscriptions and background worker host + inventory sync.
