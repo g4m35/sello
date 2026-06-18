@@ -96,6 +96,21 @@ function channelsOf(item: ItemWithRelations, draft: ListingDraft | null): Channe
 export function mapItem(item: ItemWithRelations): ItemView {
   const draft = latestDraft(item);
   const lifecycleState = toLifecycleState(item.status);
+  const priceCents = draft?.recommendedPriceCents ?? item.recommendedPriceCents ?? null;
+  // Readiness on the list view-model lets dashboard/inventory tell a complete
+  // draft (mark ready) from an incomplete one (needs details) without a detail fetch.
+  const readiness = buildReadinessView({
+    productName: item.productName,
+    title: draft?.title ?? "",
+    description: draft?.description ?? "",
+    bulletPoints: draft?.bulletPoints ?? [],
+    selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
+    recommendedPriceCents: priceCents,
+    photoCount: photoCountOf(item),
+  });
+  const missingCount = readiness.checks.filter(
+    (check) => check.blocking && check.state === "miss",
+  ).length;
   return {
     id: item.id,
     title: draft?.title || item.productName,
@@ -105,10 +120,12 @@ export function mapItem(item: ItemWithRelations): ItemView {
     condition: item.condition,
     size: item.size,
     colorway: item.colorway,
-    priceCents: draft?.recommendedPriceCents ?? item.recommendedPriceCents ?? null,
+    priceCents,
     status: designStatusFromInventory(item.status),
     lifecycleState,
     statusLabel: describeState(lifecycleState).label,
+    ready: readiness.ready,
+    missingCount,
     photoCount: photoCountOf(item),
     updatedAt: item.updatedAt.toISOString(),
     draftId: draft?.id ?? null,

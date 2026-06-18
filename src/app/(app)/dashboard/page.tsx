@@ -56,9 +56,28 @@ export default function DashboardPage() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishItem, setPublishItem] = useState<ItemView | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [markBusy, setMarkBusy] = useState<string | null>(null);
+  const [markError, setMarkError] = useState<string | null>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  const markReady = useCallback(
+    async (item: ItemView) => {
+      if (!item.draftId) return;
+      setMarkBusy(item.id);
+      setMarkError(null);
+      try {
+        await api.draftAction(token, item.draftId, "approve");
+        reload();
+      } catch (e) {
+        setMarkError((e as { error?: string })?.error ?? "Could not mark this listing ready.");
+      } finally {
+        setMarkBusy(null);
+      }
+    },
+    [token, reload],
+  );
 
   useEffect(() => {
     let active = true;
@@ -101,6 +120,17 @@ export default function DashboardPage() {
     () => items.filter((i) => i.lifecycleState === "error"),
     [items],
   );
+  // Drafts that still need fields vs drafts that are complete but not yet
+  // marked ready. Only the former belong in "Needs attention"; the latter get
+  // a one-click "Mark ready" so a finished listing is never a dead end.
+  const incompleteDrafts = useMemo(
+    () => draftItems.filter((i) => !i.ready),
+    [draftItems],
+  );
+  const completeDrafts = useMemo(
+    () => draftItems.filter((i) => i.ready),
+    [draftItems],
+  );
 
   // Reset picked selection whenever the ready set changes, using React's
   // render-phase derived-state pattern (no effect needed).
@@ -115,19 +145,22 @@ export default function DashboardPage() {
     const fromFailed: AttentionRow[] = failedItems.map((i) => ({
       id: `err-${i.id}`,
       itemId: i.id,
-      title: `Needs attention - ${i.title}`,
-      sub: `${i.statusLabel} · publish failed`,
+      title: `Needs attention — ${i.title}`,
+      sub: `${i.statusLabel} · couldn't finish`,
       tone: "miss",
     }));
-    const fromDrafts: AttentionRow[] = draftItems.map((i) => ({
+    const fromDrafts: AttentionRow[] = incompleteDrafts.map((i) => ({
       id: `draft-${i.id}`,
       itemId: i.id,
-      title: `Finish draft - ${i.title}`,
-      sub: "Draft · add details",
+      title: `Finish draft — ${i.title}`,
+      sub:
+        i.missingCount > 0
+          ? `${i.missingCount} detail${i.missingCount === 1 ? "" : "s"} to add`
+          : "Add details",
       tone: "warn",
     }));
     return [...fromFailed, ...fromDrafts];
-  }, [failedItems, draftItems]);
+  }, [failedItems, incompleteDrafts]);
 
   const togglePick = (id: string) => {
     setPicked((prev) => {
@@ -200,7 +233,7 @@ export default function DashboardPage() {
               Good {timeofday}, <em>{firstName}</em>.
             </h1>
             <div className="page__title-meta">
-              {readyItems.length} ready · {failedItems.length} need attention
+              {readyItems.length} ready · {attention.length} need attention
             </div>
           </div>
           <div className="page__actions">
@@ -241,9 +274,9 @@ export default function DashboardPage() {
           </div>
           <div className="kpi">
             <div className="kpi__label">Needs attention</div>
-            <div className="kpi__value t-num">{failedItems.length}</div>
+            <div className="kpi__value t-num">{attention.length}</div>
             <div className="kpi__sub">
-              {failedItems.length > 0 ? (
+              {attention.length > 0 ? (
                 <span className="kpi__delta--down">
                   <Icon name="arrow-dn" size={12} /> action needed
                 </span>
@@ -316,12 +349,49 @@ export default function DashboardPage() {
                   Publish {pickedReadyCount || readyItems.length}
                 </Btn>
               </div>
-              {readyItems.length === 0 ? (
+              {markError && (
+                <div className="card__body">
+                  <span className="t-small danger">{markError}</span>
+                </div>
+              )}
+              {completeDrafts.length > 0 && (
+                <div>
+                  {completeDrafts.map((item) => (
+                    <div
+                      key={item.id}
+                      className="attn-row"
+                      style={{ gridTemplateColumns: "44px 1fr auto auto" }}
+                    >
+                      <Thumb seed={item.id} size={44} />
+                      <div
+                        style={{ minWidth: 0, cursor: "pointer" }}
+                        onClick={() => router.push(`/inventory/${item.id}`)}
+                      >
+                        <div className="attn-row__title">{item.title}</div>
+                        <div className="attn-row__sub">Complete · mark ready to publish</div>
+                      </div>
+                      <span className="t-num" style={{ fontSize: 13, fontWeight: 500 }}>
+                        {formatMoneyCents(item.priceCents)}
+                      </span>
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        icon="check"
+                        disabled={markBusy === item.id}
+                        onClick={() => void markReady(item)}
+                      >
+                        {markBusy === item.id ? "Marking…" : "Mark ready"}
+                      </Btn>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {readyItems.length === 0 && completeDrafts.length === 0 ? (
                 <div className="card__body">
                   <EmptyState
                     icon="check-c"
                     title="Nothing ready yet"
-                    desc="Approve a draft and it shows up here, ready to publish."
+                    desc="Finish a draft and mark it ready, and it shows up here to publish."
                   />
                 </div>
               ) : (

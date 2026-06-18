@@ -17,6 +17,8 @@ function makeItem(overrides: Partial<ItemView> = {}): ItemView {
     status: "draft",
     lifecycleState: "draft",
     statusLabel: "Draft",
+    ready: false,
+    missingCount: 0,
     photoCount: 3,
     updatedAt: "2026-06-16T00:00:00.000Z",
     draftId: null,

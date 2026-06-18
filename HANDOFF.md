@@ -12,6 +12,67 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Claude. **Publish-flow clarity on `feature/publish-flow-clarity`
+(off `develop`, NOT pushed/deployed). No schema/migration changes; no paid
+calls; no eBay production publish; no Stripe/Bulk Intake.** Fixes the reported
+"Needs attention" dead-end + dashboard count bug + several UX asks:
+- **Dead-end root cause:** a draft only became "ready" via the publish flow,
+  which is hidden when production publishing is off, so a complete draft could
+  never leave draft/"Needs attention". Fix: `ItemView` now carries readiness
+  (`ready`/`missingCount`, computed in `mapItem`); new draft POST `approve`
+  action marks a complete stored draft ready (re-checks readiness, rejects
+  incomplete with a reason); editor gains an explicit **Mark ready** action
+  (works regardless of the publish gate) + **Delete listing**; dashboard gives a
+  one-click **Mark ready** to complete-but-unapproved drafts.
+- **Count bug:** dashboard KPI "Needs attention" now equals the "Needs your
+  attention" list (both = errors + drafts missing fields); complete drafts no
+  longer show "add details", and incomplete ones show the exact missing count.
+- **Pricing:** the stuck Refresh button now ticks its cooldown down client-side
+  and re-enables itself.
+- **Polish:** rebranded Counter -> Sello (sidebar, modals, title) + removed
+  v0.4; Department/gender select in Basics (eBay Department aspect, auto-detected
+  default); eBay payload "Technical preview" gated behind `?debug`; required-
+  aspect dropdowns widened; new-listing intake card spacing fixed.
+Gate green: prisma validate, lint (2 known warnings), tsc, `npm test`
+(102 files / 685 tests), build.
+
+**Deferred (flagged, not done):** full right-rail "one flow" redesign (kept the
+existing cards; made status/actions coherent); adding department to the Gemini
+identification schema (used local `detectDepartment` inference instead, no
+schema change).
+
+**Blocked on owner:** (1) review + merge `feature/publish-flow-clarity` ->
+`develop`, then promote to `main` with `[deploy]` to ship (NOT pushed). (2)
+Production currently runs PR #41 (`dpl_N51WG8…`); this branch is the next release.
+
+## Previous update
+2026-06-18 — Claude. **PR #41 promoted to PRODUCTION.** `develop` (d6c26d5)
+merged to `main` as `[deploy]` merge `34dd71e` and pushed; Vercel built and
+released production deployment `dpl_N51WG8ffFniCppUPMTVqwG5ccur2` (Ready), now
+serving `sello.wtf` (HTTP 200). Previous prod was `dpl_7KixmneznJ9EiAy4omy25TuXF3oP`
+(rollback target).
+- Pre-flight: no schema/migration changes (both branches 16 migrations); comp caps,
+  budgets, and eBay publish gates byte-identical to prior `main` (no regression);
+  merge had zero code conflicts (only HANDOFF.md unioned); gate green (tsc, lint,
+  `npm test` 102 files / 681 tests, build).
+- Post-deploy log scan (40m window, prod): all requests HTTP 200; zero
+  error/fatal/warning logs; editor flow exercised live —
+  `GET /api/listings`, `GET /api/listings/{id}`, `PATCH /api/listings/draft/{id}`,
+  `GET /api/listings/comps` all 200; NO `/comps/refresh` (no paid provider call);
+  no secret/token strings. Decision: KEEP (no rollback trigger hit).
+- NOT done: interactive signed-in UI smoke test — the claude-in-chrome extension
+  was disconnected this session, so the visual checks (taxonomy label, seller copy,
+  `?debug=1` diagnostics, dark/light) were not hand-verified; the shipped code is the
+  gate-passing build and these behaviors are covered by unit tests.
+- Hard stops honored: no migrations, no `prisma db push`, no paid providers/calls,
+  no eBay production publish, no Stripe, no Bulk Intake.
+
+**Blocked on owner:** (1) optional: reconnect the Chrome extension (or run the
+manual checklist) to visually confirm the editor/pricing/publish UI on prod. (2)
+GitHub Dependabot flags 9 vulnerabilities (2 high, 7 moderate) on the default
+branch — triage separately. (3) Landing-page light-mode theming still open.
+
+## Previous update
 2026-06-18 — Codex. **Editor/listing alpha-UX PR #41 reviewed, fixed,
 merged to `develop`, and explicitly deployed to Preview; production promotion
 stopped at the Preview smoke gate. No migrations, paid provider calls, Bulk

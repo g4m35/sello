@@ -152,7 +152,7 @@ export async function POST(
     const action = body.action;
     const prisma = getPrisma();
 
-    if (action !== "reset" && action !== "duplicate") {
+    if (action !== "reset" && action !== "duplicate" && action !== "approve") {
       throw new AppError("Unsupported draft action.", 400);
     }
 
@@ -185,6 +185,37 @@ export async function POST(
 
     if (!existingDraft) {
       throw new AppError("Listing draft not found.", 404);
+    }
+
+    if (action === "approve") {
+      // Mark a saved draft ready to publish without resending every field.
+      // Readiness is re-checked from the stored draft so an incomplete item is
+      // never silently approved; the seller gets a plain-language reason.
+      const readiness = evaluateReadiness({
+        productName: existingDraft.inventoryItem.productName,
+        title: existingDraft.title ?? "",
+        description: existingDraft.description ?? "",
+        bulletPoints: existingDraft.bulletPoints ?? [],
+        selectedMarketplaces: (existingDraft.selectedMarketplaces ?? []) as string[],
+        recommendedPriceCents: existingDraft.recommendedPriceCents,
+      });
+      if (!readiness.ready) {
+        throw new AppError(
+          `Not ready yet: ${readiness.issues.map((issue) => issue.message).join(" ")}`,
+          400,
+        );
+      }
+      const [draft, inventoryItem] = await prisma.$transaction([
+        prisma.listingDraft.update({
+          where: { id: existingDraft.id },
+          data: { status: "APPROVED", approvedAt: new Date() },
+        }),
+        prisma.inventoryItem.update({
+          where: { id: existingDraft.inventoryItemId },
+          data: { status: "APPROVED" },
+        }),
+      ]);
+      return NextResponse.json({ inventoryItem, draft });
     }
 
     if (action === "duplicate") {

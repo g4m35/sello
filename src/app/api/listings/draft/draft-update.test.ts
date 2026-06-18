@@ -13,7 +13,21 @@ vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
 }));
 
-import { PATCH } from "./[draftId]/route";
+import { PATCH, POST } from "./[draftId]/route";
+
+function completeStoredDraft() {
+  return {
+    id: "draft-1",
+    inventoryItemId: "item-1",
+    title: "Nike Air Max 1 Patta Waves Noise Aqua",
+    description: "Authentic pair in great condition with original details. Ships fast.",
+    bulletPoints: ["Nike Air Max", "Noise Aqua colorway", "US 10"],
+    selectedMarketplaces: ["ebay"],
+    recommendedPriceCents: 24000,
+    marketplaceDrafts: {},
+    inventoryItem: { productName: "Nike Air Max", aiOutputs: [] },
+  };
+}
 
 function validPatchBody() {
   return {
@@ -268,6 +282,61 @@ describe("listing draft update marketplace fields", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("approve action marks a complete stored draft ready without resending fields", async () => {
+    const draftUpdate = vi.fn().mockResolvedValue({ id: "draft-1", status: "APPROVED" });
+    const itemUpdate = vi.fn().mockResolvedValue({ id: "item-1", status: "APPROVED" });
+    mocks.getPrisma.mockReturnValue({
+      listingDraft: {
+        findFirst: vi.fn().mockResolvedValue(completeStoredDraft()),
+        update: draftUpdate,
+      },
+      inventoryItem: { update: itemUpdate },
+      $transaction: vi.fn(async (ops) => Promise.all(ops)),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/draft/draft-1", {
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: JSON.stringify({ action: "approve" }),
+      }),
+      { params: Promise.resolve({ draftId: "draft-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(draftUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "APPROVED" }) }),
+    );
+    expect(itemUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: "APPROVED" } }),
+    );
+  });
+
+  it("approve action refuses an incomplete draft with a plain-language reason", async () => {
+    const incomplete = { ...completeStoredDraft(), recommendedPriceCents: null };
+    const update = vi.fn();
+    mocks.getPrisma.mockReturnValue({
+      listingDraft: { findFirst: vi.fn().mockResolvedValue(incomplete), update },
+      inventoryItem: { update },
+      $transaction: vi.fn(),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/draft/draft-1", {
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: JSON.stringify({ action: "approve" }),
+      }),
+      { params: Promise.resolve({ draftId: "draft-1" }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toMatch(/not ready/i);
+    expect(payload.error).toMatch(/price/i);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("does not update another seller's draft", async () => {

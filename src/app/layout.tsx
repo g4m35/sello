@@ -23,7 +23,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Counter — Resale crosslisting",
+  title: "Sello — Resale crosslisting",
   description: "AI-assisted resale cross-listing for streetwear, sneakers, and hype-fashion sellers.",
 };
 
