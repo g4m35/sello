@@ -51,6 +51,10 @@ export type ItemView = {
   status: DesignStatus;
   lifecycleState: ItemLifecycleState;
   statusLabel: string;
+  /** True when all blocking readiness checks pass (the item can be marked ready). */
+  ready: boolean;
+  /** Number of blocking readiness checks still missing (0 when ready). */
+  missingCount: number;
   photoCount: number;
   updatedAt: string;
   draftId: string | null;

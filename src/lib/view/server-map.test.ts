@@ -65,6 +65,40 @@ describe("mapItem inventory visibility", () => {
   });
 });
 
+describe("mapItem readiness (so lists can bucket accurately)", () => {
+  function completeDraftItem() {
+    const base = item();
+    return {
+      ...base,
+      status: "DRAFT_READY" as const,
+      listingDrafts: [
+        {
+          ...base.listingDrafts[0],
+          description: "Authentic pair in great condition, barely worn. Ships fast.",
+        },
+      ],
+    };
+  }
+
+  it("marks a readiness-complete draft as ready with zero missing fields", () => {
+    const view = mapItem(completeDraftItem());
+    expect(view.ready).toBe(true);
+    expect(view.missingCount).toBe(0);
+  });
+
+  it("marks a draft missing a price as not ready and counts the gap", () => {
+    const draft = completeDraftItem();
+    const noPrice = {
+      ...draft,
+      recommendedPriceCents: null,
+      listingDrafts: [{ ...draft.listingDrafts[0], recommendedPriceCents: null }],
+    };
+    const view = mapItem(noPrice);
+    expect(view.ready).toBe(false);
+    expect(view.missingCount).toBeGreaterThan(0);
+  });
+});
+
 describe("mapItem publish channel gating", () => {
   it("hides live eBay publishing when the production flag is off", () => {
     vi.stubEnv("EBAY_ENV", "production");

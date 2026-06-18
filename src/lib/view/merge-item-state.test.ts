@@ -29,6 +29,8 @@ function detail(overrides: Partial<ItemDetailView> = {}): ItemDetailView {
     status: "draft",
     lifecycleState: "draft",
     statusLabel: "Draft",
+    ready: false,
+    missingCount: 1,
     photoCount: 2,
     updatedAt: "2026-06-17T00:00:00.000Z",
     draftId: "draft-1",
