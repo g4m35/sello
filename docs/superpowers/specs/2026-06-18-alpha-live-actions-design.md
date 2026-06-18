@@ -11,7 +11,7 @@ The beta restriction is temporary. Feature entitlement must remain separate from
 This rollout includes:
 
 - server-side email allowlists for live eBay publish, eBay delist, and paid comps;
-- a real bulk eBay publish preflight and execution flow for up to 10 items;
+- a real bulk eBay publish preflight and execution flow for all selected eligible items;
 - live eBay delist where a stored active eBay listing and offer exist;
 - paid sold-comp refresh with identity, quota, budget, cooldown, and ledger controls;
 - seller-facing capability and unavailable-state copy;
@@ -73,12 +73,16 @@ The confirmation modal explicitly states that a live eBay listing will be create
 
 Bulk publish uses the same single-item publish service; it does not introduce a second implementation of marketplace rules.
 
+Bulk publish accepts selected ready item IDs for the authenticated seller. The server may process items internally in bounded chunks with low concurrency, but the product does not expose a fixed 10-item alpha cap.
+
 Two server endpoints support the flow:
 
-1. A zero-mutation preflight accepts 1–10 item IDs, authenticates and authorizes the seller, deduplicates IDs, loads only seller-owned items, and runs server-side readiness for each item. It returns selected, ready, blocked, and rejected counts plus safe per-item reasons.
-2. An execution endpoint accepts the same bounded IDs plus an explicit live-publish confirmation. It re-authenticates, re-authorizes, re-loads ownership, and re-checks readiness immediately before each publish.
+1. A zero-mutation preflight accepts the selected item IDs, authenticates and authorizes the seller, deduplicates IDs, loads only seller-owned items, and runs server-side readiness for every item. It returns selected, ready, blocked, and rejected counts plus safe per-item reasons.
+2. An execution endpoint accepts the same selected IDs plus an explicit live-publish confirmation. It re-authenticates, re-authorizes, re-loads ownership, and re-checks readiness immediately before each publish.
 
-Items run independently with low concurrency to limit eBay/API pressure. A failure does not stop later items. Each result is one of `published`, `failed`, `skipped`, or `needs_details`, and includes only safe identifiers and retry eligibility. Duplicate or in-flight items are skipped without another eBay call. Retry is offered only when the canonical publish service says it is safe.
+Items run independently in bounded internal chunks with low concurrency to limit eBay/API pressure and serverless execution time. A failure does not stop later items. Each result is one of `published`, `failed`, `skipped`, or `needs_details`, and includes only safe identifiers and retry eligibility. Duplicate or in-flight items are skipped without another eBay call. Retry is offered only when the canonical publish service says it is safe.
+
+The UI can select all visible or otherwise eligible ready listings and treats the operation as one logical bulk run. If a transport-level request ceiling is required after measuring the production route, it is controlled by a server-only environment variable, set high enough for real seller use, and reported as a safe actionable error. Internal chunk size and concurrency are implementation controls, not product entitlements or seller-visible selection caps.
 
 The inventory selection bar offers “Publish selected to eBay,” “Preview selected,” and the existing CSV export. The modal shows total, ready, blocked, and per-item missing reasons, and requires: “I understand this will create live eBay listings.”
 
@@ -169,7 +173,7 @@ Implementation follows test-first changes for each boundary:
 - route-level server enforcement for every feature;
 - non-allowlisted requests cause no persistence or outbound call;
 - single publish ownership, readiness, connection, policy, duplicate, sanitized-failure, and success behavior;
-- bulk cap, deduplication, ownership, readiness, independent results, duplicate protection, and safe retry behavior;
+- bulk selection across all eligible items, configurable transport ceilings if required, internal chunking, deduplication, ownership, readiness, independent results, duplicate protection, and safe retry behavior;
 - delist ownership, artifact, confirmation, idempotency, failure restoration, and sanitization;
 - paid comp entitlement, strong identity, weak identity, budget, daily/monthly quota, both cooldowns, ledger state, provider failure, and manual comp independence;
 - seller capability copy and absence of dead controls;
