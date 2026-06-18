@@ -12,6 +12,43 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Codex. **Editor/listing alpha-UX PR #41 reviewed, fixed,
+merged to `develop`, and explicitly deployed to Preview; production promotion
+stopped at the Preview smoke gate. No migrations, paid provider calls, Bulk
+Intake, or eBay production publishing.**
+
+- Rebased `feature/editor-alpha-ux` from the production `main` merge onto current
+  `develop`, preserving the intended `feature/* -> develop -> main` history.
+- Review found and fixed one release blocker: a stale saved eBay category could
+  warn while still returning `ready: true`. Commit `2c8925b` now blocks conflicting
+  categories, suppresses the payload preview, and clears category-specific aspects
+  when a seller chooses a replacement category.
+- Full gate passed twice: Prisma validate; lint with only the two known warnings;
+  `tsc`; 102 test files / 681 tests; production build.
+- PR #41 merged to `develop` as `53f26e8bc8390bd34c2b2cd0213a548601793285`.
+  Hosted CodeRabbit completed with no line-level issues; the diff-scoped security
+  scan covered all 24 source/test rows with no reportable findings.
+- Explicit Vercel Preview is Ready: deployment
+  `dpl_5jFa3s3srtug4KAcXMQ8E6JF1bUz`, URL
+  `https://resale-crosslister-2r6vrywg4-jaky.vercel.app`.
+- Preview smoke is blocked before app load: Preview has no environment variables,
+  and Vercel SSO protection is `all_except_custom_domains`; `/inventory/new`
+  shows `Authentication Required`. Production was therefore not deployed.
+
+**Current state:** `develop` contains PR #41 and is locally clean before this
+handoff update. `main` and production remain unchanged. Production eBay publish
+remains gated off.
+
+**Blocked on owner:** Decide on a safe QA environment strategy: provision
+Preview-only auth/database variables and an accessible staging domain/account,
+or approve a separate staging project. Do not blindly clone all Production env
+variables because that would connect Preview to production data/providers.
+
+**Next up:** Make Preview/staging QA-ready, rerun the 20-step editor smoke in
+light and dark mode, then promote `develop -> main` and run the focused
+production smoke only if Preview passes.
+
+## Previous update
 2026-06-18 — Claude. **Editor/listing alpha-UX pass on
 `feature/editor-alpha-ux` (branched off `main`). No deploy; NO migrations (schema
 unchanged); no paid provider calls; eBay production publish still gated off.**
