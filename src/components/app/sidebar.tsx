@@ -56,9 +56,8 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar__brand">
         <span className="sidebar__brand-mark">
-          Counter<em>.</em>
+          Sello<em>.</em>
         </span>
-        <span className="sidebar__brand-tag">v0.4</span>
       </div>
 
       <button className="nav-new" onClick={() => go("/inventory/new")}>

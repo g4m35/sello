@@ -70,6 +70,7 @@ export function EbayPreflightCard({
   savedCategoryId,
   savedQuantity,
   refreshSignal,
+  showAdvanced = false,
   onSelectCategory,
   onSaveQuantity,
   onSaveAspect,
@@ -86,6 +87,8 @@ export function EbayPreflightCard({
    * sync with the latest saved draft without a manual re-click or page reload.
    */
   refreshSignal?: number;
+  /** Show the developer-only payload preview (debug mode). */
+  showAdvanced?: boolean;
   /** Persists a category choice through the editor's normal save flow. */
   onSelectCategory: (categoryId: string) => void;
   /** Persists eBay quantity through the editor's normal save flow. */
@@ -312,7 +315,7 @@ export function EbayPreflightCard({
                       <select
                         id={fieldId}
                         className="select"
-                        style={{ flex: 1, maxWidth: 260 }}
+                        style={{ flex: 1, minWidth: 180, maxWidth: 280 }}
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
                       >
@@ -327,7 +330,7 @@ export function EbayPreflightCard({
                       <input
                         id={fieldId}
                         className="input"
-                        style={{ flex: 1, maxWidth: 260 }}
+                        style={{ flex: 1, minWidth: 180, maxWidth: 280 }}
                         maxLength={80}
                         placeholder={`Enter ${aspect.label.toLowerCase()}`}
                         value={value}
@@ -360,7 +363,7 @@ export function EbayPreflightCard({
           </div>
         ))}
 
-        {result?.ready && result.preview && (
+        {showAdvanced && result?.ready && result.preview && (
           <details>
             <summary className="t-small" style={{ cursor: "pointer", fontWeight: 500 }}>
               Technical preview (SKU {result.preview.sku})

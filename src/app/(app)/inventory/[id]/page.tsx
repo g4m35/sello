@@ -100,6 +100,21 @@ const CONDITION_OPTIONS = [
   "unknown",
 ] as const;
 
+// Seller-facing department/gender, stored as the eBay "Department" aspect so it
+// also satisfies eBay readiness. Values match what eBay expects.
+const DEPARTMENT_OPTIONS = [
+  { value: "Men", label: "Men's" },
+  { value: "Women", label: "Women's" },
+  { value: "Unisex Adult", label: "Unisex" },
+] as const;
+
+function departmentAspectFromInference(department: string): string {
+  if (department === "men") return "Men";
+  if (department === "women") return "Women";
+  if (department === "unisex") return "Unisex Adult";
+  return "";
+}
+
 function editsFrom(item: ItemDetailView): DraftEdits {
   return {
     title: item.title,
@@ -995,6 +1010,28 @@ export default function ListingDetailPage() {
                     onChange={(e) => patchItem({ colorway: e.target.value })}
                   />
                 </Field>
+                <Field label="Department" hint="auto-detected">
+                  <select
+                    className="select"
+                    disabled={!editable}
+                    value={
+                      edits.ebayAspects.Department ||
+                      departmentAspectFromInference(intelligence.department)
+                    }
+                    onChange={(e) =>
+                      patch({
+                        ebayAspects: { ...edits.ebayAspects, Department: e.target.value },
+                      })
+                    }
+                  >
+                    <option value="">Auto</option>
+                    {DEPARTMENT_OPTIONS.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               </div>
 
               <Field label="Description" hint={`${edits.description.length} chars`}>
@@ -1424,6 +1461,7 @@ export default function ListingDetailPage() {
                 savedCategoryId={edits.ebayCategoryId}
                 savedQuantity={edits.ebayQuantity}
                 refreshSignal={readinessSignal}
+                showAdvanced={showAdvanced}
                 onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
                 onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
                 onSaveAspect={(name, value) =>
