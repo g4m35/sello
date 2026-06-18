@@ -156,6 +156,7 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
     displayName: "eBay sold (Apify)",
     sold: true,
     resultKind: "sold_comps",
+    paid: true,
 
     isEnabled() {
       return isApifyEbaySoldEnabled(env);

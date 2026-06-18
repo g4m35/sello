@@ -52,6 +52,8 @@ export interface CompSource {
   readonly sold: boolean;
   /** Declares whether source results are completed sales or market listing estimates. */
   readonly resultKind: CompSourceResultKind;
+  /** True for sources that cost money per call (gated by budget/quota controls). */
+  readonly paid?: boolean;
   /** Whether the source is configured (has credentials) and may be queried. */
   isEnabled(): boolean;
   fetchComps(query: CompQuery): Promise<NormalizedComp[]>;
