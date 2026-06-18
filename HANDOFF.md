@@ -12,6 +12,36 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Claude. **Hard paid-comp budget & quota controls on
+`feature/comp-budget-quota-controls`; PR into `develop`. No deploy, migration NOT
+applied, no provider env set.**
+Adds server-side cost controls so Apify auto-discovery cannot run away on cost:
+- **Gates (before any paid call), each writing a typed `ProviderCallLedger` row:**
+  emergency kill switch `paid_providers_disabled`, `global_budget_exceeded`,
+  `user_daily_quota_exceeded`, `user_monthly_quota_exceeded`, `draft_cooldown_active`,
+  plus `weak_identity` / `provider_error`. Admin override bypasses budget/quota but
+  NOT the kill switch. Free sources + manual comps are never gated.
+- **New table `ProviderCallLedger`** (migration `20260618120000_add_provider_call_ledger`,
+  additive, RLS on, NOT cascaded so cost history survives draft/item deletion).
+  Seller-scoped log API `GET /api/listings/comps/provider-usage` (recent rows +
+  today/month totals; never exposes another user's rows; no tokens/secrets stored).
+- **Env (all OFF/safe by default), see `docs/COMPS_BUDGET_CONTROLS.md`:**
+  `COMPS_PAID_PROVIDERS_ENABLED`, `COMPS_ADMIN_OVERRIDE_ENABLED`,
+  `COMPS_APIFY_DAILY_BUDGET_CENTS`, `COMPS_APIFY_ESTIMATED_COST_CENTS`,
+  `COMPS_USER_DAILY_PROVIDER_CALL_LIMIT`, `COMPS_USER_MONTHLY_PROVIDER_CALL_LIMIT`,
+  `COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS`.
+Gate green: prisma validate, lint (2 known warnings), tsc, `npm test` (88 files /
+594 tests), build.
+
+**Blocked on owner:** (1) apply `20260618120000_add_provider_call_ledger`
+(`prisma migrate deploy`) before relying on the gates — additive/safe. (2)
+`.env.example` still couldn't be edited in-sandbox — paste the `COMPS_*` budget
+block from `docs/COMPS_BUDGET_CONTROLS.md`. (3) Keep `COMPS_PAID_PROVIDERS_ENABLED=false`
+until caps are validated in prod. **Remaining:** a dedicated admin UI page for the
+provider-usage log (the API + seller scoping exist; the pricing panel already
+surfaces skip reasons via sourceErrors).
+
+## Previous update
 2026-06-17 — Codex. **Post-auto-comps monitoring completed; auto-discovery
 disabled for cost/quality; eBay public image bucket configured and derivative
 preflight validated without live publish.**
