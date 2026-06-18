@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireAdminUser } from "@/lib/auth/admin";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import {
   FEEDBACK_SEVERITIES,
   FEEDBACK_STATUSES,
@@ -48,7 +48,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ rows, openCount });
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("admin_feedback_fetch_failed");
+    return NextResponse.json({ error: "admin_feedback_fetch_failed" }, { status: 500 });
   }
 }

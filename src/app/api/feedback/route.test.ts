@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
@@ -11,6 +11,8 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 import { AppError } from "@/lib/errors";
 
 import { GET, POST } from "./route";
+
+afterEach(() => vi.restoreAllMocks());
 
 function req(body?: unknown) {
   return new Request("http://localhost/api/feedback", {
@@ -62,6 +64,26 @@ describe("POST /api/feedback", () => {
     expect(res.status).toBe(400);
     expect(create).not.toHaveBeenCalled();
   });
+
+  it("returns a generic sanitized 500 for an unexpected database failure", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    const create = vi
+      .fn()
+      .mockRejectedValue(new Error("Prisma failed with token secret-db-token"));
+    mocks.getPrisma.mockReturnValue({ feedback: { create } });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await POST(req(validBody));
+    const body = await res.text();
+
+    expect(res.status).toBe(500);
+    expect(body).toContain("feedback_submit_failed");
+    expect(body).not.toContain("Prisma");
+    expect(body).not.toContain("secret-db-token");
+    expect(consoleError).toHaveBeenCalledWith("feedback_submit_failed");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("secret-db-token");
+    consoleError.mockRestore();
+  });
 });
 
 describe("GET /api/feedback", () => {
@@ -78,5 +100,21 @@ describe("GET /api/feedback", () => {
     expect(res.status).toBe(200);
     expect(payload.rows).toHaveLength(1);
     expect(findMany.mock.calls[0][0].where).toEqual({ userId: "user-1" });
+  });
+
+  it("sanitizes unexpected feedback fetch failures", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    const findMany = vi.fn().mockRejectedValue(new Error("database host secret.internal"));
+    mocks.getPrisma.mockReturnValue({ feedback: { findMany } });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await GET(req());
+    const body = await res.text();
+
+    expect(res.status).toBe(500);
+    expect(body).toContain("feedback_fetch_failed");
+    expect(body).not.toContain("secret.internal");
+    expect(consoleError).toHaveBeenCalledWith("feedback_fetch_failed");
+    consoleError.mockRestore();
   });
 });

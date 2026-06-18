@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import { CreateFeedbackSchema } from "@/lib/feedback/feedback-input";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -12,7 +12,13 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const parsed = CreateFeedbackSchema.safeParse(await request.json());
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      throw new AppError("invalid_json", 400);
+    }
+    const parsed = CreateFeedbackSchema.safeParse(body);
     if (!parsed.success) {
       throw new AppError(parsed.error.issues[0]?.message ?? "Invalid feedback.", 400);
     }
@@ -34,8 +40,11 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, id: created.id }, { status: 201 });
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("feedback_submit_failed");
+    return NextResponse.json({ error: "feedback_submit_failed" }, { status: 500 });
   }
 }
 
@@ -60,7 +69,10 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({ rows });
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("feedback_fetch_failed");
+    return NextResponse.json({ error: "feedback_fetch_failed" }, { status: 500 });
   }
 }

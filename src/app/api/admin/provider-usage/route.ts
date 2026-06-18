@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/auth/admin";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { utcDayStart, utcMonthStart } from "@/lib/comps/provider-budget";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -94,7 +94,13 @@ export async function GET(request: Request) {
       throw dbError;
     }
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("admin_provider_usage_fetch_failed");
+    return NextResponse.json(
+      { error: "admin_provider_usage_fetch_failed" },
+      { status: 500 },
+    );
   }
 }

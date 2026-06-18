@@ -10,11 +10,13 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 
 import { PATCH } from "./route";
 
-function ctx(id = "fb-1") {
+const VALID_ID = "11111111-1111-4111-8111-111111111111";
+
+function ctx(id = VALID_ID) {
   return { params: Promise.resolve({ id }) };
 }
 function req(body: unknown) {
-  return new Request("http://localhost/api/admin/feedback/fb-1", {
+  return new Request(`http://localhost/api/admin/feedback/${VALID_ID}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -22,7 +24,10 @@ function req(body: unknown) {
 
 describe("PATCH /api/admin/feedback/[id]", () => {
   beforeEach(() => vi.clearAllMocks());
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
 
   it("returns 404 for a non-admin", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "a@b.com" });
@@ -40,7 +45,7 @@ describe("PATCH /api/admin/feedback/[id]", () => {
 
     expect(res.status).toBe(200);
     expect(update.mock.calls[0][0]).toMatchObject({
-      where: { id: "fb-1" },
+      where: { id: VALID_ID },
       data: { status: "resolved" },
     });
   });
@@ -51,5 +56,39 @@ describe("PATCH /api/admin/feedback/[id]", () => {
     mocks.getPrisma.mockReturnValue({ feedback: { update: vi.fn() } });
     const res = await PATCH(req({ status: "spam" }), ctx());
     expect(res.status).toBe(400);
+  });
+
+  it("rejects a malformed feedback id before database access", async () => {
+    vi.stubEnv("ADMIN_USER_IDS", "u1");
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "u1" });
+    const update = vi.fn();
+    mocks.getPrisma.mockReturnValue({ feedback: { update } });
+
+    const res = await PATCH(req({ status: "resolved" }), ctx("not-a-uuid"));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_feedback_id" });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("returns a generic sanitized 500 for unexpected database failures", async () => {
+    vi.stubEnv("ADMIN_USER_IDS", "u1");
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "u1" });
+    const update = vi
+      .fn()
+      .mockRejectedValue(new Error("Prisma query leaked token secret-admin-token"));
+    mocks.getPrisma.mockReturnValue({ feedback: { update } });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await PATCH(req({ status: "resolved" }), ctx());
+    const body = await res.text();
+
+    expect(res.status).toBe(500);
+    expect(body).toContain("admin_feedback_update_failed");
+    expect(body).not.toContain("Prisma");
+    expect(body).not.toContain("secret-admin-token");
+    expect(consoleError).toHaveBeenCalledWith("admin_feedback_update_failed");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("secret-admin-token");
+    consoleError.mockRestore();
   });
 });

@@ -17,8 +17,11 @@ ADMIN_EMAILS="owner@sello.com,ops@sello.com"
 - The helper `src/lib/auth/admin.ts` (`isAdminUser` / `requireAdminUser`) is the
   single gate, reused by all admin APIs. Non-admins get **404** (admin surface
   hidden). Server-side only; the allowlist is never sent to the client.
-- Admin **pages** are client components that render data from admin **APIs**; the
-  API is the real boundary (a non-admin sees "Not found.").
+- The server component `src/app/(app)/admin/layout.tsx` verifies the cookie-backed
+  Supabase user and allowlist before either admin page renders. Unauthenticated and
+  non-admin requests call `notFound()` without rendering the admin shell.
+- Admin APIs independently enforce the same allowlist using the verified bearer
+  session, so page and data access have separate server-side boundaries.
 
 > NOTE: `.env.example` could not be edited in-sandbox (`.env*` guarded). Add the
 > `ADMIN_*` vars to `.env.example` and the environment manually.
@@ -42,7 +45,10 @@ ADMIN_EMAILS="owner@sello.com,ops@sello.com"
 cascaded). Fields: userId, type, severity, marketplace, subject, message, pageUrl,
 listingId, draftId, status, adminNotes, timestamps. Input validated with strict
 Zod (subject ≤200, message ≤5000). Content is rendered React-escaped (no HTML
-injection); no tokens/secrets are stored or returned.
+injection); no tokens/secrets are stored or returned. Feedback update IDs must be
+UUIDs and are rejected before Prisma access when malformed. Unexpected database
+or runtime failures return route-specific generic error codes; raw exceptions and
+stack traces are never returned or logged.
 
 ## Pricing/paywall (copy only)
 
@@ -53,8 +59,9 @@ unlock…", "credit-limited"). **No Stripe, no plan enforcement** — copy/UI on
 
 1. `/` loads logged-out; says "Automated where supported. Assisted where required.";
    eBay FAQ says no developer account + seller policies; Grailed described as assisted.
-2. As an authed user, `/feedback` submits; `/admin/feedback` and `/admin/provider-usage`
-   show "Not found." (not admin).
+2. As an authed non-admin, `/feedback` submits; `/admin/feedback` and
+   `/admin/provider-usage` resolve to the server-rendered 404 boundary before the
+   admin shell renders.
 3. Add your id/email to `ADMIN_USER_IDS`/`ADMIN_EMAILS` → admin pages load; you can
    triage feedback and see provider spend.
 4. Confirm a normal user cannot read another user's feedback or any provider usage.

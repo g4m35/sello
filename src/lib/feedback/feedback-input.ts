@@ -40,6 +40,8 @@ export const CreateFeedbackSchema = z
 
 export type CreateFeedbackInput = z.infer<typeof CreateFeedbackSchema>;
 
+export const FeedbackIdSchema = z.uuid();
+
 export const UpdateFeedbackSchema = z
   .object({
     status: z.enum(FEEDBACK_STATUSES).optional(),

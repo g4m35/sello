@@ -12,27 +12,31 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-18 — Claude. **Landing page + admin pages + feedback system on
-`feature/landing-admin-feedback` (branched off the PR #39 branch). PR into `develop`.
-No deploy; migrations NOT applied; no Stripe/Bulk Intake/Path B.**
+2026-06-18 — Codex. **PR #40 blocker fixes completed on
+`feature/landing-admin-feedback`; PR remains open into `develop`. No deploy;
+migrations NOT applied; no Stripe/Bulk Intake/Path B.**
 - **Landing page** at `/` (replaced the redirect): hero, workflow, honest marketplace
   support ("Automated where supported. Assisted where required."), sold-comp pricing
   positioned as a paid feature (copy only, no Stripe), eBay FYI (no dev account; seller
   policies for auto-publish), Grailed assisted package, early-access pricing preview, FAQ.
   Metadata + OpenGraph added. Truthful-copy + CTA assertions tested.
 - **Admin access** via server-side env allowlist `ADMIN_USER_IDS` / `ADMIN_EMAILS`
-  (`src/lib/auth/admin.ts`, fails closed, non-admin → 404). One helper reused by all
-  admin APIs. Admin pages are client + the admin API is the real boundary.
+  (`src/lib/auth/admin.ts`, fails closed, non-admin → 404). The server component
+  `src/app/(app)/admin/layout.tsx` verifies the cookie-backed Supabase user before
+  rendering either admin page; all admin APIs retain their independent bearer guard.
 - **Feedback system:** `Feedback` table (migration `20260618130000_add_feedback`,
   additive, RLS, not cascaded), strict Zod, `/feedback` page + sidebar "Send feedback"
   link, `/admin/feedback` triage, APIs `POST/GET /api/feedback` (user-scoped, userId
   from session) + `GET /api/admin/feedback` + `PATCH /api/admin/feedback/[id]` (admin).
+  Malformed feedback IDs are rejected before Prisma; unexpected failures return and
+  log only route-specific generic codes, never raw exceptions.
 - **Provider-usage admin:** owner-only `GET /api/admin/provider-usage` (cross-user
   aggregate; the seller-scoped per-user API from PR #39 is untouched) + `/admin/provider-usage`
   page (spend/calls/skipped/failures cards + recent rows). Graceful 503 if the ledger
   migration is unapplied. No tokens/secrets in any response (tested).
 See `docs/ADMIN_AND_FEEDBACK.md`. Gate green: prisma validate, lint (2 known warnings),
-tsc, `npm test` (96 files / 633 tests), build.
+tsc, `npm test` (97 files / 652 tests), build. The build classifies both admin
+pages as dynamic server-rendered routes.
 
 **Blocked on owner:** (1) apply migrations in order — `20260618120000_add_provider_call_ledger`
 then `20260618130000_add_feedback` (`prisma migrate deploy`, both additive). (2) Set

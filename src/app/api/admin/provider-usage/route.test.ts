@@ -28,7 +28,10 @@ function ledgerPrisma() {
 
 describe("GET /api/admin/provider-usage", () => {
   beforeEach(() => vi.clearAllMocks());
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
 
   it("rejects unauthenticated requests", async () => {
     mocks.requireSupabaseUser.mockRejectedValue(new AppError("Sign in", 401));
@@ -54,5 +57,26 @@ describe("GET /api/admin/provider-usage", () => {
     const serialized = JSON.stringify(payload).toLowerCase();
     expect(serialized).not.toContain("token");
     expect(serialized).not.toContain("secret");
+  });
+
+  it("returns a generic sanitized 500 for unexpected ledger failures", async () => {
+    vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "owner@example.com" });
+    const prisma = ledgerPrisma();
+    prisma.providerCallLedger.findMany.mockRejectedValue(
+      new Error("Prisma connection contains secret-provider-token"),
+    );
+    mocks.getPrisma.mockReturnValue(prisma);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await GET(req());
+    const body = await res.text();
+
+    expect(res.status).toBe(500);
+    expect(body).toContain("admin_provider_usage_fetch_failed");
+    expect(body).not.toContain("Prisma");
+    expect(body).not.toContain("secret-provider-token");
+    expect(consoleError).toHaveBeenCalledWith("admin_provider_usage_fetch_failed");
+    consoleError.mockRestore();
   });
 });

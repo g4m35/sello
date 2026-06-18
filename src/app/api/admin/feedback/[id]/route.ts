@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { requireAdminUser } from "@/lib/auth/admin";
-import { AppError, getErrorMessage } from "@/lib/errors";
-import { UpdateFeedbackSchema } from "@/lib/feedback/feedback-input";
+import { AppError } from "@/lib/errors";
+import { FeedbackIdSchema, UpdateFeedbackSchema } from "@/lib/feedback/feedback-input";
 import { getPrisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -20,7 +20,16 @@ export async function PATCH(request: Request, context: Context) {
   try {
     await requireAdminUser(request);
     const { id } = await context.params;
-    const parsed = UpdateFeedbackSchema.safeParse(await request.json());
+    if (!FeedbackIdSchema.safeParse(id).success) {
+      throw new AppError("invalid_feedback_id", 400);
+    }
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      throw new AppError("invalid_json", 400);
+    }
+    const parsed = UpdateFeedbackSchema.safeParse(body);
     if (!parsed.success) {
       throw new AppError(parsed.error.issues[0]?.message ?? "Invalid update.", 400);
     }
@@ -36,7 +45,13 @@ export async function PATCH(request: Request, context: Context) {
     });
     return NextResponse.json({ ok: true, feedback: updated });
   } catch (error) {
-    const status = error instanceof AppError ? error.status : isMissingRecord(error) ? 404 : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    if (isMissingRecord(error)) {
+      return NextResponse.json({ error: "feedback_not_found" }, { status: 404 });
+    }
+    console.error("admin_feedback_update_failed");
+    return NextResponse.json({ error: "admin_feedback_update_failed" }, { status: 500 });
   }
 }
