@@ -34,6 +34,41 @@ export type PriceCompRow = {
   notes: string | null;
 };
 
+export type FeedbackRow = {
+  id: string;
+  type: string;
+  severity: string;
+  marketplace: string | null;
+  subject: string;
+  status: string;
+  createdAt: string;
+};
+
+export type AdminFeedbackRow = FeedbackRow & {
+  userId: string;
+  message: string;
+  pageUrl: string | null;
+  listingId: string | null;
+  draftId: string | null;
+  adminNotes: string | null;
+  updatedAt: string;
+};
+
+export type ProviderUsageRow = {
+  id: string;
+  userId?: string;
+  provider: string;
+  status: string;
+  skippedReason: string | null;
+  estimatedCostCents: number;
+  fetchedCount: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  draftId: string | null;
+  inventoryItemId: string | null;
+  createdAt: string;
+};
+
 export type CompsSummary = {
   status: string;
   totalComps: number;
@@ -203,6 +238,58 @@ export const api = {
       token,
       { method: "POST", body: JSON.stringify({ inventoryItemId }) },
     ),
+
+  submitFeedback: (
+    token: string,
+    body: {
+      type: string;
+      severity: string;
+      marketplace?: string | null;
+      subject: string;
+      message: string;
+      pageUrl?: string | null;
+      listingId?: string | null;
+      draftId?: string | null;
+    },
+  ) =>
+    request<{ ok: true; id: string }>("/api/feedback", token, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getMyFeedback: (token: string) =>
+    request<{ rows: FeedbackRow[] }>("/api/feedback", token),
+
+  getAdminFeedback: (token: string, query = "") =>
+    request<{ rows: AdminFeedbackRow[]; openCount: number }>(
+      `/api/admin/feedback${query}`,
+      token,
+    ),
+
+  updateFeedback: (
+    token: string,
+    id: string,
+    body: { status?: string; adminNotes?: string | null },
+  ) =>
+    request<{ ok: true; feedback: { id: string; status: string } }>(
+      `/api/admin/feedback/${id}`,
+      token,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+
+  getAdminProviderUsage: (token: string) =>
+    request<{
+      paidProvidersEnabled: boolean;
+      totals: {
+        todaySpendCents: number;
+        monthSpendCents: number;
+        todayCalls: number;
+        monthCalls: number;
+        todaySkipped: number;
+        todayFailures: number;
+      };
+      rows: ProviderUsageRow[];
+    }>("/api/admin/provider-usage", token),
 
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{

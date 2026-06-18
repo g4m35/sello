@@ -51,6 +51,35 @@ enum CompStatus {
   unknown
 }
 
+enum ProviderCallStatus {
+  attempted
+  succeeded
+  failed
+  skipped
+}
+
+enum FeedbackType {
+  bug
+  feature_request
+  confusion
+  pricing_issue
+  marketplace_issue
+  other
+}
+
+enum FeedbackSeverity {
+  low
+  medium
+  high
+}
+
+enum FeedbackStatus {
+  open
+  reviewing
+  resolved
+  dismissed
+}
+
 enum DraftStatus {
   DRAFT
   APPROVED
@@ -247,6 +276,52 @@ model CompSearchRun {
   createdAt             DateTime      @default(now())
 
   @@index([inventoryItemId, createdAt])
+}
+
+// Append-only ledger of paid comp-provider calls (cost/quota accounting). Not
+// cascaded from drafts/items: cost history must survive their deletion. Always
+// seller-scoped (userId); RLS enabled as defense-in-depth.
+model ProviderCallLedger {
+  id                 String             @id @default(uuid()) @db.Uuid
+  userId             String             @db.Uuid
+  draftId            String?            @db.Uuid
+  inventoryItemId    String?            @db.Uuid
+  provider           String
+  status             ProviderCallStatus
+  skippedReason      String?
+  estimatedCostCents Int                @default(0)
+  fetchedCount       Int                @default(0)
+  acceptedCount      Int                @default(0)
+  rejectedCount      Int                @default(0)
+  queryHash          String?
+  createdAt          DateTime           @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@index([draftId, createdAt])
+}
+
+// Alpha-user feedback. Seller-scoped reads (a user sees only their own); only
+// admins (env allowlist) read all and triage. RLS on; not cascaded so feedback
+// survives the referenced listing/draft.
+model Feedback {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  type        FeedbackType
+  severity    FeedbackSeverity @default(medium)
+  marketplace String?
+  subject     String
+  message     String
+  pageUrl     String?
+  listingId   String?          @db.Uuid
+  draftId     String?          @db.Uuid
+  status      FeedbackStatus   @default(open)
+  adminNotes  String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
 
 model MarketplaceListing {

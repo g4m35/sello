@@ -12,6 +12,68 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Codex. **PR #40 blocker fixes completed on
+`feature/landing-admin-feedback`; PR remains open into `develop`. No deploy;
+migrations NOT applied; no Stripe/Bulk Intake/Path B.**
+- **Landing page** at `/` (replaced the redirect): hero, workflow, honest marketplace
+  support ("Automated where supported. Assisted where required."), sold-comp pricing
+  positioned as a paid feature (copy only, no Stripe), eBay FYI (no dev account; seller
+  policies for auto-publish), Grailed assisted package, early-access pricing preview, FAQ.
+  Metadata + OpenGraph added. Truthful-copy + CTA assertions tested.
+- **Admin access** via server-side env allowlist `ADMIN_USER_IDS` / `ADMIN_EMAILS`
+  (`src/lib/auth/admin.ts`, fails closed, non-admin → 404). The server component
+  `src/app/(app)/admin/layout.tsx` verifies the cookie-backed Supabase user before
+  rendering either admin page; all admin APIs retain their independent bearer guard.
+- **Feedback system:** `Feedback` table (migration `20260618130000_add_feedback`,
+  additive, RLS, not cascaded), strict Zod, `/feedback` page + sidebar "Send feedback"
+  link, `/admin/feedback` triage, APIs `POST/GET /api/feedback` (user-scoped, userId
+  from session) + `GET /api/admin/feedback` + `PATCH /api/admin/feedback/[id]` (admin).
+  Malformed feedback IDs are rejected before Prisma; unexpected failures return and
+  log only route-specific generic codes, never raw exceptions.
+- **Provider-usage admin:** owner-only `GET /api/admin/provider-usage` (cross-user
+  aggregate; the seller-scoped per-user API from PR #39 is untouched) + `/admin/provider-usage`
+  page (spend/calls/skipped/failures cards + recent rows). Graceful 503 if the ledger
+  migration is unapplied. No tokens/secrets in any response (tested).
+See `docs/ADMIN_AND_FEEDBACK.md`. Gate green: prisma validate, lint (2 known warnings),
+tsc, `npm test` (97 files / 652 tests), build. The build classifies both admin
+pages as dynamic server-rendered routes.
+
+**Blocked on owner:** (1) apply migrations in order — `20260618120000_add_provider_call_ledger`
+then `20260618130000_add_feedback` (`prisma migrate deploy`, both additive). (2) Set
+`ADMIN_USER_IDS`/`ADMIN_EMAILS` before admin pages go live (paste into `.env.example` —
+sandbox blocked `.env*`). (3) Keep paid providers disabled/capped.
+
+## Previous update
+2026-06-18 — Claude. **Hard paid-comp budget & quota controls on
+`feature/comp-budget-quota-controls`; PR into `develop`. No deploy, migration NOT
+applied, no provider env set.**
+Adds server-side cost controls so Apify auto-discovery cannot run away on cost:
+- **Gates (before any paid call), each writing a typed `ProviderCallLedger` row:**
+  emergency kill switch `paid_providers_disabled`, `global_budget_exceeded`,
+  `user_daily_quota_exceeded`, `user_monthly_quota_exceeded`, `draft_cooldown_active`,
+  plus `weak_identity` / `provider_error`. Admin override bypasses budget/quota but
+  NOT the kill switch. Free sources + manual comps are never gated.
+- **New table `ProviderCallLedger`** (migration `20260618120000_add_provider_call_ledger`,
+  additive, RLS on, NOT cascaded so cost history survives draft/item deletion).
+  Seller-scoped log API `GET /api/listings/comps/provider-usage` (recent rows +
+  today/month totals; never exposes another user's rows; no tokens/secrets stored).
+- **Env (all OFF/safe by default), see `docs/COMPS_BUDGET_CONTROLS.md`:**
+  `COMPS_PAID_PROVIDERS_ENABLED`, `COMPS_ADMIN_OVERRIDE_ENABLED`,
+  `COMPS_APIFY_DAILY_BUDGET_CENTS`, `COMPS_APIFY_ESTIMATED_COST_CENTS`,
+  `COMPS_USER_DAILY_PROVIDER_CALL_LIMIT`, `COMPS_USER_MONTHLY_PROVIDER_CALL_LIMIT`,
+  `COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS`.
+Gate green: prisma validate, lint (2 known warnings), tsc, `npm test` (88 files /
+594 tests), build.
+
+**Blocked on owner:** (1) apply `20260618120000_add_provider_call_ledger`
+(`prisma migrate deploy`) before relying on the gates — additive/safe. (2)
+`.env.example` still couldn't be edited in-sandbox — paste the `COMPS_*` budget
+block from `docs/COMPS_BUDGET_CONTROLS.md`. (3) Keep `COMPS_PAID_PROVIDERS_ENABLED=false`
+until caps are validated in prod. **Remaining:** a dedicated admin UI page for the
+provider-usage log (the API + seller scoping exist; the pricing panel already
+surfaces skip reasons via sourceErrors).
+
+## Previous update
 2026-06-17 — Codex. **Post-auto-comps monitoring completed; auto-discovery
 disabled for cost/quality; eBay public image bucket configured and derivative
 preflight validated without live publish.**
