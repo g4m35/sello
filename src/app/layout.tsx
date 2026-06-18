@@ -36,9 +36,18 @@ export default function RootLayout({
     <html
       lang="en"
       data-density="regular"
+      suppressHydrationWarning
       className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full`}
     >
       <body className="min-h-full">
+        {/* Apply the color theme before paint to avoid a flash. Mirrors
+            resolveInitialTheme in src/lib/theme.ts (keep the storage key in sync). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              '(function(){try{var k="counter-theme";var s=localStorage.getItem(k);var d=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.dataset.theme=(s==="light"||s==="dark")?s:(d?"dark":"light");}catch(e){}})();',
+          }}
+        />
         {children}
         <Analytics />
       </body>

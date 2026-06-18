@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api/client";
 import { useSession } from "@/components/providers/session-provider";
+import { ThemeToggle } from "@/components/app/theme-toggle";
 
 type NavItem = { href: string; label: string; icon: IconName; count?: number };
 
@@ -142,6 +143,7 @@ export function Sidebar() {
             {email}
           </div>
         </button>
+        <ThemeToggle />
         <button className="btn btn--ghost btn--icon btn--sm" title="Sign out" onClick={() => signOut()}>
           <Icon name="logout" size={14} />
         </button>
