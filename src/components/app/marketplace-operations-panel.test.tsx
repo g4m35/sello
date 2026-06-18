@@ -1,12 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { AttemptView, ChannelStateView } from "@/lib/view/types";
 
 import {
-  confirmEbayDelist,
-  confirmEbayOrphanCleanup,
   MarketplaceOperationsPanel,
+  sellerPublishStatus,
 } from "./marketplace-operations-panel";
 
 function channel(overrides: Partial<ChannelStateView> = {}): ChannelStateView {
@@ -52,297 +51,150 @@ function attempt(overrides: Partial<AttemptView> = {}): AttemptView {
   };
 }
 
-describe("MarketplaceOperationsPanel", () => {
-  it("renders publish history and stored eBay identifiers", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[channel()]}
-        attempts={[attempt()]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
+function render(props: Partial<React.ComponentProps<typeof MarketplaceOperationsPanel>> = {}) {
+  return renderToStaticMarkup(
+    <MarketplaceOperationsPanel
+      channels={props.channels ?? [channel()]}
+      attempts={props.attempts ?? [attempt()]}
+      onDelistEbay={() => undefined}
+      onScanEbayOrphans={() => undefined}
+      onCleanupEbayOrphans={() => undefined}
+      delisting={false}
+      orphanScan={props.orphanScan ?? null}
+      scanningOrphans={false}
+      cleaningOrphans={false}
+      showAdvanced={props.showAdvanced}
+    />,
+  );
+}
 
-    expect(html).toContain("Publish operations");
-    expect(html).toContain("Latest attempt");
-    expect(html).toContain("Production");
+describe("sellerPublishStatus", () => {
+  it("describes a ready item with production publishing disabled", () => {
+    const status = sellerPublishStatus(channel({ status: "ready", publishImplemented: false }));
+    expect(status.label).toBe("Publish disabled");
+    expect(status.meaning).toMatch(/production publishing is currently disabled/i);
+  });
+
+  it("describes a ready item that can publish", () => {
+    const status = sellerPublishStatus(channel({ status: "ready", publishImplemented: true }));
+    expect(status.label).toBe("Ready to publish");
+  });
+
+  it("describes a published, failed, and draft item", () => {
+    expect(sellerPublishStatus(channel({ status: "published" })).label).toBe("Published");
+    expect(sellerPublishStatus(channel({ status: "failed" })).label).toBe("Error");
+    expect(sellerPublishStatus(channel({ status: "draft" })).label).toBe("Draft only");
+  });
+});
+
+describe("MarketplaceOperationsPanel (seller view)", () => {
+  it("shows a plain-language eBay status and hides technical identifiers by default", () => {
+    const html = render({ channels: [channel({ status: "published" })], attempts: [attempt()] });
+    expect(html).toContain("Published");
+    expect(html).toMatch(/live on eBay/i);
+    // No developer language for normal sellers.
+    expect(html).not.toContain("SKU");
+    expect(html).not.toContain("Offer ID");
+    expect(html).not.toContain("Listing ID");
+    expect(html).not.toContain("percs_item-1");
+    expect(html).not.toContain("offer-1");
+    expect(html).not.toMatch(/orphan/i);
+  });
+
+  it("explains a ready item when production publishing is disabled", () => {
+    const html = render({
+      channels: [channel({ status: "ready", publishImplemented: false })],
+      attempts: [],
+    });
+    expect(html).toContain("Publish disabled");
+    expect(html).toMatch(/production publishing is currently disabled/i);
+  });
+
+  it("shows an Error status without leaking the raw provider error by default", () => {
+    const html = render({
+      channels: [channel({ status: "failed", lastError: "Policy missing." })],
+      attempts: [
+        attempt({
+          status: "failed",
+          rawStatus: "FAILED",
+          reason: "Policy missing.",
+          listingLastError: "Policy missing.",
+          failedStep: "Create offer",
+          ebayErrorStatus: 400,
+          ebayErrorMessage: "Fulfillment policy was not found.",
+        }),
+      ],
+    });
+    expect(html).toContain("Error");
+    expect(html).not.toContain("Fulfillment policy was not found.");
+    expect(html).not.toContain("Failed step");
+  });
+
+  it("reveals technical details only under advanced diagnostics", () => {
+    const html = render({
+      channels: [channel({ status: "published" })],
+      attempts: [attempt()],
+      showAdvanced: true,
+    });
+    expect(html).toMatch(/Advanced eBay diagnostics/i);
     expect(html).toContain("SKU");
     expect(html).toContain("percs_item-1");
     expect(html).toContain("Offer ID");
     expect(html).toContain("offer-1");
     expect(html).toContain("Listing ID");
     expect(html).toContain("ebay-listing-1");
-    expect(html).toContain("Published");
-    expect(html).not.toContain(">Live<");
   });
 
-  it("does not render Live for an unpublished item with no attempts", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[]}
-        attempts={[]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
+  it("shows orphan recovery and raw errors only in advanced diagnostics", () => {
+    const failed = {
+      channels: [channel({ status: "failed", externalListingId: null, externalOfferId: null, lastError: "Policy missing." })],
+      attempts: [
+        attempt({
+          status: "failed",
+          rawStatus: "FAILED",
+          reason: "Policy missing.",
+          failedStep: "Create offer",
+          ebayErrorMessage: "Fulfillment policy was not found.",
+          externalOfferId: null,
+          externalListingId: null,
+        }),
+      ],
+      orphanScan: {
+        sku: "percs_item-1",
+        inventoryItemFound: true,
+        offers: [{ offerId: "offer-1", status: "UNPUBLISHED", listingId: null, listingStatus: null }],
+        liveListingFound: false,
+        cleanupAvailable: true,
+        checkedAt: "2026-06-14T12:00:00.000Z",
+      },
+    };
+    const plain = render(failed);
+    expect(plain).not.toMatch(/orphan/i);
 
-    expect(html).toContain("Not published");
-    expect(html).toContain("No publish attempts yet.");
-    expect(html).not.toContain(">Live<");
+    const advanced = render({ ...failed, showAdvanced: true });
+    expect(advanced).toMatch(/orphan/i);
+    expect(advanced).toContain("Clean up unpublished eBay artifacts");
+    expect(advanced).toContain("Fulfillment policy was not found.");
+  });
+
+  it("keeps the End eBay listing action visible for a live listing", () => {
+    const html = render({
+      channels: [channel({ status: "published" })],
+      attempts: [attempt()],
+    });
+    expect(html).toContain("End eBay listing");
+  });
+
+  it("hides End eBay listing when stored live identifiers are missing", () => {
+    const html = render({
+      channels: [channel({ status: "published", externalListingId: null })],
+      attempts: [],
+    });
     expect(html).not.toContain("End eBay listing");
   });
 
-  it("does not render Live or delist controls when publishing is flag-disabled", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[
-          channel({
-            status: "ready",
-            publishImplemented: false,
-            externalListingId: null,
-            externalOfferId: null,
-          }),
-        ]}
-        attempts={[]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).toContain("Ready");
-    expect(html).not.toContain(">Live<");
-    expect(html).not.toContain("Create live eBay listing");
-    expect(html).not.toContain("End eBay listing");
-  });
-
-  it("shows Failed for a failed publish attempt", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[channel({ status: "failed", externalListingId: null, externalOfferId: null })]}
-        attempts={[
-          attempt({
-            status: "failed",
-            rawStatus: "FAILED",
-            code: "EBAY_PUBLISH_FAILED",
-            reason: "Policy missing.",
-          }),
-        ]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).toContain("eBay · Failed");
-    expect(html).not.toContain(">Live<");
-  });
-
-  it("shows Publishing for a pending or running publish attempt", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[channel({ status: "publishing" })]}
-        attempts={[
-          attempt({
-            status: "publishing",
-            rawStatus: "RUNNING",
-            code: "EBAY_PUBLISH_STARTED",
-            externalOfferId: null,
-            externalListingId: null,
-          }),
-        ]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).toContain("eBay · Publishing");
-    expect(html).not.toContain(">Live<");
-  });
-
-  it("shows Delisted and hides delist controls for an ended listing", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[
-          channel({
-            status: "delisted",
-            externalOfferId: "offer-1",
-            externalListingId: "ebay-listing-1",
-          }),
-        ]}
-        attempts={[
-          attempt({
-            status: "delisted",
-            rawStatus: "SUCCEEDED",
-            code: "EBAY_DELIST_SUCCEEDED",
-            listingStatus: "DELISTED",
-          }),
-        ]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).toContain("Production · Delisted");
-    expect(html).toContain("eBay · Delisted");
-    expect(html).not.toContain("End eBay listing");
-    expect(html).not.toContain(">Live<");
-  });
-
-  it("hides eBay delist when stored live listing identifiers are missing", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[channel({ status: "published", externalListingId: null })]}
-        attempts={[]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).not.toContain("End eBay listing");
-  });
-
-  it("renders last actionable error for a failed attempt", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[channel({ status: "failed", lastError: "Policy missing." })]}
-        attempts={[
-          attempt({
-            status: "failed",
-            rawStatus: "FAILED",
-            reason: "Policy missing.",
-            listingLastError: "Policy missing.",
-            failedStep: "Create offer",
-            ebayErrorStatus: 400,
-            ebayErrorMessage: "Fulfillment policy was not found.",
-          }),
-        ]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={null}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).toContain("Policy missing.");
-    expect(html).toContain("Failed step");
-    expect(html).toContain("Create offer");
-    expect(html).toContain("eBay status");
-    expect(html).toContain("400");
-    expect(html).toContain("Fulfillment policy was not found.");
-  });
-
-  it("shows orphan scan results and hides cleanup until artifacts exist", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[channel({ status: "failed", externalListingId: null, externalOfferId: null })]}
-        attempts={[]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={{
-          sku: "percs_item-1",
-          inventoryItemFound: false,
-          offers: [],
-          liveListingFound: false,
-          cleanupAvailable: false,
-          checkedAt: "2026-06-14T12:00:00.000Z",
-        }}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).toContain("Check for eBay orphan publish artifacts");
-    expect(html).toContain("percs_item-1");
-    expect(html).not.toContain("Clean up unpublished eBay artifacts");
-  });
-
-  it("shows guarded cleanup only when an unpublished artifact exists", () => {
-    const html = renderToStaticMarkup(
-      <MarketplaceOperationsPanel
-        channels={[channel({ status: "failed", externalListingId: null, externalOfferId: null })]}
-        attempts={[]}
-        onDelistEbay={() => undefined}
-        onScanEbayOrphans={() => undefined}
-        onCleanupEbayOrphans={() => undefined}
-        delisting={false}
-        orphanScan={{
-          sku: "percs_item-1",
-          inventoryItemFound: true,
-          offers: [
-            {
-              offerId: "offer-1",
-              status: "UNPUBLISHED",
-              listingId: null,
-              listingStatus: null,
-            },
-          ],
-          liveListingFound: false,
-          cleanupAvailable: true,
-          checkedAt: "2026-06-14T12:00:00.000Z",
-        }}
-        scanningOrphans={false}
-        cleaningOrphans={false}
-      />,
-    );
-
-    expect(html).toContain("offer-1");
-    expect(html).toContain("Clean up unpublished eBay artifacts");
-  });
-
-  it("requires a confirmation that says this ends the live eBay listing", () => {
-    const confirm = vi.fn().mockReturnValue(true);
-
-    expect(confirmEbayDelist(confirm)).toBe(true);
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining("This ends the live eBay listing"),
-    );
-  });
-
-  it("requires cleanup confirmation for unpublished orphan artifacts", () => {
-    const confirm = vi.fn().mockReturnValue(true);
-
-    expect(confirmEbayOrphanCleanup(confirm)).toBe(true);
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining("removes unpublished eBay inventory or offer artifacts"),
-    );
+  it("never renders a raw 'Live' badge", () => {
+    expect(render()).not.toContain(">Live<");
+    expect(render({ channels: [], attempts: [] })).not.toContain(">Live<");
   });
 });

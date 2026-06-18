@@ -10,6 +10,8 @@ export type AutoCompDiscoveryStatus = {
   status: string;
   autoDiscoveryEnabled: boolean;
   enabledSources: string[];
+  /** Kill switch for paid sold-comp providers. Undefined = unknown (treated as on). */
+  paidProvidersEnabled?: boolean;
 };
 
 export function getAutoCompStatusCopy(
@@ -19,17 +21,25 @@ export function getAutoCompStatusCopy(
   if (!discovery.autoDiscoveryEnabled) {
     return {
       variant: "info" as const,
-      title: "Auto comps are disabled",
+      title: "Fresh sold comps are disabled",
       desc:
-        "Manual comps are available. Automatic discovery is off until a safe source is enabled.",
+        "Manual comps still work. Fresh sold comps are off until a safe source is enabled.",
+    };
+  }
+  if (discovery.paidProvidersEnabled === false && summary.validComps === 0) {
+    return {
+      variant: "info" as const,
+      title: "Fresh sold comps are disabled",
+      desc:
+        "Manual comps still work. Fresh sold comps are turned off right now, so add a manual comp to price this item.",
     };
   }
   if (discovery.enabledSources.length === 0) {
     return {
       variant: "warn" as const,
-      title: "No automatic comp source is connected",
+      title: "No sold-comp source connected yet",
       desc:
-        "Manual comps are available. Add a safe source such as eBay Browse to gather comps automatically.",
+        "Manual comps still work. A sold-comp source can be connected to gather comps automatically.",
     };
   }
   if (discovery.status === "error") {
@@ -98,8 +108,8 @@ export function getAutoCompStatusCopy(
   }
   return {
     variant: "info" as const,
-    title: "Auto comps not run yet",
+    title: "No pricing data yet",
     desc:
-      "Run auto comps to search enabled sources. Manual comps remain available as a fallback.",
+      "Add a manual comp, or refresh to look for sold comps. Manual comps always work.",
   };
 }

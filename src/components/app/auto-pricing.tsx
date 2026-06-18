@@ -6,6 +6,7 @@ import { Banner, Btn } from "@/components/ui/primitives";
 import { useSession } from "@/components/providers/session-provider";
 import { api, type PriceCompRow } from "@/lib/api/client";
 import { getAutoCompStatusCopy } from "@/lib/comps/status";
+import { buildPricingNotes, friendlySourceLabels } from "@/lib/comps/seller-copy";
 import { formatMoneyCents, relativeTime } from "@/lib/view/format";
 
 type Summary = {
@@ -33,6 +34,7 @@ type Summary = {
 type Discovery = {
   status: string;
   autoDiscoveryEnabled: boolean;
+  paidProvidersEnabled?: boolean;
   enabledSources: string[];
   queries: string[];
   sourceErrors: { source: string; message: string }[];
@@ -149,10 +151,11 @@ export function AutoPricing({
       const res = await api.refreshComps(token, itemId);
       setReloadKey((k) => k + 1);
       if (res.appliedPriceCents != null) onApplyPrice?.(res.appliedPriceCents);
+      const checkedLabels = friendlySourceLabels(res.sources);
       setNote(
         res.enabled === 0
-          ? "No automatic comp source is connected. Manual comps still work."
-          : `Checked ${res.sources.join(", ")} · ${res.accepted} accepted · ${res.rejected} filtered. Active listings remain market estimates until sold data is available.`,
+          ? "No sold-comp source is connected right now. Manual comps still work."
+          : `Checked ${checkedLabels.join(", ") || "available sources"} · ${res.accepted} kept · ${res.rejected} filtered. Active listings stay market estimates until sold data is available.`,
       );
     } catch (e) {
       setNote((e as { error?: string })?.error ?? "Could not refresh comps.");
@@ -266,12 +269,17 @@ export function AutoPricing({
       size="sm"
       icon="refresh"
       onClick={refresh}
+      title={
+        cooldownRemaining > 0
+          ? `Sold comps were just refreshed. Refresh available in ${cooldownRemaining}s.`
+          : "Search for fresh sold comps"
+      }
       disabled={refreshDisabled}
     >
       {refreshing
-        ? "Fetching…"
+        ? "Checking…"
         : cooldownRemaining > 0
-          ? `Refresh in ${cooldownRemaining}s`
+          ? `Refresh available in ${cooldownRemaining}s`
           : "Refresh comps"}
     </Btn>
   );
@@ -282,7 +290,8 @@ export function AutoPricing({
   const hasData = summary.validComps > 0 && summary.recommendedListCents != null;
   const copy = getAutoCompStatusCopy(discovery, summary);
   const queryList = discovery.queries.slice(0, 4);
-  const sourceList = discovery.enabledSources.length > 0 ? discovery.enabledSources.join(", ") : "None";
+  const friendlySources = friendlySourceLabels(discovery.enabledSources);
+  const sourceList = friendlySources.length > 0 ? friendlySources.join(", ") : "None connected";
   const canAccept =
     summary.recommendedListCents != null &&
     (summary.confidence === "medium" || summary.confidence === "low") &&
@@ -291,15 +300,26 @@ export function AutoPricing({
   const basis = basisLabel(summary);
   const soldCount = summary.soldCompCount ?? 0;
   const activeCount = summary.activeCompCount ?? 0;
-  const paidProvidersEnabled = discovery.enabledSources.some((source) =>
-    source.toLowerCase().includes("apify"),
-  );
+  // Server-provided kill switch; never sniff provider ids in the UI.
+  const paidProvidersEnabled = discovery.paidProvidersEnabled === true;
+  const pricingNotes = buildPricingNotes({
+    autoDiscoveryEnabled: discovery.autoDiscoveryEnabled,
+    paidProvidersEnabled: discovery.paidProvidersEnabled,
+    status: discovery.status,
+    sourceErrors: discovery.sourceErrors,
+  });
+  const evidenceLine =
+    soldCount === 0 && activeCount === 0
+      ? "Evidence: no sold-comp evidence yet"
+      : soldCount === 0
+        ? `Evidence: active market estimate only — no sold-comp evidence yet (${activeCount} active listing${activeCount === 1 ? "" : "s"})`
+        : `Evidence: ${soldCount} sold/completed · ${activeCount} active market`;
 
   const details = (
     <div className="stack-2">
-      <div>Basis: {basis}</div>
+      {summary.validComps > 0 && <div>Basis: {basis}</div>}
       <div>
-        Evidence: {soldCount} sold/completed · {activeCount} active market
+        {evidenceLine}
         {summary.unknownCompCount ? ` · ${summary.unknownCompCount} unknown` : ""}
       </div>
       {summary.strongCompCount != null && (
@@ -310,24 +330,27 @@ export function AutoPricing({
       <div>Sources: {sourceList}</div>
       {discovery.lastRunAt && (
         <div>
-          Last auto run: {relativeTime(discovery.lastRunAt)}
-          {cooldownRemaining > 0 ? ` · refresh cooldown ${cooldownRemaining}s` : ""}
+          Last checked: {relativeTime(discovery.lastRunAt)}
+          {cooldownRemaining > 0 ? ` · refresh available in ${cooldownRemaining}s` : ""}
         </div>
       )}
       {queryList.length > 0 && (
         <div>
-          Queries: {queryList.join(" · ")}
+          Searched for: {queryList.join(" · ")}
         </div>
       )}
       {paidProvidersEnabled && (
         <div>
-          Refresh comps may run a paid provider. Confirm item details before refreshing.
+          Refresh searches fresh sold comps. Confirm the brand, product name, and
+          size for the best matches.
         </div>
       )}
-      {discovery.sourceErrors.length > 0 && (
-        <div>
-          Source errors:{" "}
-          {discovery.sourceErrors.map((err) => `${err.source}: ${err.message}`).join(" · ")}
+      {pricingNotes.length > 0 && (
+        <div className="stack-1">
+          <div style={{ fontWeight: 600 }}>Pricing notes</div>
+          {pricingNotes.map((noteLine) => (
+            <div key={noteLine}>{noteLine}</div>
+          ))}
         </div>
       )}
       {note && <div>{note}</div>}

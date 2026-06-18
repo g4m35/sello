@@ -7,6 +7,7 @@ import {
 } from "@/lib/listing/ebay-aspects";
 import {
   analyzeListing,
+  type EbayCategoryConflict,
   type EbayCategoryResolution,
   type ListingIntelligence,
 } from "@/lib/listing/intelligence";
@@ -113,6 +114,8 @@ export type EbayPreflightResult = {
   warnings: string[];
   /** How the eBay category was resolved (saved override, inference, or open choice). */
   category: EbayCategoryResolution;
+  /** Set when the resolved category disagrees with the detected item type. */
+  categoryConflict: EbayCategoryConflict | null;
   itemType: ListingIntelligence["itemType"];
   measurementProfile: ListingIntelligence["measurementProfile"];
   /** Explicit listing quantity (resale default 1, never a hidden assumption). */
@@ -290,9 +293,16 @@ export async function preflightEbayListing(
 
   const missingAspectIds =
     aspects.missingRequired.length > 0 ? ["ebay_aspects"] : [];
+  const conflictingCategoryIds = intelligence.categoryConflict
+    ? ["ebay_category"]
+    : [];
   const missing = normalizeMissingIds(readiness.missing, photoResolution.missing);
 
-  if (!readiness.ready || missingAspectIds.length > 0) {
+  if (
+    !readiness.ready ||
+    missingAspectIds.length > 0 ||
+    conflictingCategoryIds.length > 0
+  ) {
     return {
       marketplace: "ebay",
       environment,
@@ -304,10 +314,12 @@ export async function preflightEbayListing(
       // CHOICE (with suggestions), not a raw marketplace ID problem.
       missing: [
         ...missing,
+        ...conflictingCategoryIds,
         ...missingAspectIds,
       ],
       warnings: [...readiness.warnings, ...photoResolution.errors],
       category: intelligence.ebayCategory,
+      categoryConflict: intelligence.categoryConflict,
       itemType: intelligence.itemType,
       measurementProfile: intelligence.measurementProfile,
       quantity: resolvedQuantity,
@@ -362,6 +374,7 @@ export async function preflightEbayListing(
     missing: [],
     warnings: [...readiness.warnings, ...photoResolution.errors],
     category: intelligence.ebayCategory,
+    categoryConflict: intelligence.categoryConflict,
     itemType: intelligence.itemType,
     measurementProfile: intelligence.measurementProfile,
     quantity: resolvedQuantity,
