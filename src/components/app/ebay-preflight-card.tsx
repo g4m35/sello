@@ -4,9 +4,30 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { readJsonResponse } from "@/lib/http";
 import { getErrorMessage } from "@/lib/errors";
-import { Badge, Btn } from "@/components/ui/primitives";
+import { Badge, Banner, Btn } from "@/components/ui/primitives";
+import type { EbayAspectRequirement } from "@/lib/listing/ebay-aspects";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
-import type { EbayCategoryResolution } from "@/lib/listing/intelligence";
+import type {
+  EbayCategoryConflict,
+  EbayCategoryResolution,
+} from "@/lib/listing/intelligence";
+
+/** Anchor id for the "fix eBay details" jump target from the readiness list. */
+export const EBAY_DETAILS_ANCHOR = "ebay-required-details";
+
+/** A required aspect with a fixed value list becomes a dropdown, not free text. */
+export function aspectControlKind(aspect: Pick<EbayAspectRequirement, "values">): "select" | "text" {
+  return aspect.values && aspect.values.length > 0 ? "select" : "text";
+}
+
+/** Seller-facing sentence for a category that disagrees with the detected item. */
+export function categoryConflictMessage(conflict: EbayCategoryConflict): string {
+  return `This looks like a ${conflict.detectedLabel}, but the eBay category is ${conflict.categoryName}. Change category?`;
+}
+
+function aspectFieldId(name: string): string {
+  return `ebay-aspect-${name.replace(/[^a-z0-9_-]/gi, "-")}`;
+}
 
 // Human wording for the listing-readiness ids the preflight returns.
 export const ebayPreflightMissingLabels: Record<string, string> = {
@@ -73,6 +94,7 @@ export function EbayPreflightCard({
   const [advancedId, setAdvancedId] = useState("");
   const [quantityDraft, setQuantityDraft] = useState(String(savedQuantity || 1));
   const [aspectDrafts, setAspectDrafts] = useState<Record<string, string>>({});
+  const [savedAspectNames, setSavedAspectNames] = useState<string[]>([]);
   // Whether the seller has run at least one check. Gates auto-recheck so the
   // panel never fires a request on first mount (checking is an explicit action).
   const hasChecked = useRef(false);
@@ -89,6 +111,8 @@ export function EbayPreflightCard({
         }),
       );
       setResult(payload);
+      // A fresh check supersedes any per-field "Saved" confirmations.
+      setSavedAspectNames([]);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -104,14 +128,16 @@ export function EbayPreflightCard({
   }, [refreshSignal, runCheck]);
 
   const category = result?.category ?? null;
+  const categoryConflict = result?.categoryConflict ?? null;
   const needsCategoryChoice = Boolean(
     result && result.missing.includes("ebay_category"),
   );
+  // Show the category picker when eBay needs a choice OR the resolved category
+  // disagrees with what the item looks like (e.g. a T-shirt in Hoodies).
+  const showCategoryPicker =
+    (needsCategoryChoice || Boolean(categoryConflict)) &&
+    Boolean(category && category.suggestions.length > 0);
   const missingAspects = result?.aspects.missingRequired ?? [];
-  const aspectSourceLabel =
-    result?.aspects.source === "taxonomy"
-      ? "eBay Taxonomy requirements"
-      : "local eBay detail fallback";
 
   return (
     <section className="card">
@@ -179,15 +205,34 @@ export function EbayPreflightCard({
               Needed before eBay publish:
             </div>
             <ul className="t-small muted" style={{ paddingLeft: 18, margin: 0 }}>
-              {result.missing.map((id) => (
-                <li key={id}>{ebayPreflightMissingLabels[id] ?? id}</li>
-              ))}
+              {result.missing.map((id) => {
+                const label = ebayPreflightMissingLabels[id] ?? id;
+                const anchor =
+                  id === "ebay_aspects"
+                    ? EBAY_DETAILS_ANCHOR
+                    : id === "ebay_category"
+                      ? "ebay-category-choice"
+                      : null;
+                return (
+                  <li key={id}>
+                    {anchor ? <a href={`#${anchor}`}>{label}</a> : label}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
 
-        {needsCategoryChoice && category && category.suggestions.length > 0 && (
-          <div className="stack-4">
+        {categoryConflict && (
+          <Banner
+            variant="warn"
+            title="Double-check the eBay category"
+            desc={categoryConflictMessage(categoryConflict)}
+          />
+        )}
+
+        {showCategoryPicker && category && (
+          <div className="stack-4" id="ebay-category-choice">
             <div className="t-small" style={{ fontWeight: 500 }}>
               Choose an eBay category:
             </div>
@@ -199,12 +244,12 @@ export function EbayPreflightCard({
                   size="sm"
                   onClick={() => onSelectCategory(suggestion.id)}
                 >
-                  {suggestion.name} / {suggestion.id}
+                  {suggestion.name}
                 </Btn>
               ))}
             </div>
             <div className="t-small muted">
-              Your choice saves with the draft; check readiness again after picking.
+              Your choice saves with the draft and readiness rechecks automatically.
             </div>
           </div>
         )}
@@ -232,64 +277,74 @@ export function EbayPreflightCard({
         )}
 
         {missingAspects.length > 0 && (
-          <div className="stack-4">
+          <div className="stack-4" id={EBAY_DETAILS_ANCHOR}>
             <div className="t-small" style={{ fontWeight: 500 }}>
               eBay needs a few item details:
             </div>
-            {result && (
-              <div className="t-small muted">
-                Source: {aspectSourceLabel}
-              </div>
-            )}
-            {missingAspects.map((aspect) => (
-              <div key={aspect.name} className="row" style={{ gap: 8, alignItems: "center" }}>
-                <span className="t-small muted" style={{ width: 180 }}>
-                  {aspect.label}
-                </span>
-                {aspect.values && aspect.values.length > 0 && (
-                  <datalist id={`ebay-aspect-${aspect.name.replace(/[^a-z0-9_-]/gi, "-")}`}>
-                    {aspect.values.slice(0, 50).map((value) => (
-                      <option key={value} value={value} />
-                    ))}
-                  </datalist>
-                )}
-                <input
-                  className="input"
-                  style={{ flex: 1, maxWidth: 220 }}
-                  maxLength={80}
-                  list={
-                    aspect.values && aspect.values.length > 0
-                      ? `ebay-aspect-${aspect.name.replace(/[^a-z0-9_-]/gi, "-")}`
-                      : undefined
-                  }
-                  value={aspectDrafts[aspect.name] ?? ""}
-                  onChange={(e) =>
-                    setAspectDrafts((prev) => ({
-                      ...prev,
-                      [aspect.name]: e.target.value,
-                    }))
-                  }
-                />
-                <Btn
-                  variant="secondary"
-                  size="sm"
-                  disabled={!(aspectDrafts[aspect.name] ?? "").trim()}
-                  onClick={() =>
-                    onSaveAspect(aspect.name, (aspectDrafts[aspect.name] ?? "").trim())
-                  }
-                >
-                  Save
-                </Btn>
-                {aspect.values && aspect.values.length > 0 && (
-                  <span className="t-small muted">
-                    {aspect.values.slice(0, 3).join(", ")}
-                    {aspect.values.length > 3 ? "..." : ""}
-                  </span>
-                )}
-              </div>
-            ))}
+            {missingAspects.map((aspect) => {
+              const fieldId = aspectFieldId(aspect.name);
+              const value = aspectDrafts[aspect.name] ?? "";
+              const kind = aspectControlKind(aspect);
+              const saved = savedAspectNames.includes(aspect.name);
+              const setValue = (next: string) =>
+                setAspectDrafts((prev) => ({ ...prev, [aspect.name]: next }));
+              const save = () => {
+                const trimmed = value.trim();
+                if (!trimmed) return;
+                onSaveAspect(aspect.name, trimmed);
+                setSavedAspectNames((prev) =>
+                  prev.includes(aspect.name) ? prev : [...prev, aspect.name],
+                );
+              };
+              return (
+                <div key={aspect.name} className="stack-1">
+                  <label htmlFor={fieldId} className="t-small" style={{ fontWeight: 500 }}>
+                    {aspect.label}
+                    {aspect.required ? " (required)" : ""}
+                  </label>
+                  <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                    {kind === "select" ? (
+                      <select
+                        id={fieldId}
+                        className="select"
+                        style={{ flex: 1, maxWidth: 260 }}
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                      >
+                        <option value="">{`Choose ${aspect.label.toLowerCase()}…`}</option>
+                        {aspect.values!.slice(0, 60).map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id={fieldId}
+                        className="input"
+                        style={{ flex: 1, maxWidth: 260 }}
+                        maxLength={80}
+                        placeholder={`Enter ${aspect.label.toLowerCase()}`}
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                      />
+                    )}
+                    <Btn variant="secondary" size="sm" disabled={!value.trim()} onClick={save}>
+                      Save
+                    </Btn>
+                    {saved && (
+                      <span className="t-small" style={{ color: "var(--positive)" }}>
+                        Saved
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
             <div className="t-small muted">
-              Saved details persist with the draft; check readiness again after filling.
+              {running
+                ? "Checking readiness…"
+                : "Saved details persist with the draft and readiness rechecks automatically."}
             </div>
           </div>
         )}
