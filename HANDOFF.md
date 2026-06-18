@@ -12,6 +12,33 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Claude. **PR #41 promoted to PRODUCTION.** `develop` (d6c26d5)
+merged to `main` as `[deploy]` merge `34dd71e` and pushed; Vercel built and
+released production deployment `dpl_N51WG8ffFniCppUPMTVqwG5ccur2` (Ready), now
+serving `sello.wtf` (HTTP 200). Previous prod was `dpl_7KixmneznJ9EiAy4omy25TuXF3oP`
+(rollback target).
+- Pre-flight: no schema/migration changes (both branches 16 migrations); comp caps,
+  budgets, and eBay publish gates byte-identical to prior `main` (no regression);
+  merge had zero code conflicts (only HANDOFF.md unioned); gate green (tsc, lint,
+  `npm test` 102 files / 681 tests, build).
+- Post-deploy log scan (40m window, prod): all requests HTTP 200; zero
+  error/fatal/warning logs; editor flow exercised live —
+  `GET /api/listings`, `GET /api/listings/{id}`, `PATCH /api/listings/draft/{id}`,
+  `GET /api/listings/comps` all 200; NO `/comps/refresh` (no paid provider call);
+  no secret/token strings. Decision: KEEP (no rollback trigger hit).
+- NOT done: interactive signed-in UI smoke test — the claude-in-chrome extension
+  was disconnected this session, so the visual checks (taxonomy label, seller copy,
+  `?debug=1` diagnostics, dark/light) were not hand-verified; the shipped code is the
+  gate-passing build and these behaviors are covered by unit tests.
+- Hard stops honored: no migrations, no `prisma db push`, no paid providers/calls,
+  no eBay production publish, no Stripe, no Bulk Intake.
+
+**Blocked on owner:** (1) optional: reconnect the Chrome extension (or run the
+manual checklist) to visually confirm the editor/pricing/publish UI on prod. (2)
+GitHub Dependabot flags 9 vulnerabilities (2 high, 7 moderate) on the default
+branch — triage separately. (3) Landing-page light-mode theming still open.
+
+## Previous update
 2026-06-18 — Codex. **Editor/listing alpha-UX PR #41 reviewed, fixed,
 merged to `develop`, and explicitly deployed to Preview; production promotion
 stopped at the Preview smoke gate. No migrations, paid provider calls, Bulk
