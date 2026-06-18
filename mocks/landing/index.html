@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sello — Landing mocks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@500;600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#0E0E0C;--surface:#1A1A17;--sunk:#131310;--ink:#F3F1EA;--ink2:#C9C7BE;--ink3:#97958C;--ink4:#6C6A62;--line:#2A2A25;--line2:#36352F;--line3:#48473F;--accent:#E5413C;--accent-hi:#F2554F;
+    --serif:"Instrument Serif",serif;--sans:"Manrope",system-ui,sans-serif;--mono:"JetBrains Mono",monospace}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(800px 400px at 80% -10%,rgba(229,65,60,.10),transparent 60%)}
+  .wrap{max-width:1080px;margin:0 auto;padding:64px 26px}
+  a{color:inherit;text-decoration:none}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+  h1{font-family:var(--serif);font-weight:400;font-size:clamp(40px,7vw,76px);line-height:.98;margin:14px 0 12px}
+  h1 em{font-style:italic;color:var(--accent)}
+  .sub{color:var(--ink2);font-size:17px;max-width:620px}
+  .grid{margin-top:46px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line2);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--sunk));overflow:hidden;transition:.2s cubic-bezier(.2,.7,.2,1)}
+  .card:hover{transform:translateY(-5px);border-color:var(--line3);box-shadow:0 30px 70px rgba(0,0,0,.55)}
+  .thumb{height:150px;border-bottom:1px solid var(--line);display:grid;place-items:center;position:relative;overflow:hidden}
+  .t-atelier{background:radial-gradient(400px 200px at 70% 0,rgba(229,65,60,.12),transparent),var(--sunk)}
+  .t-atelier b{font-family:var(--serif);font-size:46px}.t-atelier b em{font-style:italic;color:var(--accent)}
+  .t-console{background:
+     linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px),var(--sunk);background-size:24px 24px,24px 24px,100%}
+  .t-console b{font-family:var(--mono);font-weight:700;font-size:20px;background:var(--bg);border:1px solid var(--line2);padding:8px 14px;border-radius:8px}
+  .t-console b span{color:var(--accent)}
+  .t-counter{background:var(--accent)}
+  .t-counter b{font-family:var(--sans);font-weight:800;font-size:40px;color:#fff;letter-spacing:-.03em}
+  .t-counter b em{font-family:var(--serif);font-style:italic;font-weight:400}
+  .body{padding:20px}
+  .body .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--ink4)}
+  .body h3{font-size:19px;font-weight:700;margin:7px 0 6px}
+  .body p{font-size:13.5px;color:var(--ink3);line-height:1.5}
+  .open{margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .note{margin-top:40px;font-family:var(--mono);font-size:12px;color:var(--ink4);border-top:1px solid var(--line2);padding-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Sello · Landing concepts</div>
+  <h1>Three ways to say<br><em>the same thing.</em></h1>
+  <p class="sub">All on the live app palette — warm off-black, cream ink, Counter Red, Instrument Serif + Manrope + JetBrains Mono. Honest positioning throughout. Pick a direction to develop.</p>
+
+  <div class="grid">
+    <a class="card" href="atelier.html">
+      <div class="thumb t-atelier"><b>Sello<em>.</em></b></div>
+      <div class="body"><div class="k">01 — EDITORIAL</div><h3>Atelier</h3>
+        <p>Refined luxury. Big Instrument Serif, generous negative space, fine red hairlines. Leans into the fashion identity.</p>
+        <div class="open">Open atelier.html →</div></div>
+    </a>
+    <a class="card" href="console.html">
+      <div class="thumb t-console"><b>S<span>·</span>ello</b></div>
+      <div class="body"><div class="k">02 — PRODUCT-FORWARD</div><h3>Console</h3>
+        <p>Show, don&apos;t tell. Product UI in a browser frame, Bento 2.0 grid, monospace FIG labels. Linear/Vercel lineage.</p>
+        <div class="open">Open console.html →</div></div>
+    </a>
+    <a class="card" href="counter.html">
+      <div class="thumb t-counter"><b>Stop <em>typing.</em></b></div>
+      <div class="body"><div class="k">03 — STATEMENT</div><h3>Counter</h3>
+        <p>Bold &amp; editorial-brutalist. Oversized type, a red marquee, raw rules, manifesto index. The differentiator.</p>
+        <div class="open">Open counter.html →</div></div>
+    </a>
+  </div>
+
+  <div class="note">mocks/landing/ — static HTML, fonts via Google Fonts. Open any file directly in a browser.</div>
+</div>
+</body>
+</html>
