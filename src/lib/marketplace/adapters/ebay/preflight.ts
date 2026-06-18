@@ -7,6 +7,7 @@ import {
 } from "@/lib/listing/ebay-aspects";
 import {
   analyzeListing,
+  type EbayCategoryConflict,
   type EbayCategoryResolution,
   type ListingIntelligence,
 } from "@/lib/listing/intelligence";
@@ -113,6 +114,8 @@ export type EbayPreflightResult = {
   warnings: string[];
   /** How the eBay category was resolved (saved override, inference, or open choice). */
   category: EbayCategoryResolution;
+  /** Set when the resolved category disagrees with the detected item type. */
+  categoryConflict: EbayCategoryConflict | null;
   itemType: ListingIntelligence["itemType"];
   measurementProfile: ListingIntelligence["measurementProfile"];
   /** Explicit listing quantity (resale default 1, never a hidden assumption). */
@@ -308,6 +311,7 @@ export async function preflightEbayListing(
       ],
       warnings: [...readiness.warnings, ...photoResolution.errors],
       category: intelligence.ebayCategory,
+      categoryConflict: intelligence.categoryConflict,
       itemType: intelligence.itemType,
       measurementProfile: intelligence.measurementProfile,
       quantity: resolvedQuantity,
@@ -362,6 +366,7 @@ export async function preflightEbayListing(
     missing: [],
     warnings: [...readiness.warnings, ...photoResolution.errors],
     category: intelligence.ebayCategory,
+    categoryConflict: intelligence.categoryConflict,
     itemType: intelligence.itemType,
     measurementProfile: intelligence.measurementProfile,
     quantity: resolvedQuantity,

@@ -79,6 +79,8 @@ export type ListingIntelligence = {
   /** How the item's size field should be treated. Shoe sizes are sizes, never measurements. */
   sizeRole: "shoe_size" | "apparel_size" | "none";
   ebayCategory: EbayCategoryResolution;
+  /** Set when the resolved category disagrees with the detected item type. */
+  categoryConflict: EbayCategoryConflict | null;
   recommendedMeasurements: RecommendedMeasurement[];
 };
 
@@ -125,10 +127,20 @@ export function detectDepartment(input: ListingIntelligenceInput): Department {
 const SNEAKER_RE =
   /\bsneakers?\b|\bshoes?\b|\btrainers?\b|\bdunk\b|\bjordan\b|\byeezy\b|\bair max\b|\bair force\b|\bnew balance\b|\bsamba\b|\bgazelle\b|\bfoam runner\b/;
 const DRESS_RE = /\bdress\b/;
-const HOODIE_RE = /\bhoodies?\b|\bsweatshirts?\b|\bcrewnecks?\b|\bcrew neck\b|\bzip[- ]?up hoodie\b/;
+// Explicit hoodie/sweatshirt words only. "crewneck" is deliberately NOT here: a
+// crewneck is a neckline shared by tees, sweaters, and sweatshirts, so it is
+// disambiguated against tee signals in detectItemType rather than assumed to be
+// a sweatshirt.
+const HOODIE_RE = /\bhoodies?\b|\bsweatshirts?\b|\bzip[- ]?up hoodie\b/;
 const JEANS_RE = /\bjeans\b|\bdenim pants\b|\bdenim jeans?\b/;
 const JACKET_RE = /\bjackets?\b|\bcoats?\b|\bpuffers?\b|\bbombers?\b|\bparkas?\b|\bwindbreakers?\b|\banoraks?\b/;
-const TSHIRT_RE = /\bt[- ]?shirts?\b|\btees?\b|\bshirts?\b/;
+// Strong tee signals (t-shirt, tee, short sleeve). A crewneck only counts as a
+// tee when one of these is also present (e.g. "crewneck t-shirt").
+const TSHIRT_RE = /\bt[- ]?shirts?\b|\btees?\b|\bshort[- ]?sleeve(?:d)?\b/;
+const CREWNECK_RE = /\bcrew[- ]?necks?\b/;
+// Generic "shirt" is a weak top signal, checked only after the specific
+// garments so "dress shirt" / "flannel shirt" still land in a top category.
+const SHIRT_RE = /\bshirts?\b/;
 const TOP_RE = /\btops?\b|\bblouses?\b|\bcamis?\b/;
 const BAG_RE = /\bbags?\b|\bbackpacks?\b|\btotes?\b|\bcrossbody\b|\bduffle\b|\bpurses?\b|\bhandbags?\b/;
 const ACCESSORY_RE =
@@ -145,10 +157,18 @@ export function detectItemType(input: ListingIntelligenceInput): ItemType {
     return "dress";
   }
   if (SNEAKER_RE.test(corpus)) return "sneakers";
+
+  // T-shirt vs hoodie/sweatshirt disambiguation. An explicit hoodie/sweatshirt
+  // word always wins; otherwise an explicit tee word wins (so a "crewneck
+  // t-shirt" is a T-shirt, not a sweatshirt); a bare crewneck with no tee word
+  // is treated as a crewneck sweatshirt.
   if (HOODIE_RE.test(corpus)) return "hoodie";
+  if (TSHIRT_RE.test(corpus)) return "tshirt";
+  if (CREWNECK_RE.test(corpus)) return "hoodie";
+
   if (JEANS_RE.test(corpus)) return "jeans";
   if (JACKET_RE.test(corpus)) return "jacket";
-  if (TSHIRT_RE.test(corpus)) return "tshirt";
+  if (SHIRT_RE.test(corpus)) return "tshirt";
   if (TOP_RE.test(corpus)) return "top";
   if (BAG_RE.test(corpus)) return "bag";
   if (ACCESSORY_RE.test(corpus) || input.productCategory === "accessories") {
@@ -251,6 +271,68 @@ export function resolveEbayCategory(
   };
 }
 
+// Which item types each local eBay category legitimately represents. Used to
+// catch a saved/resolved category that disagrees with what the item looks like
+// (e.g. a T-shirt left in the Hoodies & Sweatshirts category), so the seller can
+// be asked to confirm instead of being forced through hoodie-only aspects.
+const CATEGORY_ITEM_TYPES: Record<string, ItemType[]> = {
+  "15709": ["sneakers"],
+  "95672": ["sneakers"],
+  "15687": ["tshirt", "top"],
+  "155183": ["hoodie"],
+  "11483": ["jeans"],
+  "57988": ["jacket"],
+  "53159": ["top", "tshirt"],
+  "11554": ["jeans"],
+  "63861": ["dress"],
+};
+
+const ITEM_TYPE_LABELS: Record<ItemType, string> = {
+  sneakers: "pair of sneakers",
+  tshirt: "T-shirt",
+  hoodie: "hoodie or sweatshirt",
+  jeans: "pair of jeans",
+  jacket: "jacket or coat",
+  top: "top",
+  dress: "dress",
+  bag: "bag",
+  accessory: "accessory",
+  other: "item",
+};
+
+export type EbayCategoryConflict = {
+  detectedItemType: ItemType;
+  /** Seller-facing label for what the item looks like (e.g. "T-shirt"). */
+  detectedLabel: string;
+  categoryId: string;
+  categoryName: string;
+};
+
+/**
+ * Returns a conflict when a resolved eBay category clearly disagrees with the
+ * detected item type, so the UI can prompt the seller to confirm the category
+ * rather than silently requiring the wrong aspects. Returns null when the
+ * category fits, the item is too ambiguous to judge ("other"), or the category
+ * is unknown to the local map (e.g. a live Taxonomy leaf we can't reason about).
+ */
+export function detectEbayCategoryConflict(
+  itemType: ItemType,
+  categoryId: string | null,
+): EbayCategoryConflict | null {
+  if (!categoryId) return null;
+  if (itemType === "other") return null;
+  const expected = CATEGORY_ITEM_TYPES[categoryId];
+  if (!expected || expected.includes(itemType)) return null;
+  const categoryName = findCategoryName(categoryId);
+  if (!categoryName) return null;
+  return {
+    detectedItemType: itemType,
+    detectedLabel: ITEM_TYPE_LABELS[itemType],
+    categoryId,
+    categoryName,
+  };
+}
+
 const PROFILE_BY_TYPE: Record<ItemType, MeasurementProfile> = {
   sneakers: "shoes",
   tshirt: "apparel_top",
@@ -318,6 +400,7 @@ export function analyzeListing(input: ListingIntelligenceInput): ListingIntellig
   const department = detectDepartment(input);
   const itemType = detectItemType(input);
   const measurementProfile = measurementProfileFor(itemType);
+  const ebayCategory = resolveEbayCategory(input, itemType, department);
 
   return {
     itemType,
@@ -329,7 +412,8 @@ export function analyzeListing(input: ListingIntelligenceInput): ListingIntellig
         : profileUsesClothingMeasurements(measurementProfile)
           ? "apparel_size"
           : "none",
-    ebayCategory: resolveEbayCategory(input, itemType, department),
+    ebayCategory,
+    categoryConflict: detectEbayCategoryConflict(itemType, ebayCategory.resolvedId),
     recommendedMeasurements: recommendedMeasurementsFor(measurementProfile),
   };
 }

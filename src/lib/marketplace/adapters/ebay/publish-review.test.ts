@@ -25,6 +25,7 @@ function readyPreflight(
       confidence: "high",
       suggestions: [],
     },
+    categoryConflict: null,
     itemType: "sneakers",
     measurementProfile: "shoes",
     quantity: 1,
