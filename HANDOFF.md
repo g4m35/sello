@@ -12,6 +12,21 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Claude. **PR #42 (publish-flow dead-end fix) SHIPPED TO PRODUCTION.**
+Merged `feature/publish-flow-clarity` -> `develop` (PR #42, merge `26b2b78`), then
+`[deploy]` merge `develop` -> `main` (`9860ca7`) + pushed. Vercel released
+production `dpl_C3BBeRqChtbdQzFH9WRZ5gUoFQuh` (Ready), serving `sello.wtf` (HTTP
+200). Rollback target = prior prod `dpl_N51WG8ffFniCppUPMTVqwG5ccur2`.
+- Pre-flight: no schema/migration; comp caps + eBay publish gates byte-identical
+  to prior main; clean merge; gate green (tsc, lint, `npm test` 102/685, build).
+- Post-deploy log scan (prod): all 200; zero error/fatal/warning; landing serves;
+  NO `/publish` or `/comps/refresh` (no paid/publish calls); no secret strings.
+- NOT done: interactive signed-in UI smoke test — claude-in-chrome extension was
+  disconnected again and there was no live signed-in traffic to observe; shipped
+  code is the gate-passing build and the approve/dashboard/cooldown logic is unit
+  tested. Decision: KEEP (no rollback trigger hit).
+
+## Previous update
 2026-06-18 — Claude. **Publish-flow clarity on `feature/publish-flow-clarity`
 (off `develop`, NOT pushed/deployed). No schema/migration changes; no paid
 calls; no eBay production publish; no Stripe/Bulk Intake.** Fixes the reported
