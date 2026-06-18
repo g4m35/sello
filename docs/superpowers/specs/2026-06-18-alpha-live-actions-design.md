@@ -73,12 +73,12 @@ The confirmation modal explicitly states that a live eBay listing will be create
 
 Bulk publish uses the same single-item publish service; it does not introduce a second implementation of marketplace rules.
 
-Bulk publish accepts selected ready item IDs for the authenticated seller. The server may process items internally in bounded chunks with low concurrency, but the product does not expose a fixed 10-item alpha cap.
+Bulk publish accepts selected ready item IDs for the authenticated seller. The server may process items internally in bounded chunks with low concurrency, but the product does not expose a fixed alpha cap.
 
 Two server endpoints support the flow:
 
-1. A zero-mutation preflight accepts the selected item IDs, authenticates and authorizes the seller, deduplicates IDs, loads only seller-owned items, and runs server-side readiness for every item. It returns selected, ready, blocked, and rejected counts plus safe per-item reasons.
-2. An execution endpoint accepts the same selected IDs plus an explicit live-publish confirmation. It re-authenticates, re-authorizes, re-loads ownership, and re-checks readiness immediately before each publish.
+1. A non-publishing preflight accepts the selected item IDs, authenticates the seller, deduplicates IDs, loads only seller-owned items, and runs server-side readiness for every item. Preview remains available to non-allowlisted sellers and reports whether live execution is alpha-enabled for the current account. It makes no live eBay listing mutation; like the existing single-item preflight, it may prepare Sello-managed public image derivatives. It returns selected, ready, blocked, and rejected counts plus safe per-item reasons.
+2. An execution endpoint accepts the same selected IDs plus an explicit live-publish confirmation. It re-authenticates, checks `LIVE_EBAY_PUBLISH_EMAILS`, re-loads ownership, and re-checks readiness immediately before each publish.
 
 Items run independently in bounded internal chunks with low concurrency to limit eBay/API pressure and serverless execution time. A failure does not stop later items. Each result is one of `published`, `failed`, `skipped`, or `needs_details`, and includes only safe identifiers and retry eligibility. Duplicate or in-flight items are skipped without another eBay call. Retry is offered only when the canonical publish service says it is safe.
 
