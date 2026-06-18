@@ -403,7 +403,7 @@ export const api = {
       body: JSON.stringify({ rows }),
     }),
 
-  draftAction: (token: string, draftId: string, action: "reset" | "duplicate") =>
+  draftAction: (token: string, draftId: string, action: "reset" | "duplicate" | "approve") =>
     request<{ inventoryItem: { id: string }; draft: { id: string } }>(
       `/api/listings/draft/${draftId}`,
       token,

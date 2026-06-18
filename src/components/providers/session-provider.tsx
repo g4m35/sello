@@ -120,7 +120,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         <div className="auth-card">
           <div className="sidebar__brand" style={{ padding: 0 }}>
             <span className="sidebar__brand-mark">
-              Counter<em>.</em>
+              Sello<em>.</em>
             </span>
           </div>
           <div className="banner banner--warn">
@@ -151,7 +151,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         <form className="auth-card" onSubmit={handleSignIn}>
           <div className="sidebar__brand" style={{ padding: 0 }}>
             <span className="sidebar__brand-mark">
-              Counter<em>.</em>
+              Sello<em>.</em>
             </span>
           </div>
           <div>
@@ -190,7 +190,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         <form className="auth-card" onSubmit={handleSaveName}>
           <div className="sidebar__brand" style={{ padding: 0 }}>
             <span className="sidebar__brand-mark">
-              Counter<em>.</em>
+              Sello<em>.</em>
             </span>
           </div>
           <div>

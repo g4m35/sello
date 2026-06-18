@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sello</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0E0E0C; --surface:#1A1A17; --sunk:#131310;
+    --ink:#F3F1EA; --ink2:#C9C7BE; --ink3:#97958C; --ink4:#6C6A62;
+    --line:#2A2A25; --line2:#36352F; --line3:#48473F;
+    --accent:#E5413C; --accent-hi:#F2554F; --green:#A9D389;
+    --serif:"Instrument Serif",serif; --sans:"Manrope",system-ui,sans-serif; --mono:"JetBrains Mono",monospace;
+    --ease:cubic-bezier(.2,.7,.2,1);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5;overflow-x:hidden;
+    background-image:radial-gradient(760px 440px at 84% -10%,rgba(229,65,60,.09),transparent 60%)}
+  body::before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.03;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 26px;position:relative;z-index:2}
+  a{color:inherit;text-decoration:none}
+  .mono{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink4)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:40;background:rgba(14,14,12,.74);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{font-family:var(--serif);font-size:24px}.brand b{color:var(--accent);font-weight:400}
+  .navlinks{display:flex;gap:26px;font-size:14px;color:var(--ink3)}
+  .navlinks a:hover{color:var(--ink)}
+  .start{font-size:13px;font-weight:600;background:var(--accent);color:#fff;padding:9px 16px;border-radius:9px;transition:.16s var(--ease)}
+  .start:hover{background:var(--accent-hi);transform:translateY(-1px);box-shadow:0 10px 26px rgba(229,65,60,.3)}
+
+  /* hero */
+  header{padding:60px 0 0}
+  .meta{display:flex;justify-content:space-between;border-bottom:1px solid var(--line2);padding-bottom:13px;flex-wrap:wrap;gap:8px}
+  .hero{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;padding:46px 0 56px}
+  @media(max-width:900px){.hero{grid-template-columns:1fr;gap:34px}}
+  h1{font-weight:800;letter-spacing:-.04em;line-height:.92;font-size:clamp(40px,6.4vw,82px)}
+  h1 .it{font-family:var(--serif);font-weight:400;font-style:italic;letter-spacing:-.01em;color:var(--accent)}
+  .lede{margin-top:20px;font-size:clamp(15px,1.6vw,18px);color:var(--ink2);max-width:380px}
+  .cta{margin-top:26px;display:flex;gap:12px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:11px 19px;border-radius:11px;border:1px solid transparent;transition:.16s var(--ease)}
+  .btn-accent{background:var(--accent);color:#fff}.btn-accent:hover{background:var(--accent-hi);transform:translateY(-1px);box-shadow:0 12px 30px rgba(229,65,60,.32)}
+  .btn-ghost{border-color:var(--line2);color:var(--ink)}.btn-ghost:hover{border-color:var(--line3);background:var(--surface)}
+
+  /* product card */
+  .card{border:1px solid var(--line2);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--sunk));box-shadow:0 30px 80px rgba(0,0,0,.5);overflow:hidden;max-width:380px;margin-left:auto}
+  .ph{position:relative;aspect-ratio:4/3;border-bottom:1px solid var(--line);background:#1d1b17}
+  .ph img{width:100%;height:100%;object-fit:cover;display:block}
+  .ph .chip{position:absolute;left:13px;bottom:12px;font-size:11px;color:var(--ink);background:rgba(14,14,12,.78);border:1px solid var(--line2);padding:4px 10px;border-radius:7px;backdrop-filter:blur(4px)}
+  .cbody{padding:17px}
+  .cbody .ttl{font-size:15px;font-weight:700}.cbody .sub{font-size:12.5px;color:var(--ink3);margin-top:3px}
+  .rows{margin-top:13px;display:grid;gap:8px}
+  .r{display:flex;justify-content:space-between;font-size:13px;color:var(--ink2);border-top:1px dashed var(--line2);padding-top:8px}
+  .r b{color:var(--ink);font-weight:700}
+  .price{margin-top:15px;display:flex;align-items:baseline;justify-content:space-between}
+  .price .lbl{font-size:12px;color:var(--ink3)}
+  .price .big{font-family:var(--serif);font-size:34px}
+  .price .tag{font-size:11px;color:var(--green);border:1px solid #2c3a1f;background:#16210e;padding:4px 9px;border-radius:6px}
+
+  /* marquee */
+  .marq{border-top:1px solid var(--line);border-bottom:1px solid var(--line);overflow:hidden;white-space:nowrap;background:var(--sunk)}
+  .marq .track{display:inline-block;padding:11px 0;font-family:var(--serif);font-size:19px;color:var(--ink3);animation:scroll 34s linear infinite}
+  .marq .track span{margin:0 20px}.marq .track em{font-style:italic;color:var(--accent)}
+  @keyframes scroll{to{transform:translateX(-50%)}}
+
+  /* sections */
+  section{padding:78px 0}
+  h2{font-weight:800;letter-spacing:-.03em;font-size:clamp(26px,3.4vw,40px);line-height:1.02;margin-bottom:32px}
+  h2 .it{font-family:var(--serif);font-weight:400;font-style:italic;color:var(--accent)}
+
+  /* how it works — number + word only */
+  .steps{border-top:1px solid var(--line2)}
+  .step{display:grid;grid-template-columns:70px 1fr;gap:20px;align-items:baseline;padding:20px 0;border-bottom:1px solid var(--line2);transition:.16s var(--ease)}
+  .step:hover{padding-left:10px;background:var(--surface)}
+  .step .n{font-family:var(--mono);font-size:13px;color:var(--accent)}
+  .step .h{font-family:var(--serif);font-weight:400;font-size:clamp(24px,3vw,34px);line-height:1}
+
+  /* where you sell — simple band */
+  .sell{text-align:center;border:1px solid var(--line2);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--sunk));padding:48px 28px}
+  .sell h2{margin-bottom:14px}
+  .sell p{color:var(--ink2);font-size:16px;max-width:520px;margin:0 auto}
+  .sell .mks{margin-top:30px;display:flex;justify-content:center;align-items:center;gap:34px;flex-wrap:wrap}
+  .sell .mk{font-family:var(--serif);font-size:26px;color:var(--ink2);transition:.18s}
+  .sell .mk:hover{color:var(--ink)}
+
+  /* pricing */
+  .tiers{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line2);border-radius:18px;overflow:hidden}
+  @media(max-width:760px){.tiers{grid-template-columns:1fr}}
+  .tier{padding:28px 24px;border-right:1px solid var(--line2);background:var(--bg)}
+  .tier:last-child{border-right:0}
+  @media(max-width:760px){.tier{border-right:0;border-bottom:1px solid var(--line2)}}
+  .tier.hot{background:linear-gradient(180deg,#1f1411,var(--sunk))}
+  .tier .nm{font-family:var(--serif);font-size:28px}
+  .tier .tg{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--ink4);margin-top:2px}
+  .tier ul{list-style:none;margin-top:16px;display:grid;gap:9px}
+  .tier li{font-size:14px;color:var(--ink2);padding-left:18px;position:relative}
+  .tier li::before{content:"—";position:absolute;left:0;color:var(--accent)}
+
+  /* footer */
+  footer{border-top:1px solid var(--line);padding:60px 0}
+  .end{font-weight:800;letter-spacing:-.04em;line-height:.9;font-size:clamp(34px,6vw,72px)}
+  .end .it{font-family:var(--serif);font-weight:400;font-style:italic;color:var(--accent)}
+  .frow{display:flex;justify-content:space-between;align-items:end;margin-top:26px;flex-wrap:wrap;gap:16px}
+
+  .reveal{opacity:0;transform:translateY(16px)} .seen{animation:rise .65s var(--ease) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<nav><div class="wrap nav">
+  <div class="brand">Sello<b>.</b></div>
+  <div class="navlinks"><a href="#how">How it works</a><a href="#sell">Where you sell</a><a href="#price">Pricing</a></div>
+  <a class="start" href="#">Start free →</a>
+</div></nav>
+
+<header><div class="wrap">
+  <div class="meta"><span class="mono">Sello — for resellers</span><span class="mono">Early access</span></div>
+  <div class="hero">
+    <div>
+      <h1>Photos in.<br><span class="it">Listings</span> out.</h1>
+      <p class="lede">Snap your item. We write the listing and price it — you just sell.</p>
+      <div class="cta">
+        <a class="btn btn-accent" href="#">Start free →</a>
+        <a class="btn btn-ghost" href="#how">See how it works</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ph">
+        <svg viewBox="0 0 400 300" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Black puffer jacket">
+          <defs>
+            <linearGradient id="bgp" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#211e18"/><stop offset="1" stop-color="#141109"/>
+            </linearGradient>
+            <linearGradient id="puff" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#2e2a21"/><stop offset="1" stop-color="#1b1812"/>
+            </linearGradient>
+            <linearGradient id="puffsl" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#29251d"/><stop offset="1" stop-color="#181510"/>
+            </linearGradient>
+          </defs>
+          <rect width="400" height="300" fill="url(#bgp)"/>
+          <!-- soft floor shadow -->
+          <ellipse cx="200" cy="262" rx="120" ry="14" fill="#000" opacity=".28"/>
+          <!-- sleeves -->
+          <g stroke="#100e09" stroke-width="2">
+            <rect x="78" y="92" width="44" height="118" rx="20" fill="url(#puffsl)" transform="rotate(-13 100 150)"/>
+            <rect x="278" y="92" width="44" height="118" rx="20" fill="url(#puffsl)" transform="rotate(13 300 150)"/>
+            <g stroke="#13110b" stroke-width="3" opacity=".8">
+              <line x1="82" y1="120" x2="120" y2="120" transform="rotate(-13 100 150)"/>
+              <line x1="82" y1="146" x2="120" y2="146" transform="rotate(-13 100 150)"/>
+              <line x1="82" y1="172" x2="120" y2="172" transform="rotate(-13 100 150)"/>
+              <line x1="280" y1="120" x2="318" y2="120" transform="rotate(13 300 150)"/>
+              <line x1="280" y1="146" x2="318" y2="146" transform="rotate(13 300 150)"/>
+              <line x1="280" y1="172" x2="318" y2="172" transform="rotate(13 300 150)"/>
+            </g>
+          </g>
+          <!-- body -->
+          <path d="M133 96 q67 -26 134 0 l8 150 q-75 16 -150 0 z" fill="url(#puff)" stroke="#100e09" stroke-width="2.5"/>
+          <!-- baffles -->
+          <g stroke="#13110b" stroke-width="4" opacity=".85">
+            <line x1="128" y1="128" x2="272" y2="128"/>
+            <line x1="127" y1="158" x2="273" y2="158"/>
+            <line x1="126" y1="188" x2="274" y2="188"/>
+            <line x1="125" y1="218" x2="275" y2="218"/>
+          </g>
+          <!-- collar -->
+          <path d="M150 96 q50 -34 100 0 l-16 18 q-34 -18 -68 0 z" fill="#26221b" stroke="#100e09" stroke-width="2.5"/>
+          <!-- zipper -->
+          <line x1="200" y1="112" x2="200" y2="244" stroke="#0f0d08" stroke-width="6"/>
+          <line x1="200" y1="112" x2="200" y2="244" stroke="#46402f" stroke-width="2" stroke-dasharray="3 4"/>
+          <circle cx="200" cy="120" r="5" fill="#52493a" stroke="#0f0d08"/>
+        </svg>
+        <span class="chip">4 photos</span>
+      </div>
+      <div class="cbody">
+        <div class="ttl">The North Face Nuptse — Black</div>
+        <div class="sub">Puffer jacket · Men&apos;s L · Excellent</div>
+        <div class="rows">
+          <div class="r"><span>Sold recently</span><b>14</b></div>
+          <div class="r"><span>Typical price</span><b>$182</b></div>
+        </div>
+        <div class="price">
+          <div><div class="lbl">List it at</div><div class="big">$199</div></div>
+          <span class="tag">great price</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></header>
+
+<div class="marq"><div class="track">
+  <span>List in minutes</span><span>·</span><span>Price it <em>right</em></span><span>·</span><span>Sell everywhere</span><span>·</span>
+  <span>List in minutes</span><span>·</span><span>Price it <em>right</em></span><span>·</span><span>Sell everywhere</span><span>·</span>
+</div></div>
+
+<section id="how"><div class="wrap">
+  <h2>How it works.</h2>
+  <div class="steps">
+    <div class="step reveal"><span class="n">01</span><span class="h">Add your photos</span></div>
+    <div class="step reveal"><span class="n">02</span><span class="h">We write the listing</span></div>
+    <div class="step reveal"><span class="n">03</span><span class="h">We price it for you</span></div>
+    <div class="step reveal"><span class="n">04</span><span class="h">You list it</span></div>
+    <div class="step reveal"><span class="n">05</span><span class="h">You sell</span></div>
+  </div>
+</div></section>
+
+<section id="sell" style="padding-top:0"><div class="wrap">
+  <div class="sell reveal">
+    <h2>List where you already sell.</h2>
+    <p>Publish to eBay in one click. For Grailed, Poshmark, and Depop, Sello hands you a ready-to-post listing — you just paste and go.</p>
+    <div class="mks">
+      <span class="mk">eBay</span><span class="mk">Grailed</span><span class="mk">Poshmark</span><span class="mk">Depop</span>
+    </div>
+  </div>
+</div></section>
+
+<section id="price" style="padding-top:0"><div class="wrap">
+  <h2>Free to start.</h2>
+  <div class="tiers">
+    <div class="tier reveal"><div class="nm">Free</div><div class="tg">EARLY ACCESS</div>
+      <ul><li>Create listings</li><li>See price estimates</li><li>A few price checks a day</li></ul></div>
+    <div class="tier hot reveal"><div class="nm">Starter</div><div class="tg">COMING SOON</div>
+      <ul><li>Prices from real sales</li><li>A confident price every time</li><li>Re-check anytime</li></ul></div>
+    <div class="tier reveal"><div class="nm">Pro</div><div class="tg">COMING SOON</div>
+      <ul><li>More listings</li><li>More price checks</li><li>Bulk tools (later)</li></ul></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="end">Stop typing.<br>Start <span class="it">selling.</span></div>
+  <div class="frow"><span class="mono">Sello · early access</span><a class="btn btn-accent" href="#">Start free →</a></div>
+</div></footer>
+
+<script>
+  const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add("seen");io.unobserve(e.target)}}),{threshold:.15});
+  document.querySelectorAll(".reveal").forEach((el,i)=>{el.style.animationDelay=(i%5*.05)+"s";io.observe(el)});
+</script>
+</body>
+</html>

@@ -100,6 +100,21 @@ const CONDITION_OPTIONS = [
   "unknown",
 ] as const;
 
+// Seller-facing department/gender, stored as the eBay "Department" aspect so it
+// also satisfies eBay readiness. Values match what eBay expects.
+const DEPARTMENT_OPTIONS = [
+  { value: "Men", label: "Men's" },
+  { value: "Women", label: "Women's" },
+  { value: "Unisex Adult", label: "Unisex" },
+] as const;
+
+function departmentAspectFromInference(department: string): string {
+  if (department === "men") return "Men";
+  if (department === "women") return "Women";
+  if (department === "unisex") return "Unisex Adult";
+  return "";
+}
+
 function editsFrom(item: ItemDetailView): DraftEdits {
   return {
     title: item.title,
@@ -407,6 +422,49 @@ export default function ListingDetailPage() {
     }
   }, [token, draftId, router]);
 
+  // Save the current edits and move the draft to the approved/ready lifecycle
+  // state. Shared by "Mark ready" and the publish flow so a complete listing
+  // can always advance, even when production eBay publishing is disabled.
+  const saveAndApprove = useCallback(async () => {
+    if (!draftId || !edits) return;
+    await api.updateDraft(token, draftId, {
+      title: edits.title,
+      description: edits.description,
+      bulletPoints: edits.bulletPoints,
+      recommendedPriceCents: edits.recommendedPriceCents,
+      selectedMarketplaces: edits.selectedMarketplaces,
+      marketplaceDrafts: {
+        ebay: {
+          categoryId: edits.ebayCategoryId.trim(),
+          quantity: edits.ebayQuantity,
+          aspects: edits.ebayAspects,
+        },
+      },
+      measurements: savableMeasurements(edits.measurements),
+      flaws: savableFlaws(edits.flaws),
+      approve: true,
+    });
+  }, [token, draftId, edits]);
+
+  // Mark the listing ready without opening the publish modal. The main way to
+  // leave "needs attention"/draft when production publishing is off.
+  const markReady = useCallback(async () => {
+    if (!draftId || !edits) return;
+    setApproving(true);
+    setNotice(null);
+    setPhotoError(null);
+    try {
+      await saveAndApprove();
+      reload();
+      setNotice("Marked ready to publish.");
+    } catch (e) {
+      setSaveState("error");
+      setPhotoError((e as { error?: string })?.error ?? "Could not mark this listing ready.");
+    } finally {
+      setApproving(false);
+    }
+  }, [draftId, edits, saveAndApprove, reload]);
+
   // Approve the draft (move it to the ready lifecycle state) before opening the
   // publish modal, so publishing is not rejected with a 409 "not ready" error.
   const requestPublish = useCallback(async () => {
@@ -421,23 +479,7 @@ export default function ListingDetailPage() {
     }
     setApproving(true);
     try {
-      await api.updateDraft(token, draftId, {
-        title: edits.title,
-        description: edits.description,
-        bulletPoints: edits.bulletPoints,
-        recommendedPriceCents: edits.recommendedPriceCents,
-        selectedMarketplaces: edits.selectedMarketplaces,
-        marketplaceDrafts: {
-          ebay: {
-            categoryId: edits.ebayCategoryId.trim(),
-            quantity: edits.ebayQuantity,
-            aspects: edits.ebayAspects,
-          },
-        },
-        measurements: savableMeasurements(edits.measurements),
-        flaws: savableFlaws(edits.flaws),
-        approve: true,
-      });
+      await saveAndApprove();
       reload();
       setPublishOpen(true);
     } catch (e) {
@@ -446,7 +488,21 @@ export default function ListingDetailPage() {
     } finally {
       setApproving(false);
     }
-  }, [token, draftId, edits, item, reload]);
+  }, [draftId, edits, item, saveAndApprove, reload]);
+
+  const deleteListing = useCallback(async () => {
+    if (!window.confirm("Delete this listing? This cannot be undone.")) return;
+    setMenuOpen(false);
+    setLifecycleBusy(true);
+    setNotice(null);
+    try {
+      await api.deleteItems(token, [id]);
+      router.push("/inventory");
+    } catch (e) {
+      setNotice((e as { error?: string })?.error ?? "Could not delete this listing.");
+      setLifecycleBusy(false);
+    }
+  }, [token, id, router]);
 
   const copyExport = useCallback(
     async (marketplace: ExportMarketplace) => {
@@ -599,7 +655,6 @@ export default function ListingDetailPage() {
     item.lifecycleState === "draft" ||
     item.lifecycleState === "ready" ||
     item.lifecycleState === "active";
-  const hasLifecycleActions = canMarkSold || canDelist;
   const { head, tail } = splitTitle(item.title);
   const metaParts = [
     item.brand,
@@ -643,8 +698,7 @@ export default function ListingDetailPage() {
             >
               Duplicate
             </Btn>
-            {hasLifecycleActions && (
-              <div style={{ position: "relative" }}>
+            <div style={{ position: "relative" }}>
                 <Btn
                   variant="ghost"
                   size="sm"
@@ -691,11 +745,17 @@ export default function ListingDetailPage() {
                           <Icon name="x-c" size={14} /> Delist
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="nav-item"
+                        onClick={() => void deleteListing()}
+                      >
+                        <Icon name="trash" size={14} /> Delete listing
+                      </button>
                     </div>
                   </>
                 )}
               </div>
-            )}
           </>
         }
       />
@@ -754,6 +814,16 @@ export default function ListingDetailPage() {
                 onClick={() => scrollToAnchor(firstMissingAnchor)}
               >
                 Fix required fields
+              </Btn>
+            ) : item.lifecycleState === "draft" ? (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="check"
+                disabled={approving}
+                onClick={markReady}
+              >
+                {approving ? "Marking…" : "Mark ready"}
               </Btn>
             ) : canLivePublish ? (
               <Btn
@@ -939,6 +1009,28 @@ export default function ListingDetailPage() {
                     placeholder="Color"
                     onChange={(e) => patchItem({ colorway: e.target.value })}
                   />
+                </Field>
+                <Field label="Department" hint="auto-detected">
+                  <select
+                    className="select"
+                    disabled={!editable}
+                    value={
+                      edits.ebayAspects.Department ||
+                      departmentAspectFromInference(intelligence.department)
+                    }
+                    onChange={(e) =>
+                      patch({
+                        ebayAspects: { ...edits.ebayAspects, Department: e.target.value },
+                      })
+                    }
+                  >
+                    <option value="">Auto</option>
+                    {DEPARTMENT_OPTIONS.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
               </div>
 
@@ -1369,6 +1461,7 @@ export default function ListingDetailPage() {
                 savedCategoryId={edits.ebayCategoryId}
                 savedQuantity={edits.ebayQuantity}
                 refreshSignal={readinessSignal}
+                showAdvanced={showAdvanced}
                 onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
                 onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
                 onSaveAspect={(name, value) =>

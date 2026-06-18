@@ -12,6 +12,40 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Claude. **Publish-flow clarity on `feature/publish-flow-clarity`
+(off `develop`, NOT pushed/deployed). No schema/migration changes; no paid
+calls; no eBay production publish; no Stripe/Bulk Intake.** Fixes the reported
+"Needs attention" dead-end + dashboard count bug + several UX asks:
+- **Dead-end root cause:** a draft only became "ready" via the publish flow,
+  which is hidden when production publishing is off, so a complete draft could
+  never leave draft/"Needs attention". Fix: `ItemView` now carries readiness
+  (`ready`/`missingCount`, computed in `mapItem`); new draft POST `approve`
+  action marks a complete stored draft ready (re-checks readiness, rejects
+  incomplete with a reason); editor gains an explicit **Mark ready** action
+  (works regardless of the publish gate) + **Delete listing**; dashboard gives a
+  one-click **Mark ready** to complete-but-unapproved drafts.
+- **Count bug:** dashboard KPI "Needs attention" now equals the "Needs your
+  attention" list (both = errors + drafts missing fields); complete drafts no
+  longer show "add details", and incomplete ones show the exact missing count.
+- **Pricing:** the stuck Refresh button now ticks its cooldown down client-side
+  and re-enables itself.
+- **Polish:** rebranded Counter -> Sello (sidebar, modals, title) + removed
+  v0.4; Department/gender select in Basics (eBay Department aspect, auto-detected
+  default); eBay payload "Technical preview" gated behind `?debug`; required-
+  aspect dropdowns widened; new-listing intake card spacing fixed.
+Gate green: prisma validate, lint (2 known warnings), tsc, `npm test`
+(102 files / 685 tests), build.
+
+**Deferred (flagged, not done):** full right-rail "one flow" redesign (kept the
+existing cards; made status/actions coherent); adding department to the Gemini
+identification schema (used local `detectDepartment` inference instead, no
+schema change).
+
+**Blocked on owner:** (1) review + merge `feature/publish-flow-clarity` ->
+`develop`, then promote to `main` with `[deploy]` to ship (NOT pushed). (2)
+Production currently runs PR #41 (`dpl_N51WG8…`); this branch is the next release.
+
+## Previous update
 2026-06-18 — Claude. **PR #41 promoted to PRODUCTION.** `develop` (d6c26d5)
 merged to `main` as `[deploy]` merge `34dd71e` and pushed; Vercel built and
 released production deployment `dpl_N51WG8ffFniCppUPMTVqwG5ccur2` (Ready), now

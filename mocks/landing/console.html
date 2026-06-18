@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sello — Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0E0E0C; --surface:#1A1A17; --sunk:#131310; --raise:#201E1A;
+    --ink:#F3F1EA; --ink2:#C9C7BE; --ink3:#97958C; --ink4:#6C6A62;
+    --line:#2A2A25; --line2:#36352F; --line3:#48473F;
+    --accent:#E5413C; --accent-hi:#F2554F; --green:#A9D389; --amber:#E6CB86;
+    --serif:"Instrument Serif",serif; --sans:"Manrope",system-ui,sans-serif; --mono:"JetBrains Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5}
+  /* grid + glow backdrop */
+  .bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+  .bg::before{content:"";position:absolute;inset:0;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:46px 46px;opacity:.25;mask-image:radial-gradient(900px 600px at 70% 0%,#000,transparent 75%)}
+  .bg::after{content:"";position:absolute;top:-200px;right:-100px;width:760px;height:600px;
+    background:radial-gradient(closest-side,rgba(229,65,60,.16),transparent);filter:blur(20px)}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 26px;position:relative;z-index:2}
+  a{color:inherit;text-decoration:none}
+  .mono{font-family:var(--mono)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+
+  nav{position:sticky;top:0;z-index:40;border-bottom:1px solid var(--line);background:rgba(14,14,12,.72);backdrop-filter:blur(12px)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .brand{font-weight:800;font-size:20px;letter-spacing:-.02em;display:flex;align-items:center;gap:9px}
+  .brand .sq{width:22px;height:22px;border-radius:6px;background:var(--accent);display:grid;place-items:center;color:#fff;font-family:var(--serif);font-size:16px}
+  .navlinks{display:flex;gap:28px;font-size:14px;color:var(--ink2)}
+  .navlinks a:hover{color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:13.5px;padding:9px 16px;border-radius:9px;border:1px solid transparent;transition:.16s cubic-bezier(.2,.7,.2,1)}
+  .btn-ghost{border-color:var(--line2);color:var(--ink)}.btn-ghost:hover{border-color:var(--line3);background:var(--surface)}
+  .btn-accent{background:var(--accent);color:#fff}.btn-accent:hover{background:var(--accent-hi);transform:translateY(-1px);box-shadow:0 12px 30px rgba(229,65,60,.32)}
+  .btn-solid{background:var(--ink);color:#0B0B0A}.btn-solid:hover{transform:translateY(-1px)}
+
+  header{padding:80px 0 30px;text-align:center}
+  .pill{display:inline-flex;gap:9px;align-items:center;border:1px solid var(--line2);border-radius:999px;padding:6px 14px;font-size:12.5px;color:var(--ink2);margin-bottom:26px}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(169,211,137,.14)}
+  h1{font-weight:800;letter-spacing:-.035em;line-height:1.0;font-size:clamp(40px,6.6vw,80px)}
+  h1 .ser{font-family:var(--serif);font-weight:400;font-style:italic;letter-spacing:-.01em;color:var(--accent)}
+  .lede{margin:22px auto 0;max-width:620px;font-size:clamp(16px,1.9vw,19px);color:var(--ink2)}
+  .cta{margin-top:28px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .runline{margin-top:16px;font-family:var(--mono);font-size:12px;color:var(--ink4)}
+
+  /* browser frame */
+  .frame{margin:54px auto 0;max-width:1060px;border:1px solid var(--line2);border-radius:16px;overflow:hidden;
+    background:linear-gradient(180deg,var(--surface),var(--sunk));box-shadow:0 40px 120px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.02)}
+  .chrome{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--raise)}
+  .chrome .d{width:11px;height:11px;border-radius:50%;background:#3a3833}
+  .chrome .url{margin-left:10px;font-family:var(--mono);font-size:12px;color:var(--ink3);background:var(--sunk);border:1px solid var(--line2);padding:5px 12px;border-radius:7px;flex:1;max-width:380px}
+  .editor{display:grid;grid-template-columns:1.15fr 1fr;gap:1px;background:var(--line)}
+  @media(max-width:760px){.editor{grid-template-columns:1fr}}
+  .pane{background:var(--bg);padding:18px}
+  .photos{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .photos .p{aspect-ratio:1;border-radius:8px;border:1px solid var(--line2);
+    background:repeating-linear-gradient(135deg,#211f1a,#211f1a 8px,#1c1a16 8px,#1c1a16 16px)}
+  .photos .p:first-child{outline:2px solid var(--accent);outline-offset:1px}
+  .field{margin-top:14px}.field .l{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--ink4)}
+  .field .v{margin-top:5px;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line2);border-radius:8px;padding:9px 11px}
+  .field .v.area{color:var(--ink2);font-size:13px;line-height:1.5}
+  .specs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .specs span{font-family:var(--mono);font-size:11px;color:var(--ink2);border:1px solid var(--line2);padding:4px 8px;border-radius:6px}
+  /* comps panel */
+  .panehead{display:flex;justify-content:space-between;align-items:center}
+  .panehead .t{font-size:13px;font-weight:700}
+  .badge{font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:6px;border:1px solid #2c3a1f;background:#16210e;color:var(--green)}
+  .bars{margin-top:14px;display:grid;gap:9px}
+  .bar{display:grid;grid-template-columns:64px 1fr 46px;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;color:var(--ink3)}
+  .bar .track{height:7px;border-radius:5px;background:var(--surface);overflow:hidden;border:1px solid var(--line2)}
+  .bar .fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-hi))}
+  .bar b{color:var(--ink);text-align:right}
+  .statline{margin-top:16px;border-top:1px dashed var(--line2);padding-top:14px;display:flex;justify-content:space-between;align-items:baseline}
+  .statline .big{font-family:var(--serif);font-size:32px}.statline .lab{font-family:var(--mono);font-size:10px;color:var(--ink4)}
+
+  /* logos */
+  .logos{margin-top:64px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:20px 0}
+  .logos .r{display:flex;align-items:center;justify-content:center;gap:40px;flex-wrap:wrap}
+  .logos .lab{font-family:var(--mono);font-size:11px;color:var(--ink4);letter-spacing:.14em}
+  .lg{font-weight:700;font-size:17px;color:var(--ink3);transition:.2s}.lg:hover{color:var(--ink2)}
+  .lg sup{font-family:var(--mono);font-size:8px;color:var(--ink4)}
+
+  section{padding:92px 0}
+  .shead{max-width:640px}.shead h2{font-weight:800;letter-spacing:-.03em;font-size:clamp(30px,4.4vw,48px);line-height:1.04}
+  .shead h2 em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--accent)}
+  .shead p{margin-top:14px;color:var(--ink2);font-size:16px}
+
+  /* bento */
+  .bento{margin-top:42px;display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:170px;gap:14px}
+  @media(max-width:880px){.bento{grid-template-columns:1fr 1fr;grid-auto-rows:auto}}
+  .tile{border:1px solid var(--line2);border-radius:18px;background:linear-gradient(180deg,var(--surface),var(--sunk));padding:20px;overflow:hidden;position:relative;transition:.2s cubic-bezier(.2,.7,.2,1)}
+  .tile:hover{transform:translateY(-4px);border-color:var(--line3);box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .tile .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--ink4)}
+  .tile h3{font-size:17px;font-weight:700;margin:9px 0 6px}
+  .tile p{font-size:13px;color:var(--ink3);line-height:1.5}
+  .t-wide{grid-column:span 4;grid-row:span 1}.t-tall{grid-column:span 2;grid-row:span 2}.t-sm{grid-column:span 2}
+  @media(max-width:880px){.t-wide,.t-tall,.t-sm{grid-column:span 1}.t-tall{grid-row:span 1}}
+  /* mini viz inside tiles */
+  .check{margin-top:12px;display:grid;gap:7px}
+  .check div{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2)}
+  .ck{width:15px;height:15px;border-radius:5px;display:grid;place-items:center;font-size:10px}
+  .ok{background:#16210e;border:1px solid #2c3a1f;color:var(--green)}
+  .wn{background:#2A2310;border:1px solid #524619;color:var(--amber)}
+  .matrix{margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .matrix .c{aspect-ratio:1.6;border-radius:7px;border:1px solid var(--line2);display:grid;place-items:center;font-family:var(--mono);font-size:9px;color:var(--ink4)}
+  .matrix .c.on{background:#16210e;border-color:#2c3a1f;color:var(--green)}
+  .matrix .c.as{background:#231a10;border-color:#4a3a1c;color:var(--amber)}
+  .glyph{position:absolute;right:-14px;bottom:-18px;font-family:var(--serif);font-size:120px;color:var(--line2);opacity:.5}
+
+  footer{border-top:1px solid var(--line);padding:64px 0}
+  .cta-final{border:1px solid var(--line2);border-radius:22px;background:radial-gradient(700px 280px at 50% -40%,rgba(229,65,60,.16),transparent),linear-gradient(180deg,var(--surface),var(--sunk));padding:56px 30px;text-align:center}
+  .cta-final h2{font-weight:800;letter-spacing:-.03em;font-size:clamp(30px,4.6vw,52px)}
+  .cta-final h2 em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--accent)}
+  .cta-final p{margin:14px auto 26px;max-width:520px;color:var(--ink2)}
+  .foot-b{display:flex;justify-content:space-between;color:var(--ink4);font-size:13px;margin-top:46px;flex-wrap:wrap;gap:12px}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<nav><div class="wrap nav">
+  <div class="brand"><span class="sq">S</span> Sello</div>
+  <div class="navlinks"><a href="#feat">Product</a><a href="#feat">Marketplaces</a><a href="#price">Pricing</a><a href="#">Docs</a></div>
+  <div style="display:flex;gap:10px"><a class="btn btn-ghost" href="#">Sign in</a><a class="btn btn-accent" href="#">Get started</a></div>
+</div></nav>
+
+<header><div class="wrap">
+  <span class="pill"><span class="dot"></span> Private alpha · for fashion resellers</span>
+  <h1>The resale workspace<br>that <span class="ser">writes &amp; prices</span> for you.</h1>
+  <p class="lede">Photos in. Clean listings, marketplace-ready drafts, and sold-comp pricing out. Automated where supported, assisted where required.</p>
+  <div class="cta">
+    <a class="btn btn-accent" href="#">Start creating listings →</a>
+    <a class="btn btn-ghost" href="#feat">See the product</a>
+  </div>
+  <div class="runline">$ sello draft ./tnf-nuptse/*.jpg → listing + price in ~40s</div>
+
+  <div class="frame">
+    <div class="chrome"><span class="d"></span><span class="d"></span><span class="d"></span>
+      <span class="url">app.sello.wtf/inventory/tnf-nuptse</span>
+      <span class="badge" style="margin-left:auto">draft · ready</span></div>
+    <div class="editor">
+      <div class="pane">
+        <div class="photos"><span class="p"></span><span class="p"></span><span class="p"></span><span class="p"></span></div>
+        <div class="field"><div class="l">TITLE</div><div class="v">The North Face Nuptse 700 Black Puffer Jacket — Men&apos;s L</div></div>
+        <div class="field"><div class="l">DESCRIPTION</div><div class="v area">Classic 700-fill Nuptse in black. Pre-owned, excellent — no flaws. Baffles intact, full-zip, embroidered logo…</div></div>
+        <div class="specs"><span>Brand: The North Face</span><span>Size: L</span><span>Color: Black</span><span>Cond: Used—Exc</span></div>
+      </div>
+      <div class="pane">
+        <div class="panehead"><span class="t">Auto pricing</span><span class="badge">high confidence</span></div>
+        <div class="bars">
+          <div class="bar"><span>sold</span><div class="track"><div class="fill" style="width:84%"></div></div><b>14</b></div>
+          <div class="bar"><span>active</span><div class="track"><div class="fill" style="width:46%;background:linear-gradient(90deg,#7a7a72,#9a988e)"></div></div><b>22</b></div>
+          <div class="bar"><span>match</span><div class="track"><div class="fill" style="width:78%"></div></div><b>0.86</b></div>
+          <div class="bar"><span>recency</span><div class="track"><div class="fill" style="width:62%"></div></div><b>30d</b></div>
+        </div>
+        <div class="statline">
+          <div><div class="lab">LOW / MED / HIGH</div><div style="font-family:var(--mono);font-size:13px;color:var(--ink2);margin-top:3px">$150 · $182 · $235</div></div>
+          <div style="text-align:right"><div class="lab">RECOMMENDED</div><div class="big">$199</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="logos"><div class="r">
+    <span class="lab">PUBLISHES&nbsp;&amp;&nbsp;EXPORTS&nbsp;TO</span>
+    <span class="lg">eBay<sup>API</sup></span><span class="lg">Grailed<sup>ASSIST</sup></span><span class="lg">Poshmark<sup>ASSIST</sup></span><span class="lg">Depop<sup>ASSIST</sup></span>
+  </div></div>
+</div></header>
+
+<section id="feat"><div class="wrap">
+  <div class="shead">
+    <span class="eyebrow">FIG 2.0 — Product</span>
+    <h2 style="margin-top:12px">Everything between <em>photo</em> and sold.</h2>
+    <p>Real product surfaces, not abstractions. Each does one repetitive job so you don&apos;t.</p>
+  </div>
+  <div class="bento">
+    <div class="tile t-wide"><div class="k">AI LISTING</div><h3>Drafts that read like you wrote them</h3>
+      <p>Title, description, item specifics, measurements, and flaws — generated from photos, validated, and editable.</p></div>
+    <div class="tile t-tall"><div class="k">SOLD COMPS</div><h3>Evidence-backed pricing</h3>
+      <p>Real sold comps, outliers trimmed, scored, with a confidence reason.</p>
+      <div class="bars" style="margin-top:14px">
+        <div class="bar"><span>$165</span><div class="track"><div class="fill" style="width:40%"></div></div><b>×3</b></div>
+        <div class="bar"><span>$182</span><div class="track"><div class="fill" style="width:80%"></div></div><b>×6</b></div>
+        <div class="bar"><span>$205</span><div class="track"><div class="fill" style="width:55%"></div></div><b>×4</b></div>
+      </div>
+      <span class="glyph">$</span></div>
+    <div class="tile t-sm"><div class="k">EBAY READINESS</div><h3>No surprises at publish</h3>
+      <div class="check"><div><span class="ck ok">✓</span> Payment policy</div><div><span class="ck ok">✓</span> Shipping policy</div><div><span class="ck wn">!</span> Return policy</div></div></div>
+    <div class="tile t-sm"><div class="k">CHANNELS</div><h3>Automated &amp; assisted</h3>
+      <div class="matrix"><div class="c on">eBay</div><div class="c as">Grai</div><div class="c as">Posh</div><div class="c as">Depop</div></div></div>
+    <div class="tile t-wide"><div class="k">INVENTORY</div><h3>One source of truth across every channel</h3>
+      <p>Draft → ready → published → sold. Status tracking, publish history, and per-channel state in one place.</p></div>
+  </div>
+</div></section>
+
+<section id="price" style="padding-top:0"><div class="wrap">
+  <div class="shead"><span class="eyebrow">FIG 3.0 — Pricing</span>
+    <h2 style="margin-top:12px">Free to list. <em>Paid</em> to price.</h2>
+    <p>Full sold-comp discovery uses paid provider calls — credit-limited, included with paid plans. No card to start.</p></div>
+  <div class="bento" style="grid-auto-rows:auto">
+    <div class="tile t-sm"><div class="k">FREE · EARLY ACCESS</div><h3>Create &amp; preview</h3><p>Create listings, basic pricing preview, limited auto-comp credits.</p></div>
+    <div class="tile t-sm" style="border-color:#4a2420;background:linear-gradient(180deg,#1f1411,var(--sunk))"><div class="k" style="color:var(--accent)">STARTER · SOON</div><h3>Full auto-pricing</h3><p>Sold comps, confidence scores, refresh limits.</p></div>
+    <div class="tile t-sm"><div class="k">PRO · SOON</div><h3>Scale up</h3><p>More listings, more comp credits, bulk tools later.</p></div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="cta-final">
+    <h2>Stop typing listings.<br>Start <em>shipping</em> them.</h2>
+    <p>Automated where supported. Assisted where required. Built for streetwear, sneakers, and hype-fashion sellers.</p>
+    <a class="btn btn-accent" href="#" style="font-size:15px;padding:12px 22px">Start creating listings →</a>
+  </div>
+  <div class="foot-b"><span>© Sello — early access</span><span class="mono">Automated where supported · Assisted where required</span></div>
+</div></footer>
+</body>
+</html>

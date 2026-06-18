@@ -122,6 +122,10 @@ export function AutoPricing({
   const [manualComp, setManualComp] = useState<ManualCompForm>(emptyManualComp);
   const [savingManual, setSavingManual] = useState(false);
   const [busyCompId, setBusyCompId] = useState<string | null>(null);
+  // Local cooldown countdown. The server's cooldownSecondsRemaining is a static
+  // snapshot; without ticking it down the Refresh button would stay stuck.
+  const [cooldown, setCooldown] = useState(0);
+  const [cooldownSeed, setCooldownSeed] = useState<Discovery | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -143,6 +147,26 @@ export function AutoPricing({
       active = false;
     };
   }, [token, itemId, reloadKey]);
+
+  // Tick the cooldown down each second; the interval tears down at 0 so the
+  // Refresh button re-enables on its own (setState lives in the timer callback,
+  // never synchronously in the effect body).
+  const cooldownTicking = cooldown > 0;
+  useEffect(() => {
+    if (!cooldownTicking) return;
+    const timer = setInterval(
+      () => setCooldown((c) => (c <= 1 ? 0 : c - 1)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [cooldownTicking]);
+
+  // Re-seed the countdown whenever a fresh discovery snapshot arrives
+  // (render-phase derived state, mirroring the dashboard's pattern).
+  if (discovery !== cooldownSeed) {
+    setCooldownSeed(discovery);
+    setCooldown(discovery?.cooldownSecondsRemaining ?? 0);
+  }
 
   async function refresh() {
     setRefreshing(true);
@@ -261,7 +285,7 @@ export function AutoPricing({
     }
   }
 
-  const cooldownRemaining = discovery?.cooldownSecondsRemaining ?? 0;
+  const cooldownRemaining = cooldown;
   const refreshDisabled = refreshing || cooldownRemaining > 0;
   const refreshBtn = (
     <Btn
