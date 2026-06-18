@@ -58,6 +58,28 @@ enum ProviderCallStatus {
   skipped
 }
 
+enum FeedbackType {
+  bug
+  feature_request
+  confusion
+  pricing_issue
+  marketplace_issue
+  other
+}
+
+enum FeedbackSeverity {
+  low
+  medium
+  high
+}
+
+enum FeedbackStatus {
+  open
+  reviewing
+  resolved
+  dismissed
+}
+
 enum DraftStatus {
   DRAFT
   APPROVED
@@ -277,6 +299,29 @@ model ProviderCallLedger {
   @@index([userId, createdAt])
   @@index([createdAt])
   @@index([draftId, createdAt])
+}
+
+// Alpha-user feedback. Seller-scoped reads (a user sees only their own); only
+// admins (env allowlist) read all and triage. RLS on; not cascaded so feedback
+// survives the referenced listing/draft.
+model Feedback {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  type        FeedbackType
+  severity    FeedbackSeverity @default(medium)
+  marketplace String?
+  subject     String
+  message     String
+  pageUrl     String?
+  listingId   String?          @db.Uuid
+  draftId     String?          @db.Uuid
+  status      FeedbackStatus   @default(open)
+  adminNotes  String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
 
 model MarketplaceListing {
