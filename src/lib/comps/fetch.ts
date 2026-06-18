@@ -6,14 +6,12 @@ import {
 } from "@/lib/comps/flags";
 import { buildCompQuery } from "@/lib/comps/match";
 import { dedupeComps, toPriceCompCreate, trimOutliers } from "@/lib/comps/normalize";
+import { loadPaidGateConfig } from "@/lib/comps/provider-budget";
 import {
-  evaluatePaidProviderGate,
-  loadPaidGateConfig,
-} from "@/lib/comps/provider-budget";
-import {
+  completeProviderCall,
   hashQueries,
-  loadPaidGateUsage,
   recordProviderCall,
+  reservePaidProviderCall,
   type ProviderLedgerPrismaLike,
 } from "@/lib/comps/provider-ledger";
 import { enabledCompSources } from "@/lib/comps/registry";
@@ -54,8 +52,10 @@ export function isAutoDiscoveryEnabled(): boolean {
   return isCompsAutoDiscoveryEnabled();
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Source failed.";
+export function sanitizeProviderError(source: Pick<CompSource, "paid">): string {
+  return source.paid === true
+    ? "Paid comp provider failed. Try again later."
+    : "Comp provider failed. Try again later.";
 }
 
 async function fetchFromSource(
@@ -65,8 +65,8 @@ async function fetchFromSource(
   try {
     const comps = await source.fetchComps(query);
     return { source, comps, error: null };
-  } catch (error) {
-    return { source, comps: [], error: errorMessage(error) };
+  } catch {
+    return { source, comps: [], error: sanitizeProviderError(source) };
   }
 }
 
@@ -188,12 +188,12 @@ export async function runCompFetch(
   }
 
   if (autoDiscoveryEnabled && !options.force && !hasMeaningfulIdentity(item)) {
-    if (paidSources.length > 0) {
+    for (const paidSource of paidSources) {
       await recordProviderCall(ledgerPrisma, {
         userId: sellerId,
         draftId,
         inventoryItemId,
-        provider: paidSources[0].id,
+        provider: paidSource.id,
         status: "skipped",
         skippedReason: "weak_identity",
         estimatedCostCents: 0,
@@ -277,30 +277,29 @@ export async function runCompFetch(
   // Budget/quota gate for paid providers — checked server-side BEFORE any paid
   // call. A blocked gate skips paid execution, records a typed skipped ledger
   // row, and surfaces the reason; free sources and manual comps are unaffected.
-  let runnablePaidSources = paidSources;
+  const runnablePaidSources: CompSource[] = [];
+  const paidReservations = new Map<string, string>();
   const budgetSkipErrors: { source: string; message: string }[] = [];
   if (paidSources.length > 0 && paidConfig) {
-    const usage = await loadPaidGateUsage(ledgerPrisma, { userId: sellerId, draftId, now });
-    const gate = evaluatePaidProviderGate({ config: paidConfig, usage, now });
-    if (!gate.allowed) {
-      runnablePaidSources = [];
-      budgetSkipErrors.push({
-        source: paidSources[0].id,
-        message: `Paid comp providers skipped: ${gate.reason}.`,
-      });
-      await recordProviderCall(ledgerPrisma, {
+    for (const paidSource of paidSources) {
+      const reservation = await reservePaidProviderCall(ledgerPrisma, {
+        config: paidConfig,
         userId: sellerId,
         draftId,
         inventoryItemId,
-        provider: paidSources[0].id,
-        status: "skipped",
-        skippedReason: gate.reason,
-        estimatedCostCents: 0,
-        fetchedCount: 0,
-        acceptedCount: 0,
-        rejectedCount: 0,
+        provider: paidSource.id,
         queryHash,
+        now,
       });
+      if (reservation.allowed) {
+        runnablePaidSources.push(paidSource);
+        paidReservations.set(paidSource.id, reservation.reservationId);
+      } else {
+        budgetSkipErrors.push({
+          source: paidSource.id,
+          message: `Paid comp providers skipped: ${reservation.reason}`,
+        });
+      }
     }
   }
   const runSources = [
@@ -358,6 +357,37 @@ export async function runCompFetch(
         };
   });
 
+  const accepted = comps.filter(
+    (comp) => comp.matchClassification === "strong" || comp.matchClassification === "possible",
+  ).length;
+  const rejected = comps.length - accepted;
+
+  if (paidConfig) {
+    for (const result of sourceResults) {
+      const reservationId = paidReservations.get(result.source.id);
+      if (!reservationId) continue;
+      const sourceComps = comps.filter((comp) => comp.source === result.source.id);
+      const sourceAccepted = sourceComps.filter(
+        (comp) =>
+          comp.matchClassification === "strong" || comp.matchClassification === "possible",
+      ).length;
+      try {
+        await completeProviderCall(ledgerPrisma, {
+          reservationId,
+          status: result.error ? "failed" : "succeeded",
+          estimatedCostCents: paidConfig.estimatedCostCents,
+          fetchedCount: result.comps.length,
+          acceptedCount: sourceAccepted,
+          rejectedCount: sourceComps.length - sourceAccepted,
+        });
+      } catch {
+        // The provider call already happened. Keep the reservation charged and
+        // never replay the external request merely to repair accounting state.
+        console.error("Paid comp provider ledger completion failed.");
+      }
+    }
+  }
+
   await prisma.priceComp.deleteMany({
     where: { inventoryItemId, source: { startsWith: "auto:" } },
   });
@@ -372,10 +402,6 @@ export async function runCompFetch(
     orderBy: { createdAt: "desc" },
   });
   const summary = summarizeComps(savedComps);
-  const accepted = comps.filter(
-    (comp) => comp.matchClassification === "strong" || comp.matchClassification === "possible",
-  ).length;
-  const rejected = comps.length - accepted;
   let appliedPriceCents: number | null = null;
 
   if (
@@ -393,28 +419,6 @@ export async function runCompFetch(
         where: { id: draft.id },
         data: { recommendedPriceCents: appliedPriceCents },
       });
-    }
-  }
-
-  // Record each paid provider call that actually ran (cost is incurred whether or
-  // not it returned usable comps). Failures are logged without leaking secrets.
-  if (paidConfig) {
-    for (const result of sourceResults) {
-      if (result.source.paid === true) {
-        await recordProviderCall(ledgerPrisma, {
-          userId: sellerId,
-          draftId,
-          inventoryItemId,
-          provider: result.source.id,
-          status: result.error ? "failed" : "succeeded",
-          skippedReason: result.error ? "provider_error" : null,
-          estimatedCostCents: paidConfig.estimatedCostCents,
-          fetchedCount: result.comps.length,
-          acceptedCount: accepted,
-          rejectedCount: rejected,
-          queryHash,
-        });
-      }
     }
   }
 

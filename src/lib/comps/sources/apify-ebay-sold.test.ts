@@ -205,21 +205,21 @@ describe("createApifyEbaySoldSource", () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({ maxItems: 2 });
   });
 
-  it("returns [] (never throws) when the actor call fails", async () => {
+  it("throws only a sanitized category when the actor call fails", async () => {
     const source = createApifyEbaySoldSource({
       env: enabledEnv,
       fetchImpl: (async () => {
         throw new Error("network down");
       }) as unknown as typeof fetch,
     });
-    expect(await source.fetchComps(query)).toEqual([]);
+    await expect(source.fetchComps(query)).rejects.toThrow("provider_error");
   });
 
-  it("returns [] on a non-OK response", async () => {
+  it("throws only a sanitized category on a non-OK response", async () => {
     const source = createApifyEbaySoldSource({
       env: enabledEnv,
       fetchImpl: (async () => ({ ok: false, status: 429, json: async () => ({}) })) as unknown as typeof fetch,
     });
-    expect(await source.fetchComps(query)).toEqual([]);
+    await expect(source.fetchComps(query)).rejects.toThrow("provider_error");
   });
 });

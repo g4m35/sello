@@ -1,9 +1,9 @@
 # Paid comp-provider budget & quota controls
 
 Hard, server-side cost controls for paid comp providers (Apify eBay-sold). Every
-paid call is gated and ledgered before it runs, so auto-discovery cannot create
-uncontrolled cost. Free sources (eBay Browse active) and manual comps are never
-affected by these gates.
+paid call is atomically gated and reserved in the ledger before it runs, so
+concurrent auto-discovery requests cannot bypass the configured caps. Free
+sources (eBay Browse active) and manual comps are never affected by these gates.
 
 ## Gate order (server-side, before any paid call)
 
@@ -23,12 +23,19 @@ paid call), `provider_not_configured`, `provider_error` (the call threw / non-2x
 
 ## Ledger
 
-Every paid call attempt is written to `ProviderCallLedger` (one row): `userId`,
-`draftId`, `inventoryItemId`, `provider`, `status` (attempted/succeeded/failed/
-skipped), `skippedReason`, `estimatedCostCents`, `fetchedCount`, `acceptedCount`,
-`rejectedCount`, `queryHash`, `createdAt`. Only attempted/succeeded/failed rows
-count toward budget/quota; skipped rows are free. Rows are **seller-scoped** (RLS
-enabled) and never store tokens or raw error text. The seller-scoped log is at
+The reservation transaction acquires PostgreSQL advisory transaction locks in a
+stable order for the global day, user day/month, and draft/provider scopes. It
+then re-reads usage and either writes a free `skipped` row or a cost-bearing
+`attempted` row. The transaction commits before the external provider request,
+so no database lock is held during network I/O. After the request, that same
+`attempted` row is updated to `succeeded` or `failed`; the provider is never
+replayed just because the completion update fails.
+
+Each `ProviderCallLedger` row contains `userId`, `draftId`, `inventoryItemId`,
+`provider`, `status`, `skippedReason`, `estimatedCostCents`, result counts,
+`queryHash`, and `createdAt`. Attempted/succeeded/failed rows consume budget and
+quota; skipped rows are free. Rows are **seller-scoped** (RLS enabled) and never
+store tokens or raw error text. The seller-scoped log is at
 `GET /api/listings/comps/provider-usage` (recent rows + today/month totals).
 
 ## Env vars (add to `.env.example` / environment)
@@ -37,15 +44,12 @@ enabled) and never store tokens or raw error text. The seller-scoped log is at
 # Paid comp-provider budget & quota controls (Apify). All OFF/safe by default.
 COMPS_PAID_PROVIDERS_ENABLED="false"          # emergency kill switch for ALL paid providers
 COMPS_ADMIN_OVERRIDE_ENABLED="false"          # bypass budget/quota (NOT the kill switch)
-COMPS_APIFY_DAILY_BUDGET_CENTS="500"          # global daily spend cap (cents)
+COMPS_APIFY_DAILY_BUDGET_CENTS="200"          # global daily spend cap (cents)
 COMPS_APIFY_ESTIMATED_COST_CENTS="35"         # estimated cost charged per paid call
-COMPS_USER_DAILY_PROVIDER_CALL_LIMIT="25"     # per-user paid calls per day
-COMPS_USER_MONTHLY_PROVIDER_CALL_LIMIT="300"  # per-user paid calls per month
-COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS="600"   # min seconds between paid calls per draft
+COMPS_USER_DAILY_PROVIDER_CALL_LIMIT="2"      # per-user paid calls per day
+COMPS_USER_MONTHLY_PROVIDER_CALL_LIMIT="20"   # per-user paid calls per month
+COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS="86400" # min seconds between paid calls per draft
 ```
-
-> NOTE: `.env.example` could not be edited in-sandbox (`.env*` is guarded). Paste
-> the block above into `.env.example` and the deployed environment manually.
 
 ## QA steps (local/staging)
 
