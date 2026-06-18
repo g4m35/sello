@@ -383,7 +383,7 @@ export function EbayPreflightCard({
           </details>
         )}
 
-        {error && <div className="t-small" style={{ color: "var(--red, #f87171)" }}>Error: {error}</div>}
+        {error && <div className="t-small danger">Error: {error}</div>}
       </div>
     </section>
   );
