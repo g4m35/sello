@@ -1,6 +1,6 @@
 // Client-only component: imported exclusively from the (client) listing
 // editor page, so it inherits the client boundary and may take callbacks.
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { readJsonResponse } from "@/lib/http";
 import { getErrorMessage } from "@/lib/errors";
@@ -43,6 +43,7 @@ export function EbayPreflightCard({
   token,
   savedCategoryId,
   savedQuantity,
+  refreshSignal,
   onSelectCategory,
   onSaveQuantity,
   onSaveAspect,
@@ -53,6 +54,12 @@ export function EbayPreflightCard({
   savedCategoryId: string;
   /** Seller-saved eBay quantity; resale listings default to 1. */
   savedQuantity: number;
+  /**
+   * Increments after every successful draft/item save. Once the seller has run
+   * a check, the panel re-checks itself on each bump so eBay readiness stays in
+   * sync with the latest saved draft without a manual re-click or page reload.
+   */
+  refreshSignal?: number;
   /** Persists a category choice through the editor's normal save flow. */
   onSelectCategory: (categoryId: string) => void;
   /** Persists eBay quantity through the editor's normal save flow. */
@@ -66,8 +73,12 @@ export function EbayPreflightCard({
   const [advancedId, setAdvancedId] = useState("");
   const [quantityDraft, setQuantityDraft] = useState(String(savedQuantity || 1));
   const [aspectDrafts, setAspectDrafts] = useState<Record<string, string>>({});
+  // Whether the seller has run at least one check. Gates auto-recheck so the
+  // panel never fires a request on first mount (checking is an explicit action).
+  const hasChecked = useRef(false);
 
-  async function runCheck() {
+  const runCheck = useCallback(async () => {
+    hasChecked.current = true;
     setRunning(true);
     setError(null);
     try {
@@ -83,7 +94,14 @@ export function EbayPreflightCard({
     } finally {
       setRunning(false);
     }
-  }
+  }, [itemId, token]);
+
+  // Re-check after each save once the seller has checked at least once, so the
+  // eBay readiness panel reflects the latest saved category/quantity/aspects.
+  useEffect(() => {
+    if (refreshSignal === undefined || !hasChecked.current) return;
+    void runCheck();
+  }, [refreshSignal, runCheck]);
 
   const category = result?.category ?? null;
   const needsCategoryChoice = Boolean(

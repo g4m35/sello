@@ -340,7 +340,7 @@ export const api = {
       styleCode?: string | null;
     },
   ) =>
-    request<{ ok: true }>(`/api/listings/${itemId}`, token, {
+    request<{ ok: true; item: ItemDetailView | null }>(`/api/listings/${itemId}`, token, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
@@ -375,10 +375,14 @@ export const api = {
       approve?: boolean;
     },
   ) =>
-    request<{ draft: unknown }>(`/api/listings/draft/${draftId}`, token, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    }),
+    request<{ draft: unknown; item: ItemDetailView | null }>(
+      `/api/listings/draft/${draftId}`,
+      token,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    ),
 
   importRows: (
     token: string,

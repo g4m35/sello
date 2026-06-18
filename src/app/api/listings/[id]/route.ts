@@ -5,6 +5,7 @@ import { AppError, getErrorMessage } from "@/lib/errors";
 import { ItemUpdateSchema } from "@/lib/listing-item-update";
 import { getPrisma } from "@/lib/prisma";
 import { createSupabaseServiceClient, requireSupabaseUser } from "@/lib/supabase/server";
+import { loadItemDetailState } from "@/lib/view/load-item-detail";
 import { mapAttempt, mapItemDetail } from "@/lib/view/server-map";
 
 export const runtime = "nodejs";
@@ -105,7 +106,17 @@ export async function PATCH(
     if (u.styleCode !== undefined) data.styleCode = u.styleCode;
 
     await prisma.inventoryItem.update({ where: { id }, data });
-    return NextResponse.json({ ok: true });
+    // Return the refreshed detail view so item edits (category, condition,
+    // size, color) keep readiness and status panels in sync without a reload.
+    // Best-effort: the update already committed, so a read-back failure must
+    // not fail the request (the client refreshes on its next load).
+    let item = null;
+    try {
+      item = await loadItemDetailState(id, user.id);
+    } catch {
+      item = null;
+    }
+    return NextResponse.json({ ok: true, item });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });

@@ -97,6 +97,76 @@ describe("listing draft update marketplace fields", () => {
     );
   });
 
+  it("returns the refreshed item view (readiness/status) after a save", async () => {
+    const update = vi.fn().mockResolvedValue({ id: "draft-1" });
+    const refreshedItem = {
+      id: "item-1",
+      sellerId: "user-1",
+      productName: "Nike Air Max",
+      brand: "Nike",
+      category: "sneakers",
+      condition: "used_good",
+      size: "US 10",
+      colorway: "Aqua",
+      styleCode: null,
+      recommendedPriceCents: 24000,
+      pricingRationale: null,
+      status: "DRAFT_READY",
+      updatedAt: new Date("2026-06-17T00:00:00.000Z"),
+      listingDrafts: [
+        {
+          id: "draft-1",
+          title: "Nike Air Max 1 Patta Waves Noise Aqua",
+          description:
+            "Authentic pair in great condition with original details. Ships fast.",
+          bulletPoints: ["Nike Air Max", "Noise Aqua colorway", "US 10"],
+          recommendedPriceCents: 24000,
+          pricingRationale: null,
+          selectedMarketplaces: ["ebay"],
+          marketplaceDrafts: { ebay: { categoryId: "15709" } },
+          measurements: null,
+          flaws: null,
+          itemSpecifics: {},
+          updatedAt: new Date("2026-06-17T00:00:00.000Z"),
+        },
+      ],
+      marketplaceListings: [],
+      photos: [],
+    };
+    mocks.getPrisma.mockReturnValue({
+      listingDraft: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "draft-1",
+          inventoryItemId: "item-1",
+          marketplaceDrafts: {},
+          inventoryItem: { productName: "Nike Air Max" },
+        }),
+        update,
+      },
+      inventoryItem: {
+        update: vi.fn().mockResolvedValue({ id: "item-1" }),
+        findFirst: vi.fn().mockResolvedValue(refreshedItem),
+      },
+      $transaction: vi.fn(async (ops) => Promise.all(ops)),
+    });
+
+    const response = await PATCH(
+      new Request("http://localhost/api/listings/draft/draft-1", {
+        method: "PATCH",
+        headers: { authorization: "Bearer token" },
+        body: JSON.stringify(validPatchBody()),
+      }),
+      { params: Promise.resolve({ draftId: "draft-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.item).not.toBeNull();
+    expect(payload.item.id).toBe("item-1");
+    expect(payload.item.readiness).toBeDefined();
+    expect(typeof payload.item.readiness.ready).toBe("boolean");
+  });
+
   it("persists structured measurements and flaws when provided", async () => {
     const update = vi.fn().mockResolvedValue({ id: "draft-1" });
     mocks.getPrisma.mockReturnValue({

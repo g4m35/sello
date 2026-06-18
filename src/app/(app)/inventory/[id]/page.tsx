@@ -28,6 +28,7 @@ import {
   splitTitle,
 } from "@/lib/view/format";
 import { analyzeListing } from "@/lib/listing/intelligence";
+import { mergeSavedItemState } from "@/lib/view/merge-item-state";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import {
   ExportMarketplaceSchema,
@@ -160,6 +161,9 @@ export default function ListingDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  // Bumped after every successful save so derived panels (eBay readiness) can
+  // re-check against the just-saved draft without a full page reload.
+  const [readinessSignal, setReadinessSignal] = useState(0);
   const [publishOpen, setPublishOpen] = useState(false);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
@@ -268,7 +272,7 @@ export default function ListingDetailPage() {
       if (!draftId) return;
       setSaveState("saving");
       try {
-        await api.updateDraft(token, draftId, {
+        const res = await api.updateDraft(token, draftId, {
           title: next.title,
           description: next.description,
           bulletPoints: next.bulletPoints,
@@ -286,6 +290,10 @@ export default function ListingDetailPage() {
         });
         setSaveState("saved");
         dirtyRef.current = false;
+        if (res.item) {
+          setItem((prev) => (prev ? mergeSavedItemState(prev, res.item!) : prev));
+        }
+        setReadinessSignal((s) => s + 1);
       } catch {
         setSaveState("error");
       }
@@ -327,7 +335,7 @@ export default function ListingDetailPage() {
     async (next: ItemEdits) => {
       setSaveState("saving");
       try {
-        await api.updateItem(token, id, {
+        const res = await api.updateItem(token, id, {
           brand: next.brand.trim() || null,
           category: next.category,
           condition: next.condition,
@@ -335,6 +343,10 @@ export default function ListingDetailPage() {
           colorway: next.colorway.trim() || null,
         });
         setSaveState("saved");
+        if (res.item) {
+          setItem((prev) => (prev ? mergeSavedItemState(prev, res.item!) : prev));
+        }
+        setReadinessSignal((s) => s + 1);
       } catch {
         setSaveState("error");
       }
@@ -1189,10 +1201,12 @@ export default function ListingDetailPage() {
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div className="card__title">
-                    {item.readiness.ready ? "Ready to publish" : "Keep going"}
+                    {item.readiness.ready ? "Ready to publish" : "Needs details"}
                   </div>
                   <div className="t-small muted">
-                    {item.readiness.doneCount} of {item.readiness.totalCount} checks
+                    {saveState === "saving"
+                      ? "Checking readiness…"
+                      : `${item.readiness.doneCount} of ${item.readiness.totalCount} checks`}
                   </div>
                 </div>
                 {canLivePublish && (
@@ -1276,6 +1290,7 @@ export default function ListingDetailPage() {
               token={token}
               savedCategoryId={edits.ebayCategoryId}
               savedQuantity={edits.ebayQuantity}
+              refreshSignal={readinessSignal}
               onSelectCategory={(categoryId) => patch({ ebayCategoryId: categoryId })}
               onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
               onSaveAspect={(name, value) =>
