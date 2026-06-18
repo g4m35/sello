@@ -50,6 +50,21 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+describe("mapItem inventory visibility", () => {
+  it("surfaces draft items with a Draft status so they appear in inventory", () => {
+    const draftItem = { ...item(), status: "DRAFTING" as const };
+    const view = mapItem(draftItem);
+    expect(view.lifecycleState).toBe("draft");
+    expect(view.statusLabel).toBe("Draft");
+    expect(view.draftId).toBe("draft-1");
+  });
+
+  it("treats a not-yet-approved draft as a draft, never hidden", () => {
+    const draftReady = { ...item(), status: "DRAFT_READY" as const };
+    expect(mapItem(draftReady).lifecycleState).toBe("draft");
+  });
+});
+
 describe("mapItem publish channel gating", () => {
   it("hides live eBay publishing when the production flag is off", () => {
     vi.stubEnv("EBAY_ENV", "production");

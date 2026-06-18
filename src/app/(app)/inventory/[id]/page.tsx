@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
@@ -13,7 +13,10 @@ import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
 import { AutoPricing } from "@/components/app/auto-pricing";
-import { EbayPreflightCard } from "@/components/app/ebay-preflight-card";
+import {
+  EbayPreflightCard,
+  ebayCategorySelectionPatch,
+} from "@/components/app/ebay-preflight-card";
 import {
   confirmEbayDelist,
   confirmEbayOrphanCleanup,
@@ -28,6 +31,7 @@ import {
   splitTitle,
 } from "@/lib/view/format";
 import { analyzeListing } from "@/lib/listing/intelligence";
+import { mergeSavedItemState } from "@/lib/view/merge-item-state";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import {
   ExportMarketplaceSchema,
@@ -62,6 +66,22 @@ type ItemEdits = {
 const AUTOSAVE_MS = 800;
 // Mirrors the draft update schema's max(12) so autosave can't hit a 400.
 const MAX_STRUCTURED_ROWS = 12;
+
+// Maps a readiness check id to the editor field it should jump to, so the
+// "Fix" links and "Fix required fields" action scroll to the exact control.
+const READINESS_ANCHORS: Record<string, string> = {
+  title: "field-title",
+  description: "field-description",
+  bullets: "field-highlights",
+  price: "field-price",
+  marketplaces: "field-channels",
+  photos: "field-photos",
+};
+
+function scrollToAnchor(id: string | null | undefined) {
+  if (!id || typeof document === "undefined") return;
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
 
 const CATEGORY_OPTIONS = [
   "sneakers",
@@ -152,6 +172,10 @@ export default function ListingDetailPage() {
   const router = useRouter();
   const { token } = useSession();
   const { id } = useParams<{ id: string }>();
+  // Developer/admin diagnostics are opt-in via ?debug=1 so normal sellers never
+  // see SKUs, offer/listing ids, or orphan-recovery language.
+  const searchParams = useSearchParams();
+  const showAdvanced = searchParams?.get("debug") === "1";
 
   const [item, setItem] = useState<ItemDetailView | null>(null);
   const [edits, setEdits] = useState<DraftEdits | null>(null);
@@ -160,6 +184,9 @@ export default function ListingDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  // Bumped after every successful save so derived panels (eBay readiness) can
+  // re-check against the just-saved draft without a full page reload.
+  const [readinessSignal, setReadinessSignal] = useState(0);
   const [publishOpen, setPublishOpen] = useState(false);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [removingPhotoId, setRemovingPhotoId] = useState<string | null>(null);
@@ -268,7 +295,7 @@ export default function ListingDetailPage() {
       if (!draftId) return;
       setSaveState("saving");
       try {
-        await api.updateDraft(token, draftId, {
+        const res = await api.updateDraft(token, draftId, {
           title: next.title,
           description: next.description,
           bulletPoints: next.bulletPoints,
@@ -286,6 +313,10 @@ export default function ListingDetailPage() {
         });
         setSaveState("saved");
         dirtyRef.current = false;
+        if (res.item) {
+          setItem((prev) => (prev ? mergeSavedItemState(prev, res.item!) : prev));
+        }
+        setReadinessSignal((s) => s + 1);
       } catch {
         setSaveState("error");
       }
@@ -327,7 +358,7 @@ export default function ListingDetailPage() {
     async (next: ItemEdits) => {
       setSaveState("saving");
       try {
-        await api.updateItem(token, id, {
+        const res = await api.updateItem(token, id, {
           brand: next.brand.trim() || null,
           category: next.category,
           condition: next.condition,
@@ -335,6 +366,10 @@ export default function ListingDetailPage() {
           colorway: next.colorway.trim() || null,
         });
         setSaveState("saved");
+        if (res.item) {
+          setItem((prev) => (prev ? mergeSavedItemState(prev, res.item!) : prev));
+        }
+        setReadinessSignal((s) => s + 1);
       } catch {
         setSaveState("error");
       }
@@ -551,6 +586,14 @@ export default function ListingDetailPage() {
   );
   const shortId = item.id.slice(0, 8);
   const canLivePublish = item.channels.some((channel) => channel.publishImplemented);
+  // Primary-action state: a saved draft should always have an obvious next step.
+  const readyToPublish = item.readiness.ready;
+  const firstMissingCheck = item.readiness.checks.find(
+    (check) => check.blocking && check.state === "miss",
+  );
+  const firstMissingAnchor = firstMissingCheck
+    ? READINESS_ANCHORS[firstMissingCheck.id] ?? "readiness-card"
+    : "readiness-card";
   const canMarkSold = item.lifecycleState === "ready" || item.lifecycleState === "active";
   const canDelist =
     item.lifecycleState === "draft" ||
@@ -687,6 +730,14 @@ export default function ListingDetailPage() {
               Discard
             </Btn>
             <Btn
+              variant="ghost"
+              size="sm"
+              icon="box"
+              onClick={() => router.push("/inventory")}
+            >
+              View in inventory
+            </Btn>
+            <Btn
               variant="secondary"
               size="sm"
               icon="check"
@@ -695,20 +746,46 @@ export default function ListingDetailPage() {
             >
               Save draft
             </Btn>
-            {canLivePublish && (
+            {!readyToPublish ? (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="warn"
+                onClick={() => scrollToAnchor(firstMissingAnchor)}
+              >
+                Fix required fields
+              </Btn>
+            ) : canLivePublish ? (
               <Btn
                 variant="accent"
                 size="sm"
                 icon="send"
                 kbd="⌘↵"
-                disabled={!item.readiness.ready || approving}
+                disabled={approving}
                 onClick={requestPublish}
               >
-                Publish
+                Publish to eBay
+              </Btn>
+            ) : (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="doc"
+                onClick={() => scrollToAnchor("ebay-readiness")}
+              >
+                Preview eBay publish
               </Btn>
             )}
           </div>
         </div>
+
+        {readyToPublish && !canLivePublish && (
+          <Banner
+            variant="info"
+            title="eBay ready · production publishing is disabled"
+            desc="Production eBay publishing is not enabled yet. You can preview the eBay payload below and copy or export the marketplace drafts to list manually."
+          />
+        )}
 
         {!editable && (
           <Banner
@@ -724,7 +801,7 @@ export default function ListingDetailPage() {
               title="Photos"
               desc={`${item.photos.length} photos`}
             >
-              <div className="images">
+              <div className="images" id="field-photos">
                 {item.photos.map((photo, idx) => (
                   <div
                     key={photo.id}
@@ -803,6 +880,7 @@ export default function ListingDetailPage() {
             <FormSection title="Basics">
               <Field label="Title" hint={`${edits.title.length}/80`}>
                 <input
+                  id="field-title"
                   className="input"
                   value={edits.title}
                   maxLength={80}
@@ -866,6 +944,7 @@ export default function ListingDetailPage() {
 
               <Field label="Description" hint={`${edits.description.length} chars`}>
                 <textarea
+                  id="field-description"
                   className="textarea"
                   value={edits.description}
                   rows={6}
@@ -875,7 +954,7 @@ export default function ListingDetailPage() {
               </Field>
 
               <Field label="Highlights">
-                <div className="stack-4">
+                <div className="stack-4" id="field-highlights">
                   {edits.bulletPoints.map((bullet, idx) => (
                     <div key={idx} className="row" style={{ gap: 8 }}>
                       <input
@@ -1162,6 +1241,7 @@ export default function ListingDetailPage() {
                   }
                 >
                   <input
+                    id="field-price"
                     className="input"
                     inputMode="decimal"
                     placeholder="0.00"
@@ -1182,17 +1262,19 @@ export default function ListingDetailPage() {
           </div>
 
           <div className="readiness">
-            <section className="card">
+            <section className="card" id="readiness-card">
               <div className="readiness__head">
                 <div className="readiness__ring">
                   <Ring pct={item.readiness.pct} />
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div className="card__title">
-                    {item.readiness.ready ? "Ready to publish" : "Keep going"}
+                    {item.readiness.ready ? "Ready to publish" : "Needs details"}
                   </div>
                   <div className="t-small muted">
-                    {item.readiness.doneCount} of {item.readiness.totalCount} checks
+                    {saveState === "saving"
+                      ? "Checking readiness…"
+                      : `${item.readiness.doneCount} of ${item.readiness.totalCount} checks`}
                   </div>
                 </div>
                 {canLivePublish && (
@@ -1222,16 +1304,25 @@ export default function ListingDetailPage() {
                         size={14}
                       />
                     </span>
-                    <div style={{ minWidth: 0 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="readiness__item-title">{check.title}</div>
                       <div className="readiness__item-sub">{check.sub}</div>
                     </div>
+                    {check.state === "miss" && READINESS_ANCHORS[check.id] && (
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => scrollToAnchor(READINESS_ANCHORS[check.id])}
+                      >
+                        Fix
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
             </section>
 
-            <section className="card">
+            <section className="card" id="field-channels">
               <div className="card__head">
                 <span className="card__title">Marketplaces</span>
                 <span className="t-small muted">{item.channels.length} configured</span>
@@ -1271,17 +1362,20 @@ export default function ListingDetailPage() {
               </div>
             </section>
 
-            <EbayPreflightCard
-              itemId={id}
-              token={token}
-              savedCategoryId={edits.ebayCategoryId}
-              savedQuantity={edits.ebayQuantity}
-              onSelectCategory={(categoryId) => patch({ ebayCategoryId: categoryId })}
-              onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
-              onSaveAspect={(name, value) =>
-                patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
-              }
-            />
+            <div id="ebay-readiness">
+              <EbayPreflightCard
+                itemId={id}
+                token={token}
+                savedCategoryId={edits.ebayCategoryId}
+                savedQuantity={edits.ebayQuantity}
+                refreshSignal={readinessSignal}
+                onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
+                onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
+                onSaveAspect={(name, value) =>
+                  patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
+                }
+              />
+            </div>
 
             <section className="card">
               <div className="card__head">
@@ -1334,6 +1428,7 @@ export default function ListingDetailPage() {
               orphanScan={ebayOrphanScan}
               scanningOrphans={scanningEbayOrphans}
               cleaningOrphans={cleaningEbayOrphans}
+              showAdvanced={showAdvanced}
               onDelistEbay={() => void runEbayDelist()}
               onScanEbayOrphans={() => void runEbayOrphanScan()}
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}

@@ -7,6 +7,7 @@ import { ListingDraftUpdateSchema } from "@/lib/listing-draft-update";
 import { evaluateReadiness } from "@/lib/lifecycle/readiness";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
+import { loadItemDetailState } from "@/lib/view/load-item-detail";
 
 export const runtime = "nodejs";
 
@@ -91,7 +92,18 @@ export async function PATCH(
       }),
     ]);
 
-    return NextResponse.json({ draft });
+    // Return the recomputed detail view so the editor can refresh readiness,
+    // the status badge, and marketplace state live without a full reload. The
+    // save already committed in the transaction above, so this read-back is
+    // best-effort: if it fails the client just refreshes on its next load.
+    let item = null;
+    try {
+      item = await loadItemDetailState(existingDraft.inventoryItemId, user.id);
+    } catch {
+      item = null;
+    }
+
+    return NextResponse.json({ draft, item });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });

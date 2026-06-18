@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   analyzeListing,
+  detectEbayCategoryConflict,
   EBAY_FASHION_CATEGORIES,
   type ListingIntelligenceInput,
 } from "./intelligence";
@@ -56,6 +57,62 @@ describe("eBay category inference", () => {
   it("infers Men's T-Shirts for tees when department is men/unclear", () => {
     const result = analyzeListing(input({ title: "Supreme box logo tee" }));
     expect(result.ebayCategory.resolvedId).toBe("15687");
+  });
+
+  it("maps a crewneck T-shirt to T-Shirts, not Hoodies & Sweatshirts", () => {
+    for (const title of [
+      "Basic Black Crewneck T-Shirt Essential Tee",
+      "Crewneck t-shirt",
+      "Crew neck tee",
+      "Short sleeve shirt",
+    ]) {
+      const result = analyzeListing(input({ title }));
+      expect(result.itemType).toBe("tshirt");
+      expect(result.ebayCategory.resolvedId).toBe("15687");
+    }
+  });
+
+  it("maps a plain branded tee to T-Shirts", () => {
+    const result = analyzeListing(input({ title: "Nike black tee" }));
+    expect(result.itemType).toBe("tshirt");
+    expect(result.ebayCategory.resolvedId).toBe("15687");
+  });
+
+  it("keeps crewneck sweatshirts and hoodies in Hoodies & Sweatshirts", () => {
+    for (const title of [
+      "Crewneck sweatshirt",
+      "Pullover hoodie",
+      "Champion hoodie",
+    ]) {
+      const result = analyzeListing(input({ title }));
+      expect(result.itemType).toBe("hoodie");
+      expect(result.ebayCategory.resolvedId).toBe("155183");
+    }
+  });
+});
+
+describe("eBay category conflict detection", () => {
+  it("flags a T-shirt saved into the Hoodies & Sweatshirts category", () => {
+    const result = analyzeListing(
+      input({ title: "Basic black crewneck tee", savedEbayCategoryId: "155183" }),
+    );
+    expect(result.itemType).toBe("tshirt");
+    const conflict = detectEbayCategoryConflict(result.itemType, result.ebayCategory.resolvedId);
+    expect(conflict).not.toBeNull();
+    expect(conflict?.detectedLabel).toBe("T-shirt");
+    expect(conflict?.categoryName).toBe("Men's Hoodies & Sweatshirts");
+  });
+
+  it("returns no conflict when the category matches the item", () => {
+    expect(detectEbayCategoryConflict("tshirt", "15687")).toBeNull();
+    expect(detectEbayCategoryConflict("hoodie", "155183")).toBeNull();
+    expect(detectEbayCategoryConflict("sneakers", "15709")).toBeNull();
+  });
+
+  it("does not flag ambiguous items or unknown categories", () => {
+    expect(detectEbayCategoryConflict("other", "155183")).toBeNull();
+    expect(detectEbayCategoryConflict("tshirt", null)).toBeNull();
+    expect(detectEbayCategoryConflict("tshirt", "999999")).toBeNull();
   });
 
   it("infers jeans by department", () => {

@@ -12,6 +12,88 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-18 — Codex. **Editor/listing alpha-UX PR #41 reviewed, fixed,
+merged to `develop`, and explicitly deployed to Preview; production promotion
+stopped at the Preview smoke gate. No migrations, paid provider calls, Bulk
+Intake, or eBay production publishing.**
+
+- Rebased `feature/editor-alpha-ux` from the production `main` merge onto current
+  `develop`, preserving the intended `feature/* -> develop -> main` history.
+- Review found and fixed one release blocker: a stale saved eBay category could
+  warn while still returning `ready: true`. Commit `2c8925b` now blocks conflicting
+  categories, suppresses the payload preview, and clears category-specific aspects
+  when a seller chooses a replacement category.
+- Full gate passed twice: Prisma validate; lint with only the two known warnings;
+  `tsc`; 102 test files / 681 tests; production build.
+- PR #41 merged to `develop` as `53f26e8bc8390bd34c2b2cd0213a548601793285`.
+  Hosted CodeRabbit completed with no line-level issues; the diff-scoped security
+  scan covered all 24 source/test rows with no reportable findings.
+- Explicit Vercel Preview is Ready: deployment
+  `dpl_5jFa3s3srtug4KAcXMQ8E6JF1bUz`, URL
+  `https://resale-crosslister-2r6vrywg4-jaky.vercel.app`.
+- Preview smoke is blocked before app load: Preview has no environment variables,
+  and Vercel SSO protection is `all_except_custom_domains`; `/inventory/new`
+  shows `Authentication Required`. Production was therefore not deployed.
+
+**Current state:** `develop` contains PR #41 and is locally clean before this
+handoff update. `main` and production remain unchanged. Production eBay publish
+remains gated off.
+
+**Blocked on owner:** Decide on a safe QA environment strategy: provision
+Preview-only auth/database variables and an accessible staging domain/account,
+or approve a separate staging project. Do not blindly clone all Production env
+variables because that would connect Preview to production data/providers.
+
+**Next up:** Make Preview/staging QA-ready, rerun the 20-step editor smoke in
+light and dark mode, then promote `develop -> main` and run the focused
+production smoke only if Preview passes.
+
+## Previous update
+2026-06-18 — Claude. **Editor/listing alpha-UX pass on
+`feature/editor-alpha-ux` (branched off `main`). No deploy; NO migrations (schema
+unchanged); no paid provider calls; eBay production publish still gated off.**
+Addresses the production signed-in smoke-test findings:
+- **eBay taxonomy fix (Part 3):** a basic crewneck T-shirt mapped to Men's Hoodies
+  & Sweatshirts (155183). `detectItemType` now disambiguates explicitly (hoodie/
+  sweatshirt word wins, then a tee word, then bare crewneck → sweatshirt). Added
+  `detectEbayCategoryConflict` + `categoryConflict` on the analysis and eBay
+  preflight result so the card can prompt "Change category?".
+- **Live readiness (Part 2):** draft + item PATCH now return the recomputed
+  `ItemDetailView` (best-effort read-back via `loadItemDetailState`; never fails the
+  committed save). Editor merges only readiness/status/channels/price
+  (`mergeSavedItemState`) without clobbering edits or signed photo URLs; the eBay
+  readiness panel auto-rechecks on a `refreshSignal` after each save.
+- **Pricing copy (Part 4):** new `lib/comps/seller-copy.ts` hides provider ids
+  ("Fresh sold comps" / "Active market listings") and converts skip reasons into
+  safe notes; comps GET exposes `paidProvidersEnabled`; cooldown reads "Refresh
+  available in Ns"; zero evidence reads "no sold-comp evidence yet".
+- **Publish panel (Part 6):** seller-facing eBay status + "what this means" + next
+  action; SKU/offer/listing ids, raw errors, publish history, orphan recovery moved
+  into "Advanced eBay diagnostics" (only rendered with `?debug=1`).
+- **Editor actions (Part 5):** always-present primary action (Fix required fields /
+  Publish to eBay / Preview eBay publish), View in inventory, a gated-publish
+  explanation banner, and "Fix" jump links on the readiness checklist.
+- **eBay required details (Part 8):** labeled select/text controls, Save gated on a
+  value, per-field "Saved", category-conflict banner, and jump links.
+- **Inventory (Part 7):** drafts already appear (no status filter, refetch on
+  mount); added "View in inventory" and a regression test.
+
+Gate green: prisma validate, lint (2 known warnings), tsc, `npm test` (102 files /
+679 tests), build.
+
+**Dark mode:** preserved and reviewed. All changed UI is token-based (no hardcoded
+light-only colors in any rendered component; `.danger`/`--positive`/`--accent`
+tokens used). Remaining gaps (pre-existing, NOT touched): the public landing page
+`src/app/page.tsx` is hardcoded dark (29 inline hex) and does not adapt to light
+mode; dead-code components (`seller-workbench`, `comps-panel`, `comps-pricing-view`,
+`jobs-panel`, `status-badge`) have light-only colors but are not reachable from any
+route.
+
+**Blocked on owner:** (1) review + merge `feature/editor-alpha-ux` -> `develop`
+(NOT pushed). (2) No new migrations from this branch. (3) Landing-page light-mode
+theming and dead-code cleanup remain open.
+
+## Previous update
 2026-06-18 — Codex. **PR #40 blocker fixes completed on
 `feature/landing-admin-feedback`; PR remains open into `develop`. No deploy;
 migrations NOT applied; no Stripe/Bulk Intake/Path B.**
