@@ -6,6 +6,14 @@ import {
 } from "@/lib/comps/flags";
 import { buildCompQuery } from "@/lib/comps/match";
 import { dedupeComps, toPriceCompCreate, trimOutliers } from "@/lib/comps/normalize";
+import { loadPaidGateConfig } from "@/lib/comps/provider-budget";
+import {
+  completeProviderCall,
+  hashQueries,
+  recordProviderCall,
+  reservePaidProviderCall,
+  type ProviderLedgerPrismaLike,
+} from "@/lib/comps/provider-ledger";
 import { enabledCompSources } from "@/lib/comps/registry";
 import { scoreCompMatch } from "@/lib/comps/scoring";
 import type { CompSource, NormalizedComp } from "@/lib/comps/source";
@@ -44,8 +52,10 @@ export function isAutoDiscoveryEnabled(): boolean {
   return isCompsAutoDiscoveryEnabled();
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Source failed.";
+export function sanitizeProviderError(source: Pick<CompSource, "paid">): string {
+  return source.paid === true
+    ? "Paid comp provider failed. Try again later."
+    : "Comp provider failed. Try again later.";
 }
 
 async function fetchFromSource(
@@ -55,8 +65,8 @@ async function fetchFromSource(
   try {
     const comps = await source.fetchComps(query);
     return { source, comps, error: null };
-  } catch (error) {
-    return { source, comps: [], error: errorMessage(error) };
+  } catch {
+    return { source, comps: [], error: sanitizeProviderError(source) };
   }
 }
 
@@ -138,6 +148,14 @@ export async function runCompFetch(
     Boolean,
   );
 
+  // Paid-provider (e.g. Apify) cost/quota accounting context.
+  const ledgerPrisma = prisma as unknown as ProviderLedgerPrismaLike;
+  const draftId = draft?.id ?? null;
+  const queryHash = hashQueries(queries);
+  const paidSources = sources.filter((source) => source.paid === true);
+  const paidConfig = paidSources.length > 0 ? loadPaidGateConfig() : null;
+  const now = new Date();
+
   if (!autoDiscoveryEnabled && !options.sources && !options.force) {
     await prisma.compSearchRun.create({
       data: {
@@ -170,6 +188,21 @@ export async function runCompFetch(
   }
 
   if (autoDiscoveryEnabled && !options.force && !hasMeaningfulIdentity(item)) {
+    for (const paidSource of paidSources) {
+      await recordProviderCall(ledgerPrisma, {
+        userId: sellerId,
+        draftId,
+        inventoryItemId,
+        provider: paidSource.id,
+        status: "skipped",
+        skippedReason: "weak_identity",
+        estimatedCostCents: 0,
+        fetchedCount: 0,
+        acceptedCount: 0,
+        rejectedCount: 0,
+        queryHash,
+      });
+    }
     await prisma.compSearchRun.create({
       data: {
         inventoryItemId,
@@ -241,10 +274,46 @@ export async function runCompFetch(
     };
   }
 
-  const sourceResults = await Promise.all(sources.map((source) => fetchFromSource(source, query)));
-  const sourceErrors = sourceResults.flatMap((result) =>
-    result.error ? [{ source: result.source.id, message: result.error }] : [],
-  );
+  // Budget/quota gate for paid providers — checked server-side BEFORE any paid
+  // call. A blocked gate skips paid execution, records a typed skipped ledger
+  // row, and surfaces the reason; free sources and manual comps are unaffected.
+  const runnablePaidSources: CompSource[] = [];
+  const paidReservations = new Map<string, string>();
+  const budgetSkipErrors: { source: string; message: string }[] = [];
+  if (paidSources.length > 0 && paidConfig) {
+    for (const paidSource of paidSources) {
+      const reservation = await reservePaidProviderCall(ledgerPrisma, {
+        config: paidConfig,
+        userId: sellerId,
+        draftId,
+        inventoryItemId,
+        provider: paidSource.id,
+        queryHash,
+        now,
+      });
+      if (reservation.allowed) {
+        runnablePaidSources.push(paidSource);
+        paidReservations.set(paidSource.id, reservation.reservationId);
+      } else {
+        budgetSkipErrors.push({
+          source: paidSource.id,
+          message: `Paid comp providers skipped: ${reservation.reason}`,
+        });
+      }
+    }
+  }
+  const runSources = [
+    ...sources.filter((source) => source.paid !== true),
+    ...runnablePaidSources,
+  ];
+
+  const sourceResults = await Promise.all(runSources.map((source) => fetchFromSource(source, query)));
+  const sourceErrors = [
+    ...sourceResults.flatMap((result) =>
+      result.error ? [{ source: result.source.id, message: result.error }] : [],
+    ),
+    ...budgetSkipErrors,
+  ];
   const scored = dedupeComps(sourceResults.flatMap((result) => result.comps)).map((comp) => {
     const score = scoreCompMatch(
       {
@@ -288,6 +357,37 @@ export async function runCompFetch(
         };
   });
 
+  const accepted = comps.filter(
+    (comp) => comp.matchClassification === "strong" || comp.matchClassification === "possible",
+  ).length;
+  const rejected = comps.length - accepted;
+
+  if (paidConfig) {
+    for (const result of sourceResults) {
+      const reservationId = paidReservations.get(result.source.id);
+      if (!reservationId) continue;
+      const sourceComps = comps.filter((comp) => comp.source === result.source.id);
+      const sourceAccepted = sourceComps.filter(
+        (comp) =>
+          comp.matchClassification === "strong" || comp.matchClassification === "possible",
+      ).length;
+      try {
+        await completeProviderCall(ledgerPrisma, {
+          reservationId,
+          status: result.error ? "failed" : "succeeded",
+          estimatedCostCents: paidConfig.estimatedCostCents,
+          fetchedCount: result.comps.length,
+          acceptedCount: sourceAccepted,
+          rejectedCount: sourceComps.length - sourceAccepted,
+        });
+      } catch {
+        // The provider call already happened. Keep the reservation charged and
+        // never replay the external request merely to repair accounting state.
+        console.error("Paid comp provider ledger completion failed.");
+      }
+    }
+  }
+
   await prisma.priceComp.deleteMany({
     where: { inventoryItemId, source: { startsWith: "auto:" } },
   });
@@ -302,10 +402,6 @@ export async function runCompFetch(
     orderBy: { createdAt: "desc" },
   });
   const summary = summarizeComps(savedComps);
-  const accepted = comps.filter(
-    (comp) => comp.matchClassification === "strong" || comp.matchClassification === "possible",
-  ).length;
-  const rejected = comps.length - accepted;
   let appliedPriceCents: number | null = null;
 
   if (
@@ -328,7 +424,7 @@ export async function runCompFetch(
 
   const status: CompFetchResult["status"] =
     comps.length === 0
-      ? sourceErrors.length === sources.length
+      ? runSources.length > 0 && sourceResults.every((result) => result.error)
         ? "error"
         : "no_comps_found"
       : appliedPriceCents != null
@@ -342,14 +438,14 @@ export async function runCompFetch(
       inventoryItemId,
       status,
       autoDiscoveryEnabled,
-      sourceCount: sources.length,
+      sourceCount: runSources.length,
       fetchedCount: comps.length,
       acceptedCount: accepted,
       rejectedCount: rejected,
       recommendedPriceCents: summary.recommendedListCents,
       confidence: summary.confidence,
       queries: queries as Prisma.InputJsonValue,
-      sourcesChecked: sources.map((source) => source.id),
+      sourcesChecked: runSources.map((source) => source.id),
       sourceErrors: sourceErrors as Prisma.InputJsonValue,
     },
   });
@@ -358,8 +454,8 @@ export async function runCompFetch(
     fetched: comps.length,
     accepted,
     rejected,
-    sources: sources.map((s) => s.id),
-    enabled: sources.length,
+    sources: runSources.map((s) => s.id),
+    enabled: runSources.length,
     status,
     queries,
     sourceErrors,

@@ -73,3 +73,37 @@ export function compsMaxQueryVariants(env: Env = process.env): number {
 export function compsAutoMinIdentityConfidence(env: Env = process.env): number {
   return numberInRange(env.COMPS_AUTO_MIN_IDENTITY_CONFIDENCE, 0.55, 0, 1);
 }
+
+// --- Paid-provider budget & quota controls (Apify et al.) ---
+// Paid providers are gated by an explicit kill switch ON TOP of their own enable
+// flag. Default OFF so cost can never accrue until deliberately turned on.
+export function isCompsPaidProvidersEnabled(env: Env = process.env): boolean {
+  return on(env, "COMPS_PAID_PROVIDERS_ENABLED");
+}
+
+// Lets an operator bypass budget/quota gates (NOT the kill switch). Default OFF.
+export function isCompsAdminOverrideEnabled(env: Env = process.env): boolean {
+  return on(env, "COMPS_ADMIN_OVERRIDE_ENABLED");
+}
+
+export function compsApifyDailyBudgetCents(env: Env = process.env): number {
+  return intInRange(env.COMPS_APIFY_DAILY_BUDGET_CENTS, 500, 0, 100_000_000);
+}
+
+export function compsUserDailyProviderCallLimit(env: Env = process.env): number {
+  return intInRange(env.COMPS_USER_DAILY_PROVIDER_CALL_LIMIT, 25, 0, 100_000);
+}
+
+export function compsUserMonthlyProviderCallLimit(env: Env = process.env): number {
+  return intInRange(env.COMPS_USER_MONTHLY_PROVIDER_CALL_LIMIT, 300, 0, 1_000_000);
+}
+
+export function compsDraftProviderCooldownSeconds(env: Env = process.env): number {
+  return intInRange(env.COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS, 600, 0, 2_592_000);
+}
+
+// Estimated cost charged to the daily budget per paid provider call. Based on the
+// observed ~$0.32/run for an Apify eBay-sold fetch; tune via env.
+export function compsApifyEstimatedCostCents(env: Env = process.env): number {
+  return intInRange(env.COMPS_APIFY_ESTIMATED_COST_CENTS, 35, 0, 100_000);
+}
