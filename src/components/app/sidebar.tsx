@@ -41,6 +41,7 @@ export function Sidebar() {
     { href: "/history", label: "Publish history", icon: "history" },
     { href: "/channels", label: "Marketplaces", icon: "store", count: counts.channels },
     { href: "/settings", label: "Settings", icon: "settings" },
+    { href: "/feedback", label: "Send feedback", icon: "send" },
   ];
 
   const email = session.user.email ?? "you";
