@@ -57,14 +57,78 @@ function createPrisma(opts: {
   lastDraftCallAt?: Date | null;
 } = {}) {
   const ledger: Array<Record<string, unknown>> = [];
+  const runs: Array<Record<string, unknown>> = [];
   const item = opts.item ?? strongItem;
-  const count = vi
-    .fn()
-    .mockResolvedValueOnce(opts.userDailyCount ?? 0)
-    .mockResolvedValueOnce(opts.userMonthlyCount ?? 0)
-    .mockResolvedValue(0);
-  return {
+  let transactionTail = Promise.resolve();
+  let nextLedgerId = 1;
+  const costingStatuses = new Set(["attempted", "succeeded", "failed"]);
+  const providerCallLedger = {
+    aggregate: vi.fn(async ({ where }: { where: { createdAt: { gte: Date } } }) => ({
+      _sum: {
+        estimatedCostCents:
+          (opts.globalSpentCents ?? 0) +
+          ledger
+            .filter(
+              (row) =>
+                costingStatuses.has(String(row.status)) &&
+                (row.createdAt as Date) >= where.createdAt.gte,
+            )
+            .reduce((sum, row) => sum + Number(row.estimatedCostCents), 0),
+      },
+    })),
+    count: vi.fn(
+      async ({ where }: { where: { userId: string; createdAt: { gte: Date } } }) => {
+        const isDailyWindow = where.createdAt.gte.getTime() > Date.now() - 2 * 86_400_000;
+        const initialCount = isDailyWindow
+          ? (opts.userDailyCount ?? 0)
+          : (opts.userMonthlyCount ?? 0);
+        return (
+          initialCount +
+          ledger.filter(
+            (row) =>
+              row.userId === where.userId &&
+              costingStatuses.has(String(row.status)) &&
+              (row.createdAt as Date) >= where.createdAt.gte,
+          ).length
+        );
+      },
+    ),
+    findFirst: vi.fn(
+      async ({
+        where,
+      }: {
+        where: { userId: string; draftId: string; provider: string };
+      }) => {
+        if (opts.lastDraftCallAt) return { createdAt: opts.lastDraftCallAt };
+        const row = [...ledger]
+          .reverse()
+          .find(
+            (entry) =>
+              entry.userId === where.userId &&
+              entry.draftId === where.draftId &&
+              entry.provider === where.provider &&
+              costingStatuses.has(String(entry.status)),
+          );
+        return row ? { createdAt: row.createdAt as Date } : null;
+      },
+    ),
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      const row = { ...data, id: `l-${nextLedgerId++}`, createdAt: new Date() };
+      ledger.push(row);
+      return { id: row.id };
+    }),
+    update: vi.fn(
+      async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const row = ledger.find((entry) => entry.id === where.id);
+        if (!row) throw new Error("missing ledger row");
+        Object.assign(row, data);
+        return { id: where.id };
+      },
+    ),
+  };
+  const prisma = {
     _ledger: ledger,
+    _runs: runs,
     inventoryItem: {
       findFirst: vi.fn(async () => item),
       update: vi.fn(async () => ({})),
@@ -75,25 +139,37 @@ function createPrisma(opts: {
       createMany: vi.fn(async () => ({ count: 0 })),
       findMany: vi.fn(async () => []),
     },
-    compSearchRun: { create: vi.fn(async () => ({ id: "run-1" })) },
-    providerCallLedger: {
-      aggregate: vi.fn(async () => ({
-        _sum: { estimatedCostCents: opts.globalSpentCents ?? 0 },
-      })),
-      count,
-      findFirst: vi.fn(async () =>
-        opts.lastDraftCallAt ? { createdAt: opts.lastDraftCallAt } : null,
-      ),
+    compSearchRun: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-        ledger.push(data);
-        return { id: `l-${ledger.length}` };
+        runs.push(data);
+        return { id: `run-${runs.length}` };
       }),
     },
+    providerCallLedger,
+    $queryRawUnsafe: vi.fn(async (...args: [string, ...unknown[]]) => {
+      void args;
+      return [];
+    }),
+    $transaction: vi.fn(async <T>(callback: (tx: typeof prisma) => Promise<T>) => {
+      let release = () => {};
+      const previous = transactionTail;
+      transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        return await callback(prisma);
+      } finally {
+        release();
+      }
+    }),
   };
+  return prisma;
 }
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe("runCompFetch paid-provider budget/quota gates", () => {
@@ -134,6 +210,36 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     });
     expect(succeeded?.estimatedCostCents).toBeGreaterThan(0);
     expect(succeeded?.queryHash).toBeTruthy();
+    expect(prisma._ledger).toHaveLength(1);
+  });
+
+  it("creates the attempted reservation before provider execution and updates that row", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    const prisma = createPrisma();
+    const source = paidSource(async () => {
+      expect(prisma._ledger).toHaveLength(1);
+      expect(prisma._ledger[0]).toMatchObject({
+        status: "attempted",
+        estimatedCostCents: 35,
+      });
+      return [soldComp(1)];
+    });
+
+    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+
+    expect(prisma._ledger).toHaveLength(1);
+    expect(prisma._ledger[0]).toMatchObject({ status: "succeeded", fetchedCount: 1 });
+    const lockKeys = prisma.$queryRawUnsafe.mock.calls.map((call) => call[1]);
+    expect(lockKeys).toHaveLength(4);
+    expect(lockKeys).toEqual([...lockKeys].sort());
+    expect(lockKeys).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("paid-comps:global:"),
+        expect.stringContaining("paid-comps:user-day:user-1:"),
+        expect.stringContaining("paid-comps:user-month:user-1:"),
+        expect.stringContaining("paid-comps:draft:user-1:apify-ebay-sold:draft-1"),
+      ]),
+    );
   });
 
   it("skips when the global daily budget would be exceeded", async () => {
@@ -203,7 +309,9 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     });
     const prisma = createPrisma();
 
-    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+    const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      sources: [source],
+    });
 
     const failed = prisma._ledger.find((r) => r.status === "failed");
     expect(failed).toMatchObject({
@@ -211,8 +319,108 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
       status: "failed",
       skippedReason: "provider_error",
     });
-    // The ledger row never stores the raw error text / token.
-    expect(JSON.stringify(prisma._ledger)).not.toContain("secret-apify-token");
+    expect(prisma._ledger).toHaveLength(1);
+    expect(result.sourceErrors).toEqual([
+      {
+        source: "apify-ebay-sold",
+        message: "Paid comp provider failed. Try again later.",
+      },
+    ]);
+    const persistedAndReturned = JSON.stringify({
+      ledger: prisma._ledger,
+      runs: prisma._runs,
+      result,
+    });
+    expect(persistedAndReturned).not.toContain("secret-apify-token");
+    expect(persistedAndReturned).not.toContain("apify run failed");
+  });
+
+  it("does not retry the provider or log raw details when ledger completion fails", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma();
+    prisma.providerCallLedger.update.mockRejectedValueOnce(
+      new Error("completion failed with token secret-ledger-token"),
+    );
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      sources: [source],
+    });
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(result.fetched).toBe(1);
+    expect(prisma._ledger[0]).toMatchObject({ status: "attempted", estimatedCostCents: 35 });
+    expect(consoleError).toHaveBeenCalledWith("Paid comp provider ledger completion failed.");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("secret-ledger-token");
+    consoleError.mockRestore();
+  });
+
+  it("serializes concurrent reservations so the global daily budget cannot be exceeded", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("COMPS_APIFY_DAILY_BUDGET_CENTS", "35");
+    vi.stubEnv("COMPS_USER_DAILY_PROVIDER_CALL_LIMIT", "10");
+    vi.stubEnv("COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS", "0");
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma();
+
+    await Promise.all([
+      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+    ]);
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(prisma._ledger.filter((row) => row.status === "succeeded")).toHaveLength(1);
+    expect(prisma._ledger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "skipped", skippedReason: "global_budget_exceeded" }),
+      ]),
+    );
+  });
+
+  it("serializes concurrent reservations so the per-user daily quota cannot be exceeded", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("COMPS_APIFY_DAILY_BUDGET_CENTS", "1000");
+    vi.stubEnv("COMPS_USER_DAILY_PROVIDER_CALL_LIMIT", "1");
+    vi.stubEnv("COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS", "0");
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma();
+
+    await Promise.all([
+      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+    ]);
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(prisma._ledger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "skipped",
+          skippedReason: "user_daily_quota_exceeded",
+        }),
+      ]),
+    );
+  });
+
+  it("serializes concurrent reservations so the per-draft cooldown cannot be bypassed", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("COMPS_APIFY_DAILY_BUDGET_CENTS", "1000");
+    vi.stubEnv("COMPS_USER_DAILY_PROVIDER_CALL_LIMIT", "10");
+    vi.stubEnv("COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS", "86400");
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma();
+
+    await Promise.all([
+      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+    ]);
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(prisma._ledger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "skipped", skippedReason: "draft_cooldown_active" }),
+      ]),
+    );
   });
 
   it("skips paid calls for weak-identity items under auto discovery", async () => {
@@ -232,6 +440,7 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     expect(prisma._ledger[0]).toMatchObject({
       status: "skipped",
       skippedReason: "weak_identity",
+      estimatedCostCents: 0,
     });
   });
 

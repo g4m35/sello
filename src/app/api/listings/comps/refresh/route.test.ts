@@ -58,6 +58,40 @@ describe("explicit comp refresh route", () => {
     );
   });
 
+  it("returns only sanitized provider failure details", async () => {
+    const prisma = {
+      inventoryItem: {
+        findFirst: vi.fn().mockResolvedValue({ id: "item-1" }),
+      },
+      compSearchRun: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.runCompFetch.mockResolvedValue({
+      status: "error",
+      sourceErrors: [
+        {
+          source: "apify-ebay-sold",
+          message: "Paid comp provider failed. Try again later.",
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(body).toContain("Paid comp provider failed. Try again later.");
+    expect(body).not.toContain("token");
+    expect(body).not.toContain("Authorization");
+  });
+
   it("returns 429 and does not fetch when a comp run is within the cooldown", async () => {
     const prisma = {
       inventoryItem: {

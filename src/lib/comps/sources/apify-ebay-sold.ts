@@ -9,9 +9,9 @@ import type { CompQuery, NormalizedComp, SoldCompSource } from "@/lib/comps/sour
 //   APIFY_TOKEN                          Apify API token (sent as a Bearer header, never logged)
 //   APIFY_EBAY_SOLD_ACTOR                actor id/slug to run (e.g. "user~ebay-sold-scraper")
 //
-// The integration is failure-safe: any disabled flag, missing actor, network
-// error, non-2xx response, or unparseable payload yields [] so a provider
-// problem can never break draft generation or comp refresh.
+// The integration is failure-safe: disabled or unconfigured sources yield [],
+// while request failures throw only a generic category error. The comp runner
+// catches that error, marks the reservation failed, and returns safe UI copy.
 
 type Env = Record<string, string | undefined>;
 
@@ -188,7 +188,7 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
             ebayDomain: "ebay.com",
           }),
         });
-        if (!response.ok) return [];
+        if (!response.ok) throw new Error("provider_error");
         const json = (await response.json()) as unknown;
         const items = Array.isArray(json)
           ? json
@@ -197,7 +197,7 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
             : [];
         return mapApifyEbaySoldItems(items, query, maxItems);
       } catch {
-        return [];
+        throw new Error("provider_error");
       } finally {
         clearTimeout(timer);
       }
