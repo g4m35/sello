@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
@@ -153,6 +153,10 @@ export default function ListingDetailPage() {
   const router = useRouter();
   const { token } = useSession();
   const { id } = useParams<{ id: string }>();
+  // Developer/admin diagnostics are opt-in via ?debug=1 so normal sellers never
+  // see SKUs, offer/listing ids, or orphan-recovery language.
+  const searchParams = useSearchParams();
+  const showAdvanced = searchParams?.get("debug") === "1";
 
   const [item, setItem] = useState<ItemDetailView | null>(null);
   const [edits, setEdits] = useState<DraftEdits | null>(null);
@@ -1349,6 +1353,7 @@ export default function ListingDetailPage() {
               orphanScan={ebayOrphanScan}
               scanningOrphans={scanningEbayOrphans}
               cleaningOrphans={cleaningEbayOrphans}
+              showAdvanced={showAdvanced}
               onDelistEbay={() => void runEbayDelist()}
               onScanEbayOrphans={() => void runEbayOrphanScan()}
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}
