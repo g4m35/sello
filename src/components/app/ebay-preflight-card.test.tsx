@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { aspectControlKind, categoryConflictMessage } from "./ebay-preflight-card";
+import {
+  aspectControlKind,
+  categoryConflictMessage,
+  ebayCategorySelectionPatch,
+} from "./ebay-preflight-card";
 
 describe("aspectControlKind", () => {
   it("uses a dropdown when the aspect has a fixed value list", () => {
@@ -24,5 +28,14 @@ describe("categoryConflictMessage", () => {
     expect(message).toBe(
       "This looks like a T-shirt, but the eBay category is Men's Hoodies & Sweatshirts. Change category?",
     );
+  });
+});
+
+describe("ebayCategorySelectionPatch", () => {
+  it("clears category-specific aspects when the seller changes eBay category", () => {
+    expect(ebayCategorySelectionPatch("15687")).toEqual({
+      ebayCategoryId: "15687",
+      ebayAspects: {},
+    });
   });
 });

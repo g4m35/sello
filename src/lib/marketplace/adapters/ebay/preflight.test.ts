@@ -202,6 +202,43 @@ describe("preflightEbayListing", () => {
     });
   });
 
+  it("blocks a stale saved eBay category that conflicts with the current title", async () => {
+    const base = readyItem();
+    const item = {
+      ...base,
+      size: "M",
+      colorway: "Black",
+      listingDrafts: [
+        {
+          ...base.listingDrafts[0],
+          title: "Basic Black Crewneck T-Shirt Essential Tee",
+          description: "Black short-sleeve crewneck T-shirt in excellent condition.",
+          marketplaceDrafts: {
+            ebay: {
+              categoryId: "155183",
+              quantity: 1,
+              aspects: { Type: "Hoodie" },
+            },
+          },
+        },
+      ],
+    };
+
+    const result = await preflightEbayListing(
+      createPrisma({ item }),
+      { userId: "user-1", inventoryItemId: "item-1" },
+      productionEnv,
+    );
+
+    expect(result.categoryConflict).toMatchObject({
+      detectedItemType: "tshirt",
+      categoryId: "155183",
+    });
+    expect(result.ready).toBe(false);
+    expect(result.missing).toContain("ebay_category");
+    expect(result.preview).toBeNull();
+  });
+
   it("reports missing fields clearly instead of failing", async () => {
     const item = {
       ...readyItem(),

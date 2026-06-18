@@ -25,6 +25,11 @@ export function categoryConflictMessage(conflict: EbayCategoryConflict): string 
   return `This looks like a ${conflict.detectedLabel}, but the eBay category is ${conflict.categoryName}. Change category?`;
 }
 
+/** Category-specific answers cannot safely carry across an eBay category change. */
+export function ebayCategorySelectionPatch(categoryId: string) {
+  return { ebayCategoryId: categoryId, ebayAspects: {} };
+}
+
 function aspectFieldId(name: string): string {
   return `ebay-aspect-${name.replace(/[^a-z0-9_-]/gi, "-")}`;
 }

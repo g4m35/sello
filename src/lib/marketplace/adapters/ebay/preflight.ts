@@ -293,9 +293,16 @@ export async function preflightEbayListing(
 
   const missingAspectIds =
     aspects.missingRequired.length > 0 ? ["ebay_aspects"] : [];
+  const conflictingCategoryIds = intelligence.categoryConflict
+    ? ["ebay_category"]
+    : [];
   const missing = normalizeMissingIds(readiness.missing, photoResolution.missing);
 
-  if (!readiness.ready || missingAspectIds.length > 0) {
+  if (
+    !readiness.ready ||
+    missingAspectIds.length > 0 ||
+    conflictingCategoryIds.length > 0
+  ) {
     return {
       marketplace: "ebay",
       environment,
@@ -307,6 +314,7 @@ export async function preflightEbayListing(
       // CHOICE (with suggestions), not a raw marketplace ID problem.
       missing: [
         ...missing,
+        ...conflictingCategoryIds,
         ...missingAspectIds,
       ],
       warnings: [...readiness.warnings, ...photoResolution.errors],

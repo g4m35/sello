@@ -13,7 +13,10 @@ import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
 import { AutoPricing } from "@/components/app/auto-pricing";
-import { EbayPreflightCard } from "@/components/app/ebay-preflight-card";
+import {
+  EbayPreflightCard,
+  ebayCategorySelectionPatch,
+} from "@/components/app/ebay-preflight-card";
 import {
   confirmEbayDelist,
   confirmEbayOrphanCleanup,
@@ -1366,7 +1369,7 @@ export default function ListingDetailPage() {
                 savedCategoryId={edits.ebayCategoryId}
                 savedQuantity={edits.ebayQuantity}
                 refreshSignal={readinessSignal}
-                onSelectCategory={(categoryId) => patch({ ebayCategoryId: categoryId })}
+                onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
                 onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
                 onSaveAspect={(name, value) =>
                   patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
