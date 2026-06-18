@@ -6,6 +6,7 @@ import {
   evaluateRefreshCooldown,
 } from "@/lib/comps/cooldown";
 import { isAutoDiscoveryEnabled } from "@/lib/comps/fetch";
+import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { enabledCompSources } from "@/lib/comps/registry";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { calculatePricing } from "@/lib/pricing/comps";
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
         discovery: {
           status: isAutoDiscoveryEnabled() ? "not_run" : "disabled",
           autoDiscoveryEnabled: isAutoDiscoveryEnabled(),
+          paidProvidersEnabled: isCompsPaidProvidersEnabled(),
           enabledSources: [],
           queries: [],
           sourceErrors: [],
@@ -83,6 +85,7 @@ export async function GET(request: Request) {
               : "source_unavailable"
             : "disabled"),
         autoDiscoveryEnabled: isAutoDiscoveryEnabled(),
+        paidProvidersEnabled: isCompsPaidProvidersEnabled(),
         enabledSources,
         queries: lastRun?.queries ?? [],
         sourceErrors: lastRun?.sourceErrors ?? [],

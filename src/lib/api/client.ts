@@ -156,6 +156,7 @@ export const api = {
       discovery: {
         status: string;
         autoDiscoveryEnabled: boolean;
+        paidProvidersEnabled?: boolean;
         enabledSources: string[];
         queries: string[];
         sourceErrors: { source: string; message: string }[];

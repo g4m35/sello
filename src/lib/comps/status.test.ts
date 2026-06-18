@@ -3,13 +3,27 @@ import { describe, expect, it } from "vitest";
 import { getAutoCompStatusCopy } from "@/lib/comps/status";
 
 describe("getAutoCompStatusCopy", () => {
-  it("distinguishes disabled auto discovery from missing manual comps", () => {
+  it("describes disabled fresh sold comps without sounding broken", () => {
     const copy = getAutoCompStatusCopy(
       { status: "disabled", autoDiscoveryEnabled: false, enabledSources: [] },
       { validComps: 0, confidence: "none" },
     );
-    expect(copy.title).toBe("Auto comps are disabled");
-    expect(copy.desc).toContain("Manual comps are available");
+    expect(copy.title).toBe("Fresh sold comps are disabled");
+    expect(copy.desc).toContain("Manual comps still work");
+  });
+
+  it("explains when paid sold comps are off but discovery is on", () => {
+    const copy = getAutoCompStatusCopy(
+      {
+        status: "not_run",
+        autoDiscoveryEnabled: true,
+        paidProvidersEnabled: false,
+        enabledSources: ["apify-ebay-sold"],
+      },
+      { validComps: 0, confidence: "none" },
+    );
+    expect(copy.title).toBe("Fresh sold comps are disabled");
+    expect(copy.desc).toContain("Manual comps still work");
   });
 
   it("distinguishes source-unavailable from no comps found", () => {
@@ -17,7 +31,7 @@ describe("getAutoCompStatusCopy", () => {
       { status: "source_unavailable", autoDiscoveryEnabled: true, enabledSources: [] },
       { validComps: 0, confidence: "none" },
     );
-    expect(unavailable.title).toBe("No automatic comp source is connected");
+    expect(unavailable.title).toBe("No sold-comp source connected yet");
 
     const noneFound = getAutoCompStatusCopy(
       { status: "no_comps_found", autoDiscoveryEnabled: true, enabledSources: ["ebay-browse"] },
