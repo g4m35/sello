@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import type { Prisma } from "@/generated/prisma/client";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { sellerSafeCompRows } from "@/lib/comps/seller-copy";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import { UpdatePriceCompSchema, type UpdatePriceCompInput } from "@/lib/pricing/price-comp-input";
 import { summarizeComps } from "@/lib/pricing/summarize";
 import { getPrisma } from "@/lib/prisma";
@@ -62,7 +63,7 @@ async function respondWithComps(
   });
   return NextResponse.json({
     inventoryItemId,
-    comps,
+    comps: sellerSafeCompRows(comps),
     summary: summarizeComps(comps),
   });
 }
@@ -83,8 +84,15 @@ export async function PATCH(request: Request, context: Context) {
 
     return respondWithComps(prisma, existing.inventoryItemId);
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    const { status, body } = safeErrorResponse(error, {
+      label: "comp_update",
+      fallbackCode: "COMP_UPDATE_FAILED",
+      fallbackMessage: "Couldn't update this comp right now. Please try again.",
+    });
+    return NextResponse.json(body, { status });
   }
 }
 
@@ -97,7 +105,14 @@ export async function DELETE(request: Request, context: Context) {
 
     return respondWithComps(prisma, existing.inventoryItemId);
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    const { status, body } = safeErrorResponse(error, {
+      label: "comp_delete",
+      fallbackCode: "COMP_DELETE_FAILED",
+      fallbackMessage: "Couldn't delete this comp right now. Please try again.",
+    });
+    return NextResponse.json(body, { status });
   }
 }
