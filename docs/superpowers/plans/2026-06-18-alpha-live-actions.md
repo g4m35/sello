@@ -368,7 +368,7 @@ git commit -m "feat: add safe bulk ebay publishing"
 - Modify: `src/lib/api/client.ts`
 - Modify: `src/components/ui/primitives.tsx` only if the existing modal cannot render long per-item results accessibly
 
-- [ ] **Step 1: Write failing bulk modal rendering tests**
+- [x] **Step 1: Write failing bulk modal rendering tests**
 
 Render static states for:
 
@@ -380,17 +380,17 @@ Render static states for:
 - retry only for results marked `retrySafe`;
 - no raw error/provider payload text.
 
-- [ ] **Step 2: Verify UI tests fail**
+- [x] **Step 2: Verify UI tests fail**
 
 Run: `npm test -- src/components/app/bulk-publish-modal.test.tsx`
 
 Expected: FAIL because the modal does not exist.
 
-- [ ] **Step 3: Add API client methods**
+- [x] **Step 3: Add API client methods**
 
 Add typed `preflightBulkEbayPublish` and `executeBulkEbayPublish`. Preserve one logical `bulkRunId`. If transport chunking is needed, keep it internal to the client method: split large ID arrays into high-size request chunks, merge results in selected order, and never expose a seller-visible selection cap.
 
-- [ ] **Step 4: Implement the modal and inventory selection flow**
+- [x] **Step 4: Implement the modal and inventory selection flow**
 
 Replace the current `firstSelected` single-item behavior. The selection bar must:
 
@@ -402,13 +402,13 @@ Replace the current `firstSelected` single-item behavior. The selection bar must
 - require “I understand this will create live eBay listings.” before execution;
 - refresh inventory after completion while retaining per-item results until the modal closes.
 
-- [ ] **Step 5: Run bulk UI and inventory tests**
+- [x] **Step 5: Run bulk UI and inventory tests**
 
 Run: `npm test -- src/components/app/bulk-publish-modal.test.tsx src/app/api/listings/publish/bulk src/lib/marketplace/bulk-publish.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit bulk UI**
+- [x] **Step 6: Commit bulk UI**
 
 ```bash
 git add src/components/app/bulk-publish-modal.tsx src/components/app/bulk-publish-modal.test.tsx 'src/app/(app)/inventory/page.tsx' src/lib/api/client.ts src/components/ui/primitives.tsx
