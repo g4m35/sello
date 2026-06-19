@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildPricingNotes, friendlySourceLabels } from "./seller-copy";
+import {
+  buildPricingNotes,
+  friendlySourceLabels,
+  sellerSafeSourceErrors,
+} from "./seller-copy";
 
 describe("friendlySourceLabels", () => {
   it("collapses raw provider ids into seller-friendly categories", () => {
@@ -76,5 +80,33 @@ describe("buildPricingNotes", () => {
     });
     expect(notes.join(" ")).not.toMatch(/apify-ebay-sold|paid_providers_disabled/);
     expect(notes.length).toBeGreaterThan(0);
+  });
+});
+
+describe("sellerSafeSourceErrors", () => {
+  it("replaces provider ids and internal errors with seller-safe copy", () => {
+    const errors = sellerSafeSourceErrors([
+      {
+        source: "apify-ebay-sold",
+        message: "Paid comp providers skipped: global_budget_exceeded",
+      },
+      {
+        source: "google-lens",
+        message: "upstream token secret-provider-token failed",
+      },
+    ]);
+    const serialized = JSON.stringify(errors);
+
+    expect(errors).toEqual([
+      {
+        source: "Fresh sold comps",
+        message: "Fresh sold comps are paused for now (daily limit reached). Manual comps still work.",
+      },
+      {
+        source: "Visual match search",
+        message: "A pricing source was temporarily unavailable. Try again later.",
+      },
+    ]);
+    expect(serialized).not.toMatch(/apify|google-lens|global_budget_exceeded|secret-provider-token/i);
   });
 });

@@ -147,6 +147,7 @@ describe("runCompFetch", () => {
       displayName: "Test source",
       sold: true,
       resultKind: "sold_comps",
+      paid: true,
       isEnabled: () => true,
       fetchComps: vi.fn(async () => [comp(1)]),
     };
@@ -183,15 +184,24 @@ describe("runCompFetch", () => {
           ...data,
         })),
       },
+      providerCallLedger: { create: vi.fn(async () => ({ id: "ledger-1" })) },
     };
 
     const result = await runCompFetch(prisma as never, "item-1", "seller-1", {
+      paidProvidersAllowed: true,
       sources: [source],
     });
 
     expect(result.status).toBe("skipped_weak_identity");
     expect(source.fetchComps).not.toHaveBeenCalled();
     expect(prisma.priceComp.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.providerCallLedger.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: "skipped",
+        skippedReason: "weak_identity",
+        estimatedCostCents: 0,
+      }),
+    });
     expect(prisma.compSearchRun.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         status: "skipped_weak_identity",
@@ -202,30 +212,41 @@ describe("runCompFetch", () => {
     });
   });
 
-  it("lets manual Refresh bypass weak auto identity gating", async () => {
+  it("never lets force bypass paid-provider identity gating and still runs free sources", async () => {
     vi.stubEnv("COMPS_AUTO_DISCOVERY_ENABLED", "true");
     vi.stubEnv("COMPS_AUTO_MIN_IDENTITY_CONFIDENCE", "0.9");
     const createdRows: unknown[] = [];
-    const source: CompSource = {
-      id: "test-source",
-      displayName: "Test source",
+    const paidSource: CompSource = {
+      id: "paid-sold-source",
+      displayName: "Paid sold source",
       sold: true,
       resultKind: "sold_comps",
+      paid: true,
       isEnabled: () => true,
       fetchComps: vi.fn(async () => [comp(1), comp(2), comp(3)]),
+    };
+    const freeSource: CompSource = {
+      id: "free-active-source",
+      displayName: "Free active source",
+      sold: false,
+      resultKind: "active_listings",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => [
+        comp(4, { source: "free-active-source", sold: false, soldDate: null }),
+      ]),
     };
 
     const prisma = {
       inventoryItem: {
         findFirst: vi.fn(async () => ({
           id: "item-1",
-          productName: "Basic Black Crew Neck Short Sleeve T-Shirt",
-          brand: "Unknown",
+          productName: "The North Face Black Nuptse Puffer Jacket",
+          brand: "The North Face",
           styleCode: null,
-          size: null,
+          size: "Large",
           category: "streetwear",
           colorway: "Black",
-          condition: "unknown",
+          condition: "used_good",
           confidence: 0.1,
           recommendedPriceCents: 1200,
           listingDrafts: [],
@@ -246,16 +267,27 @@ describe("runCompFetch", () => {
           ...data,
         })),
       },
+      providerCallLedger: { create: vi.fn(async () => ({ id: "ledger-1" })) },
     };
 
     const result = await runCompFetch(prisma as never, "item-1", "seller-1", {
       force: true,
-      sources: [source],
+      paidProvidersAllowed: true,
+      sources: [paidSource, freeSource],
     });
 
-    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(paidSource.fetchComps).not.toHaveBeenCalled();
+    expect(freeSource.fetchComps).toHaveBeenCalledTimes(1);
     expect(result.status).not.toBe("skipped_weak_identity");
-    expect(result.fetched).toBe(3);
+    expect(result.fetched).toBe(1);
+    expect(result.sourceErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "sello",
+          message: expect.stringMatching(/identity/i),
+        }),
+      ]),
+    );
   });
 
   it("caps query variants before calling providers", async () => {

@@ -173,12 +173,27 @@ afterEach(() => {
 });
 
 describe("runCompFetch paid-provider budget/quota gates", () => {
+  it("excludes paid providers before reservation when entitlement is absent", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma();
+
+    const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      sources: [source],
+    });
+
+    expect(source.fetchComps).not.toHaveBeenCalled();
+    expect(prisma._ledger).toHaveLength(0);
+    expect(result.status).toBe("source_unavailable");
+  });
+
   it("skips paid providers (kill switch off by default) and logs the reason", async () => {
     vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "");
     const source = paidSource(async () => [soldComp(1)]);
     const prisma = createPrisma();
 
     const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
       sources: [source],
     });
 
@@ -199,7 +214,10 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const source = paidSource(async () => [soldComp(1), soldComp(2), soldComp(3)]);
     const prisma = createPrisma();
 
-    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+    await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+    });
 
     expect(source.fetchComps).toHaveBeenCalledTimes(1);
     const succeeded = prisma._ledger.find((r) => r.status === "succeeded");
@@ -225,7 +243,10 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
       return [soldComp(1)];
     });
 
-    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+    await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+    });
 
     expect(prisma._ledger).toHaveLength(1);
     expect(prisma._ledger[0]).toMatchObject({ status: "succeeded", fetchedCount: 1 });
@@ -248,7 +269,10 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const source = paidSource(async () => [soldComp(1)]);
     const prisma = createPrisma({ globalSpentCents: 20 });
 
-    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+    await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+    });
 
     expect(source.fetchComps).not.toHaveBeenCalled();
     expect(prisma._ledger[0]).toMatchObject({
@@ -263,7 +287,10 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const source = paidSource(async () => [soldComp(1)]);
     const prisma = createPrisma({ userDailyCount: 2 });
 
-    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+    await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+    });
 
     expect(source.fetchComps).not.toHaveBeenCalled();
     expect(prisma._ledger[0]).toMatchObject({
@@ -278,7 +305,10 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const source = paidSource(async () => [soldComp(1)]);
     const prisma = createPrisma({ userDailyCount: 0, userMonthlyCount: 5 });
 
-    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+    await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+    });
 
     expect(source.fetchComps).not.toHaveBeenCalled();
     expect(prisma._ledger[0]).toMatchObject({
@@ -293,7 +323,10 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const source = paidSource(async () => [soldComp(1)]);
     const prisma = createPrisma({ lastDraftCallAt: new Date(Date.now() - 60_000) });
 
-    await runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] });
+    await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+    });
 
     expect(source.fetchComps).not.toHaveBeenCalled();
     expect(prisma._ledger[0]).toMatchObject({
@@ -310,6 +343,7 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const prisma = createPrisma();
 
     const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
       sources: [source],
     });
 
@@ -345,6 +379,7 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
       sources: [source],
     });
 
@@ -365,8 +400,14 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const prisma = createPrisma();
 
     await Promise.all([
-      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
-      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+      runCompFetch(prisma as never, "item-1", "user-1", {
+        paidProvidersAllowed: true,
+        sources: [source],
+      }),
+      runCompFetch(prisma as never, "item-1", "user-1", {
+        paidProvidersAllowed: true,
+        sources: [source],
+      }),
     ]);
 
     expect(source.fetchComps).toHaveBeenCalledTimes(1);
@@ -387,8 +428,14 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const prisma = createPrisma();
 
     await Promise.all([
-      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
-      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+      runCompFetch(prisma as never, "item-1", "user-1", {
+        paidProvidersAllowed: true,
+        sources: [source],
+      }),
+      runCompFetch(prisma as never, "item-1", "user-1", {
+        paidProvidersAllowed: true,
+        sources: [source],
+      }),
     ]);
 
     expect(source.fetchComps).toHaveBeenCalledTimes(1);
@@ -411,8 +458,14 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const prisma = createPrisma();
 
     await Promise.all([
-      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
-      runCompFetch(prisma as never, "item-1", "user-1", { sources: [source] }),
+      runCompFetch(prisma as never, "item-1", "user-1", {
+        paidProvidersAllowed: true,
+        sources: [source],
+      }),
+      runCompFetch(prisma as never, "item-1", "user-1", {
+        paidProvidersAllowed: true,
+        sources: [source],
+      }),
     ]);
 
     expect(source.fetchComps).toHaveBeenCalledTimes(1);
@@ -432,6 +485,8 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     });
 
     const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      force: true,
+      paidProvidersAllowed: true,
       sources: [source],
     });
 
@@ -458,6 +513,7 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     const prisma = createPrisma();
 
     await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
       sources: [freeSource, paid],
     });
 

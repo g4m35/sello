@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
 
@@ -13,7 +14,7 @@ import { GET } from "./route";
 describe("comps GET metadata", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: null });
   });
 
   it("returns the latest run metadata and cooldown remaining", async () => {
