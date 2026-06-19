@@ -73,4 +73,35 @@ describe("delist API auth boundaries", () => {
     expect(prismaWrite).not.toHaveBeenCalled();
     expect(outboundAdapter).not.toHaveBeenCalled();
   });
+
+  it("sanitizes an unexpected handler error (no raw DB/provider text)", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
+    mocks.getPrisma.mockReturnValue({});
+    const raw = new Error(
+      "PrismaClientKnownRequestError: column of type 'void'. token=tok_live_secret",
+    );
+    raw.name = "PrismaClientKnownRequestError";
+    mocks.executeEbayDelist.mockRejectedValue(raw);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/delist", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+          confirmLiveDelist: true,
+        }),
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(JSON.parse(body).error.code).toBe("DELIST_FAILED");
+    expect(body).not.toContain("Prisma");
+    expect(body).not.toContain("void");
+    expect(body).not.toContain("tok_live_secret");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("tok_live_secret");
+    consoleError.mockRestore();
+  });
 });

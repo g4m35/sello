@@ -28,12 +28,30 @@ describe("configuredFeatureEmails", () => {
     });
   });
 
+  it("reports a count of 1 when a single owner email is configured per feature", () => {
+    const configured = configuredFeatureEmails({
+      LIVE_EBAY_PUBLISH_EMAILS: "owner@sello.com",
+      EBAY_DELIST_EMAILS: "owner@sello.com",
+      PAID_COMPS_EMAILS: "owner@sello.com",
+    });
+    expect(configured.liveEbayPublish).toHaveLength(1);
+    expect(configured.ebayDelist).toHaveLength(1);
+    expect(configured.paidComps).toHaveLength(1);
+    expect(configured.paidComps).toEqual(["owner@sello.com"]);
+  });
+
   it("fails closed when feature allowlist variables are missing", () => {
     expect(configuredFeatureEmails({})).toEqual({
       liveEbayPublish: [],
       ebayDelist: [],
       paidComps: [],
     });
+  });
+
+  it("does not fall back to ADMIN_EMAILS for any feature allowlist", () => {
+    expect(
+      configuredFeatureEmails({ ADMIN_EMAILS: "owner@sello.com" }),
+    ).toEqual({ liveEbayPublish: [], ebayDelist: [], paidComps: [] });
   });
 });
 

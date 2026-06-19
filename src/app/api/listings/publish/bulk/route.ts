@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import { executeBulkEbayPublish } from "@/lib/marketplace/bulk-publish";
 import {
   BulkPublishExecuteRequestSchema,
@@ -45,12 +45,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        { error: { code: error.code ?? "REQUEST_FAILED", message: error.message } },
-        { status: error.status },
-      );
-    }
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
+    const { status, body } = safeErrorResponse(error, {
+      label: "listings_publish_bulk",
+      fallbackCode: "BULK_PUBLISH_FAILED",
+    });
+    return NextResponse.json(body, { status });
   }
 }

@@ -38,7 +38,11 @@ type ProviderCallLedgerUpdate = Pick<
 >;
 
 export type ProviderLedgerTransaction = {
-  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
+  // Advisory locks run through $executeRawUnsafe, NOT $queryRawUnsafe:
+  // pg_advisory_xact_lock() returns SQL type `void`, which Prisma's $queryRaw*
+  // cannot deserialize ("Failed to deserialize column of type 'void'"). $executeRaw*
+  // returns an affected-row count and never deserializes the result columns.
+  $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
   providerCallLedger: {
     aggregate(args: {
       _sum: { estimatedCostCents: true };
@@ -154,7 +158,9 @@ async function acquireReservationLocks(
   args: { userId: string; draftId: string | null; provider: string; now: Date },
 ): Promise<void> {
   for (const lockKey of reservationLockKeys(args)) {
-    await tx.$queryRawUnsafe(
+    // $executeRawUnsafe (not $queryRawUnsafe): pg_advisory_xact_lock returns void
+    // and $queryRaw* throws a raw "deserialize column of type 'void'" error.
+    await tx.$executeRawUnsafe(
       "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
       lockKey,
     );
