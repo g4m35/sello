@@ -32,6 +32,7 @@ vi.mock("@/lib/view/server-map", () => ({
   mapItemDetail: mocks.mapItemDetail,
 }));
 
+import { AppError } from "@/lib/errors";
 import { GET } from "./route";
 
 describe("listing detail route", () => {
@@ -127,5 +128,52 @@ describe("listing detail route", () => {
       | undefined;
     const photoUrls = lastMapCall?.[2] as Map<string, string>;
     expect(photoUrls.get("photo-1")).toBe("https://signed.example/photo");
+  });
+
+  it("returns safe seller copy without raw Prisma, query, stack, or token text", async () => {
+    mocks.getPrisma.mockReturnValue({
+      inventoryItem: {
+        findFirst: vi.fn().mockRejectedValue(
+          new Error(
+            "PrismaClientKnownRequestError Invalid prisma.inventoryItem query token=tok_live_secret",
+          ),
+        ),
+      },
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await GET(
+      new Request("http://localhost/api/listings/item-1"),
+      { params: Promise.resolve({ id: "item-1" }) },
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(JSON.parse(body)).toEqual({
+      error: {
+        code: "LISTING_LOAD_FAILED",
+        message: "Couldn't load this listing right now. Please try again.",
+      },
+    });
+    expect(body).not.toMatch(/Prisma|query|stack|tok_live_secret/i);
+  });
+
+  it("preserves a safe typed auth failure", async () => {
+    mocks.requireSupabaseUser.mockRejectedValue(
+      new AppError("Sign in to view this listing.", 401, "AUTH_REQUIRED"),
+    );
+
+    const response = await GET(
+      new Request("http://localhost/api/listings/item-1"),
+      { params: Promise.resolve({ id: "item-1" }) },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "AUTH_REQUIRED",
+        message: "Sign in to view this listing.",
+      },
+    });
   });
 });

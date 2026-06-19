@@ -287,6 +287,67 @@ export function AutoPricing({
     }
   }
 
+  function renderManualCompControls() {
+    return (
+      <div className="stack-2">
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <span className="t-small muted">Manual sold-comp fallback</span>
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon={manualOpen ? "x" : "plus"}
+            onClick={() => setManualOpen((open) => !open)}
+          >
+            {manualOpen ? "Close" : "Add sold comp"}
+          </Btn>
+        </div>
+        {manualOpen && (
+          <div className="stack-2">
+            <div className="form-grid form-grid--2" style={{ gap: 10 }}>
+              <label className="field">
+                <span>Source</span>
+                <input
+                  value={manualComp.source}
+                  onChange={(e) => setManualComp((form) => ({ ...form, source: e.target.value }))}
+                  placeholder="eBay sold, Grailed sold"
+                />
+              </label>
+              <label className="field">
+                <span>Sold/completed price</span>
+                <input
+                  value={manualComp.price}
+                  onChange={(e) => setManualComp((form) => ({ ...form, price: e.target.value }))}
+                  placeholder="165.00"
+                  inputMode="decimal"
+                />
+              </label>
+            </div>
+            <label className="field">
+              <span>Title</span>
+              <input
+                value={manualComp.title}
+                onChange={(e) => setManualComp((form) => ({ ...form, title: e.target.value }))}
+                placeholder="Comparable item title"
+              />
+            </label>
+            <label className="field">
+              <span>URL</span>
+              <input
+                value={manualComp.url}
+                onChange={(e) => setManualComp((form) => ({ ...form, url: e.target.value }))}
+                placeholder="https://"
+                type="url"
+              />
+            </label>
+            <Btn variant="secondary" size="sm" onClick={addManualComp} disabled={savingManual}>
+              {savingManual ? "Adding…" : "Add sold comp"}
+            </Btn>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const cooldownRemaining = cooldown;
   const refreshDisabled = refreshing || cooldownRemaining > 0;
   const refreshBtn = featureAccess.access.paidComps ? (
@@ -310,7 +371,14 @@ export function AutoPricing({
     </Btn>
   ) : null;
 
-  if (error) return <div className="t-small danger">{error}</div>;
+  if (error) {
+    return (
+      <div className="stack-2">
+        <div className="t-small danger">{error}</div>
+        {renderManualCompControls()}
+      </div>
+    );
+  }
   if (!summary || !discovery) return <div className="t-small muted">Loading pricing…</div>;
 
   const hasData = summary.validComps > 0 && summary.recommendedListCents != null;
@@ -386,64 +454,7 @@ export function AutoPricing({
     </div>
   );
 
-  const manualCompControls = (
-    <div className="stack-2">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <span className="t-small muted">Manual sold-comp fallback</span>
-        <Btn
-          variant="ghost"
-          size="sm"
-          icon={manualOpen ? "x" : "plus"}
-          onClick={() => setManualOpen((open) => !open)}
-        >
-          {manualOpen ? "Close" : "Add sold comp"}
-        </Btn>
-      </div>
-      {manualOpen && (
-        <div className="stack-2">
-          <div className="form-grid form-grid--2" style={{ gap: 10 }}>
-            <label className="field">
-              <span>Source</span>
-              <input
-                value={manualComp.source}
-                onChange={(e) => setManualComp((form) => ({ ...form, source: e.target.value }))}
-                placeholder="eBay sold, Grailed sold"
-              />
-            </label>
-            <label className="field">
-              <span>Sold/completed price</span>
-              <input
-                value={manualComp.price}
-                onChange={(e) => setManualComp((form) => ({ ...form, price: e.target.value }))}
-                placeholder="165.00"
-                inputMode="decimal"
-              />
-            </label>
-          </div>
-          <label className="field">
-            <span>Title</span>
-            <input
-              value={manualComp.title}
-              onChange={(e) => setManualComp((form) => ({ ...form, title: e.target.value }))}
-              placeholder="Comparable item title"
-            />
-          </label>
-          <label className="field">
-            <span>URL</span>
-            <input
-              value={manualComp.url}
-              onChange={(e) => setManualComp((form) => ({ ...form, url: e.target.value }))}
-              placeholder="https://"
-              type="url"
-            />
-          </label>
-          <Btn variant="secondary" size="sm" onClick={addManualComp} disabled={savingManual}>
-            {savingManual ? "Adding…" : "Add sold comp"}
-          </Btn>
-        </div>
-      )}
-    </div>
-  );
+  const manualCompControls = renderManualCompControls();
 
   const compList = visibleComps.length > 0 && (
     <div className="stack-2">

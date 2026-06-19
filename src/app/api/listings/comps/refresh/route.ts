@@ -6,6 +6,7 @@ import {
 } from "@/lib/comps/cooldown";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { runCompFetch } from "@/lib/comps/fetch";
+import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -22,6 +23,13 @@ export async function POST(request: Request) {
     const inventoryItemId: unknown = body?.inventoryItemId;
     if (typeof inventoryItemId !== "string" || !inventoryItemId) {
       throw new AppError("inventoryItemId is required", 400);
+    }
+    if (!isCompsPaidProvidersEnabled()) {
+      throw new AppError(
+        "Fresh sold comps are disabled right now. Manual comps still work.",
+        409,
+        "PAID_COMPS_DISABLED",
+      );
     }
 
     const prisma = getPrisma();
