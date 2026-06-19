@@ -10,8 +10,8 @@ import { isAutoDiscoveryEnabled } from "@/lib/comps/fetch";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { enabledCompSources } from "@/lib/comps/registry";
 import {
-  friendlySourceLabel,
   friendlySourceLabels,
+  sellerSafeCompRows,
   sellerSafeSourceErrors,
 } from "@/lib/comps/seller-copy";
 import { AppError, safeClientMessage } from "@/lib/errors";
@@ -74,12 +74,7 @@ export async function GET(request: Request) {
     const enabledSources = friendlySourceLabels(
       enabledCompSources().map((source) => source.id),
     );
-    const sellerComps = comps.map((comp) => ({
-      ...comp,
-      source: comp.source.startsWith("auto:")
-        ? friendlySourceLabel(comp.source)
-        : comp.source,
-    }));
+    const sellerComps = sellerSafeCompRows(comps);
     const cooldown = evaluateRefreshCooldown({
       lastRunAt: lastRun?.createdAt ?? null,
       now: new Date(),
@@ -173,7 +168,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       inventoryItemId: inventoryItem.id,
-      comps,
+      comps: sellerSafeCompRows(comps),
       summary: summarizeComps(comps),
     });
   } catch (error) {

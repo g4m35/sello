@@ -118,6 +118,78 @@ describe("price comps API auth boundaries", () => {
     expect(prisma.providerCallLedger.create).not.toHaveBeenCalled();
   });
 
+  it("keeps manual source names but hides automatic provider ids after adding a comp", async () => {
+    const inventoryItemId = "11111111-1111-4111-8111-111111111111";
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+    const manualComp = {
+      id: "manual-1",
+      inventoryItemId,
+      source: "Seller research",
+      sourceType: "manual",
+      status: "sold",
+      title: "Seller-entered comp",
+      priceCents: 12000,
+      shippingCents: 0,
+      totalPriceCents: 12000,
+      currency: "USD",
+      soldDate: null,
+      url: null,
+      imageUrl: null,
+      condition: "used_good",
+      matchScore: null,
+      usedInPricing: true,
+      ignoredAsOutlier: false,
+      rawJson: null,
+      notes: null,
+      createdAt: new Date(),
+    };
+    const automaticComp = {
+      ...manualComp,
+      id: "auto-1",
+      source: "auto:apify-ebay-sold",
+      sourceType: "api",
+      title: "Automatic comp",
+    };
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: inventoryItemId }) },
+      priceComp: {
+        create: vi.fn().mockResolvedValue(manualComp),
+        findMany: vi.fn().mockResolvedValue([manualComp, automaticComp]),
+      },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId,
+          comp: {
+            source: "Seller research",
+            sourceType: "manual",
+            status: "sold",
+            title: "Seller-entered comp",
+            priceCents: 12000,
+            shippingCents: 0,
+            currency: "USD",
+            condition: "used_good",
+            usedInPricing: true,
+            ignoredAsOutlier: false,
+          },
+        }),
+      }),
+    );
+    const payload = await response.json();
+    const serialized = JSON.stringify(payload);
+
+    expect(response.status).toBe(200);
+    expect(payload.comps.map((comp: { source: string }) => comp.source)).toEqual([
+      "Seller research",
+      "Fresh sold comps",
+    ]);
+    expect(serialized).not.toContain("apify-ebay-sold");
+  });
+
   it("sanitizes an unexpected DB error when adding a manual comp", async () => {
     const inventoryItemId = "11111111-1111-4111-8111-111111111111";
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
