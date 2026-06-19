@@ -6,7 +6,7 @@ import {
 } from "@/lib/comps/cooldown";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { runCompFetch } from "@/lib/comps/fetch";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -60,17 +60,15 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code ?? "REQUEST_FAILED",
-            message: error.message,
-          },
-        },
-        { status: error.status },
-      );
-    }
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
+    // Sanitized: an unexpected failure (e.g. a Prisma/DB error) never leaks raw
+    // internals. AppError keeps its code/message; everything else collapses to a
+    // stable code + seller-safe copy. Manual comps are unaffected by this path.
+    const { status, body } = safeErrorResponse(error, {
+      label: "comps_refresh",
+      fallbackCode: "COMPS_REFRESH_FAILED",
+      fallbackMessage:
+        "Couldn't refresh sold comps right now. Manual comps still work; please try again.",
+    });
+    return NextResponse.json(body, { status });
   }
 }

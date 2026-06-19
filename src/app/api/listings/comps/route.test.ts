@@ -118,6 +118,49 @@ describe("price comps API auth boundaries", () => {
     expect(prisma.providerCallLedger.create).not.toHaveBeenCalled();
   });
 
+  it("sanitizes an unexpected DB error when adding a manual comp", async () => {
+    const inventoryItemId = "11111111-1111-4111-8111-111111111111";
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+    const raw = new Error("Failed to deserialize column of type 'void'. token=tok_live_secret");
+    raw.name = "PrismaClientKnownRequestError";
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: inventoryItemId }) },
+      priceComp: { create: vi.fn().mockRejectedValue(raw) },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId,
+          comp: {
+            source: "Seller research",
+            sourceType: "manual",
+            status: "sold",
+            title: "Nike Dunk Low Panda",
+            priceCents: 12000,
+            shippingCents: 0,
+            currency: "USD",
+            condition: "used_good",
+            usedInPricing: true,
+            ignoredAsOutlier: false,
+          },
+        }),
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(400);
+    expect(body).not.toContain("void");
+    expect(body).not.toContain("Prisma");
+    expect(body).not.toContain("deserialize");
+    expect(body).not.toContain("tok_live_secret");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("tok_live_secret");
+    consoleError.mockRestore();
+  });
+
   it("combines the paid-provider kill switch with entitlement and hides provider details", async () => {
     vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
     vi.stubEnv("PAID_COMPS_EMAILS", "allowed@example.com");

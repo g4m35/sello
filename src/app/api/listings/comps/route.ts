@@ -14,7 +14,7 @@ import {
   friendlySourceLabels,
   sellerSafeSourceErrors,
 } from "@/lib/comps/seller-copy";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { calculatePricing } from "@/lib/pricing/comps";
 import { CreatePriceCompRequestSchema } from "@/lib/pricing/price-comp-input";
 import { summarizeComps } from "@/lib/pricing/summarize";
@@ -113,7 +113,10 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "comps_get" }) },
+      { status },
+    );
   }
 }
 
@@ -175,6 +178,9 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "comps_create" }) },
+      { status },
+    );
   }
 }

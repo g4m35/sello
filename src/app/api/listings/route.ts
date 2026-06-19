@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 import { partitionDeletable } from "@/lib/view/inventory-actions";
@@ -28,7 +28,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ items: items.map(mapItem) });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listings_list" }) },
+      { status },
+    );
   }
 }
 
@@ -73,6 +76,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ deleted: deletable, blocked });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listings_delete" }) },
+      { status },
+    );
   }
 }

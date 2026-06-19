@@ -55,6 +55,10 @@ function createPrisma(opts: {
   userDailyCount?: number;
   userMonthlyCount?: number;
   lastDraftCallAt?: Date | null;
+  /** Simulate real Postgres: $queryRaw* cannot deserialize pg_advisory_xact_lock's void. */
+  queryRawThrows?: Error;
+  /** Simulate a DB failure while acquiring the advisory lock / reserving. */
+  executeRawThrows?: Error;
 } = {}) {
   const ledger: Array<Record<string, unknown>> = [];
   const runs: Array<Record<string, unknown>> = [];
@@ -148,7 +152,14 @@ function createPrisma(opts: {
     providerCallLedger,
     $queryRawUnsafe: vi.fn(async (...args: [string, ...unknown[]]) => {
       void args;
+      // pg_advisory_xact_lock returns `void`; real Prisma $queryRaw* throws here.
+      if (opts.queryRawThrows) throw opts.queryRawThrows;
       return [];
+    }),
+    $executeRawUnsafe: vi.fn(async (...args: [string, ...unknown[]]) => {
+      void args;
+      if (opts.executeRawThrows) throw opts.executeRawThrows;
+      return 1;
     }),
     $transaction: vi.fn(async <T>(callback: (tx: typeof prisma) => Promise<T>) => {
       let release = () => {};
@@ -250,7 +261,7 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
 
     expect(prisma._ledger).toHaveLength(1);
     expect(prisma._ledger[0]).toMatchObject({ status: "succeeded", fetchedCount: 1 });
-    const lockKeys = prisma.$queryRawUnsafe.mock.calls.map((call) => call[1]);
+    const lockKeys = prisma.$executeRawUnsafe.mock.calls.map((call) => call[1]);
     expect(lockKeys).toHaveLength(4);
     expect(lockKeys).toEqual([...lockKeys].sort());
     expect(lockKeys).toEqual(
@@ -497,6 +508,69 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
       skippedReason: "weak_identity",
       estimatedCostCents: 0,
     });
+  });
+
+  it("acquires advisory locks without a void-deserializing $queryRaw (Prisma void regression)", async () => {
+    // Real Postgres: pg_advisory_xact_lock() returns SQL `void`, and Prisma's
+    // $queryRaw* throws "Failed to deserialize column of type 'void'". The lock
+    // MUST go through $executeRawUnsafe (no column deserialization) instead.
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    const voidError = new Error(
+      "Inconsistent column data: Failed to deserialize column of type 'void'.",
+    );
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma({ queryRawThrows: voidError });
+
+    const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+    });
+
+    // The buggy path would have thrown the void error; the fixed path runs cleanly.
+    expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled();
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalled();
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(prisma._ledger.find((r) => r.status === "succeeded")).toBeTruthy();
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("void");
+    expect(serialized).not.toContain("deserialize");
+  });
+
+  it("degrades safely (free sources still run) when reserving a paid provider throws", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    const dbError = new Error(
+      "PrismaClientKnownRequestError: the table does not exist. token=secret-xyz",
+    );
+    const freeSource: CompSource = {
+      id: "ebay-browse",
+      displayName: "eBay active",
+      sold: false,
+      resultKind: "active_listings",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => [{ ...soldComp(1), source: "ebay-browse", sold: false }]),
+    };
+    const paid = paidSource(async () => [soldComp(2)]);
+    const prisma = createPrisma({ executeRawThrows: dbError });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await runCompFetch(prisma as never, "item-1", "user-1", {
+      paidProvidersAllowed: true,
+      sources: [freeSource, paid],
+    });
+
+    // Free source still ran; paid source was skipped, not fatal.
+    expect(freeSource.fetchComps).toHaveBeenCalledTimes(1);
+    expect(paid.fetchComps).not.toHaveBeenCalled();
+    // The paid skip surfaces a sanitized note; no raw DB text or token leaks.
+    expect(result.sourceErrors).toEqual(
+      expect.arrayContaining([
+        { source: "apify-ebay-sold", message: "Paid comp provider failed. Try again later." },
+      ]),
+    );
+    const serialized = JSON.stringify({ result, logs: consoleError.mock.calls });
+    expect(serialized).not.toContain("secret-xyz");
+    expect(serialized).not.toContain("does not exist");
+    consoleError.mockRestore();
   });
 
   it("still processes free sources when paid providers are disabled", async () => {

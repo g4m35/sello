@@ -12,8 +12,10 @@ import {
   hashQueries,
   recordProviderCall,
   reservePaidProviderCall,
+  type PaidProviderReservation,
   type ProviderLedgerPrismaLike,
 } from "@/lib/comps/provider-ledger";
+import { logUnexpectedError } from "@/lib/errors";
 import { enabledCompSources } from "@/lib/comps/registry";
 import { scoreCompMatch } from "@/lib/comps/scoring";
 import type { CompSource, NormalizedComp } from "@/lib/comps/source";
@@ -201,19 +203,25 @@ export async function runCompFetch(
 
   if (paidSourcesSkippedForWeakIdentity) {
     for (const paidSource of paidSources) {
-      await recordProviderCall(ledgerPrisma, {
-        userId: sellerId,
-        draftId,
-        inventoryItemId,
-        provider: paidSource.id,
-        status: "skipped",
-        skippedReason: "weak_identity",
-        estimatedCostCents: 0,
-        fetchedCount: 0,
-        acceptedCount: 0,
-        rejectedCount: 0,
-        queryHash,
-      });
+      try {
+        await recordProviderCall(ledgerPrisma, {
+          userId: sellerId,
+          draftId,
+          inventoryItemId,
+          provider: paidSource.id,
+          status: "skipped",
+          skippedReason: "weak_identity",
+          estimatedCostCents: 0,
+          fetchedCount: 0,
+          acceptedCount: 0,
+          rejectedCount: 0,
+          queryHash,
+        });
+      } catch (error) {
+        // The skip ledger is best-effort accounting. A DB hiccup here must not
+        // throw a raw error up to the route; the weak-identity skip still stands.
+        logUnexpectedError("paid_comp_skip_record", error);
+      }
     }
     if (freeSources.length === 0) {
       await prisma.compSearchRun.create({
@@ -286,15 +294,29 @@ export async function runCompFetch(
   const budgetSkipErrors: { source: string; message: string }[] = [];
   if (!paidSourcesSkippedForWeakIdentity && paidSources.length > 0 && paidConfig) {
     for (const paidSource of paidSources) {
-      const reservation = await reservePaidProviderCall(ledgerPrisma, {
-        config: paidConfig,
-        userId: sellerId,
-        draftId,
-        inventoryItemId,
-        provider: paidSource.id,
-        queryHash,
-        now,
-      });
+      let reservation: PaidProviderReservation;
+      try {
+        reservation = await reservePaidProviderCall(ledgerPrisma, {
+          config: paidConfig,
+          userId: sellerId,
+          draftId,
+          inventoryItemId,
+          provider: paidSource.id,
+          queryHash,
+          now,
+        });
+      } catch (error) {
+        // The reservation runs a DB transaction (advisory locks + ledger writes).
+        // If that fails (migration not applied, transient DB error, etc.), degrade
+        // safely: skip this paid source, surface a sanitized note, and let free +
+        // manual comps proceed. Never let a raw DB/Prisma error reach the route.
+        logUnexpectedError("paid_comp_reservation", error);
+        budgetSkipErrors.push({
+          source: paidSource.id,
+          message: sanitizeProviderError(paidSource),
+        });
+        continue;
+      }
       if (reservation.allowed) {
         runnablePaidSources.push(paidSource);
         paidReservations.set(paidSource.id, reservation.reservationId);

@@ -126,6 +126,44 @@ describe("explicit comp refresh route", () => {
     expect(body).not.toContain("Authorization");
   });
 
+  it("never leaks a raw Prisma error (void deserialization regression)", async () => {
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      compSearchRun: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    const voidError = new Error(
+      "Inconsistent column data: Failed to deserialize column of type 'void'. " +
+        "Invocation: SELECT pg_advisory_xact_lock(...). token=tok_live_secret_123",
+    );
+    voidError.name = "PrismaClientKnownRequestError";
+    mocks.runCompFetch.mockRejectedValue(voidError);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(500);
+    const payload = JSON.parse(body);
+    expect(payload.error.code).toBe("COMPS_REFRESH_FAILED");
+    expect(payload.error.message).toContain("Manual comps still work");
+    // No raw Prisma / void / query / stack / token text reaches the response.
+    expect(body).not.toContain("void");
+    expect(body).not.toContain("Prisma");
+    expect(body).not.toContain("deserialize");
+    expect(body).not.toContain("pg_advisory");
+    expect(body).not.toContain("tok_live_secret");
+    expect(body).not.toContain("Invocation");
+    // And the raw message is not echoed into logs either.
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("tok_live_secret");
+    consoleError.mockRestore();
+  });
+
   it("returns 429 and does not fetch when a comp run is within the cooldown", async () => {
     const prisma = {
       inventoryItem: {
