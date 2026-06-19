@@ -286,7 +286,7 @@ git commit -m "feat: gate paid comps and enforce identity quality"
 - Create: `src/app/api/listings/publish/bulk/route.ts`
 - Create: `src/app/api/listings/publish/bulk/route.test.ts`
 
-- [ ] **Step 1: Write failing schemas/config tests**
+- [x] **Step 1: Write failing schemas/config tests**
 
 Define request schemas that deduplicate UUID item IDs, require at least one ID, validate optional `bulkRunId` as UUID, and require `confirmLivePublish: true` only for execution. Define server controls:
 
@@ -300,17 +300,17 @@ export type BulkPublishConfig = {
 
 Test that 11, 50, and 250 selected IDs are accepted; there is no low fixed product cap. Test the high configurable transport ceiling separately.
 
-- [ ] **Step 2: Verify request/config tests fail**
+- [x] **Step 2: Verify request/config tests fail**
 
 Run: `npm test -- src/lib/marketplace/bulk-publish-request.test.ts`
 
 Expected: FAIL because the new modules do not exist.
 
-- [ ] **Step 3: Implement request schemas and bounded concurrency helper**
+- [x] **Step 3: Implement request schemas and bounded concurrency helper**
 
 Implement `loadBulkPublishConfig(env)`, `uniqueItemIds(ids)`, and a deterministic `processInChunks<T, R>(items, config, worker)` that never runs more than configured concurrency and preserves input order.
 
-- [ ] **Step 4: Write failing bulk service tests**
+- [x] **Step 4: Write failing bulk service tests**
 
 Test preflight and execution with dependency injection:
 
@@ -324,7 +324,7 @@ Test preflight and execution with dependency injection:
 - execution passes one shared `bulkRunId` to `executePublish`;
 - raw thrown errors are converted to stable seller-safe results.
 
-- [ ] **Step 5: Implement the bulk service around canonical functions**
+- [x] **Step 5: Implement the bulk service around canonical functions**
 
 Expose:
 
@@ -344,7 +344,7 @@ export async function executeBulkEbayPublish(
 
 Preflight may call the existing eBay dry-run and prepare public derivatives, but never creates/modifies an eBay listing. Execution calls `executePublish` for each item so ownership, ready state, eBay readiness, global gate, and DB duplicate protection are rechecked.
 
-- [ ] **Step 6: Implement and test route boundaries**
+- [x] **Step 6: Implement and test route boundaries**
 
 Preflight requires authentication and seller scoping but remains available to non-allowlisted users; it returns `livePublishAllowed: false` and alpha copy. Execution requires `LIVE_EBAY_PUBLISH_EMAILS` before invoking the service and requires explicit confirmation. Both routes validate JSON with Zod and return safe errors.
 
@@ -352,7 +352,7 @@ Run: `npm test -- src/lib/marketplace/bulk-publish-request.test.ts src/lib/marke
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit bulk server functionality**
+- [x] **Step 7: Commit bulk server functionality**
 
 ```bash
 git add src/lib/marketplace/bulk-publish* src/app/api/listings/publish/bulk
