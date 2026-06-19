@@ -111,8 +111,9 @@ export default function JobsPanel({ accessToken }: { accessToken: string }) {
         </div>
         {data.jobs.length === 0 ? (
           <p className="p-4 text-sm text-neutral-500">
-            No background jobs have run. Workers are not implemented; publishing
-            stays draft-only. This list is real, not simulated.
+            No background jobs have run. Background workers are not implemented;
+            live eBay publishing runs synchronously per request, not through these
+            queues. This list is real, not simulated.
           </p>
         ) : (
           <div className="overflow-x-auto">

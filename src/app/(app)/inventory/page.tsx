@@ -19,6 +19,7 @@ import type {
   BulkExecutionResult,
   BulkPreflightResult,
 } from "@/lib/marketplace/bulk-publish";
+import { matchesItemSearch } from "@/lib/view/inventory-actions";
 import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
 import {
   conditionLabel,
@@ -39,13 +40,6 @@ const TAB_LABEL: Record<TabValue, string> = {
   sold: "Sold",
   error: "Needs attention",
 };
-
-function matchesSearch(item: ItemView, q: string): boolean {
-  if (!q) return true;
-  const needle = q.toLowerCase();
-  return [item.title, item.brand ?? "", item.id]
-    .some((field) => field.toLowerCase().includes(needle));
-}
 
 const PAGE_SIZE = 24;
 
@@ -136,7 +130,7 @@ export default function InventoryPage() {
     const list = items ?? [];
     const byTab =
       tab === "all" ? list : list.filter((it) => it.lifecycleState === tab);
-    const matched = byTab.filter((it) => matchesSearch(it, search.trim()));
+    const matched = byTab.filter((it) => matchesItemSearch(it, search.trim()));
     return sortItems(matched, sort);
   }, [items, tab, search, sort]);
 

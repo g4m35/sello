@@ -487,17 +487,17 @@ git commit -m "fix: prevent misleading live listing actions"
 - Modify: `src/app/api/jobs/route.test.ts`
 - Modify: `src/lib/marketplace/adapter.ts` only if capability reporting needs a separate eBay live-publish capability
 
-- [ ] **Step 1: Add failing search and channel-copy tests**
+- [x] **Step 1: Add failing search and channel-copy tests**
 
 Test inventory search over title, brand, category, lifecycle/status label, and ID; no-match copy; clear-search behavior; and channel API/UI copy that reflects eBay preview/live publish capability without claiming sync exists.
 
-- [ ] **Step 2: Verify tests fail on current dead/incorrect states**
+- [x] **Step 2: Verify tests fail on current dead/incorrect states**
 
 Run: `npm test -- src/lib/view/inventory-actions.test.ts src/app/api/jobs/route.test.ts`
 
 Expected: FAIL because search omits category/status and jobs hardcodes publishing as unimplemented.
 
-- [ ] **Step 3: Implement searchable fields and marketplace actions**
+- [x] **Step 3: Implement searchable fields and marketplace actions**
 
 Move `matchesSearch` into `inventory-actions.ts`. On `/channels`:
 
@@ -507,17 +507,17 @@ Move `matchesSearch` into `inventory-actions.ts`. On `/channels`:
 - remove “publishing not implemented” copy for entitled eBay users;
 - preserve honest assisted/draft-only copy for other marketplaces.
 
-- [ ] **Step 4: Keep inventory sync unavailable because implementation is incomplete**
+- [x] **Step 4: Keep inventory sync unavailable because implementation is incomplete**
 
 The audit found only queue schemas/capability placeholders, no user-triggered official eBay reconciliation service. Keep `inventorySync: false`, remove/hide sync buttons, and show “Live eBay inventory sync is not available yet” only where explanatory copy is useful. Do not enqueue a fake job and do not imply sync occurred.
 
-- [ ] **Step 5: Run search/jobs/channel tests**
+- [x] **Step 5: Run search/jobs/channel tests**
 
 Run: `npm test -- src/lib/view/inventory-actions.test.ts src/app/api/jobs/route.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit dead-action and search audit**
+- [x] **Step 6: Commit dead-action and search audit**
 
 ```bash
 git add 'src/app/(app)/inventory/page.tsx' 'src/app/(app)/channels/page.tsx' src/app/api/jobs/route.ts src/app/api/jobs/route.test.ts src/lib/view/inventory-actions.ts src/lib/view/inventory-actions.test.ts src/lib/marketplace/adapter.ts

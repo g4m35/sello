@@ -7,11 +7,21 @@ import {
   ebayChannelUrl,
   ebayListingUrl,
   isLiveMarketplaceStatus,
+  matchesItemSearch,
   partitionDeletable,
   resolveDelistAction,
   resolvePublishAction,
   resolveRemoveAction,
 } from "./inventory-actions";
+
+const searchItem = {
+  id: "8c1f0a2b-0000-4000-8000-000000000001",
+  title: "The North Face Nuptse Jacket",
+  brand: "The North Face",
+  category: "outerwear",
+  statusLabel: "Ready",
+  lifecycleState: "ready" as const,
+};
 
 function access(over: Partial<FeatureAccess> = {}): FeatureAccess {
   return { liveEbayPublish: false, ebayDelist: false, paidComps: false, ...over };
@@ -117,5 +127,32 @@ describe("partitionDeletable", () => {
       { itemId: "b", reason: "LIVE_MARKETPLACE_LISTING" },
       { itemId: "d", reason: "LIVE_MARKETPLACE_LISTING" },
     ]);
+  });
+});
+
+describe("matchesItemSearch", () => {
+  it("matches an empty query", () => {
+    expect(matchesItemSearch(searchItem, "")).toBe(true);
+    expect(matchesItemSearch(searchItem, "   ")).toBe(true);
+  });
+
+  it("matches title, brand, category, status label, lifecycle, and id", () => {
+    expect(matchesItemSearch(searchItem, "nuptse")).toBe(true);
+    expect(matchesItemSearch(searchItem, "north face")).toBe(true);
+    expect(matchesItemSearch(searchItem, "outerwear")).toBe(true);
+    expect(matchesItemSearch(searchItem, "ready")).toBe(true);
+    expect(matchesItemSearch(searchItem, "8c1f0a2b")).toBe(true);
+  });
+
+  it("is case-insensitive and returns false for a non-match", () => {
+    expect(matchesItemSearch(searchItem, "NUPTSE")).toBe(true);
+    expect(matchesItemSearch(searchItem, "sneakers")).toBe(false);
+  });
+
+  it("tolerates a missing brand", () => {
+    const brandOnly = { ...searchItem, title: "Nuptse Jacket", brand: "The North Face" };
+    expect(matchesItemSearch(brandOnly, "north face")).toBe(true);
+    expect(matchesItemSearch({ ...brandOnly, brand: null }, "north face")).toBe(false);
+    expect(matchesItemSearch({ ...brandOnly, brand: null }, "nuptse")).toBe(true);
   });
 });

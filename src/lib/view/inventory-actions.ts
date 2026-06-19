@@ -1,6 +1,6 @@
 import type { FeatureAccess, FeatureEntitlement } from "@/lib/auth/feature-access";
 import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
-import type { ChannelStateView } from "@/lib/view/types";
+import type { ChannelStateView, ItemView } from "@/lib/view/types";
 
 // Pure, client-safe helpers that decide which marketplace actions are honest to
 // show. They never import the server-only entitlement module; callers pass the
@@ -100,6 +100,26 @@ export const LIVE_MARKETPLACE_STATUSES: readonly string[] = [
 
 export function isLiveMarketplaceStatus(status: string): boolean {
   return LIVE_MARKETPLACE_STATUSES.includes(status);
+}
+
+// Inventory search across the fields a seller actually thinks in: product
+// title, brand, category, the human status label, lifecycle state, and id.
+export type SearchableItem = Pick<
+  ItemView,
+  "id" | "title" | "brand" | "category" | "statusLabel" | "lifecycleState"
+>;
+
+export function matchesItemSearch(item: SearchableItem, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [
+    item.title,
+    item.brand ?? "",
+    item.category,
+    item.statusLabel,
+    item.lifecycleState,
+    item.id,
+  ].some((field) => field.toLowerCase().includes(needle));
 }
 
 export type DeleteBlock = { itemId: string; reason: "LIVE_MARKETPLACE_LISTING" };
