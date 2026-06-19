@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { DelistRequestSchema } from "@/lib/marketplace/delist-request";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
 import {
@@ -16,6 +17,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
+    requireFeatureAccess(user, "ebayDelist");
     const parsed = DelistRequestSchema.parse(await request.json());
 
     const result = await executeEbayDelist(getPrisma() as unknown as DelistPrismaLike, {
@@ -34,7 +36,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.toPayload() }, { status: error.status });
     }
 
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: {
+            code: error.code ?? "REQUEST_FAILED",
+            message: error.message,
+          },
+        },
+        { status: error.status },
+      );
+    }
+
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
 }

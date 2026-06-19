@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
+import { partitionDeletable } from "@/lib/view/inventory-actions";
 import { mapItem } from "@/lib/view/server-map";
 
 export const runtime = "nodejs";
@@ -40,7 +41,10 @@ function parseIds(value: unknown): string[] {
   return ids;
 }
 
-// Bulk-deletes the seller's items (cascades to drafts, photos, listings, etc.).
+// Bulk-deletes the seller's draft/local items (cascades to drafts, photos,
+// etc.). Items with a live or in-flight marketplace artifact are refused and
+// returned as `blocked` so they are never silently orphaned; the seller must
+// end the live listing first. Unowned ids are dropped (seller-scoped).
 export async function DELETE(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
@@ -48,11 +52,25 @@ export async function DELETE(request: Request) {
     const ids = parseIds(body?.ids);
     const prisma = getPrisma();
 
-    const result = await prisma.inventoryItem.deleteMany({
+    const owned = await prisma.inventoryItem.findMany({
       where: { id: { in: ids }, sellerId: user.id },
+      select: { id: true, marketplaceListings: { select: { status: true } } },
     });
 
-    return NextResponse.json({ deleted: result.count });
+    const { deletable, blocked } = partitionDeletable(
+      owned.map((item) => ({
+        itemId: item.id,
+        statuses: item.marketplaceListings.map((listing) => listing.status),
+      })),
+    );
+
+    if (deletable.length > 0) {
+      await prisma.inventoryItem.deleteMany({
+        where: { id: { in: deletable }, sellerId: user.id },
+      });
+    }
+
+    return NextResponse.json({ deleted: deletable, blocked });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
     return NextResponse.json({ error: getErrorMessage(error) }, { status });

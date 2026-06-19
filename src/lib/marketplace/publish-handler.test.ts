@@ -479,6 +479,32 @@ describe("executePublish — eBay dispatch", () => {
     expect(prisma._state.updates).toHaveLength(0);
   });
 
+  it("preserves bulk correlation when a publish is not enabled", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockResolvedValue({
+      status: "not_enabled",
+      code: ebayErrorCodes.publishNotEnabled,
+      marketplace: "ebay",
+      environment: "sandbox",
+      message: "disabled",
+    });
+
+    await executePublish(
+      prisma,
+      { ...input, bulkRunId: "bulk-run-1" },
+      undefined,
+      ebayPublish,
+    );
+
+    expect(prisma._state.attempts[0].adapterResult).toMatchObject({
+      bulkRunId: "bulk-run-1",
+      code: ebayErrorCodes.publishNotEnabled,
+    });
+    expect(
+      prisma._state.events.find((event) => event.kind === "publish_blocked")?.data,
+    ).toMatchObject({ bulkRunId: "bulk-run-1" });
+  });
+
   it("persists SKU/offerId/listingId and marks the listing LISTED on success", async () => {
     const prisma = createEbayFakePrisma();
     const ebayPublish = vi.fn().mockResolvedValue({
@@ -527,6 +553,34 @@ describe("executePublish — eBay dispatch", () => {
     );
   });
 
+  it("preserves bulk correlation on successful attempt updates and events", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockResolvedValue({
+      status: "published",
+      code: "EBAY_PUBLISH_SUCCEEDED",
+      marketplace: "ebay",
+      environment: "sandbox",
+      sku: "percs_item-1",
+      offerId: "offer-1",
+      listingId: "listing-x",
+    });
+
+    await executePublish(
+      prisma,
+      { ...input, bulkRunId: "bulk-run-1" },
+      undefined,
+      ebayPublish,
+    );
+
+    expect(prisma._state.attempts[0].adapterResult).toMatchObject({
+      bulkRunId: "bulk-run-1",
+      code: "EBAY_PUBLISH_SUCCEEDED",
+    });
+    expect(prisma._state.events).not.toHaveLength(0);
+    expect(prisma._state.events.every((event) => event.data.bulkRunId === "bulk-run-1"))
+      .toBe(true);
+  });
+
   it("creates the eBay PublishAttempt before outbound publishing runs", async () => {
     const prisma = createEbayFakePrisma();
     const ebayPublish = vi.fn().mockImplementation(async () => {
@@ -550,6 +604,32 @@ describe("executePublish — eBay dispatch", () => {
 
     expect(ebayPublish).toHaveBeenCalledOnce();
     expect(prisma._state.events[0].kind).toBe("publish_started");
+  });
+
+  it("stores bulk correlation on the initial attempt and started event", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockImplementation(async () => {
+      expect(prisma._state.attempts[0].adapterResult).toEqual({
+        bulkRunId: "bulk-run-1",
+      });
+      expect(prisma._state.events[0].data).toMatchObject({
+        bulkRunId: "bulk-run-1",
+      });
+      return {
+        status: "not_enabled",
+        code: ebayErrorCodes.publishNotEnabled,
+        marketplace: "ebay",
+        environment: "sandbox",
+        message: "disabled",
+      };
+    });
+
+    await executePublish(
+      prisma,
+      { ...input, bulkRunId: "bulk-run-1" },
+      undefined,
+      ebayPublish,
+    );
   });
 
   it("blocks duplicate eBay publish when a listing ID already exists", async () => {
@@ -764,6 +844,38 @@ describe("executePublish — eBay dispatch", () => {
       prisma._state.events.find((e) => e.kind === "publish_failed")?.data.missing,
     ).toEqual(["title"]);
     expect(prisma._state.updates).toHaveLength(0);
+  });
+
+  it("preserves bulk correlation on failed attempt updates and events", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockRejectedValue(
+      new EbayIntegrationError(
+        ebayErrorCodes.readinessFailed,
+        "not ready",
+        422,
+        { missing: ["title"] },
+      ),
+    );
+
+    await expect(
+      executePublish(
+        prisma,
+        { ...input, bulkRunId: "bulk-run-1" },
+        undefined,
+        ebayPublish,
+      ),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.readinessFailed });
+
+    expect(prisma._state.attempts[0].adapterResult).toMatchObject({
+      bulkRunId: "bulk-run-1",
+      code: ebayErrorCodes.readinessFailed,
+    });
+    const failureEvents = prisma._state.events.filter(
+      (event) => event.kind === "publish_failed",
+    );
+    expect(failureEvents).toHaveLength(1);
+    expect(failureEvents[0].kind).toBe("publish_failed");
+    expect(failureEvents[0].data.bulkRunId).toBe("bulk-run-1");
   });
 
   it("tags the failing external step on a mid-flow API failure", async () => {

@@ -12,6 +12,77 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-19 — Claude. **Alpha Live Actions Tasks 4–9 completed on
+`feature/alpha-live-actions` (worktree). No deploy, no env changes, no live
+marketplace calls, no migrations.**
+- Task 4 (`c367c20`): safe bulk eBay publish server — request schemas + bounded
+  `processInChunks`, `preflightBulkEbayPublish`/`executeBulkEbayPublish` built on
+  `executePublish` per item, `/api/listings/publish/bulk` (+preflight) routes. No
+  seller-visible item cap; high configurable transport ceiling only.
+- Task 5 (`a48dabe`): bulk publish UI — presentational `BulkPublishModal`, inventory
+  selection flow (preflight on open, explicit confirm, refresh after), API client
+  with internal chunking sharing one `bulkRunId`.
+- Task 6 (`8044fab`): honest single-item actions + delete safety — `inventory-actions`
+  util, server `DELETE /api/listings` partitions live listings into `blocked`,
+  feature-aware publish/delist rendering, real "View live" link, Archive/Delete-draft.
+- Task 7 (`705c9ab`): search + dead-action audit — `matchesItemSearch` (title/brand/
+  category/status/lifecycle/id), `/api/jobs` reports eBay live publish from gate +
+  entitlement, channels page dead controls replaced with real links, sync kept
+  "not available yet".
+- Task 8 (`c75311f`): read-only admin marketplace-operations API + page (safe fields
+  only) and shared `AdminNav`.
+- Task 9 (this commit): `.env.example` feature/admin/bulk vars + production caps,
+  `docs/ALPHA_LIVE_ACTIONS.md` runbook, README link.
+- Evidence: focused tests green per task (Task 4: 26, Task 5: 24, Task 6: 31,
+  Task 7: 19, Task 8: 18 admin).
+- Task 10 full gate (this commit) GREEN: `prisma generate` OK, `prisma validate`
+  valid, `tsc --noEmit` exit 0, `eslint` 0 errors (2 pre-existing warnings in
+  `draft-actions.test.ts`), full `npm test` **114 files / 781 tests pass**,
+  `npm run build` exit 0. Build classifies `/admin/marketplace-operations` and
+  `/api/admin/marketplace-operations` plus the bulk publish routes as ƒ dynamic.
+  Audit: no new migrations, no `prisma db push`, no raw token/payload or provider
+  IDs in seller UI (admin route extracts only `bulkRunId` from `adapterResult`).
+
+**Current state:** Tasks 1–10 complete on `feature/alpha-live-actions`. Tasks 11–12
+(production rollout) intentionally NOT started. All live gates remain
+OFF/fail-closed; no allowlists populated. No deploy, no env changes.
+
+**Blocked on owner:** None for code. Production rollout (enabling switches +
+allowlists + deploy) awaits explicit owner authorization.
+
+**Next up:** Run Task 10 full gate; then, only on owner instruction, follow
+`docs/ALPHA_LIVE_ACTIONS.md` for the controlled enable + smoke + rollback.
+
+## Previous update
+2026-06-18 — Codex. **Task 3 paid-comp entitlement and identity enforcement completed on
+`feature/alpha-live-actions` (this handoff's containing commit). No deploy, env changes,
+live paid calls, migrations, or marketplace actions.**
+- Paid comp sources now default denied in `runCompFetch`; callers must pass
+  `paidProvidersAllowed: true`. Non-entitled runs exclude paid sources before ledger
+  reservation, while free sources and manual comps remain available.
+- Weak identity can no longer be bypassed with `force:true`: paid sources receive
+  zero-cost `weak_identity` ledger skips, free sources still run, and no usable free
+  evidence persists `skipped_weak_identity` with seller-safe guidance.
+- Refresh requires `paidComps` access before database/provider work; draft creation
+  derives access from the authenticated email; comps GET combines the global switch
+  with entitlement and removes provider ids/raw errors from seller responses.
+- Auto Pricing uses `FeatureAccessProvider`: nonallowlisted sellers see the selected-
+  alpha message and manual action without an inert refresh button; entitled sellers
+  keep refresh, spinner, cooldown, and safe limit/identity copy.
+- TDD evidence: focused RED was 6 failures/27, then GREEN 27/27. Final gates: focused
+  27/27, comps/draft scope 131/131, full suite 106 files/720 tests, `tsc` clean,
+  Prisma valid, build green, lint 0 errors (2 pre-existing warnings).
+
+**Current state:** Task 1/2 are preserved and Task 3 is complete on the feature branch.
+The only out-of-list fixture update is `comps/get-metadata.test.ts`, required to mock
+Task 1's `server-only` import after the GET route began reading feature access.
+
+**Blocked on owner:** None for Task 3.
+
+**Next up:** Review/integrate the Task 3 commit; keep paid providers disabled/capped
+until an explicitly authorized alpha validation window.
+
+## Previous update
 2026-06-18 — Claude. **PR #42 (publish-flow dead-end fix) SHIPPED TO PRODUCTION.**
 Merged `feature/publish-flow-clarity` -> `develop` (PR #42, merge `26b2b78`), then
 `[deploy]` merge `develop` -> `main` (`9860ca7`) + pushed. Vercel released

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { featureAccessForUser } from "@/lib/auth/feature-access";
 import {
   compsRefreshCooldownMs,
   evaluateRefreshCooldown,
@@ -8,6 +9,11 @@ import {
 import { isAutoDiscoveryEnabled } from "@/lib/comps/fetch";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { enabledCompSources } from "@/lib/comps/registry";
+import {
+  friendlySourceLabel,
+  friendlySourceLabels,
+  sellerSafeSourceErrors,
+} from "@/lib/comps/seller-copy";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { calculatePricing } from "@/lib/pricing/comps";
 import { CreatePriceCompRequestSchema } from "@/lib/pricing/price-comp-input";
@@ -20,6 +26,8 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
+    const paidProvidersEnabled =
+      isCompsPaidProvidersEnabled() && featureAccessForUser(user).paidComps;
     const prisma = getPrisma();
 
     const requestedItemId = new URL(request.url).searchParams.get("inventoryItemId");
@@ -43,7 +51,7 @@ export async function GET(request: Request) {
         discovery: {
           status: isAutoDiscoveryEnabled() ? "not_run" : "disabled",
           autoDiscoveryEnabled: isAutoDiscoveryEnabled(),
-          paidProvidersEnabled: isCompsPaidProvidersEnabled(),
+          paidProvidersEnabled,
           enabledSources: [],
           queries: [],
           sourceErrors: [],
@@ -63,7 +71,15 @@ export async function GET(request: Request) {
       }),
     ]);
     const summary = summarizeComps(comps);
-    const enabledSources = enabledCompSources().map((source) => source.id);
+    const enabledSources = friendlySourceLabels(
+      enabledCompSources().map((source) => source.id),
+    );
+    const sellerComps = comps.map((comp) => ({
+      ...comp,
+      source: comp.source.startsWith("auto:")
+        ? friendlySourceLabel(comp.source)
+        : comp.source,
+    }));
     const cooldown = evaluateRefreshCooldown({
       lastRunAt: lastRun?.createdAt ?? null,
       now: new Date(),
@@ -72,7 +88,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       inventoryItemId: inventoryItem.id,
-      comps,
+      comps: sellerComps,
       summary,
       discovery: {
         status:
@@ -85,10 +101,10 @@ export async function GET(request: Request) {
               : "source_unavailable"
             : "disabled"),
         autoDiscoveryEnabled: isAutoDiscoveryEnabled(),
-        paidProvidersEnabled: isCompsPaidProvidersEnabled(),
+        paidProvidersEnabled,
         enabledSources,
         queries: lastRun?.queries ?? [],
-        sourceErrors: lastRun?.sourceErrors ?? [],
+        sourceErrors: sellerSafeSourceErrors(lastRun?.sourceErrors),
         lastRunAt: lastRun?.createdAt ?? null,
         acceptedCount: lastRun?.acceptedCount ?? null,
         rejectedCount: lastRun?.rejectedCount ?? null,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { mapItem } from "./server-map";
+import { mapAttempt, mapItem } from "./server-map";
 
 function item() {
   const now = new Date("2026-06-11T12:00:00Z");
@@ -125,5 +125,41 @@ describe("mapItem publish channel gating", () => {
     const ebay = mapItem(item()).channels.find((channel) => channel.marketplace === "ebay");
 
     expect(ebay?.publishImplemented).toBe(false);
+  });
+});
+
+describe("mapAttempt bulk correlation", () => {
+  it("extracts only the bulk run id from adapter metadata", () => {
+    const now = new Date("2026-06-18T12:00:00Z");
+    const view = mapAttempt({
+      id: "attempt-1",
+      status: "RUNNING",
+      code: "EBAY_PUBLISH_STARTED",
+      reason: null,
+      adapterResult: {
+        bulkRunId: "bulk-run-1",
+        internalAdapterPayload: "do-not-expose",
+      },
+      startedAt: now,
+      createdAt: now,
+      completedAt: null,
+      marketplaceListing: {
+        marketplace: "ebay",
+        environment: "sandbox",
+        status: "NOT_LISTED",
+        sku: null,
+        externalOfferId: null,
+        externalListingId: null,
+        lastError: null,
+        inventoryItem: {
+          id: "item-1",
+          productName: "Nike Air Max 1",
+          listingDrafts: [],
+        },
+      },
+    } as unknown as Parameters<typeof mapAttempt>[0]);
+
+    expect(view.bulkRunId).toBe("bulk-run-1");
+    expect(view).not.toHaveProperty("internalAdapterPayload");
   });
 });

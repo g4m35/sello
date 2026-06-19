@@ -222,6 +222,8 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
     typeof ebayError?.status === "number" ? ebayError.status : null;
   const ebayErrorMessage =
     typeof ebayError?.message === "string" ? ebayError.message : null;
+  const bulkRunId =
+    typeof adapterResult?.bulkRunId === "string" ? adapterResult.bulkRunId : null;
   return {
     id: attempt.id,
     itemId: item.id,
@@ -253,6 +255,7 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
     failedStep,
     ebayErrorStatus,
     ebayErrorMessage,
+    bulkRunId,
   };
 }
 

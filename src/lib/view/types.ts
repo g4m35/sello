@@ -84,6 +84,7 @@ export type AttemptView = {
   failedStep: string | null;
   ebayErrorStatus: number | null;
   ebayErrorMessage: string | null;
+  bulkRunId: string | null;
 };
 
 export type EbayOrphanArtifactView = {

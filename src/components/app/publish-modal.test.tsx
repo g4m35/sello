@@ -7,6 +7,21 @@ vi.mock("@/components/providers/session-provider", () => ({
   useSession: () => ({ token: "test-token" }),
 }));
 
+const featureMock = vi.hoisted(() => ({
+  access: { liveEbayPublish: true, ebayDelist: false, paidComps: false },
+  copy: {
+    liveEbayPublish:
+      "Live eBay publishing is currently enabled for selected alpha accounts.",
+    ebayDelist:
+      "Live eBay delisting is currently enabled for selected alpha accounts.",
+    paidComps: "Fresh sold comps are currently enabled for selected alpha accounts.",
+  },
+}));
+
+vi.mock("@/components/providers/feature-access-provider", () => ({
+  useFeatureAccess: () => ({ loading: false, ...featureMock }),
+}));
+
 import { PublishModal } from "./publish-modal";
 
 function item(overrides: Partial<ItemView> = {}): ItemView {
@@ -94,5 +109,22 @@ describe("PublishModal", () => {
     expect(html).not.toContain("Create live eBay listing");
     expect(html).toContain("enabled yet");
     expect(html).toContain("Record publish attempt");
+  });
+
+  it("promotes preview with alpha copy and no live action for non-allowlisted sellers", () => {
+    featureMock.access.liveEbayPublish = false;
+    try {
+      const html = renderToStaticMarkup(
+        <PublishModal open onClose={() => undefined} item={item()} />,
+      );
+
+      expect(html).toContain(
+        "Live eBay publishing is currently enabled for selected alpha accounts.",
+      );
+      expect(html).not.toContain("Create live eBay listing");
+      expect(html).not.toContain("I understand this creates a live eBay listing");
+    } finally {
+      featureMock.access.liveEbayPublish = true;
+    }
   });
 });

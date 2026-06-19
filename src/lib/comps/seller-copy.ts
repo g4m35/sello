@@ -32,14 +32,12 @@ export function friendlySourceLabels(ids: string[]): string[] {
 }
 
 const MANUAL_STILL_WORKS = "Manual comps still work.";
+const GENERIC_SOURCE_ERROR = "A pricing source was temporarily unavailable. Try again later.";
 
 function noteForSkip(message: string): string | null {
   const m = message.toLowerCase();
   if (m.includes("identity")) {
     return "Add a more specific brand, exact product name, or model so we can find sold comps.";
-  }
-  if (m.includes("paid_providers_disabled") || m.includes("paid comp provider")) {
-    return `Fresh sold comps are disabled right now. ${MANUAL_STILL_WORKS}`;
   }
   if (m.includes("budget")) {
     return `Fresh sold comps are paused for now (daily limit reached). ${MANUAL_STILL_WORKS}`;
@@ -50,10 +48,32 @@ function noteForSkip(message: string): string | null {
   if (m.includes("cooldown")) {
     return "Sold comps were just refreshed. Try again shortly.";
   }
+  if (m.includes("paid_providers_disabled") || m.includes("paid comp provider")) {
+    return `Fresh sold comps are disabled right now. ${MANUAL_STILL_WORKS}`;
+  }
   if (m.includes("fail") || m.includes("error") || m.includes("unavailable")) {
     return "A pricing source was temporarily unavailable. Try again later.";
   }
   return null;
+}
+
+/** Convert persisted provider diagnostics into a safe response for seller-facing APIs. */
+export function sellerSafeSourceErrors(value: unknown): CompSkip[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const source = "source" in entry && typeof entry.source === "string"
+      ? entry.source
+      : "unknown";
+    const message = "message" in entry && typeof entry.message === "string"
+      ? entry.message
+      : "";
+    return [{
+      source: source === "sello" ? "Sello" : friendlySourceLabel(source),
+      message: noteForSkip(message) ?? GENERIC_SOURCE_ERROR,
+    }];
+  });
 }
 
 export type PricingNotesInput = {
