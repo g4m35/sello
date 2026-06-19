@@ -31,6 +31,16 @@ export function friendlySourceLabels(ids: string[]): string[] {
   return out;
 }
 
+/** Preserve seller-entered source names while hiding automatic provider ids. */
+export function sellerSafeCompRows<T extends { source: string }>(rows: T[]): T[] {
+  return rows.map((row) => ({
+    ...row,
+    source: row.source.startsWith("auto:")
+      ? friendlySourceLabel(row.source)
+      : row.source,
+  }));
+}
+
 const MANUAL_STILL_WORKS = "Manual comps still work.";
 const GENERIC_SOURCE_ERROR = "A pricing source was temporarily unavailable. Try again later.";
 
