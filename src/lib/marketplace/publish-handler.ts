@@ -192,6 +192,7 @@ export type ExecutePublishInput = {
   userId: string;
   inventoryItemId: string;
   marketplace: Marketplace;
+  bulkRunId?: string;
 };
 
 export type ExecutePublishResult = {
@@ -271,7 +272,10 @@ export async function executePublish(
         status: "NOT_IMPLEMENTED",
         code: outcome.code,
         reason: outcome.reason,
-        adapterResult: outcome as unknown as Prisma.InputJsonValue,
+        adapterResult: {
+          ...outcome,
+          ...bulkRunMetadata(input.bulkRunId),
+        } as unknown as Prisma.InputJsonValue,
         requestedBy: input.userId,
         completedAt,
       },
@@ -286,6 +290,7 @@ export async function executePublish(
           status: "NOT_IMPLEMENTED",
           attemptId: attempt.id,
           marketplace: input.marketplace,
+          ...bulkRunMetadata(input.bulkRunId),
         },
       },
     });
@@ -378,7 +383,9 @@ async function executeEbayPublish(
           idempotencyKey,
           code: "EBAY_PUBLISH_STARTED",
           reason: null,
-          adapterResult: null as unknown as Prisma.InputJsonValue,
+          adapterResult: (input.bulkRunId === undefined
+            ? null
+            : { bulkRunId: input.bulkRunId }) as unknown as Prisma.InputJsonValue,
           requestedBy: input.userId,
           completedAt: null,
         },
@@ -393,6 +400,7 @@ async function executeEbayPublish(
             environment,
             idempotencyKey,
             startedAt: startedAt.toISOString(),
+            ...bulkRunMetadata(input.bulkRunId),
           },
         },
       });
@@ -421,7 +429,13 @@ async function executeEbayPublish(
       inventoryItemId: input.inventoryItemId,
     });
   } catch (error) {
-    await recordEbayFailure(prisma, listing.id, attempt.id, error);
+    await recordEbayFailure(
+      prisma,
+      listing.id,
+      attempt.id,
+      error,
+      input.bulkRunId,
+    );
     throw error;
   }
 
@@ -431,7 +445,10 @@ async function executeEbayPublish(
         status: "NOT_IMPLEMENTED",
         code: result.code,
         reason: result.message,
-        adapterResult: result as unknown as Prisma.InputJsonValue,
+        adapterResult: {
+          ...result,
+          ...bulkRunMetadata(input.bulkRunId),
+        } as unknown as Prisma.InputJsonValue,
         completedAt: new Date(),
       });
 
@@ -444,6 +461,7 @@ async function executeEbayPublish(
             attemptId: attempt.id,
             marketplace: "ebay",
             environment,
+            ...bulkRunMetadata(input.bulkRunId),
           },
         },
       });
@@ -464,7 +482,10 @@ async function executeEbayPublish(
       status: "SUCCEEDED",
       code: result.code,
       reason: null,
-      adapterResult: result as unknown as Prisma.InputJsonValue,
+      adapterResult: {
+        ...result,
+        ...bulkRunMetadata(input.bulkRunId),
+      } as unknown as Prisma.InputJsonValue,
       completedAt: new Date(),
     });
 
@@ -476,15 +497,25 @@ async function executeEbayPublish(
           attemptId: attempt.id,
           marketplace: "ebay",
           environment,
+          ...bulkRunMetadata(input.bulkRunId),
         } as Prisma.InputJsonValue,
       })),
       {
         kind: "ebay_inventory_item_created",
-        data: { sku: result.sku, attemptId: attempt.id },
+        data: {
+          sku: result.sku,
+          attemptId: attempt.id,
+          ...bulkRunMetadata(input.bulkRunId),
+        },
       },
       {
         kind: "ebay_offer_created",
-        data: { offerId: result.offerId, sku: result.sku, attemptId: attempt.id },
+        data: {
+          offerId: result.offerId,
+          sku: result.sku,
+          attemptId: attempt.id,
+          ...bulkRunMetadata(input.bulkRunId),
+        },
       },
       {
         kind: "ebay_offer_published",
@@ -492,6 +523,7 @@ async function executeEbayPublish(
           listingId: result.listingId,
           offerId: result.offerId,
           attemptId: attempt.id,
+          ...bulkRunMetadata(input.bulkRunId),
         },
       },
     ];
@@ -592,6 +624,7 @@ async function recordEbayFailure(
   marketplaceListingId: string,
   publishAttemptId: string,
   error: unknown,
+  bulkRunId?: string,
 ): Promise<void> {
   const code =
     error instanceof EbayIntegrationError ? error.code : "EBAY_PUBLISH_FAILED";
@@ -644,6 +677,7 @@ async function recordEbayFailure(
         stepEvents,
         startedSteps,
         succeededSteps,
+        ...bulkRunMetadata(bulkRunId),
       } as unknown as Prisma.InputJsonValue,
       completedAt: new Date(),
     });
@@ -658,6 +692,7 @@ async function recordEbayFailure(
             step: stepEvent.step,
             attemptId: publishAttemptId,
             marketplace: "ebay",
+            ...bulkRunMetadata(bulkRunId),
           },
         },
       });
@@ -676,12 +711,17 @@ async function recordEbayFailure(
           succeededSteps,
           attemptId: publishAttemptId,
           marketplace: "ebay",
+          ...bulkRunMetadata(bulkRunId),
         } as unknown as Prisma.InputJsonValue,
       },
     });
 
     return { id: publishAttemptId };
   });
+}
+
+function bulkRunMetadata(bulkRunId: string | undefined): { bulkRunId?: string } {
+  return bulkRunId === undefined ? {} : { bulkRunId };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -47,6 +47,7 @@ function attempt(overrides: Partial<AttemptView> = {}): AttemptView {
     failedStep: null,
     ebayErrorStatus: null,
     ebayErrorMessage: null,
+    bulkRunId: null,
     ...overrides,
   };
 }
