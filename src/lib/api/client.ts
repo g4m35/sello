@@ -350,6 +350,23 @@ export const api = {
       rows: ProviderUsageRow[];
     }>("/api/admin/provider-usage", token),
 
+  getAdminMarketplaceOperations: (token: string) =>
+    request<{
+      access: { liveEbayPublish: string[]; ebayDelist: string[]; paidComps: string[] };
+      attempts: {
+        id: string;
+        requestedBy: string;
+        itemId: string;
+        itemTitle: string;
+        action: "publish" | "delist" | "cleanup";
+        status: string;
+        code: string;
+        bulkRunId: string | null;
+        externalListingId: string | null;
+        createdAt: string;
+      }[];
+    }>("/api/admin/marketplace-operations", token),
+
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{
       adapters: {

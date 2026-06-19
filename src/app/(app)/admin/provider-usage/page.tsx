@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { AdminNav } from "@/components/app/admin-nav";
 import { Topbar } from "@/components/app/topbar";
 import { useSession } from "@/components/providers/session-provider";
 import { api, type ProviderUsageRow } from "@/lib/api/client";
@@ -45,7 +46,10 @@ export default function AdminProviderUsagePage() {
     return (
       <>
         <Topbar crumbs={["Admin", "Provider usage"]} />
-        <div className="page t-small muted">{error}</div>
+        <div className="page">
+          <AdminNav active="/admin/provider-usage" />
+          <div className="t-small muted">{error}</div>
+        </div>
       </>
     );
   }
@@ -65,6 +69,7 @@ export default function AdminProviderUsagePage() {
     <>
       <Topbar crumbs={["Admin", "Provider usage"]} />
       <div className="page stack-3">
+        <AdminNav active="/admin/provider-usage" />
         <div className="row" style={{ justifyContent: "space-between" }}>
           <h1 className="t-h2">Paid comp provider usage</h1>
           <span className={`badge ${paidEnabled ? "badge--ready" : ""}`}>

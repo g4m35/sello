@@ -535,17 +535,17 @@ git commit -m "fix: remove dead marketplace actions"
 - Modify: `src/app/(app)/admin/feedback/page.tsx`
 - Modify: `src/lib/api/client.ts`
 
-- [ ] **Step 1: Write failing admin route tests**
+- [x] **Step 1: Write failing admin route tests**
 
 Cover unauthenticated/non-admin 404 behavior, exact configured feature-email visibility only to admins, recent publish/delist attempts, bulk run IDs, safe eBay identifiers/status, and exclusion of adapter payloads, tokens, environment values, raw errors, and provider response data.
 
-- [ ] **Step 2: Verify admin tests fail**
+- [x] **Step 2: Verify admin tests fail**
 
 Run: `npm test -- src/app/api/admin/marketplace-operations/route.test.ts`
 
 Expected: FAIL because the route does not exist.
 
-- [ ] **Step 3: Implement read-only admin operations API**
+- [x] **Step 3: Implement read-only admin operations API**
 
 Use `requireAdminUser`. Return:
 
@@ -569,17 +569,17 @@ Use `requireAdminUser`. Return:
 
 Map only selected safe fields. Log unexpected failures as `admin_marketplace_operations_fetch_failed` and return that generic code.
 
-- [ ] **Step 4: Implement the admin page/navigation**
+- [x] **Step 4: Implement the admin page/navigation**
 
 Add a compact admin nav shared by feedback, provider usage, and marketplace operations. Show allowlist membership, paid usage link/cards, and recent item-level publish/delist/bulk results. Keep the existing server layout guard and independent API guard.
 
-- [ ] **Step 5: Run admin tests and build route classification check**
+- [x] **Step 5: Run admin tests and build route classification check**
 
 Run: `npm test -- src/app/api/admin src/app/'(app)'/admin`
 
 Expected: PASS. Later `npm run build` must classify `/admin/marketplace-operations` as a dynamic server-rendered route.
 
-- [ ] **Step 6: Commit admin operations visibility**
+- [x] **Step 6: Commit admin operations visibility**
 
 ```bash
 git add src/app/api/admin/marketplace-operations 'src/app/(app)/admin' src/components/app/admin-nav.tsx src/lib/api/client.ts
