@@ -26,6 +26,7 @@ describe("explicit comp refresh route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("PAID_COMPS_EMAILS", "allowed@example.com");
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
     mocks.requireSupabaseUser.mockResolvedValue({
       id: "user-1",
       email: "allowed@example.com",
@@ -54,6 +55,27 @@ describe("explicit comp refresh route", () => {
       error: {
         code: "PAID_COMPS_ALPHA_ONLY",
         message: "Fresh sold comps are currently enabled for selected alpha accounts.",
+      },
+    });
+    expect(mocks.getPrisma).not.toHaveBeenCalled();
+    expect(mocks.runCompFetch).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe non-500 response before DB, ledger, or provider work when paid providers are disabled", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "");
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "PAID_COMPS_DISABLED",
+        message: "Fresh sold comps are disabled right now. Manual comps still work.",
       },
     });
     expect(mocks.getPrisma).not.toHaveBeenCalled();

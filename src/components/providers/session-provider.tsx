@@ -12,6 +12,10 @@ import type { Session } from "@supabase/supabase-js";
 
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 
+const SESSION_BOOTSTRAP_TIMEOUT_MS = 10_000;
+const SESSION_BOOTSTRAP_ERROR =
+  "We couldn't verify your session. Retry or sign in again.";
+
 type SessionContextValue = {
   session: Session;
   token: string;
@@ -44,6 +48,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [sessionReloadKey, setSessionReloadKey] = useState(0);
 
   // Display name: an override (set right after saving) wins, otherwise read it
   // from the session metadata. Derived in render to avoid effect-based syncing.
@@ -55,15 +61,45 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    let active = true;
+
+    const timeout = setTimeout(() => {
+      if (!active) return;
+      setSession(null);
+      setAuthError(SESSION_BOOTSTRAP_ERROR);
       setReady(true);
-    });
+    }, SESSION_BOOTSTRAP_TIMEOUT_MS);
+
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        clearTimeout(timeout);
+        setSession(data.session);
+        setAuthError(null);
+        setReady(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        clearTimeout(timeout);
+        setSession(null);
+        setAuthError(SESSION_BOOTSTRAP_ERROR);
+        setReady(true);
+      });
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+    } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!active) return;
+      clearTimeout(timeout);
+      setSession(next);
+      setAuthError(null);
+      setReady(true);
+    });
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
+  }, [supabase, sessionReloadKey]);
 
   async function handleSignIn(event: FormEvent) {
     event.preventDefault();
@@ -162,6 +198,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
               Cross-list streetwear, sneakers, and hype fashion in one place.
             </div>
           </div>
+          {authError && (
+            <div className="banner banner--warn">
+              <div>
+                <div className="banner__title">{"We couldn't verify your session"}</div>
+                <div className="banner__desc">{authError}</div>
+              </div>
+              <button
+                className="btn btn--secondary"
+                type="button"
+                onClick={() => {
+                  setReady(false);
+                  setAuthError(null);
+                  setSessionReloadKey((key) => key + 1);
+                }}
+              >
+                Retry session
+              </button>
+            </div>
+          )}
           <label className="field">
             <span className="field__label">Email</span>
             <input

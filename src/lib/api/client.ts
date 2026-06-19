@@ -101,21 +101,45 @@ export type CompsSummary = {
   confidenceReasons?: string[];
 };
 
+type RequestOptions = RequestInit & { timeoutMs?: number };
+const READ_REQUEST_TIMEOUT_MS = 10_000;
+
 async function request<T>(
   path: string,
   token: string,
-  init?: RequestInit,
+  init?: RequestOptions,
 ): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
+  const { timeoutMs, ...fetchInit } = init ?? {};
+  const controller = timeoutMs ? new AbortController() : null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const fetchPromise = fetch(path, {
+    ...fetchInit,
+    signal: fetchInit.signal ?? controller?.signal,
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(init?.body && !(init.body instanceof FormData)
+      ...(fetchInit.body && !(fetchInit.body instanceof FormData)
         ? { "Content-Type": "application/json" }
         : {}),
-      ...(init?.headers ?? {}),
+      ...(fetchInit.headers ?? {}),
     },
   });
+
+  const res = timeoutMs
+    ? await Promise.race([
+        fetchPromise,
+        new Promise<Response>((_, reject) => {
+          timeout = setTimeout(() => {
+            controller?.abort();
+            reject({
+              error: "The request took too long. Please try again.",
+              status: 408,
+            } satisfies ApiError);
+          }, timeoutMs);
+        }),
+      ]).finally(() => {
+        if (timeout) clearTimeout(timeout);
+      })
+    : await fetchPromise;
 
   const text = await res.text();
   const json = text ? JSON.parse(text) : {};
@@ -180,13 +204,17 @@ function mergeBulkExecution(
 
 export const api = {
   getFeatureAccess: (token: string) =>
-    request<FeatureAccessResponse>("/api/capabilities", token),
+    request<FeatureAccessResponse>("/api/capabilities", token, {
+      timeoutMs: READ_REQUEST_TIMEOUT_MS,
+    }),
 
   listItems: (token: string) =>
     request<{ items: ItemView[] }>("/api/listings", token),
 
   getItem: (token: string, id: string) =>
-    request<{ item: ItemDetailView }>(`/api/listings/${id}`, token),
+    request<{ item: ItemDetailView }>(`/api/listings/${id}`, token, {
+      timeoutMs: READ_REQUEST_TIMEOUT_MS,
+    }),
 
   getHistory: (token: string) =>
     request<{ attempts: AttemptView[] }>("/api/history", token),
@@ -223,7 +251,9 @@ export const api = {
         rejectedCount?: number | null;
         cooldownSecondsRemaining?: number;
       };
-    }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token),
+    }>(`/api/listings/comps?inventoryItemId=${encodeURIComponent(itemId)}`, token, {
+      timeoutMs: READ_REQUEST_TIMEOUT_MS,
+    }),
 
   addComp: (
     token: string,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import { ItemUpdateSchema } from "@/lib/listing-item-update";
 import { getPrisma } from "@/lib/prisma";
 import { createSupabaseServiceClient, requireSupabaseUser } from "@/lib/supabase/server";
@@ -67,8 +67,12 @@ export async function GET(
       item: mapItemDetail(item, attempts.map(mapAttempt), photoUrls),
     });
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    const { status, body } = safeErrorResponse(error, {
+      label: "listing_get",
+      fallbackCode: "LISTING_LOAD_FAILED",
+      fallbackMessage: "Couldn't load this listing right now. Please try again.",
+    });
+    return NextResponse.json(body, { status });
   }
 }
 
@@ -118,7 +122,11 @@ export async function PATCH(
     }
     return NextResponse.json({ ok: true, item });
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    const { status, body } = safeErrorResponse(error, {
+      label: "listing_update",
+      fallbackCode: "LISTING_UPDATE_FAILED",
+      fallbackMessage: "Couldn't save this listing right now. Please try again.",
+    });
+    return NextResponse.json(body, { status });
   }
 }
