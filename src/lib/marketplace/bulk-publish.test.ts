@@ -1,0 +1,139 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+import {
+  executeBulkEbayPublish,
+  preflightBulkEbayPublish,
+  type BulkItemResult,
+  type BulkPublishDeps,
+  type ItemPreflightOutcome,
+} from "./bulk-publish";
+
+function u(i: number): string {
+  return `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+}
+
+const config = { maxItemsPerRequest: 1000, chunkSize: 10, concurrency: 2 };
+
+function deps(over: Partial<BulkPublishDeps> = {}): BulkPublishDeps {
+  return {
+    config,
+    preflightItem: vi.fn(async (): Promise<ItemPreflightOutcome> => ({ status: "ready" })),
+    executeItem: vi.fn(
+      async ({ itemId }): Promise<BulkItemResult> => ({
+        itemId,
+        status: "published",
+        message: "Listed on eBay.",
+        externalListingId: "1100" + itemId.slice(-4),
+      }),
+    ),
+    ...over,
+  };
+}
+
+describe("preflightBulkEbayPublish", () => {
+  it("preflights every selected id and tallies ready/needs_details/skipped/rejected", async () => {
+    const map: Record<string, ItemPreflightOutcome> = {
+      [u(1)]: { status: "ready" },
+      [u(2)]: { status: "needs_details", missing: ["Title", "Price"] },
+      [u(3)]: { status: "skipped" },
+      [u(4)]: { status: "rejected" },
+    };
+    const d = deps({ preflightItem: vi.fn(async ({ itemId }) => map[itemId]) });
+
+    const res = await preflightBulkEbayPublish(
+      {} as never,
+      { userId: "user-1", itemIds: [u(1), u(2), u(3), u(4)], livePublishAllowed: true },
+      d,
+    );
+
+    expect(res.total).toBe(4);
+    expect(res.readyCount).toBe(1);
+    expect(res.needsDetailsCount).toBe(1);
+    expect(res.skippedCount).toBe(1);
+    expect(res.rejectedCount).toBe(1);
+    expect(res.items.find((i) => i.itemId === u(2))?.missing).toEqual(["Title", "Price"]);
+    expect(res.livePublishAllowed).toBe(true);
+    expect(res.alphaCopy).toBeUndefined();
+  });
+
+  it("is available to non-allowlisted users with alpha copy and no live action", async () => {
+    const res = await preflightBulkEbayPublish(
+      {} as never,
+      { userId: "user-1", itemIds: [u(1)], livePublishAllowed: false },
+      deps(),
+    );
+    expect(res.livePublishAllowed).toBe(false);
+    expect(res.alphaCopy).toMatch(/alpha accounts/i);
+  });
+
+  it("dedupes selected ids before preflighting", async () => {
+    const preflightItem = vi.fn(async (): Promise<ItemPreflightOutcome> => ({ status: "ready" }));
+    const res = await preflightBulkEbayPublish(
+      {} as never,
+      { userId: "user-1", itemIds: [u(1), u(1), u(2)], livePublishAllowed: true },
+      deps({ preflightItem }),
+    );
+    expect(res.total).toBe(2);
+    expect(preflightItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("never exceeds configured concurrency across many items", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const preflightItem = vi.fn(async (): Promise<ItemPreflightOutcome> => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight -= 1;
+      return { status: "ready" };
+    });
+    await preflightBulkEbayPublish(
+      {} as never,
+      { userId: "user-1", itemIds: Array.from({ length: 25 }, (_, i) => u(i + 1)), livePublishAllowed: true },
+      deps({ preflightItem }),
+    );
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("executeBulkEbayPublish", () => {
+  it("publishes 25 items across chunks with one shared bulkRunId", async () => {
+    const seenRunIds = new Set<string>();
+    const executeItem = vi.fn(async ({ itemId, bulkRunId }): Promise<BulkItemResult> => {
+      seenRunIds.add(bulkRunId);
+      return { itemId, status: "published", message: "Listed on eBay." };
+    });
+    const ids = Array.from({ length: 25 }, (_, i) => u(i + 1));
+
+    const res = await executeBulkEbayPublish(
+      {} as never,
+      { userId: "user-1", itemIds: ids, bulkRunId: u(999) },
+      deps({ executeItem }),
+    );
+
+    expect(res.total).toBe(25);
+    expect(res.publishedCount).toBe(25);
+    expect(res.items.map((i) => i.itemId)).toEqual(ids);
+    expect([...seenRunIds]).toEqual([u(999)]);
+  });
+
+  it("isolates a thrown error into a stable failed result without stopping others", async () => {
+    const executeItem = vi.fn(async ({ itemId }): Promise<BulkItemResult> => {
+      if (itemId === u(2)) throw new Error("DB token=secret-xyz exploded");
+      return { itemId, status: "published", message: "Listed on eBay." };
+    });
+    const res = await executeBulkEbayPublish(
+      {} as never,
+      { userId: "user-1", itemIds: [u(1), u(2), u(3)], bulkRunId: u(999) },
+      deps({ executeItem }),
+    );
+
+    expect(res.publishedCount).toBe(2);
+    expect(res.failedCount).toBe(1);
+    const failed = res.items.find((i) => i.itemId === u(2));
+    expect(failed?.status).toBe("failed");
+    expect(JSON.stringify(res)).not.toContain("secret-xyz");
+  });
+});

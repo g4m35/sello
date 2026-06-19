@@ -4,6 +4,7 @@ import {
   compsRefreshCooldownMs,
   evaluateRefreshCooldown,
 } from "@/lib/comps/cooldown";
+import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
@@ -16,6 +17,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
+    requireFeatureAccess(user, "paidComps");
     const body = await request.json();
     const inventoryItemId: unknown = body?.inventoryItemId;
     if (typeof inventoryItemId !== "string" || !inventoryItemId) {
@@ -52,10 +54,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await runCompFetch(prisma, inventoryItemId, user.id, { force: true });
+    const result = await runCompFetch(prisma, inventoryItemId, user.id, {
+      force: true,
+      paidProvidersAllowed: true,
+    });
     return NextResponse.json(result);
   } catch (error) {
-    const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: {
+            code: error.code ?? "REQUEST_FAILED",
+            message: error.message,
+          },
+        },
+        { status: error.status },
+      );
+    }
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 });
   }
 }

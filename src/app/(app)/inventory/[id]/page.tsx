@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
+import { useFeatureAccess } from "@/components/providers/feature-access-provider";
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
 import { Badge, Banner, Btn, Check, Ring } from "@/components/ui/primitives";
@@ -31,6 +32,10 @@ import {
   splitTitle,
 } from "@/lib/view/format";
 import { analyzeListing } from "@/lib/listing/intelligence";
+import {
+  ebayChannelUrl,
+  resolveRemoveAction,
+} from "@/lib/view/inventory-actions";
 import { mergeSavedItemState } from "@/lib/view/merge-item-state";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import {
@@ -186,6 +191,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
 export default function ListingDetailPage() {
   const router = useRouter();
   const { token } = useSession();
+  const { access, copy } = useFeatureAccess();
   const { id } = useParams<{ id: string }>();
   // Developer/admin diagnostics are opt-in via ?debug=1 so normal sellers never
   // see SKUs, offer/listing ids, or orphan-recovery language.
@@ -491,13 +497,20 @@ export default function ListingDetailPage() {
   }, [draftId, edits, item, saveAndApprove, reload]);
 
   const deleteListing = useCallback(async () => {
-    if (!window.confirm("Delete this listing? This cannot be undone.")) return;
+    if (!window.confirm("Delete this draft? This cannot be undone.")) return;
     setMenuOpen(false);
     setLifecycleBusy(true);
     setNotice(null);
     try {
-      await api.deleteItems(token, [id]);
-      router.push("/inventory");
+      const result = await api.deleteItems(token, [id]);
+      if (result.deleted.includes(id)) {
+        router.push("/inventory");
+        return;
+      }
+      setNotice(
+        "This item has a live eBay listing. End the eBay listing first, then delete it.",
+      );
+      setLifecycleBusy(false);
     } catch (e) {
       setNotice((e as { error?: string })?.error ?? "Could not delete this listing.");
       setLifecycleBusy(false);
@@ -651,10 +664,9 @@ export default function ListingDetailPage() {
     ? READINESS_ANCHORS[firstMissingCheck.id] ?? "readiness-card"
     : "readiness-card";
   const canMarkSold = item.lifecycleState === "ready" || item.lifecycleState === "active";
-  const canDelist =
-    item.lifecycleState === "draft" ||
-    item.lifecycleState === "ready" ||
-    item.lifecycleState === "active";
+  const ebayChannel = item.channels.find((c) => c.marketplace === "ebay") ?? null;
+  const liveUrl = ebayChannelUrl(ebayChannel);
+  const removeAction = resolveRemoveAction(item);
   const { head, tail } = splitTitle(item.title);
   const metaParts = [
     item.brand,
@@ -680,15 +692,17 @@ export default function ListingDetailPage() {
         right={
           <>
             <SaveIndicator state={saveState} />
-            <Btn
-              variant="ghost"
-              size="sm"
-              icon="external"
-              disabled
-              title="View live (not published)"
-            >
-              View live
-            </Btn>
+            {liveUrl && (
+              <a
+                className="btn btn--ghost btn--sm"
+                href={liveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View the live eBay listing"
+              >
+                <Icon name="external" size={13} /> View live
+              </a>
+            )}
             <Btn
               variant="secondary"
               size="sm"
@@ -736,22 +750,23 @@ export default function ListingDetailPage() {
                           <Icon name="tag" size={14} /> Mark sold
                         </button>
                       )}
-                      {canDelist && (
+                      {removeAction.kind === "archive" ? (
                         <button
                           type="button"
                           className="nav-item"
                           onClick={() => void runLifecycle("delist")}
                         >
-                          <Icon name="x-c" size={14} /> Delist
+                          <Icon name="x-c" size={14} /> {removeAction.label}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="nav-item"
+                          onClick={() => void deleteListing()}
+                        >
+                          <Icon name="trash" size={14} /> {removeAction.label}
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className="nav-item"
-                        onClick={() => void deleteListing()}
-                      >
-                        <Icon name="trash" size={14} /> Delete listing
-                      </button>
                     </div>
                   </>
                 )}
@@ -1522,6 +1537,8 @@ export default function ListingDetailPage() {
               scanningOrphans={scanningEbayOrphans}
               cleaningOrphans={cleaningEbayOrphans}
               showAdvanced={showAdvanced}
+              featureAccess={access}
+              delistAlphaCopy={copy.ebayDelist}
               onDelistEbay={() => void runEbayDelist()}
               onScanEbayOrphans={() => void runEbayOrphanScan()}
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}

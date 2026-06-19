@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { useFeatureAccess } from "@/components/providers/feature-access-provider";
 import { Banner, Btn } from "@/components/ui/primitives";
 import { useSession } from "@/components/providers/session-provider";
 import { api, type PriceCompRow } from "@/lib/api/client";
@@ -111,6 +112,7 @@ export function AutoPricing({
   onApplyPrice?: (priceCents: number) => void;
 }) {
   const { token } = useSession();
+  const featureAccess = useFeatureAccess();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   const [comps, setComps] = useState<PriceCompRow[]>([]);
@@ -287,7 +289,7 @@ export function AutoPricing({
 
   const cooldownRemaining = cooldown;
   const refreshDisabled = refreshing || cooldownRemaining > 0;
-  const refreshBtn = (
+  const refreshBtn = featureAccess.access.paidComps ? (
     <Btn
       variant="secondary"
       size="sm"
@@ -306,7 +308,7 @@ export function AutoPricing({
           ? `Refresh available in ${cooldownRemaining}s`
           : "Refresh comps"}
     </Btn>
-  );
+  ) : null;
 
   if (error) return <div className="t-small danger">{error}</div>;
   if (!summary || !discovery) return <div className="t-small muted">Loading pricing…</div>;
@@ -368,6 +370,9 @@ export function AutoPricing({
           Refresh searches fresh sold comps. Confirm the brand, product name, and
           size for the best matches.
         </div>
+      )}
+      {!featureAccess.loading && !featureAccess.access.paidComps && (
+        <div>{featureAccess.copy.paidComps}</div>
       )}
       {pricingNotes.length > 0 && (
         <div className="stack-1">

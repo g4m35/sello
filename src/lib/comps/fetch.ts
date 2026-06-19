@@ -46,6 +46,7 @@ export type CompFetchResult = {
 export type RunCompFetchOptions = {
   sources?: CompSource[];
   force?: boolean;
+  paidProvidersAllowed?: boolean;
 };
 
 export function isAutoDiscoveryEnabled(): boolean {
@@ -132,7 +133,12 @@ export async function runCompFetch(
   }
 
   const autoDiscoveryEnabled = isAutoDiscoveryEnabled();
-  const sources = options.sources ?? enabledCompSources();
+  const configuredSources = options.sources ?? enabledCompSources();
+  const freeSources = configuredSources.filter((source) => source.paid !== true);
+  const paidSources = options.paidProvidersAllowed === true
+    ? configuredSources.filter((source) => source.paid === true)
+    : [];
+  const sources = [...freeSources, ...paidSources];
   const draft = item.listingDrafts[0] ?? null;
   const query = capQueryVariants(buildCompQuery({
     productName: draft?.title || item.productName,
@@ -152,7 +158,6 @@ export async function runCompFetch(
   const ledgerPrisma = prisma as unknown as ProviderLedgerPrismaLike;
   const draftId = draft?.id ?? null;
   const queryHash = hashQueries(queries);
-  const paidSources = sources.filter((source) => source.paid === true);
   const paidConfig = paidSources.length > 0 ? loadPaidGateConfig() : null;
   const now = new Date();
 
@@ -187,7 +192,14 @@ export async function runCompFetch(
     };
   }
 
-  if (autoDiscoveryEnabled && !options.force && !hasMeaningfulIdentity(item)) {
+  const paidSourcesSkippedForWeakIdentity =
+    paidSources.length > 0 && !hasMeaningfulIdentity(item);
+  const weakIdentityError = {
+    source: "sello",
+    message: "Fresh sold comps skipped until item identity is specific enough.",
+  };
+
+  if (paidSourcesSkippedForWeakIdentity) {
     for (const paidSource of paidSources) {
       await recordProviderCall(ledgerPrisma, {
         userId: sellerId,
@@ -203,44 +215,36 @@ export async function runCompFetch(
         queryHash,
       });
     }
-    await prisma.compSearchRun.create({
-      data: {
-        inventoryItemId,
-        status: "skipped_weak_identity",
-        autoDiscoveryEnabled,
-        sourceCount: 0,
-        fetchedCount: 0,
-        acceptedCount: 0,
-        rejectedCount: 0,
-        recommendedPriceCents: null,
-        confidence: "none",
-        queries: queries as Prisma.InputJsonValue,
-        sourcesChecked: [],
-        sourceErrors: [
-          {
-            source: "sello",
-            message: "Automatic comps skipped until item identity is specific enough.",
-          },
-        ],
-      },
-    });
-    return {
-      fetched: 0,
-      accepted: 0,
-      rejected: 0,
-      sources: [],
-      enabled: 0,
-      status: "skipped_weak_identity",
-      queries,
-      sourceErrors: [
-        {
-          source: "sello",
-          message: "Automatic comps skipped until item identity is specific enough.",
+    if (freeSources.length === 0) {
+      await prisma.compSearchRun.create({
+        data: {
+          inventoryItemId,
+          status: "skipped_weak_identity",
+          autoDiscoveryEnabled,
+          sourceCount: 0,
+          fetchedCount: 0,
+          acceptedCount: 0,
+          rejectedCount: 0,
+          recommendedPriceCents: null,
+          confidence: "none",
+          queries: queries as Prisma.InputJsonValue,
+          sourcesChecked: [],
+          sourceErrors: [weakIdentityError],
         },
-      ],
-      summary: emptySummary(),
-      appliedPriceCents: null,
-    };
+      });
+      return {
+        fetched: 0,
+        accepted: 0,
+        rejected: 0,
+        sources: [],
+        enabled: 0,
+        status: "skipped_weak_identity",
+        queries,
+        sourceErrors: [weakIdentityError],
+        summary: emptySummary(),
+        appliedPriceCents: null,
+      };
+    }
   }
 
   if (sources.length === 0) {
@@ -280,7 +284,7 @@ export async function runCompFetch(
   const runnablePaidSources: CompSource[] = [];
   const paidReservations = new Map<string, string>();
   const budgetSkipErrors: { source: string; message: string }[] = [];
-  if (paidSources.length > 0 && paidConfig) {
+  if (!paidSourcesSkippedForWeakIdentity && paidSources.length > 0 && paidConfig) {
     for (const paidSource of paidSources) {
       const reservation = await reservePaidProviderCall(ledgerPrisma, {
         config: paidConfig,
@@ -303,7 +307,7 @@ export async function runCompFetch(
     }
   }
   const runSources = [
-    ...sources.filter((source) => source.paid !== true),
+    ...freeSources,
     ...runnablePaidSources,
   ];
 
@@ -313,6 +317,7 @@ export async function runCompFetch(
       result.error ? [{ source: result.source.id, message: result.error }] : [],
     ),
     ...budgetSkipErrors,
+    ...(paidSourcesSkippedForWeakIdentity ? [weakIdentityError] : []),
   ];
   const scored = dedupeComps(sourceResults.flatMap((result) => result.comps)).map((comp) => {
     const score = scoreCompMatch(
@@ -423,7 +428,9 @@ export async function runCompFetch(
   }
 
   const status: CompFetchResult["status"] =
-    comps.length === 0
+    paidSourcesSkippedForWeakIdentity && accepted === 0
+      ? "skipped_weak_identity"
+      : comps.length === 0
       ? runSources.length > 0 && sourceResults.every((result) => result.error)
         ? "error"
         : "no_comps_found"

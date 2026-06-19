@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { AdminNav } from "@/components/app/admin-nav";
 import { Topbar } from "@/components/app/topbar";
 import { Badge, Btn } from "@/components/ui/primitives";
 import { useSession } from "@/components/providers/session-provider";
@@ -58,7 +59,10 @@ export default function AdminFeedbackPage() {
     return (
       <>
         <Topbar crumbs={["Admin", "Feedback"]} />
-        <div className="page t-small muted">Not found.</div>
+        <div className="page">
+          <AdminNav active="/admin/feedback" />
+          <div className="t-small muted">Not found.</div>
+        </div>
       </>
     );
   }
@@ -67,6 +71,7 @@ export default function AdminFeedbackPage() {
     <>
       <Topbar crumbs={["Admin", "Feedback"]} />
       <div className="page stack-3">
+        <AdminNav active="/admin/feedback" />
         <div className="row" style={{ justifyContent: "space-between" }}>
           <h1 className="t-h2">Feedback ({openCount} open)</h1>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>

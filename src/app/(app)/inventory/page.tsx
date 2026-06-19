@@ -5,12 +5,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Topbar } from "@/components/app/topbar";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
-import { PublishModal } from "@/components/app/publish-modal";
+import {
+  BulkPublishModal,
+  type BulkPublishPhase,
+} from "@/components/app/bulk-publish-modal";
 import { ImportModal } from "@/components/app/import-modal";
 import { Badge, Btn, Check, Tabs } from "@/components/ui/primitives";
 import { MpDots, Thumb } from "@/components/ui/marketplace";
+import { useFeatureAccess } from "@/components/providers/feature-access-provider";
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
+import type {
+  BulkExecutionResult,
+  BulkPreflightResult,
+} from "@/lib/marketplace/bulk-publish";
+import { matchesItemSearch } from "@/lib/view/inventory-actions";
 import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
 import {
   conditionLabel,
@@ -32,19 +41,13 @@ const TAB_LABEL: Record<TabValue, string> = {
   error: "Needs attention",
 };
 
-function matchesSearch(item: ItemView, q: string): boolean {
-  if (!q) return true;
-  const needle = q.toLowerCase();
-  return [item.title, item.brand ?? "", item.id]
-    .some((field) => field.toLowerCase().includes(needle));
-}
-
 const PAGE_SIZE = 24;
 
 export default function InventoryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { token } = useSession();
+  const { access, copy } = useFeatureAccess();
 
   const [items, setItems] = useState<ItemView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -57,9 +60,18 @@ export default function InventoryPage() {
   const [page, setPage] = useState(1);
 
   const [importOpen, setImportOpen] = useState(false);
-  const [publishItem, setPublishItem] = useState<ItemView | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Bulk eBay publish: preflight on open, gate execution behind explicit
+  // confirmation, keep per-item results until the modal closes.
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkIds, setBulkIds] = useState<string[]>([]);
+  const [bulkPhase, setBulkPhase] = useState<BulkPublishPhase>("preflight");
+  const [bulkPreflight, setBulkPreflight] = useState<BulkPreflightResult | null>(null);
+  const [bulkExecution, setBulkExecution] = useState<BulkExecutionResult | null>(null);
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
@@ -118,7 +130,7 @@ export default function InventoryPage() {
     const list = items ?? [];
     const byTab =
       tab === "all" ? list : list.filter((it) => it.lifecycleState === tab);
-    const matched = byTab.filter((it) => matchesSearch(it, search.trim()));
+    const matched = byTab.filter((it) => matchesItemSearch(it, search.trim()));
     return sortItems(matched, sort);
   }, [items, tab, search, sort]);
 
@@ -188,9 +200,15 @@ export default function InventoryPage() {
     setActionBusy(true);
     setActionError(null);
     try {
-      await api.deleteItems(token, ids);
+      const result = await api.deleteItems(token, ids);
       setSelected(new Set());
       setReloadKey((k) => k + 1);
+      if (result.blocked.length > 0) {
+        const n = result.blocked.length;
+        setActionError(
+          `${n} item${n === 1 ? "" : "s"} kept: end the live eBay listing before deleting.`,
+        );
+      }
     } catch (e) {
       setActionError((e as { error?: string })?.error ?? "Could not delete items.");
     } finally {
@@ -220,6 +238,71 @@ export default function InventoryPage() {
     }
   }, [items, selected, token]);
 
+  const openBulkPublish = useCallback(() => {
+    const ids = (items ?? []).filter((it) => selected.has(it.id)).map((it) => it.id);
+    if (!ids.length) return;
+    setBulkIds(ids);
+    setBulkPreflight(null);
+    setBulkExecution(null);
+    setBulkConfirm(false);
+    setBulkError(null);
+    setBulkPhase("preflight");
+    setBulkOpen(true);
+  }, [items, selected]);
+
+  // Preflight the selection when the modal opens. Read-only; no outbound eBay
+  // write happens here. State is set only inside the async runner after await.
+  useEffect(() => {
+    if (!bulkOpen || bulkIds.length === 0) return;
+    let active = true;
+    async function run() {
+      try {
+        const result = await api.preflightBulkPublish(token, bulkIds);
+        if (active) {
+          setBulkPreflight(result);
+          setBulkPhase("ready");
+        }
+      } catch (e) {
+        if (active) {
+          setBulkError(
+            (e as { error?: string })?.error ?? "Could not check the selected items.",
+          );
+          setBulkPhase("ready");
+        }
+      }
+    }
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [bulkOpen, bulkIds, token]);
+
+  const runBulkPublish = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      setBulkPhase("running");
+      setBulkError(null);
+      try {
+        const result = await api.executeBulkPublish(token, ids);
+        setBulkExecution(result);
+        setBulkPhase("result");
+        setReloadKey((k) => k + 1);
+      } catch (e) {
+        setBulkError((e as { error?: string })?.error ?? "Bulk publish failed.");
+        setBulkPhase("ready");
+      }
+    },
+    [token],
+  );
+
+  const executeBulkPublish = useCallback(() => {
+    if (!bulkConfirm) return;
+    const readyIds = (bulkPreflight?.items ?? [])
+      .filter((i) => i.status === "ready")
+      .map((i) => i.itemId);
+    void runBulkPublish(readyIds);
+  }, [bulkConfirm, bulkPreflight, runBulkPublish]);
+
   if (loadError) {
     return (
       <>
@@ -241,10 +324,10 @@ export default function InventoryPage() {
 
   const total = items.length;
   const selectionCount = selectedInView.length;
-  const firstSelected =
-    selectionCount > 0
-      ? items.find((it) => it.id === selectedInView[0]) ?? null
-      : null;
+  const bulkTitles: Record<string, string> = {};
+  for (const it of items) {
+    if (bulkIds.includes(it.id)) bulkTitles[it.id] = it.title;
+  }
 
   const topbarRight = (
     <>
@@ -510,10 +593,10 @@ export default function InventoryPage() {
               <Btn
                 variant="secondary"
                 icon="send"
-                onClick={() => setPublishItem(firstSelected)}
-                disabled={!firstSelected}
+                onClick={openBulkPublish}
+                disabled={selectionCount === 0}
               >
-                Publish…
+                {access.liveEbayPublish ? "Publish selected to eBay" : "Preview selected"}
               </Btn>
               <Btn variant="secondary" icon="tag" onClick={setPriceSelected} disabled={actionBusy}>
                 Set price
@@ -572,11 +655,21 @@ export default function InventoryPage() {
         )}
       </main>
 
-      <PublishModal
-        open={publishItem !== null}
-        onClose={() => setPublishItem(null)}
-        item={publishItem}
-        onPublished={reload}
+      <BulkPublishModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        selectionCount={bulkIds.length}
+        livePublishAllowed={access.liveEbayPublish}
+        alphaCopy={copy.liveEbayPublish}
+        phase={bulkPhase}
+        preflight={bulkPreflight}
+        execution={bulkExecution}
+        confirmLive={bulkConfirm}
+        onConfirmChange={setBulkConfirm}
+        onExecute={executeBulkPublish}
+        onRetry={runBulkPublish}
+        error={bulkError}
+        itemTitles={bulkTitles}
       />
       <ImportModal
         open={importOpen}

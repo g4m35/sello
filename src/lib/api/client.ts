@@ -1,4 +1,9 @@
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
+import type { FeatureAccess } from "@/lib/auth/feature-access";
+import type {
+  BulkExecutionResult,
+  BulkPreflightResult,
+} from "@/lib/marketplace/bulk-publish";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
 import type {
   AttemptView,
@@ -9,6 +14,11 @@ import type {
 } from "@/lib/view/types";
 
 export type ApiError = { error: string; status: number };
+
+export type FeatureAccessResponse = {
+  access: FeatureAccess;
+  copy: Record<keyof FeatureAccess, string>;
+};
 
 export type PriceCompRow = {
   id: string;
@@ -126,7 +136,52 @@ async function request<T>(
   return json as T;
 }
 
+// Internal transport chunk size. The bulk endpoints accept a high configurable
+// ceiling (default 1000); we split larger selections into request-sized chunks
+// so a seller never hits a visible cap, then merge results in selected order.
+// One logical bulkRunId is shared across all execution chunks for audit/sync.
+const BULK_TRANSPORT_CHUNK = 500;
+
+function chunkIds(ids: string[], size: number): string[][] {
+  if (ids.length <= size) return [ids];
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
+function mergeBulkPreflight(parts: BulkPreflightResult[]): BulkPreflightResult {
+  const first = parts[0];
+  return {
+    livePublishAllowed: first.livePublishAllowed,
+    alphaCopy: parts.find((p) => p.alphaCopy)?.alphaCopy,
+    total: parts.reduce((n, p) => n + p.total, 0),
+    readyCount: parts.reduce((n, p) => n + p.readyCount, 0),
+    needsDetailsCount: parts.reduce((n, p) => n + p.needsDetailsCount, 0),
+    skippedCount: parts.reduce((n, p) => n + p.skippedCount, 0),
+    rejectedCount: parts.reduce((n, p) => n + p.rejectedCount, 0),
+    items: parts.flatMap((p) => p.items),
+  };
+}
+
+function mergeBulkExecution(
+  parts: BulkExecutionResult[],
+  bulkRunId: string,
+): BulkExecutionResult {
+  return {
+    bulkRunId,
+    total: parts.reduce((n, p) => n + p.total, 0),
+    publishedCount: parts.reduce((n, p) => n + p.publishedCount, 0),
+    skippedCount: parts.reduce((n, p) => n + p.skippedCount, 0),
+    failedCount: parts.reduce((n, p) => n + p.failedCount, 0),
+    needsDetailsCount: parts.reduce((n, p) => n + p.needsDetailsCount, 0),
+    items: parts.flatMap((p) => p.items),
+  };
+}
+
 export const api = {
+  getFeatureAccess: (token: string) =>
+    request<FeatureAccessResponse>("/api/capabilities", token),
+
   listItems: (token: string) =>
     request<{ items: ItemView[] }>("/api/listings", token),
 
@@ -137,7 +192,10 @@ export const api = {
     request<{ attempts: AttemptView[] }>("/api/history", token),
 
   deleteItems: (token: string, ids: string[]) =>
-    request<{ deleted: number }>("/api/listings", token, {
+    request<{
+      deleted: string[];
+      blocked: { itemId: string; reason: "LIVE_MARKETPLACE_LISTING" }[];
+    }>("/api/listings", token, {
       method: "DELETE",
       body: JSON.stringify({ ids }),
     }),
@@ -292,6 +350,23 @@ export const api = {
       rows: ProviderUsageRow[];
     }>("/api/admin/provider-usage", token),
 
+  getAdminMarketplaceOperations: (token: string) =>
+    request<{
+      access: { liveEbayPublish: string[]; ebayDelist: string[]; paidComps: string[] };
+      attempts: {
+        id: string;
+        requestedBy: string;
+        itemId: string;
+        itemTitle: string;
+        action: "publish" | "delist" | "cleanup";
+        status: string;
+        code: string;
+        bulkRunId: string | null;
+        externalListingId: string | null;
+        createdAt: string;
+      }[];
+    }>("/api/admin/marketplace-operations", token),
+
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{
       adapters: {
@@ -439,6 +514,46 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // Read-only bulk publish dry run. Available to every seller; returns
+  // livePublishAllowed:false plus alpha copy for non-allowlisted accounts.
+  // Large selections are chunked internally and merged in selected order.
+  preflightBulkPublish: async (
+    token: string,
+    itemIds: string[],
+  ): Promise<BulkPreflightResult> => {
+    const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
+    const parts = await Promise.all(
+      chunks.map((ids) =>
+        request<BulkPreflightResult>("/api/listings/publish/bulk/preflight", token, {
+          method: "POST",
+          body: JSON.stringify({ itemIds: ids }),
+        }),
+      ),
+    );
+    return mergeBulkPreflight(parts);
+  },
+
+  // Live bulk publish. Requires the live-eBay alpha entitlement server-side and
+  // explicit confirmation here. One bulkRunId ties every transport chunk
+  // together; chunks run sequentially so eBay is never hammered in parallel.
+  executeBulkPublish: async (
+    token: string,
+    itemIds: string[],
+  ): Promise<BulkExecutionResult> => {
+    const bulkRunId = globalThis.crypto.randomUUID();
+    const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
+    const parts: BulkExecutionResult[] = [];
+    for (const ids of chunks) {
+      parts.push(
+        await request<BulkExecutionResult>("/api/listings/publish/bulk", token, {
+          method: "POST",
+          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLivePublish: true }),
+        }),
+      );
+    }
+    return mergeBulkExecution(parts, bulkRunId);
+  },
 
   scanEbayOrphans: (token: string, itemId: string) =>
     request<{ ok: true; scan: EbayOrphanArtifactView }>(

@@ -228,6 +228,14 @@ Never commit Supabase credentials.
 
 ## eBay Integration
 
+### Alpha Live Actions
+
+Live eBay publishing, bulk publishing, live delisting, and paid comps ship behind
+independent gates (a global switch plus a per-seller allowlist, both fail-closed).
+For the gate matrix, server-side enforcement points, enable/disable steps, the
+controlled smoke test, and rollback, see
+[`docs/ALPHA_LIVE_ACTIONS.md`](docs/ALPHA_LIVE_ACTIONS.md).
+
 ### Supported Mode
 
 Production eBay publishing is not enabled by default.
