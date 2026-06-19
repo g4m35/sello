@@ -1,4 +1,5 @@
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
+import type { FeatureAccess } from "@/lib/auth/feature-access";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
 import type {
   AttemptView,
@@ -9,6 +10,11 @@ import type {
 } from "@/lib/view/types";
 
 export type ApiError = { error: string; status: number };
+
+export type FeatureAccessResponse = {
+  access: FeatureAccess;
+  copy: Record<keyof FeatureAccess, string>;
+};
 
 export type PriceCompRow = {
   id: string;
@@ -127,6 +133,9 @@ async function request<T>(
 }
 
 export const api = {
+  getFeatureAccess: (token: string) =>
+    request<FeatureAccessResponse>("/api/capabilities", token),
+
   listItems: (token: string) =>
     request<{ items: ItemView[] }>("/api/listings", token),
 
