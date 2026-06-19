@@ -594,7 +594,7 @@ git commit -m "feat: add marketplace operations admin view"
 - Modify: `README.md`
 - Modify: `HANDOFF.md`
 
-- [ ] **Step 1: Add environment names with safe example values**
+- [x] **Step 1: Add environment names with safe example values**
 
 Document without real emails/secrets:
 
@@ -609,15 +609,15 @@ BULK_PUBLISH_CONCURRENCY="2"
 
 Retain the existing global kill switches and document the intended production caps by name: paid budget 500 cents/day, user limits 5/day and 25/month, both cooldowns 3600 seconds, provider results 10, query variants 1, admin override false.
 
-- [ ] **Step 2: Write the operator runbook**
+- [x] **Step 2: Write the operator runbook**
 
 Include gate matrix, server-side enforcement points, feature-specific disable procedure, current production rollback lookup commands, migration statement (“none expected; never use `prisma db push`”), controlled publish/bulk/delist/comps smoke, Seller Hub checks, orphan cleanup, log secret scan, and final report checklist.
 
-- [ ] **Step 3: Update README and HANDOFF without secrets**
+- [x] **Step 3: Update README and HANDOFF without secrets**
 
 README links to the runbook. HANDOFF records branch, code state, gate state, and next release step; it must not claim deployment before deployment occurs.
 
-- [ ] **Step 4: Validate documentation and commit**
+- [x] **Step 4: Validate documentation and commit**
 
 Run: `rg -n "TBD|TODO|actual-token|@example\.com" docs/ALPHA_LIVE_ACTIONS.md README.md HANDOFF.md .env.example`
 

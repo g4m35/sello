@@ -12,6 +12,42 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-19 — Claude. **Alpha Live Actions Tasks 4–9 completed on
+`feature/alpha-live-actions` (worktree). No deploy, no env changes, no live
+marketplace calls, no migrations.**
+- Task 4 (`c367c20`): safe bulk eBay publish server — request schemas + bounded
+  `processInChunks`, `preflightBulkEbayPublish`/`executeBulkEbayPublish` built on
+  `executePublish` per item, `/api/listings/publish/bulk` (+preflight) routes. No
+  seller-visible item cap; high configurable transport ceiling only.
+- Task 5 (`a48dabe`): bulk publish UI — presentational `BulkPublishModal`, inventory
+  selection flow (preflight on open, explicit confirm, refresh after), API client
+  with internal chunking sharing one `bulkRunId`.
+- Task 6 (`8044fab`): honest single-item actions + delete safety — `inventory-actions`
+  util, server `DELETE /api/listings` partitions live listings into `blocked`,
+  feature-aware publish/delist rendering, real "View live" link, Archive/Delete-draft.
+- Task 7 (`705c9ab`): search + dead-action audit — `matchesItemSearch` (title/brand/
+  category/status/lifecycle/id), `/api/jobs` reports eBay live publish from gate +
+  entitlement, channels page dead controls replaced with real links, sync kept
+  "not available yet".
+- Task 8 (`c75311f`): read-only admin marketplace-operations API + page (safe fields
+  only) and shared `AdminNav`.
+- Task 9 (this commit): `.env.example` feature/admin/bulk vars + production caps,
+  `docs/ALPHA_LIVE_ACTIONS.md` runbook, README link.
+- Evidence: focused tests green per task (Task 4: 26, Task 5: 24, Task 6: 31,
+  Task 7: 19, Task 8: 18 admin); `tsc --noEmit` and `eslint` clean on changed files.
+  Full gate (`prisma validate`, full `npm test`, `npm run build`) runs in Task 10.
+
+**Current state:** Tasks 1–9 complete on `feature/alpha-live-actions`. Task 10
+(full local verification) is next; Tasks 11–12 (production rollout) intentionally
+NOT started. All live gates remain OFF/fail-closed; no allowlists populated.
+
+**Blocked on owner:** None for code. Production rollout (enabling switches +
+allowlists + deploy) awaits explicit owner authorization.
+
+**Next up:** Run Task 10 full gate; then, only on owner instruction, follow
+`docs/ALPHA_LIVE_ACTIONS.md` for the controlled enable + smoke + rollback.
+
+## Previous update
 2026-06-18 — Codex. **Task 3 paid-comp entitlement and identity enforcement completed on
 `feature/alpha-live-actions` (this handoff's containing commit). No deploy, env changes,
 live paid calls, migrations, or marketplace actions.**
