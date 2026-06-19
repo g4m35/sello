@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { safeErrorResponse } from "@/lib/errors";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { getPrisma } from "@/lib/prisma";
 import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
@@ -51,18 +51,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.toPayload() }, { status: error.status });
     }
 
-    if (error instanceof AppError) {
-      return NextResponse.json(
-        {
-          error: {
-            code: error.code ?? "REQUEST_FAILED",
-            message: error.message,
-          },
-        },
-        { status: error.status },
-      );
-    }
-
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
+    const { status, body } = safeErrorResponse(error, {
+      label: "listings_publish",
+      fallbackCode: "PUBLISH_FAILED",
+    });
+    return NextResponse.json(body, { status });
   }
 }

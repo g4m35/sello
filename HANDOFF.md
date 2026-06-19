@@ -12,6 +12,67 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-19 — Claude. **Post-deploy rollout blockers fixed in code/tests on
+`fix/alpha-live-actions-smoke-blockers` (off `develop`). No deploy, no env
+changes, no live marketplace/paid calls, no migrations, Chrome unavailable so
+NO visual/live smoke was run.**
+
+Context: PR #43 is live in prod (`dpl_4U3LWHaYjZm5NCSG4L7ymqu3Nora`; rollback
+target `dpl_C3BBeRqChtbdQzFH9WRZ5gUoFQuh`). Single eBay publish + delist passed
+live; paid comps failed but leaked a raw Prisma error; admin ops showed stale
+"0 allowed". Live gates + paid providers remain OFF; owner allowlists remain set.
+
+- **Task 1 — paid-comps Prisma `void` leak (root cause + sanitize).** Root cause:
+  `acquireReservationLocks` ran `SELECT pg_advisory_xact_lock(...)` via
+  `$queryRawUnsafe`; `pg_advisory_xact_lock()` returns SQL type `void`, which
+  Prisma `$queryRaw*` cannot deserialize ("Failed to deserialize column of type
+  'void'"). It threw inside `reservePaidProviderCall`'s `$transaction` (BEFORE any
+  paid provider call), propagated to the refresh route's 500 branch, and
+  `getErrorMessage` echoed the raw Prisma text. Unit tests missed it because they
+  mock `$queryRawUnsafe`. Fixes: switched the advisory lock to `$executeRawUnsafe`
+  (no column deserialization); wrapped reservation + weak-identity ledger writes in
+  `runCompFetch` so a ledger/DB failure degrades safely (paid skipped w/ sanitized
+  note, free + manual comps proceed); refresh route now returns stable
+  `COMPS_REFRESH_FAILED` + seller copy.
+- **Task 2 — admin "0 allowed" display.** Server side was already correct
+  (`configuredFeatureEmails` reads the same env as the capability gates). Bug was
+  client-only: the page rendered count cards from `access` (init `null`) before
+  load and never cleared a stale `error` after a recovered fetch. Extracted a pure
+  `AdminMarketplaceOperationsView` (loading/error/loaded states; counts only from
+  fetched data) + `setError(null)` on success. No `ADMIN_EMAILS` fallback.
+- **Task 3 — API sanitization wrapper + regressions.** New `errors.ts` helpers
+  (`safeErrorResponse`, `safeClientMessage`, `logUnexpectedError`,
+  `GENERIC_CLIENT_MESSAGE`): AppError → its code/message/status; ZodError → 400
+  INVALID_REQUEST; everything else → stable code + generic copy, logged
+  server-side as class+code only (never the raw message → no token/conn-string
+  leak). Applied to publish, bulk publish, bulk preflight, delist, comps refresh,
+  comps GET + manual comps POST, listings GET/DELETE, lifecycle. (eBay
+  readiness/connect/disconnect only surface getErrorMessage in their AppError
+  branch, so they don't leak; left as-is.) Follow-up (not in this scope): other
+  routes still use `getErrorMessage` in their unexpected branch and can leak raw
+  text — `draft`, `draft/[draftId]`, `price`, `import`, `[id]`, `[id]/photos`,
+  `[id]/export`, `[id]/ebay-orphans`, `comps/[compId]`, `comps/provider-usage`,
+  `history`, `jobs`. Convert them to `safeClientMessage`/`safeErrorResponse` in a
+  follow-up sweep.
+- Tests added: `errors.test.ts`; provider-ledger void regression + graceful
+  degradation in `fetch-paid-budget.test.ts`; refresh-route void-leak regression;
+  delist + manual-comps sanitization regressions; `feature-access` count/no-fallback
+  cases; `admin-marketplace-operations-view.test.tsx` (stale-zero / loading / error).
+- **Gate GREEN:** `prisma validate` valid, `tsc --noEmit` exit 0, `eslint` 0
+  errors (same 2 pre-existing `_m`/`_f` warnings), `npm test` **116 files / 801
+  tests**, `npm run build` compiled OK (`/admin/marketplace-operations` +
+  `/api/admin/marketplace-operations` stay ƒ dynamic). `.env.example` is in a
+  permission-denied dir (could not edit), consistent with prior sessions.
+
+**Production rollout recommendation:** NOT yet. These are correct, gate-passing
+fixes, but the production behavior (paid-comps refresh returns a sanitized error;
+admin shows real counts) has NOT been verified live — Chrome/browser automation
+was unavailable, so no signed-in visual/live smoke ran. Recommend: review + merge
+`fix/...` -> `develop`, then an owner-only Chrome pass (admin ops shows nonzero
+counts; trigger a paid-comps refresh with paid providers still OFF and confirm a
+clean sanitized message, no raw Prisma text) BEFORE promoting to `main`.
+
+## Previous update
 2026-06-19 — Claude. **Alpha Live Actions Tasks 4–9 completed on
 `feature/alpha-live-actions` (worktree). No deploy, no env changes, no live
 marketplace calls, no migrations.**

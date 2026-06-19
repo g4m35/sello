@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import type { InventoryStatus } from "@/generated/prisma/client";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import {
   canTransition,
   toLifecycleState,
@@ -62,6 +62,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ inventoryItem });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listings_lifecycle" }) },
+      { status },
+    );
   }
 }
