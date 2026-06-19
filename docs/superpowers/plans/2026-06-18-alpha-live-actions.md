@@ -634,7 +634,7 @@ git commit -m "docs: add alpha live actions runbook"
 - Review all changed files
 - Modify only files required to fix discovered failures
 
-- [ ] **Step 1: Run schema and static gates**
+- [x] **Step 1: Run schema and static gates**
 
 ```bash
 npx prisma generate
@@ -645,27 +645,27 @@ npx tsc --noEmit
 
 Expected: all exit 0; report any known lint warnings separately.
 
-- [ ] **Step 2: Run the complete test suite**
+- [x] **Step 2: Run the complete test suite**
 
 Run: `npm test`
 
 Expected: all test files and tests pass with zero failures.
 
-- [ ] **Step 3: Run the production build**
+- [x] **Step 3: Run the production build**
 
 Run: `npm run build`
 
 Expected: exit 0; admin operations route/page present and dynamic where applicable.
 
-- [ ] **Step 4: Audit requirements and secrets**
+- [x] **Step 4: Audit requirements and secrets**
 
 Re-read the design acceptance mapping and inspect `git diff develop...HEAD`. Search changed files for raw token/payload rendering and accidental provider IDs in seller UI. Verify no schema migration and no `prisma db push` usage.
 
-- [ ] **Step 5: Request code review and address actionable findings**
+- [x] **Step 5: Request code review and address actionable findings**
 
 Use the repository review workflow on `feature/alpha-live-actions`; rerun focused tests after each correction, then rerun the full gate.
 
-- [ ] **Step 6: Commit final verified corrections and update HANDOFF**
+- [x] **Step 6: Commit final verified corrections and update HANDOFF**
 
 ```bash
 git add HANDOFF.md

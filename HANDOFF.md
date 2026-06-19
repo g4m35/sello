@@ -34,12 +34,18 @@ marketplace calls, no migrations.**
 - Task 9 (this commit): `.env.example` feature/admin/bulk vars + production caps,
   `docs/ALPHA_LIVE_ACTIONS.md` runbook, README link.
 - Evidence: focused tests green per task (Task 4: 26, Task 5: 24, Task 6: 31,
-  Task 7: 19, Task 8: 18 admin); `tsc --noEmit` and `eslint` clean on changed files.
-  Full gate (`prisma validate`, full `npm test`, `npm run build`) runs in Task 10.
+  Task 7: 19, Task 8: 18 admin).
+- Task 10 full gate (this commit) GREEN: `prisma generate` OK, `prisma validate`
+  valid, `tsc --noEmit` exit 0, `eslint` 0 errors (2 pre-existing warnings in
+  `draft-actions.test.ts`), full `npm test` **114 files / 781 tests pass**,
+  `npm run build` exit 0. Build classifies `/admin/marketplace-operations` and
+  `/api/admin/marketplace-operations` plus the bulk publish routes as ƒ dynamic.
+  Audit: no new migrations, no `prisma db push`, no raw token/payload or provider
+  IDs in seller UI (admin route extracts only `bulkRunId` from `adapterResult`).
 
-**Current state:** Tasks 1–9 complete on `feature/alpha-live-actions`. Task 10
-(full local verification) is next; Tasks 11–12 (production rollout) intentionally
-NOT started. All live gates remain OFF/fail-closed; no allowlists populated.
+**Current state:** Tasks 1–10 complete on `feature/alpha-live-actions`. Tasks 11–12
+(production rollout) intentionally NOT started. All live gates remain
+OFF/fail-closed; no allowlists populated. No deploy, no env changes.
 
 **Blocked on owner:** None for code. Production rollout (enabling switches +
 allowlists + deploy) awaits explicit owner authorization.
