@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { getPrisma } from "@/lib/prisma";
+import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
 import {
   executePublish,
@@ -22,6 +24,9 @@ export async function POST(request: Request) {
     const { inventoryItemId, marketplace } = PublishRequestSchema.parse(
       await request.json(),
     );
+    if (marketplace === "ebay" && getEbayEnvironment() === "production") {
+      requireFeatureAccess(user, "liveEbayPublish");
+    }
 
     const result = await executePublish(getPrisma(), {
       userId: user.id,
@@ -46,7 +51,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.toPayload() }, { status: error.status });
     }
 
-    const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        {
+          error: {
+            code: error.code ?? "REQUEST_FAILED",
+            message: error.message,
+          },
+        },
+        { status: error.status },
+      );
+    }
+
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
 }

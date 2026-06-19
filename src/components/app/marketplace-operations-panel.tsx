@@ -1,8 +1,15 @@
 "use client";
 
+import { Icon } from "@/components/ui/icon";
 import { Badge, Banner, Btn } from "@/components/ui/primitives";
 import { MpLogo } from "@/components/ui/marketplace";
+import type { FeatureAccess } from "@/lib/auth/feature-access";
 import { durationLabel, relativeTime } from "@/lib/view/format";
+import {
+  ebayChannelUrl,
+  isLiveEbayChannel,
+  resolveDelistAction,
+} from "@/lib/view/inventory-actions";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
 import type {
@@ -11,6 +18,15 @@ import type {
   DesignStatus,
   EbayOrphanArtifactView,
 } from "@/lib/view/types";
+
+const DENIED_FEATURE_ACCESS: FeatureAccess = {
+  liveEbayPublish: false,
+  ebayDelist: false,
+  paidComps: false,
+};
+
+const DEFAULT_DELIST_ALPHA_COPY =
+  "Live eBay delisting is currently enabled for selected alpha accounts.";
 
 function titleCase(value: string | null | undefined): string {
   if (!value) return "Unknown";
@@ -133,6 +149,8 @@ export function MarketplaceOperationsPanel({
   scanningOrphans,
   cleaningOrphans,
   showAdvanced = false,
+  featureAccess = DENIED_FEATURE_ACCESS,
+  delistAlphaCopy = DEFAULT_DELIST_ALPHA_COPY,
   onDelistEbay,
   onScanEbayOrphans,
   onCleanupEbayOrphans,
@@ -148,6 +166,10 @@ export function MarketplaceOperationsPanel({
    * raw errors). Off for normal sellers; enabled via debug mode.
    */
   showAdvanced?: boolean;
+  /** Seller's resolved feature entitlements (gates the live delist action). */
+  featureAccess?: FeatureAccess;
+  /** Alpha copy shown when a live listing exists but delist is not entitled. */
+  delistAlphaCopy?: string;
   onDelistEbay: () => void;
   onScanEbayOrphans: () => void;
   onCleanupEbayOrphans: () => void;
@@ -156,10 +178,9 @@ export function MarketplaceOperationsPanel({
   const latestAttemptDisplay = latestAttempt ? attemptDisplay(latestAttempt) : null;
   const ebay = channels.find((channel) => channel.marketplace === "ebay") ?? null;
   const status = sellerPublishStatus(ebay);
-  const canDelistEbay =
-    ebay?.status === "published" &&
-    Boolean(ebay.externalOfferId) &&
-    Boolean(ebay.externalListingId);
+  const liveListing = isLiveEbayChannel(ebay);
+  const delistAction = resolveDelistAction(ebay, featureAccess);
+  const liveUrl = ebayChannelUrl(ebay);
   const lastError =
     latestAttempt?.reason || latestAttempt?.listingLastError || ebay?.lastError || null;
 
@@ -188,18 +209,38 @@ export function MarketplaceOperationsPanel({
           <div className="t-small muted">Next: {status.nextAction}</div>
         </div>
 
-        {canDelistEbay && (
-          <div className="row" style={{ justifyContent: "flex-end" }}>
-            <Btn
-              variant="secondary"
-              size="sm"
-              icon="x-c"
-              disabled={delisting}
-              onClick={onDelistEbay}
-            >
-              {delisting ? "Ending..." : "End eBay listing"}
-            </Btn>
+        {(liveUrl || delistAction.available || delistAction.restricted) && (
+          <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+            {liveUrl && (
+              <a
+                className="btn btn--secondary btn--sm"
+                href={liveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icon name="external" size={13} /> View live
+              </a>
+            )}
+            {delistAction.available && (
+              <Btn
+                variant="secondary"
+                size="sm"
+                icon="x-c"
+                disabled={delisting}
+                onClick={onDelistEbay}
+              >
+                {delisting ? "Ending..." : delistAction.label}
+              </Btn>
+            )}
           </div>
+        )}
+
+        {delistAction.restricted && (
+          <Banner
+            variant="info"
+            title="Ending eBay listings is in alpha"
+            desc={delistAlphaCopy}
+          />
         )}
 
         {showAdvanced && (
@@ -286,7 +327,7 @@ export function MarketplaceOperationsPanel({
                 </details>
               )}
 
-              {!canDelistEbay && (
+              {!liveListing && (
                 <div className="stack-3">
                   <div className="row" style={{ justifyContent: "space-between", gap: 12 }}>
                     <div style={{ minWidth: 0 }}>

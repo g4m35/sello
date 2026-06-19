@@ -47,6 +47,7 @@ function attempt(overrides: Partial<AttemptView> = {}): AttemptView {
     failedStep: null,
     ebayErrorStatus: null,
     ebayErrorMessage: null,
+    bulkRunId: null,
     ...overrides,
   };
 }
@@ -64,6 +65,7 @@ function render(props: Partial<React.ComponentProps<typeof MarketplaceOperations
       scanningOrphans={false}
       cleaningOrphans={false}
       showAdvanced={props.showAdvanced}
+      featureAccess={props.featureAccess}
     />,
   );
 }
@@ -177,18 +179,45 @@ describe("MarketplaceOperationsPanel (seller view)", () => {
     expect(advanced).toContain("Fulfillment policy was not found.");
   });
 
-  it("keeps the End eBay listing action visible for a live listing", () => {
+  it("shows End eBay listing for a live listing only when delist-entitled", () => {
     const html = render({
       channels: [channel({ status: "published" })],
       attempts: [attempt()],
+      featureAccess: { liveEbayPublish: false, ebayDelist: true, paidComps: false },
     });
     expect(html).toContain("End eBay listing");
+  });
+
+  it("shows alpha copy instead of End eBay listing when not delist-entitled", () => {
+    const html = render({
+      channels: [channel({ status: "published" })],
+      attempts: [attempt()],
+      featureAccess: { liveEbayPublish: false, ebayDelist: false, paidComps: false },
+    });
+    expect(html).not.toContain("End eBay listing");
+    expect(html).toMatch(/selected alpha accounts/i);
+  });
+
+  it("links to the public eBay listing for a published item and hides it otherwise", () => {
+    const live = render({
+      channels: [channel({ status: "published" })],
+      attempts: [attempt()],
+    });
+    expect(live).toContain("https://www.ebay.com/itm/ebay-listing-1");
+    expect(live).toContain("View live");
+
+    const notLive = render({
+      channels: [channel({ status: "ready", externalListingId: null })],
+      attempts: [],
+    });
+    expect(notLive).not.toContain("View live");
   });
 
   it("hides End eBay listing when stored live identifiers are missing", () => {
     const html = render({
       channels: [channel({ status: "published", externalListingId: null })],
       attempts: [],
+      featureAccess: { liveEbayPublish: false, ebayDelist: true, paidComps: false },
     });
     expect(html).not.toContain("End eBay listing");
   });

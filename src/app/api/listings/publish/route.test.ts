@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/errors";
 import { publishingMigrationMissingCode } from "@/lib/marketplace/publish-handler";
@@ -6,7 +6,13 @@ import { publishingMigrationMissingCode } from "@/lib/marketplace/publish-handle
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  executePublish: vi.fn(),
+  executePublishActual: undefined as
+    | undefined
+    | ((...args: unknown[]) => Promise<unknown>),
 }));
+
+vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
@@ -16,11 +22,27 @@ vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
 }));
 
+vi.mock("@/lib/marketplace/publish-handler", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/marketplace/publish-handler")
+  >();
+  mocks.executePublishActual = actual.executePublish as typeof mocks.executePublishActual;
+  return { ...actual, executePublish: mocks.executePublish };
+});
+
 import { POST } from "./route";
 
 describe("publish API auth boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("EBAY_ENV", "sandbox");
+    vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "allowed@example.com");
+    mocks.executePublish.mockReset();
+    mocks.executePublish.mockImplementation(mocks.executePublishActual!);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("rejects publish attempts when the seller is not signed in", async () => {
@@ -37,13 +59,136 @@ describe("publish API auth boundaries", () => {
     const payload = await response.json();
 
     expect(response.status).toBe(401);
-    expect(payload).toEqual({ error: "Sign in before creating a listing draft." });
+    expect(payload).toEqual({
+      error: {
+        code: "REQUEST_FAILED",
+        message: "Sign in before creating a listing draft.",
+      },
+    });
+  });
+
+  it("rejects authenticated sellers outside the live publish alpha before side effects", async () => {
+    const prismaWrite = vi.fn();
+    const outboundAdapter = vi.fn();
+    vi.stubEnv("EBAY_ENV", "production");
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "not-allowed@example.com",
+    });
+    mocks.getPrisma.mockReturnValue({});
+    mocks.executePublish.mockImplementationOnce(async () => {
+      prismaWrite();
+      outboundAdapter();
+      throw new Error("publish should not execute");
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+        }),
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual({
+      error: {
+        code: "LIVE_EBAY_PUBLISH_ALPHA_ONLY",
+        message:
+          "Live eBay publishing is currently enabled for selected alpha accounts.",
+      },
+    });
+    expect(mocks.executePublish).not.toHaveBeenCalled();
+    expect(mocks.getPrisma).not.toHaveBeenCalled();
+    expect(prismaWrite).not.toHaveBeenCalled();
+    expect(outboundAdapter).not.toHaveBeenCalled();
+  });
+
+  it("allows nonallowlisted sellers to reach sandbox eBay publishing", async () => {
+    const prisma = {};
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "not-allowed@example.com",
+    });
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.executePublish.mockResolvedValueOnce({
+      outcome: {
+        status: "not_enabled",
+        code: "EBAY_PUBLISH_NOT_ENABLED",
+        marketplace: "ebay",
+        environment: "sandbox",
+        message: "disabled",
+      },
+      httpStatus: 200,
+      marketplaceListingId: "listing-1",
+      publishAttemptId: "attempt-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.executePublish).toHaveBeenCalledWith(prisma, {
+      userId: "user-1",
+      inventoryItemId: "11111111-1111-4111-8111-111111111111",
+      marketplace: "ebay",
+    });
+  });
+
+  it("allows nonallowlisted sellers to reach draft-only non-eBay publishing", async () => {
+    const prisma = {};
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "not-allowed@example.com",
+    });
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.executePublish.mockResolvedValueOnce({
+      outcome: {
+        status: "not_implemented",
+        code: "NOT_IMPLEMENTED",
+        marketplace: "grailed",
+        reason: "Draft-only marketplace.",
+      },
+      httpStatus: 501,
+      marketplaceListingId: "listing-2",
+      publishAttemptId: "attempt-2",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "22222222-2222-4222-8222-222222222222",
+          marketplace: "grailed",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(501);
+    expect(mocks.executePublish).toHaveBeenCalledWith(prisma, {
+      userId: "user-1",
+      inventoryItemId: "22222222-2222-4222-8222-222222222222",
+      marketplace: "grailed",
+    });
   });
 
   it("returns a typed setup error when publish persistence tables are missing", async () => {
     const inventoryItemId = "11111111-1111-4111-8111-111111111111";
 
-    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "allowed@example.com",
+    });
     mocks.getPrisma.mockReturnValue({
       inventoryItem: {
         findFirst: vi
@@ -87,7 +232,10 @@ describe("publish API auth boundaries", () => {
     const inventoryItemId = "22222222-2222-4222-8222-222222222222";
     vi.stubEnv("EBAY_SANDBOX_PUBLISH_ENABLED", "false");
 
-    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "allowed@example.com",
+    });
     mocks.getPrisma.mockReturnValue({
       inventoryItem: {
         findFirst: vi
@@ -118,7 +266,6 @@ describe("publish API auth boundaries", () => {
     expect(payload.marketplaceListingId).toBe("listing-1");
     expect(payload.publishAttemptId).toBe("attempt-1");
 
-    vi.unstubAllEnvs();
   });
 
   it("rejects production eBay live publish attempts while the production flag is off", async () => {
@@ -126,7 +273,10 @@ describe("publish API auth boundaries", () => {
     vi.stubEnv("EBAY_ENV", "production");
     vi.stubEnv("EBAY_PRODUCTION_PUBLISH_ENABLED", "false");
 
-    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "allowed@example.com",
+    });
     mocks.getPrisma.mockReturnValue({
       inventoryItem: {
         findFirst: vi
@@ -160,13 +310,15 @@ describe("publish API auth boundaries", () => {
     expect(payload.marketplaceListingId).toBe("listing-prod-1");
     expect(payload.publishAttemptId).toBe("attempt-prod-1");
 
-    vi.unstubAllEnvs();
   });
 
   it("leaves non-eBay marketplaces as a typed NOT_IMPLEMENTED 501", async () => {
     const inventoryItemId = "33333333-3333-4333-8333-333333333333";
 
-    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "allowed@example.com",
+    });
     mocks.getPrisma.mockReturnValue({
       inventoryItem: {
         findFirst: vi

@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   runCompFetch: vi.fn(),
 }));
+
+vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
@@ -23,7 +25,39 @@ import { POST } from "./route";
 describe("explicit comp refresh route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    vi.stubEnv("PAID_COMPS_EMAILS", "allowed@example.com");
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "allowed@example.com",
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns 403 before database reads or provider work for a nonallowlisted seller", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "not-allowed@example.com",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "PAID_COMPS_ALPHA_ONLY",
+        message: "Fresh sold comps are currently enabled for selected alpha accounts.",
+      },
+    });
+    expect(mocks.getPrisma).not.toHaveBeenCalled();
+    expect(mocks.runCompFetch).not.toHaveBeenCalled();
   });
 
   it("runs provider fetch only for an explicit seller-scoped refresh", async () => {
@@ -54,7 +88,7 @@ describe("explicit comp refresh route", () => {
       prisma,
       "item-1",
       "user-1",
-      { force: true },
+      { force: true, paidProvidersAllowed: true },
     );
   });
 

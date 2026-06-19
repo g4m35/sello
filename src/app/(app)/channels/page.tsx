@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
-import { Badge, Btn, Banner } from "@/components/ui/primitives";
+import { Badge, Banner } from "@/components/ui/primitives";
 import { MpLogo } from "@/components/ui/marketplace";
 import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
@@ -23,19 +24,19 @@ const ROADMAP: RoadmapRow[] = [
     desc: "Build and review listings per channel before anything goes live.",
   },
   {
-    title: "Publishing",
-    state: "soon",
-    desc: "Push listings to live marketplaces. Not implemented yet, every attempt is logged.",
+    title: "Live eBay publishing",
+    state: "available",
+    desc: "Live for selected alpha accounts. Gated by an allowlist and a global switch; every attempt is audited.",
   },
   {
     title: "Inventory sync",
     state: "soon",
-    desc: "Keep stock and status in sync across channels once integrations ship.",
+    desc: "Live eBay inventory sync is not available yet.",
   },
   {
     title: "CSV export",
-    state: "soon",
-    desc: "Export listings and history to CSV. Planned.",
+    state: "available",
+    desc: "Export your inventory to CSV from the Inventory page.",
   },
 ];
 
@@ -104,20 +105,21 @@ export default function ChannelsPage() {
       </>
     );
 
+  const ebayLive = channels.some(
+    (c) => c.marketplace === "ebay" && c.capabilities.publish,
+  );
+
   return (
     <>
       <Topbar
         crumbs={["Marketplaces"]}
         right={
-          <Btn
-            variant="primary"
-            size="sm"
-            icon="plus"
-            disabled
-            title="Coming soon"
+          <Link
+            href="/settings/marketplaces"
+            className="btn btn--primary btn--sm"
           >
-            Connect marketplace
-          </Btn>
+            Manage connections
+          </Link>
         }
       />
 
@@ -128,20 +130,25 @@ export default function ChannelsPage() {
               Marketplaces<em>.</em>
             </h1>
             <div className="page__title-meta">
-              {channels.length} adapters · publishing not enabled yet · CSV later
+              {channels.length} channels ·{" "}
+              {ebayLive
+                ? "eBay live publishing enabled"
+                : "eBay live publishing in alpha"}{" "}
+              · inventory sync not available yet
             </div>
           </div>
         </div>
 
         <Banner
           variant="info"
-          title="Draft-only today"
-          desc="Adapters are in draft-preview mode. Publishing and inventory sync arrive when real marketplace integrations ship. Every publish attempt is logged."
+          title={ebayLive ? "eBay publishing is live for your account" : "eBay publishing is in alpha"}
+          desc="eBay live publishing is enabled for selected alpha accounts and every attempt is audited. Other marketplaces stay assisted: build the draft here, then copy/export to list manually. Live inventory sync is not available yet."
         />
 
         <div className="channels-grid" style={{ marginTop: 16 }}>
           {channels.map((c) => {
             const count = targetCounts[c.marketplace] ?? 0;
+            const isEbay = c.marketplace === "ebay";
             return (
               <div
                 key={c.marketplace}
@@ -165,16 +172,16 @@ export default function ChannelsPage() {
                     {c.capabilities.draftPreview && (
                       <Badge status="ready" label="Draft preview" />
                     )}
-                    {c.capabilities.publish ? (
-                      <Badge status="published" label="Publishing" />
+                    {isEbay ? (
+                      c.capabilities.publish ? (
+                        <Badge status="published" label="Live publishing" />
+                      ) : (
+                        <Badge outline label="Preview + manual" />
+                      )
                     ) : (
-                      <Badge status="noimpl" label="Publish: not implemented" />
+                      <Badge outline label="Assisted (draft + export)" />
                     )}
-                    {c.capabilities.inventorySync ? (
-                      <Badge status="ready" label="Sync" />
-                    ) : (
-                      <Badge status="noimpl" label="Sync: soon" />
-                    )}
+                    <Badge outline label="Inventory sync: not available yet" />
                   </div>
                   <div className="t-small muted" style={{ marginTop: 8 }}>
                     {count > 0
@@ -184,22 +191,22 @@ export default function ChannelsPage() {
                 </div>
 
                 <div className="row" style={{ gap: 6 }}>
-                  <Btn
-                    variant="ghost"
-                    size="sm"
-                    icon="settings"
-                    disabled
-                    title="Coming soon"
-                  />
-                  <Btn
-                    variant="secondary"
-                    size="sm"
-                    icon="csv"
-                    disabled
-                    title="Coming soon"
+                  {isEbay && (
+                    <Link
+                      href="/settings/marketplaces"
+                      className="btn btn--ghost btn--sm"
+                      title="Manage your eBay connection"
+                    >
+                      Manage
+                    </Link>
+                  )}
+                  <Link
+                    href="/inventory"
+                    className="btn btn--secondary btn--sm"
+                    title="Export your inventory to CSV"
                   >
-                    CSV
-                  </Btn>
+                    Export
+                  </Link>
                 </div>
               </div>
             );
