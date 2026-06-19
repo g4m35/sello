@@ -7,6 +7,7 @@ import { Badge, Banner, Btn, Check, Modal } from "@/components/ui/primitives";
 import { MpLogo } from "@/components/ui/marketplace";
 import { ebayPreflightMissingLabels } from "@/components/app/ebay-preflight-card";
 import { api } from "@/lib/api/client";
+import { useFeatureAccess } from "@/components/providers/feature-access-provider";
 import { useSession } from "@/components/providers/session-provider";
 import { formatMoneyCents } from "@/lib/view/format";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
@@ -37,6 +38,8 @@ export function PublishModal({
   onPublished?: () => void;
 }) {
   const { token } = useSession();
+  const { access, copy } = useFeatureAccess();
+  const liveEbayEntitled = access.liveEbayPublish;
   const [stage, setStage] = useState<Stage>("review");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [outcomes, setOutcomes] = useState<Outcome[]>([]);
@@ -184,19 +187,23 @@ export function PublishModal({
             </button>
           </div>
           <div className="modal__body stack-4">
-            <Banner
-              variant="warn"
-              title={
-                selectedLiveEbay
-                  ? "Final eBay publish review"
-                  : "Publishing isn't enabled yet"
-              }
-              desc={
-                selectedLiveEbay
-                  ? "Confirming creates a live eBay listing. Sello will run the readiness preflight again before sending anything to eBay."
-                  : "Listings stay draft-only. Running publish records a real, audited attempt per channel and returns each marketplace's not-implemented status; nothing is sent to any marketplace."
-              }
-            />
+            {selectedLiveEbay && !liveEbayEntitled ? (
+              <Banner variant="info" title="Preview only" desc={copy.liveEbayPublish} />
+            ) : (
+              <Banner
+                variant="warn"
+                title={
+                  selectedLiveEbay
+                    ? "Final eBay publish review"
+                    : "Publishing isn't enabled yet"
+                }
+                desc={
+                  selectedLiveEbay
+                    ? "Confirming creates a live eBay listing. Sello will run the readiness preflight again before sending anything to eBay."
+                    : "Listings stay draft-only. Running publish records a real, audited attempt per channel and returns each marketplace's not-implemented status; nothing is sent to any marketplace."
+                }
+              />
+            )}
             {selectedLiveEbay && (
               <div className="card" style={{ padding: 12 }}>
                 <div className="t-small" style={{ fontWeight: 600, marginBottom: 8 }}>
@@ -237,19 +244,21 @@ export function PublishModal({
                     />
                     <ReviewRow label="Return policy" value={review.review.policies.return} />
                     <ReviewRow label="Inventory location" value={review.review.location} />
-                    <label
-                      className="row"
-                      style={{ gap: 8, alignItems: "center", cursor: "pointer", marginTop: 4 }}
-                    >
-                      <Check
-                        checked={confirmLive}
-                        onChange={() => setConfirmLive((v) => !v)}
-                      />
-                      <span className="t-small">
-                        I understand this creates a live eBay listing on eBay (
-                        {review.review.environment}).
-                      </span>
-                    </label>
+                    {liveEbayEntitled && (
+                      <label
+                        className="row"
+                        style={{ gap: 8, alignItems: "center", cursor: "pointer", marginTop: 4 }}
+                      >
+                        <Check
+                          checked={confirmLive}
+                          onChange={() => setConfirmLive((v) => !v)}
+                        />
+                        <span className="t-small">
+                          I understand this creates a live eBay listing on eBay (
+                          {review.review.environment}).
+                        </span>
+                      </label>
+                    )}
                   </div>
                 )}
               </div>
@@ -283,15 +292,17 @@ export function PublishModal({
               <Btn variant="ghost" onClick={onClose}>
                 Cancel
               </Btn>
-              <Btn
-                variant="accent"
-                disabled={selectedLiveEbay ? !liveSubmitReady : selectedCount === 0}
-                onClick={run}
-              >
-                {selectedLiveEbay
-                  ? "Create live eBay listing"
-                  : `Record publish attempt (${selectedCount})`}
-              </Btn>
+              {selectedLiveEbay && !liveEbayEntitled ? null : (
+                <Btn
+                  variant="accent"
+                  disabled={selectedLiveEbay ? !liveSubmitReady : selectedCount === 0}
+                  onClick={run}
+                >
+                  {selectedLiveEbay
+                    ? "Create live eBay listing"
+                    : `Record publish attempt (${selectedCount})`}
+                </Btn>
+              )}
             </div>
           </div>
         </>

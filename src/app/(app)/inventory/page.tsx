@@ -206,9 +206,15 @@ export default function InventoryPage() {
     setActionBusy(true);
     setActionError(null);
     try {
-      await api.deleteItems(token, ids);
+      const result = await api.deleteItems(token, ids);
       setSelected(new Set());
       setReloadKey((k) => k + 1);
+      if (result.blocked.length > 0) {
+        const n = result.blocked.length;
+        setActionError(
+          `${n} item${n === 1 ? "" : "s"} kept: end the live eBay listing before deleting.`,
+        );
+      }
     } catch (e) {
       setActionError((e as { error?: string })?.error ?? "Could not delete items.");
     } finally {

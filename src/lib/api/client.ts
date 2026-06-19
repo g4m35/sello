@@ -192,7 +192,10 @@ export const api = {
     request<{ attempts: AttemptView[] }>("/api/history", token),
 
   deleteItems: (token: string, ids: string[]) =>
-    request<{ deleted: number }>("/api/listings", token, {
+    request<{
+      deleted: string[];
+      blocked: { itemId: string; reason: "LIVE_MARKETPLACE_LISTING" }[];
+    }>("/api/listings", token, {
       method: "DELETE",
       body: JSON.stringify({ ids }),
     }),

@@ -428,7 +428,7 @@ git commit -m "feat: publish all selected ebay listings"
 - Create: `src/lib/view/inventory-actions.ts`
 - Create: `src/lib/view/inventory-actions.test.ts`
 
-- [ ] **Step 1: Write failing seller-state and delete-safety tests**
+- [x] **Step 1: Write failing seller-state and delete-safety tests**
 
 Cover:
 
@@ -440,17 +440,17 @@ Cover:
 - bulk delete deletes safe drafts and returns blocked live item IDs/reasons independently;
 - published eBay item opens `https://www.ebay.com/itm/{externalListingId}`; otherwise the dead “View live” button is absent.
 
-- [ ] **Step 2: Verify focused tests fail**
+- [x] **Step 2: Verify focused tests fail**
 
 Run: `npm test -- src/components/app/publish-modal.test.tsx src/components/app/marketplace-operations-panel.test.tsx src/app/api/listings/route.test.ts src/lib/view/inventory-actions.test.ts`
 
 Expected: FAIL on missing feature-aware behavior and live-delete protection.
 
-- [ ] **Step 3: Implement feature-aware action rendering**
+- [x] **Step 3: Implement feature-aware action rendering**
 
 Pass `FeatureAccess` from `useFeatureAccess()` into publish and marketplace-operation components. Keep preflight/preview for everyone. Hide—not disable without explanation—unavailable live mutations, and render the required alpha copy with manual alternatives.
 
-- [ ] **Step 4: Implement server-side delete partitioning**
+- [x] **Step 4: Implement server-side delete partitioning**
 
 Before `deleteMany`, load seller-owned selected items and their marketplace listing statuses. Return:
 
@@ -463,13 +463,13 @@ Before `deleteMany`, load seller-owned selected items and their marketplace list
 
 Only delete IDs without live/in-flight artifacts. Update single and bulk UI copy from response results.
 
-- [ ] **Step 5: Run action/delete tests**
+- [x] **Step 5: Run action/delete tests**
 
 Run: `npm test -- src/components/app/publish-modal.test.tsx src/components/app/marketplace-operations-panel.test.tsx src/app/api/listings/route.test.ts src/lib/view/inventory-actions.test.ts`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit honest action and deletion behavior**
+- [x] **Step 6: Commit honest action and deletion behavior**
 
 ```bash
 git add src/components/app/publish-modal.tsx src/components/app/publish-modal.test.tsx src/components/app/marketplace-operations-panel.tsx src/components/app/marketplace-operations-panel.test.tsx 'src/app/(app)/inventory/[id]/page.tsx' src/app/api/listings/route.ts src/app/api/listings/route.test.ts src/lib/view/inventory-actions.ts src/lib/view/inventory-actions.test.ts
