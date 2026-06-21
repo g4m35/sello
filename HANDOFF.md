@@ -12,6 +12,50 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-20 — Claude. **Chrome-free code hardening: sanitize persisted marketplace
+failure reasons. PR into `develop` from
+`fix/sanitize-persisted-marketplace-failure-reasons`. No env/gate/live/deploy
+changes, no migrations, no browser/live smoke attempted.**
+
+Problem: raw `error.message` (and raw eBay error objects) were persisted into
+`publishAttempt.reason`, `marketplaceListing.lastError`, and
+`adapterResult.ebayError`, then surfaced in the `?debug` advanced panel — so a raw
+Prisma/eBay/provider/stack/token string could be stored and rendered.
+
+Fix (defense in depth, two layers):
+- New `errors.ts` helpers: `isUnsafePersistedFailureText`, `safeFailureText`,
+  `safePersistedFailureReason`. Author-written AppError/EbayIntegrationError
+  messages pass only if clean; raw Error/unknown never has its message persisted;
+  any candidate matching a payload/stack/DB/secret pattern (Bearer, authorization,
+  access/refresh token, api key, secret, password, cookie, Prisma, "deserialize
+  column", pg_advisory, stack frames, JSON/XML, >200 chars) collapses to a generic
+  fallback. The failure CODE is still stored separately, so troubleshooting
+  category survives.
+- Persistence layer: `recordEbayFailure` (publish-handler) sanitizes `reason` and
+  persists only `{status, scrubbed message}` for `ebayError`;
+  `recordEbayDelistFailure` (delist-handler) sanitizes `reason`+`lastError`;
+  eBay `orphans.ts` cleanup sanitizes `reason`/`lastError` and reduces
+  `errorDetails` to `{code, scrubbed message}`.
+- Render layer: `server-map` scrubs `reason`, `lastError`/`listingLastError`, and
+  `ebayErrorMessage` on the way out (so even older raw rows render safe).
+- Seller-facing publish/delist responses were already sanitized (PR #44 helpers);
+  this only hardens the PERSISTED + debug-rendered fields.
+
+Tests added: `errors.test.ts` (all dangerous samples flagged; clean business
+messages preserved); publish-handler (failing publish persists scrubbed
+reason + `{status, "eBay returned an error."}`); delist-handler (raw failure →
+scrubbed reason+lastError); server-map (debug surface scrubs raw reason/
+ebayError/lastError, keeps numeric status). Existing publish/delist behavior
+unchanged.
+
+Gate GREEN: `prisma validate`, `tsc --noEmit` exit 0, `eslint` 0 errors (same 2
+pre-existing `_m`/`_f` warnings), `npm test` **119 files / 820 tests**,
+`npm run build` OK. No migrations; no `prisma db push`.
+
+Bulk publish: code-audited only (no defects); **live browser/manual smoke still
+required**. Browser automation remained unavailable this session.
+
+## Previous update
 2026-06-20 — Claude. **Chrome-free rollout check + code safety audit. No browser
 smoke (Chrome unavailable / browser nav denied), no env changes, no gate
 changes, no deploy, no migrations. TOP BLOCKER: a live disposable eBay listing

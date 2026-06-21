@@ -4,7 +4,7 @@ import type {
   Prisma,
   PublishAttemptStatus,
 } from "@/generated/prisma/client";
-import { AppError } from "@/lib/errors";
+import { AppError, safePersistedFailureReason } from "@/lib/errors";
 import { syncMasterStatusAfterMarketplaceDelist } from "@/lib/marketplace/lifecycle-sync";
 
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
@@ -342,8 +342,8 @@ async function recordEbayDelistFailure(
 ) {
   const code =
     error instanceof EbayIntegrationError ? error.code : ebayErrorCodes.delistFailed;
-  const reason =
-    error instanceof Error ? error.message : "eBay could not end this listing.";
+  // Sanitized before persisting to publishAttempt.reason and marketplaceListing.lastError.
+  const reason = safePersistedFailureReason(error, "eBay could not end this listing.");
 
   await withMigrationDetection(async () => {
     await prisma.publishAttempt.update({

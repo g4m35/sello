@@ -4,7 +4,7 @@ import type {
   Prisma,
   PublishAttemptStatus,
 } from "@/generated/prisma/client";
-import { AppError } from "@/lib/errors";
+import { AppError, safePersistedFailureReason } from "@/lib/errors";
 import { syncMasterStatusAfterMarketplaceCleanup } from "@/lib/marketplace/lifecycle-sync";
 
 import { EbaySandboxClient, getUsableEbayAccessToken } from "./client";
@@ -280,8 +280,7 @@ export async function cleanupEbayOrphanArtifacts(
       await context.client.deleteInventoryItem(scan.sku);
     }
   } catch (error) {
-    const reason =
-      error instanceof Error ? error.message : "eBay orphan cleanup failed.";
+    const reason = safePersistedFailureReason(error, "eBay orphan cleanup failed.");
     await prisma.publishAttempt.update({
       where: { id: attempt.id },
       data: {
@@ -460,11 +459,11 @@ function isLiveOffer(offer: EbayOrphanScanResult["offers"][number]): boolean {
 }
 
 function errorDetails(error: unknown): Record<string, unknown> {
-  if (error instanceof EbayIntegrationError) {
-    return error.toPayload();
-  }
-  if (error instanceof Error) {
-    return { message: error.message };
-  }
-  return { message: "Unknown cleanup error." };
+  // Persist only a safe code + scrubbed message; never the raw payload/details
+  // that EbayIntegrationError.toPayload() or a raw Error.message can carry.
+  const code = error instanceof EbayIntegrationError ? error.code : undefined;
+  return {
+    ...(code ? { code } : {}),
+    message: safePersistedFailureReason(error, "eBay orphan cleanup failed."),
+  };
 }
