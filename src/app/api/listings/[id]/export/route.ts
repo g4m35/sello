@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { parseFlaws, parseMeasurements } from "@/lib/ai/listing-draft";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { analyzeListing } from "@/lib/listing/intelligence";
 import {
   buildListingExport,
@@ -95,6 +95,9 @@ export async function GET(
     return NextResponse.json({ ...exported, warnings });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listing_export" }) },
+      { status },
+    );
   }
 }

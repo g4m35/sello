@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import {
   ImportRequestSchema,
   normalizeCategory,
@@ -60,6 +60,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ created: createdIds.length, ids: createdIds });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listings_import" }) },
+      { status },
+    );
   }
 }
