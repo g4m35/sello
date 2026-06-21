@@ -846,6 +846,49 @@ describe("executePublish — eBay dispatch", () => {
     expect(prisma._state.updates).toHaveLength(0);
   });
 
+  it("sanitizes the persisted failure reason and ebayError (no raw provider/token text)", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockRejectedValue(
+      new EbayIntegrationError(
+        ebayErrorCodes.apiFailed,
+        'eBay API request failed: {"errors":[{"errorId":25001,"message":"x"}]}',
+        502,
+        {
+          step: "publish",
+          ebayError: {
+            status: 500,
+            message: "Authorization: Bearer leaked.secret.token refresh_token=abc",
+          },
+        },
+      ),
+    );
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.apiFailed });
+
+    const attempt = prisma._state.attempts[0];
+    expect(attempt.status).toBe("FAILED");
+    // reason scrubbed to the safe per-route fallback (raw eBay JSON dropped).
+    expect(attempt.reason).toBe("eBay publish failed.");
+    // persisted ebayError keeps the numeric status but scrubs the message.
+    const adapterResult = attempt.adapterResult as {
+      ebayError?: { status?: number; message?: string };
+    };
+    expect(adapterResult.ebayError?.status).toBe(500);
+    expect(adapterResult.ebayError?.message).toBe("eBay returned an error.");
+
+    // Nothing dangerous anywhere in the persisted attempt + events.
+    const serialized = JSON.stringify({
+      attempts: prisma._state.attempts,
+      events: prisma._state.events,
+    });
+    expect(serialized).not.toContain("Bearer");
+    expect(serialized).not.toContain("refresh_token");
+    expect(serialized).not.toContain("leaked.secret");
+    expect(serialized).not.toMatch(/\{"errors"/);
+  });
+
   it("preserves bulk correlation on failed attempt updates and events", async () => {
     const prisma = createEbayFakePrisma();
     const ebayPublish = vi.fn().mockRejectedValue(

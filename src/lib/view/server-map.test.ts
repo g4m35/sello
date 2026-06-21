@@ -163,3 +163,52 @@ describe("mapAttempt bulk correlation", () => {
     expect(view).not.toHaveProperty("internalAdapterPayload");
   });
 });
+
+describe("mapAttempt failure sanitization (debug surfaces)", () => {
+  it("scrubs raw persisted reason / ebayError / lastError before rendering", () => {
+    const now = new Date("2026-06-18T12:00:00Z");
+    const view = mapAttempt({
+      id: "attempt-1",
+      status: "FAILED",
+      code: "EBAY_PUBLISH_FAILED",
+      reason: "PrismaClientKnownRequestError: Authorization: Bearer leaked.token",
+      adapterResult: {
+        step: "publish",
+        ebayError: {
+          status: 500,
+          message: '{"errors":[{"errorId":1,"message":"refresh_token=abc"}]}',
+        },
+      },
+      startedAt: now,
+      createdAt: now,
+      completedAt: now,
+      marketplaceListing: {
+        marketplace: "ebay",
+        environment: "production",
+        status: "LISTED",
+        sku: "percs_item1",
+        externalOfferId: "off-1",
+        externalListingId: "list-1",
+        lastError: "Failed to deserialize column of type 'void'",
+        inventoryItem: {
+          id: "item-1",
+          productName: "Nike Air Max 1",
+          listingDrafts: [],
+        },
+      },
+    } as unknown as Parameters<typeof mapAttempt>[0]);
+
+    expect(view.reason).toBe("The marketplace request failed.");
+    expect(view.listingLastError).toBe("The marketplace request failed.");
+    expect(view.ebayErrorMessage).toBe("The marketplace request failed.");
+    expect(view.ebayErrorStatus).toBe(500); // safe numeric status preserved
+
+    const serialized = JSON.stringify(view);
+    expect(serialized).not.toContain("Bearer");
+    expect(serialized).not.toContain("refresh_token");
+    expect(serialized).not.toContain("Prisma");
+    expect(serialized).not.toContain("void");
+    expect(serialized).not.toContain("leaked.token");
+    expect(serialized).not.toMatch(/\{"errors"/);
+  });
+});

@@ -8,6 +8,7 @@ import type {
   PublishAttempt,
 } from "@/generated/prisma/client";
 import { parseFlaws, parseMeasurements } from "@/lib/ai/listing-draft";
+import { safeFailureText } from "@/lib/errors";
 import { describeState, toLifecycleState } from "@/lib/lifecycle/item-status";
 import {
   getEbayEnvironment,
@@ -88,7 +89,7 @@ function channelsOf(item: ItemWithRelations, draft: ListingDraft | null): Channe
       sku: listing?.sku ?? null,
       externalOfferId: listing?.externalOfferId ?? null,
       externalListingId: listing?.externalListingId ?? null,
-      lastError: listing?.lastError ?? null,
+      lastError: safeRenderFailure(listing?.lastError),
     };
   });
 }
@@ -209,6 +210,13 @@ type AttemptWithRelations = PublishAttempt & {
   };
 };
 
+// Defense in depth for the debug/admin marketplace panels: even if an older row
+// persisted a raw failure string, scrub it on the way out. Keeps null as null.
+function safeRenderFailure(value: string | null | undefined): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  return safeFailureText(value);
+}
+
 export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
   const listing = attempt.marketplaceListing;
   const item = listing.inventoryItem;
@@ -221,7 +229,7 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
   const ebayErrorStatus =
     typeof ebayError?.status === "number" ? ebayError.status : null;
   const ebayErrorMessage =
-    typeof ebayError?.message === "string" ? ebayError.message : null;
+    typeof ebayError?.message === "string" ? safeRenderFailure(ebayError.message) : null;
   const bulkRunId =
     typeof adapterResult?.bulkRunId === "string" ? adapterResult.bulkRunId : null;
   return {
@@ -246,12 +254,12 @@ export function mapAttempt(attempt: AttemptWithRelations): AttemptView {
       attempt.completedAt && attempt.startedAt
         ? attempt.completedAt.getTime() - attempt.startedAt.getTime()
         : null,
-    reason: attempt.reason,
+    reason: safeRenderFailure(attempt.reason),
     code: attempt.code,
     sku: listing.sku,
     externalOfferId: listing.externalOfferId,
     externalListingId: listing.externalListingId,
-    listingLastError: listing.lastError,
+    listingLastError: safeRenderFailure(listing.lastError),
     failedStep,
     ebayErrorStatus,
     ebayErrorMessage,

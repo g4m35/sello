@@ -4,7 +4,11 @@ import type {
   PublishAttemptStatus,
 } from "@/generated/prisma/client";
 import type { Marketplace } from "@/lib/ai/listing-draft";
-import { AppError } from "@/lib/errors";
+import {
+  AppError,
+  safeFailureText,
+  safePersistedFailureReason,
+} from "@/lib/errors";
 import { canPublish, toLifecycleState } from "@/lib/lifecycle/item-status";
 import { syncMasterStatusAfterMarketplacePublish } from "@/lib/marketplace/lifecycle-sync";
 
@@ -633,12 +637,9 @@ async function recordEbayFailure(
     Array.isArray(error.details?.missing)
       ? error.details.missing.filter((id): id is string => typeof id === "string")
       : [];
+  const safeReason = safePersistedFailureReason(error, "eBay publish failed.");
   const reason =
-    error instanceof Error
-      ? missing.length > 0
-        ? `${error.message} Missing: ${missing.join(", ")}.`
-        : error.message
-      : "eBay publish failed.";
+    missing.length > 0 ? `${safeReason} Missing: ${missing.join(", ")}.` : safeReason;
   const step =
     error instanceof EbayIntegrationError &&
     error.details &&
@@ -649,7 +650,7 @@ async function recordEbayFailure(
     error instanceof EbayIntegrationError &&
     error.details &&
     isRecord(error.details.ebayError)
-      ? sanitizeJsonRecord(error.details.ebayError)
+      ? safeEbayErrorRecord(error.details.ebayError)
       : null;
   const stepEvents =
     error instanceof EbayIntegrationError && Array.isArray(error.details?.stepEvents)
@@ -728,8 +729,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function sanitizeJsonRecord(value: Record<string, unknown>): Record<string, unknown> {
-  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+// Persist only safe fields of an eBay error object: the numeric HTTP status and a
+// scrubbed message. Drops any raw body/headers/payload so the debug panel
+// (ebayErrorStatus / ebayErrorMessage) can never render raw provider text.
+function safeEbayErrorRecord(value: Record<string, unknown>): {
+  status?: number;
+  message: string;
+} {
+  const status = typeof value.status === "number" ? value.status : undefined;
+  const message = safeFailureText(
+    typeof value.message === "string" ? value.message : null,
+    "eBay returned an error.",
+  );
+  return { ...(status !== undefined ? { status } : {}), message };
 }
 
 function isPublishStepEvent(value: unknown): value is EbayPublishStepRecord {

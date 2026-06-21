@@ -287,6 +287,32 @@ describe("executeEbayDelist", () => {
     expect(prisma._state.events.some((e) => e.kind === "delist_failed")).toBe(true);
   });
 
+  it("sanitizes a raw failure reason before persisting reason and lastError", async () => {
+    const prisma = createPrisma({});
+
+    await expect(
+      executeEbayDelist(
+        prisma,
+        input,
+        vi.fn().mockRejectedValue(
+          new EbayIntegrationError(
+            ebayErrorCodes.delistFailed,
+            'eBay delist request failed: {"errors":[{"message":"Authorization: Bearer secret.token"}]}',
+            502,
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.delistFailed });
+
+    // Raw eBay JSON / Bearer token replaced with the safe fallback.
+    expect(prisma._state.attempts[0].reason).toBe("eBay could not end this listing.");
+    expect(prisma._state.listing?.lastError).toBe("eBay could not end this listing.");
+    const serialized = JSON.stringify(prisma._state);
+    expect(serialized).not.toContain("Bearer");
+    expect(serialized).not.toContain("secret.token");
+    expect(serialized).not.toMatch(/\{"errors"/);
+  });
+
   it("blocks duplicate delist while a delist attempt is running", async () => {
     const prisma = createPrisma({
       listing: { publishAttempts: [{ status: "RUNNING", code: "EBAY_DELIST_STARTED" }] },

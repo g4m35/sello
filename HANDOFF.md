@@ -12,6 +12,124 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-20 — Claude. **Chrome-free code hardening: sanitize persisted marketplace
+failure reasons. PR into `develop` from
+`fix/sanitize-persisted-marketplace-failure-reasons`. No env/gate/live/deploy
+changes, no migrations, no browser/live smoke attempted.**
+
+Problem: raw `error.message` (and raw eBay error objects) were persisted into
+`publishAttempt.reason`, `marketplaceListing.lastError`, and
+`adapterResult.ebayError`, then surfaced in the `?debug` advanced panel — so a raw
+Prisma/eBay/provider/stack/token string could be stored and rendered.
+
+Fix (defense in depth, two layers):
+- New `errors.ts` helpers: `isUnsafePersistedFailureText`, `safeFailureText`,
+  `safePersistedFailureReason`. Author-written AppError/EbayIntegrationError
+  messages pass only if clean; raw Error/unknown never has its message persisted;
+  any candidate matching a payload/stack/DB/secret pattern (Bearer, authorization,
+  access/refresh token, api key, secret, password, cookie, Prisma, "deserialize
+  column", pg_advisory, stack frames, JSON/XML, >200 chars) collapses to a generic
+  fallback. The failure CODE is still stored separately, so troubleshooting
+  category survives.
+- Persistence layer: `recordEbayFailure` (publish-handler) sanitizes `reason` and
+  persists only `{status, scrubbed message}` for `ebayError`;
+  `recordEbayDelistFailure` (delist-handler) sanitizes `reason`+`lastError`;
+  eBay `orphans.ts` cleanup sanitizes `reason`/`lastError` and reduces
+  `errorDetails` to `{code, scrubbed message}`.
+- Render layer: `server-map` scrubs `reason`, `lastError`/`listingLastError`, and
+  `ebayErrorMessage` on the way out (so even older raw rows render safe).
+- Seller-facing publish/delist responses were already sanitized (PR #44 helpers);
+  this only hardens the PERSISTED + debug-rendered fields.
+
+Tests added: `errors.test.ts` (all dangerous samples flagged; clean business
+messages preserved); publish-handler (failing publish persists scrubbed
+reason + `{status, "eBay returned an error."}`); delist-handler (raw failure →
+scrubbed reason+lastError); server-map (debug surface scrubs raw reason/
+ebayError/lastError, keeps numeric status). Existing publish/delist behavior
+unchanged.
+
+Gate GREEN: `prisma validate`, `tsc --noEmit` exit 0, `eslint` 0 errors (same 2
+pre-existing `_m`/`_f` warnings), `npm test` **119 files / 820 tests**,
+`npm run build` OK. No migrations; no `prisma db push`.
+
+Bulk publish: code-audited only (no defects); **live browser/manual smoke still
+required**. Browser automation remained unavailable this session.
+
+## Previous update
+2026-06-20 — Claude. **Chrome-free rollout check + code safety audit. No browser
+smoke (Chrome unavailable / browser nav denied), no env changes, no gate
+changes, no deploy, no migrations. TOP BLOCKER: a live disposable eBay listing
+needs manual cleanup.**
+
+State reconciliation (PRs #44→#45→#46 shipped by alternating sessions):
+- Current production = `dpl_4afwkuU89pdgtNzrD3Yh8B7QoUBQ` (commit `c4161b7`, PR #46
+  "sanitize comp mutation source responses"), READY, serving `sello.wtf`.
+  Rollback target = prior prod `dpl_E64hcZQmCtmxJbeKjrisRXM9aGdR`. NOTE: 7
+  same-commit (`c4161b7`) redeploys exist after `dpl_6Ly3…`, consistent with env
+  gate toggling during the live smoke.
+- Live smoke already done by a prior session (reported, not re-run here): paid
+  comps passed (1 real paid call), weak-identity skipped at zero cost, manual
+  comps passed, and ONE single eBay publish SUCCEEDED.
+
+**TOP BLOCKER — live listing cleanup (manual / browser-required):**
+- Live disposable eBay listing `800215600622`, price `$49.99`, Sello status
+  `Active`. Must be ended before any further publish/bulk smoke or alpha users.
+- There is NO safe chrome-free path to delist it: the Sello delist API needs an
+  authenticated owner Supabase session + `ebayDelist` entitlement + a literal
+  `confirmLiveDelist`. We must not bypass auth or ask for session tokens, so
+  cleanup is browser/owner-only. Do NOT DB-mutate to fake cleanup; do NOT locally
+  delete the Sello item while the eBay listing is live (server `partitionDeletable`
+  blocks that anyway).
+- Manual cleanup checklist: open the Sello item for `800215600622` → use
+  Delist/End listing → accept the explicit "ends the live eBay listing" warning →
+  confirm Sello status becomes Ended/Delisted → confirm eBay Seller Hub shows
+  Ended → archive the local test item → re-scan logs → confirm no live disposable
+  listing remains.
+
+Gate state (env NAMES only — values intentionally not read/printed): all present
+(`LIVE_EBAY_PUBLISH_EMAILS`, `EBAY_DELIST_EMAILS`, `PAID_COMPS_EMAILS`,
+`EBAY_PRODUCTION_PUBLISH_ENABLED`, `COMPS_PAID_PROVIDERS_ENABLED`,
+`COMPS_APIFY_EBAY_SOLD_ENABLED`, `COMPS_AUTO_DISCOVERY_ENABLED`,
+`COMPS_ADMIN_OVERRIDE_ENABLED`, budgets/limits/cooldowns). **Owner must confirm in
+the Vercel dashboard that `EBAY_PRODUCTION_PUBLISH_ENABLED` is back OFF** after the
+single-publish smoke (the redeploy history implies it was toggled on).
+
+Production logs/health (this session, read-only): `sello.wtf` 200 on
+`/ /dashboard /inventory /privacy`, `401` unauthenticated `/api/listings`; over
+36h zero 5xx, zero error/warning/fatal, zero `Prisma` matches. Clean.
+
+Chrome-free code safety audit (current `main`, PR #46) — **no defects found:**
+- Single publish (`publish-handler`): ownership 404; lifecycle `canPublish` gate;
+  owner allowlist at route; `EBAY_PRODUCTION_PUBLISH_ENABLED` enforced in adapter
+  (→403 `not_enabled` in prod); readiness re-checked; duplicate guard via
+  in-memory `EBAY_PUBLISH` attempt check + DB partial-unique idempotency index.
+- Bulk publish: `uniqueItemIds` dedup; no product cap (transport ceiling only);
+  per-item ownership + readiness; already-listed/blocked skipped; per-item
+  results; duplicate guard inherited; generic per-item messages (no raw payload).
+- Delist: owner allowlist at route; ownership 404; live-artifact required
+  (`LISTED` + offer/listing ids); `confirmLiveDelist` literal required; duplicate
+  guard + idempotency index.
+- Local delete: `partitionDeletable` blocks any `QUEUED/LISTING/LISTED/DELISTING`
+  item (can't orphan a live listing).
+- Paid comps: allowlist + kill-switch + caps; weak-identity zero-cost skip;
+  manual comps independent; PR #46 `sellerSafeCompRows` sanitizes `source` across
+  GET/POST/PATCH/DELETE; provider token only in request header, never in response.
+- Search: `matchesItemSearch` covers title/brand/category/status/lifecycle/id.
+- Low-pri (NOT fixed, not seller-visible): `recordEbayFailure`/
+  `recordEbayDelistFailure` persist raw `error.message` to
+  `publishAttempt.reason`/`lastError`, surfaced only in the `?debug` advanced
+  panel — candidate for a future hardening sweep.
+
+No code changes were needed, so the full gate was not re-run this session.
+
+**Alpha verdict: DO NOT add alpha users yet.** Blockers: (1) clean up live listing
+`800215600622`; (2) bulk publish remains UNVERIFIED; (3) owner confirm live eBay
+gate is OFF. Fresh Chrome session must run cleanup FIRST, then duplicate check →
+bulk publish smoke (2 ready + 1 blocked, preflight counts, explicit confirm,
+per-item results, dup prevention) → delist all bulk listings → search/action/
+reconnect → admin/provider-usage → log scan → final alpha verdict.
+
+## Previous update
 2026-06-19 — Claude. **Post-deploy rollout blockers fixed in code/tests on
 `fix/alpha-live-actions-smoke-blockers` (off `develop`). No deploy, no env
 changes, no live marketplace/paid calls, no migrations, Chrome unavailable so
