@@ -4,9 +4,12 @@ import { z } from "zod";
 import {
   AppError,
   GENERIC_CLIENT_MESSAGE,
+  isUnsafePersistedFailureText,
   logUnexpectedError,
   safeClientMessage,
   safeErrorResponse,
+  safeFailureText,
+  safePersistedFailureReason,
 } from "./errors";
 
 // A stand-in for a raw Prisma runtime error: a multi-line message that embeds the
@@ -111,5 +114,86 @@ describe("safeErrorResponse", () => {
     const { status, body } = safeErrorResponse(zodError, { label: "test" });
     expect(status).toBe(400);
     expect(body.error.code).toBe("INVALID_REQUEST");
+  });
+});
+
+describe("persisted marketplace failure sanitization", () => {
+  // The exact dangerous strings that must never reach publishAttempt.reason,
+  // marketplaceListing.lastError, adapterResult.ebayError, or any debug surface.
+  const DANGEROUS = [
+    "PrismaClientKnownRequestError: invalid `prisma.x()` invocation",
+    "Inconsistent column data: Failed to deserialize column of type 'void'.",
+    "Authorization: Bearer abc.def.ghi",
+    "oauth failed: refresh_token expired",
+    '{"errors":[{"errorId":25001,"message":"System error","longMessage":"secret"}]}',
+    "TypeError: x is undefined\n    at Object.<anonymous> (/app/src/publish.ts:10:15)",
+    "<errorResponse><message>raw eBay xml payload</message></errorResponse>",
+    "api_key=sk_live_TOKEN_should_never_persist",
+    "SELECT pg_advisory_xact_lock(...) returned void",
+  ];
+
+  const SAFE = [
+    "The item specifics are invalid for this category.",
+    "eBay could not end this listing.",
+    "This listing needs a few more details before it can go live.",
+  ];
+
+  it("flags every dangerous sample as unsafe", () => {
+    for (const sample of DANGEROUS) {
+      expect(isUnsafePersistedFailureText(sample)).toBe(true);
+    }
+  });
+
+  it("lets clean short business messages through", () => {
+    for (const sample of SAFE) {
+      expect(isUnsafePersistedFailureText(sample)).toBe(false);
+      expect(safeFailureText(sample)).toBe(sample);
+    }
+  });
+
+  it("safeFailureText replaces dangerous content with a generic fallback", () => {
+    for (const sample of DANGEROUS) {
+      const out = safeFailureText(sample);
+      expect(out).toBe("The marketplace request failed.");
+      expect(out).not.toContain("Prisma");
+      expect(out).not.toContain("void");
+      expect(out).not.toContain("Bearer");
+      expect(out).not.toContain("refresh_token");
+      expect(out).not.toContain("pg_advisory");
+      expect(out).not.toMatch(/[{<]/);
+      expect(out).not.toMatch(/\bat\s+\S+:\d+:\d+/);
+    }
+  });
+
+  it("flags over-long blobs as unsafe", () => {
+    expect(isUnsafePersistedFailureText("a".repeat(201))).toBe(true);
+  });
+
+  it("safeFailureText handles null/empty with the fallback", () => {
+    expect(safeFailureText(null)).toBe("The marketplace request failed.");
+    expect(safeFailureText("   ")).toBe("The marketplace request failed.");
+    expect(safeFailureText(undefined, "custom fallback")).toBe("custom fallback");
+  });
+
+  it("safePersistedFailureReason scrubs raw Error messages but keeps clean AppError text", () => {
+    const raw = new Error(
+      "PrismaClientKnownRequestError: Authorization: Bearer leaked.token",
+    );
+    raw.name = "PrismaClientKnownRequestError";
+    expect(safePersistedFailureReason(raw)).toBe("The marketplace request failed.");
+
+    // Author-written AppError with a clean message passes through.
+    expect(
+      safePersistedFailureReason(new AppError("eBay could not end this listing.", 502)),
+    ).toBe("eBay could not end this listing.");
+
+    // Even an AppError whose message embedded raw text is scrubbed.
+    expect(
+      safePersistedFailureReason(
+        new AppError('eBay API request failed: {"errors":[{"errorId":1}]}', 502),
+      ),
+    ).toBe("The marketplace request failed.");
+
+    expect(safePersistedFailureReason("not even an error", "fallback")).toBe("fallback");
   });
 });
