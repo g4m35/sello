@@ -6,7 +6,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
 import { runCompFetch } from "@/lib/comps/fetch";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage, safePersistedFailureReason } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { prepareListingPhotos, uploadListingPhotos } from "@/lib/storage/listing-photos";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -56,7 +56,10 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "draft_get" }) },
+      { status },
+    );
   }
 }
 
@@ -166,7 +169,9 @@ export async function POST(request: Request) {
       aiOutput: { id: aiOutput.id },
     });
   } catch (error) {
-    const message = getErrorMessage(error);
+    // Sanitized for BOTH the persisted aiOutput.errorMessage and the client
+    // response, so a raw Gemini/Prisma/provider error never leaks or is stored.
+    const message = safePersistedFailureReason(error, "Listing identification failed.");
 
     if (inventoryItemId && prisma) {
       await prisma.inventoryItem

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { featureAccessForUser } from "@/lib/auth/feature-access";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { summarizeJobLogs } from "@/lib/jobs/summary";
 import { listMarketplaceAdapters } from "@/lib/marketplace/adapter";
 import { isEbayProductionPublishEnabled } from "@/lib/marketplace/adapters/ebay/config";
@@ -60,6 +60,9 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "jobs_list" }) },
+      { status },
+    );
   }
 }

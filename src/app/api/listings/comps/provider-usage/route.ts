@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { utcDayStart, utcMonthStart } from "@/lib/comps/provider-budget";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -68,6 +68,9 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "provider_usage" }) },
+      { status },
+    );
   }
 }

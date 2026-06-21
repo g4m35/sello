@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { coverOrder } from "@/lib/photo-order";
 import { prepareListingPhotos, uploadListingPhotos } from "@/lib/storage/listing-photos";
@@ -65,7 +65,10 @@ export async function POST(
     return NextResponse.json({ added: uploaded.length });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listing_photos" }) },
+      { status },
+    );
   }
 }
 
@@ -110,7 +113,10 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listing_photos" }) },
+      { status },
+    );
   }
 }
 
@@ -159,6 +165,9 @@ export async function DELETE(
     return NextResponse.json({ deleted: 1, remaining: remaining.length });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "listing_photos" }) },
+      { status },
+    );
   }
 }
