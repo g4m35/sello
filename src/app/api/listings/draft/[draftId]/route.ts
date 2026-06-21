@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
 import { GeminiListingDraftSchema } from "@/lib/ai/listing-draft";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { ListingDraftUpdateSchema } from "@/lib/listing-draft-update";
 import { evaluateReadiness } from "@/lib/lifecycle/readiness";
 import { getPrisma } from "@/lib/prisma";
@@ -106,7 +106,10 @@ export async function PATCH(
     return NextResponse.json({ draft, item });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "draft_update" }) },
+      { status },
+    );
   }
 }
 
@@ -299,6 +302,9 @@ export async function POST(
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "draft_update" }) },
+      { status },
+    );
   }
 }

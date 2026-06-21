@@ -12,6 +12,57 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-20 — Claude. **PR #47 shipped to production; then chrome-free pre-alpha
+hardening (route error-sanitization sweep + bulk-publish test hardening) on
+`chore/pre-alpha-code-hardening` (PR open into `develop`, NOT merged). No
+env/gate changes, no migrations, no live ops, no browser smoke.**
+
+Production now:
+- PR #47 merged to `develop` (`46e5a5c`), promoted to `main` (`1a2f435`,
+  `[deploy]`), deployed: **prod = `dpl_AYv9e4snrBpKbzByZ9dwYBgL6Wzy`** (READY),
+  serving `sello.wtf`. Rollback target = `dpl_4afwkuU89pdgtNzrD3Yh8B7QoUBQ`.
+  Health 200/401, zero error/warning/fatal logs.
+- Verified-live earlier (prior sessions, not re-run): paid comps passed (1 paid
+  call), weak-identity zero-cost skip, manual comps, ONE single eBay publish.
+  Owner reports the `800215600622` delist cleanup works (not independently
+  verified here — no eBay/DB access without bypassing auth).
+
+This session's hardening (on `chore/pre-alpha-code-hardening`):
+- **Route error-sanitization sweep:** 10 leaking routes (`history`, `jobs`,
+  `listings/price`, `listings/import`, `listings/draft` GET+POST,
+  `listings/draft/[draftId]`, `listings/[id]/photos`, `listings/[id]/export`,
+  `listings/[id]/ebay-orphans`, `listings/comps/provider-usage`) converted from
+  `getErrorMessage(error)` to `safeClientMessage`. The draft POST AI-failure now
+  also sanitizes the message it PERSISTS to `aiOutput.errorMessage` (was raw).
+  Remaining `getErrorMessage` users are the 5 eBay OAuth/readiness routes, which
+  only call it in their AppError branch and route unexpected errors through
+  `toEbayErrorPayload` (generic) — they don't leak; left as-is.
+- **Bulk-publish test hardening:** added orchestration tests (2-ready+1-blocked
+  preflight with reason, execute dedup, mixed per-item outcomes) and a new
+  `bulk-publish-deps.test.ts` covering the REAL `defaultBulkPublishDeps`:
+  non-owner→rejected, already-listed→skipped, gate-disabled→safe skip, ready,
+  needs_details, duplicate→skip, readiness→needs_details, and raw-error→generic
+  failed (no leak). Plus a representative route sweep regression
+  (`history/route.test.ts`).
+- Bulk publish remains **code-audited only — live browser/manual smoke still
+  required.**
+
+Gate GREEN: `prisma validate`, `tsc --noEmit` exit 0, `eslint` 0 errors (2
+pre-existing `_m`/`_f` warnings), `npm test` **121 files / 835 tests**,
+`npm run build` OK. No migrations; no `prisma db push`.
+
+**Alpha verdict: DO NOT add alpha users yet.** Blockers: (1) bulk publish is
+live-unverified; (2) owner confirm `800215600622`/all disposable listings are
+ended; (3) owner confirm live eBay gate is in the intended owner-only state.
+Add alpha users by **feature allowlist email** (`LIVE_EBAY_PUBLISH_EMAILS` /
+`EBAY_DELIST_EMAILS` / `PAID_COMPS_EMAILS`), NOT `ADMIN_EMAILS`.
+
+Next manual/browser (Chrome-capable) session, in order: (1) bulk publish smoke
+with 2 ready + 1 blocked → preflight counts, explicit confirm, per-item results,
+duplicate prevention; (2) delist all created listings; (3) search/action/admin
+smoke; (4) final log scan; (5) alpha verdict.
+
+## Previous update
 2026-06-20 — Claude. **Chrome-free code hardening: sanitize persisted marketplace
 failure reasons. PR into `develop` from
 `fix/sanitize-persisted-marketplace-failure-reasons`. No env/gate/live/deploy

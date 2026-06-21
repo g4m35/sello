@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
 import {
   cleanupEbayOrphanArtifacts,
@@ -48,6 +48,9 @@ export async function POST(
     }
 
     const status = error instanceof AppError ? error.status : 400;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "ebay_orphans" }) },
+      { status },
+    );
   }
 }

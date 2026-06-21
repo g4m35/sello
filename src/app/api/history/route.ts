@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 import { mapAttempt } from "@/lib/view/server-map";
@@ -32,6 +32,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ attempts: attempts.map(mapAttempt) });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: getErrorMessage(error) }, { status });
+    return NextResponse.json(
+      { error: safeClientMessage(error, { label: "history_list" }) },
+      { status },
+    );
   }
 }
