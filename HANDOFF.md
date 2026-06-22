@@ -12,20 +12,46 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-22 — Claude. **Editor "Discard" now actually deletes the draft. Fix on
-`fix/editor-discard-deletes-draft` (PR into `develop`). No env/gate/migration/live
-changes.**
+2026-06-22 — Claude. **Alpha post-smoke blockers fixed on
+`fix/alpha-smoke-blockers` (PR into `develop`). No env/gate/migration changes, no
+live marketplace ops, no browser smoke.** (Prior "editor Discard deletes the
+draft" work is on `develop` via PR #49.)
 
-Bug: in the listing editor (`inventory/[id]/page.tsx`), the prominent "Discard"
-button only called `router.back()`, so the already-created draft stayed in
-inventory — there was no obvious way to throw a draft away (the real delete was
-hidden in the kebab menu as "Delete draft"). Fix: wired "Discard" to the existing
-`deleteListing` (confirm "Delete this draft? This cannot be undone.", blocks items
-with a live eBay listing via `partitionDeletable` with a clear notice, redirects
-to `/inventory` on success), icon → trash, disabled while busy. "View in
-inventory" remains the non-destructive leave. The new-listing page's "Discard" was
-already correct (no draft exists pre-submit). Gate green (tsc 0, lint 0 errors,
-835 tests, build OK); PR #43-style flow, not deployed.
+Owner manual smoke surfaced real UX/product blockers; all addressed in code +
+tests on this branch:
+- **Readiness unified (root cause of "100% ready with no size"):** new
+  `evaluateDraftReadiness` (src/lib/listing/draft-readiness.ts) folds the content
+  checks with eBay item-level requirements (condition, resolvable category, size
+  when the category requires it, required item specifics, a photo, valid
+  quantity). `buildReadinessView`, `mapItem`/`mapItemDetail`, and both approve
+  gates (PATCH save+approve, POST mark-ready) now use it, so an item missing a
+  required size can no longer be marked/shown ready. It's a strict subset of the
+  publish preflight; a consistency test pins both to the same size verdict.
+- **Dashboard/inventory agree:** shared `isPublishReady`/`inventoryDisplayBucket`
+  — an approved-but-not-ready item shows as needs-attention in both, never ready.
+- **Bulk publish reasons (root cause of the generic-failure UX):** bulk
+  `executeItem` no longer collapses every failure to a flat string — it reports
+  the exact missing fields and a safe specific reason; retry already re-runs the
+  full publish; FAILED attempts don't poison, SUCCEEDED are skipped (existing
+  publish-handler tests). Size now has its own `ebay_size` code (vs generic
+  `ebay_aspects`).
+- **Pricing cooldown:** owner/alpha manual refresh capped at 60s via the admin
+  allowlist (code override, NOT an env change); disabled comps no longer show a
+  stale long countdown (UI says "Fresh comps off — for this account/environment")
+  and disabled refresh never burns a cooldown; manual comps stay ungated.
+- **Smarter defaults:** new AI drafts persist eBay quantity 1 + a high-confidence
+  inferred category (`applyDefaultEbayDraftFields`), never faking confidence.
+- **CSV:** Import CSV removed from core seller UI (dashboard/inventory/new);
+  marketplace cards say "Copy-ready draft" (shared `marketplaceCapabilityLabel`).
+- **Bulk end/delist:** new flow mirroring bulk publish on the single-item
+  `executeEbayDelist` (preflight classification, explicit live confirm, per-item
+  results, already-ended skipped, safe failure reasons, no local delete, no raw
+  payloads). Service + routes + modal + inventory "End on eBay" action + tests.
+- **Sello logo** → dashboard from any page.
+- **Perf:** route `loading.tsx` skeletons + sidebar nav prefetch.
+
+Gate green: `prisma validate` OK, `lint` 0 errors (2 pre-existing warnings),
+`tsc --noEmit` 0, **883 tests** (131 files), `build` exit 0. Not deployed.
 
 ## Previous update
 2026-06-20 — Claude. **PR #47 shipped to production; then chrome-free pre-alpha

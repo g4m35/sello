@@ -99,6 +99,38 @@ export function ebayAspectRequirementsFor(
   return ASPECTS_BY_CATEGORY[categoryId] ?? [];
 }
 
+// The eBay aspects that represent the item's size, broken out so readiness can
+// give the seller a specific "missing size" reason instead of a generic "item
+// specifics" one. Shared by the draft-readiness view and the publish preflight
+// so they never disagree on what counts as a size.
+const SIZE_ASPECT_NAMES = new Set(["Size", "US Shoe Size"]);
+
+export function isSizeAspect(aspect: EbayAspectRequirement): boolean {
+  return SIZE_ASPECT_NAMES.has(aspect.name);
+}
+
+export type ClassifiedMissingAspects = {
+  /** True when a required size aspect (Size / US Shoe Size) is unresolved. */
+  size: boolean;
+  /** Seller-facing labels of the remaining required aspects still missing. */
+  specifics: string[];
+};
+
+export function classifyMissingAspects(
+  missingRequired: EbayAspectRequirement[],
+): ClassifiedMissingAspects {
+  let size = false;
+  const specifics: string[] = [];
+  for (const aspect of missingRequired) {
+    if (isSizeAspect(aspect)) {
+      size = true;
+    } else {
+      specifics.push(aspect.label);
+    }
+  }
+  return { size, specifics };
+}
+
 const labelOverrides: Record<string, string> = {
   "US Shoe Size": "Shoe size",
   Department: "Department (Men/Women)",

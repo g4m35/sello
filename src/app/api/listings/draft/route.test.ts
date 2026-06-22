@@ -154,4 +154,62 @@ describe("listing draft API auth boundaries", () => {
       );
     },
   );
+
+  it("defaults quantity to 1 and infers a high-confidence eBay category on the new draft", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
+    mocks.prepareListingPhotos.mockResolvedValue([]);
+    mocks.uploadListingPhotos.mockResolvedValue([]);
+    mocks.generateListingDraftWithGemini.mockResolvedValue({
+      model: "gemini-test",
+      rawText: "{}",
+      rawJson: {},
+      draft: {
+        identification: {
+          productName: "Nike Dunk Low Panda",
+          brand: "Nike",
+          category: "sneakers",
+          condition: "used_good",
+          styleCode: "DD1391-100",
+          colorway: "Panda",
+          size: "10",
+          confidence: 0.98,
+        },
+        listingDraft: {
+          title: "Nike Dunk Low Panda Size 10",
+          description: "Pre-owned sneakers.",
+          bulletPoints: ["Size 10"],
+          recommendedPriceCents: null,
+          pricingRationale: "Needs real comps.",
+          itemSpecifics: {},
+          measurements: [],
+          flaws: [],
+        },
+        marketplaceDrafts: {},
+      },
+    });
+    const listingDraftCreate = vi.fn().mockResolvedValue({ id: "draft-1" });
+    const prisma = {
+      inventoryItem: {
+        create: vi.fn().mockResolvedValue({ id: "item-1" }),
+        update: vi.fn().mockResolvedValue({ id: "item-1" }),
+      },
+      itemPhoto: { createMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      listingDraft: { create: listingDraftCreate },
+      aiOutput: { create: vi.fn().mockResolvedValue({ id: "ai-1" }) },
+      $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.runCompFetch.mockResolvedValue({ status: "no_comps_found" });
+
+    await POST(
+      new Request("http://localhost/api/listings/draft", {
+        method: "POST",
+        body: new FormData(),
+      }),
+    );
+
+    const data = listingDraftCreate.mock.calls[0][0].data;
+    expect(data.marketplaceDrafts.ebay.quantity).toBe(1);
+    expect(data.marketplaceDrafts.ebay.categoryId).toBe("15709");
+  });
 });

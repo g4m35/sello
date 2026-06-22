@@ -29,6 +29,22 @@ export function Sidebar() {
     };
   }, [token]);
 
+  // Warm the main routes so navigating between screens is instant (the route
+  // bundle + skeleton are ready before the click). Cheap and idempotent.
+  useEffect(() => {
+    for (const href of [
+      "/dashboard",
+      "/inventory",
+      "/inventory/new",
+      "/history",
+      "/channels",
+      "/settings",
+      "/feedback",
+    ]) {
+      router.prefetch?.(href);
+    }
+  }, [router]);
+
   const isActive = (href: string) =>
     href === "/inventory"
       ? pathname.startsWith("/inventory")
@@ -55,9 +71,15 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
-        <span className="sidebar__brand-mark">
+        <button
+          type="button"
+          className="sidebar__brand-mark"
+          onClick={() => go("/dashboard")}
+          aria-label="Sello — go to dashboard"
+          title="Go to dashboard"
+        >
           Sello<em>.</em>
-        </span>
+        </button>
       </div>
 
       <button className="nav-new" onClick={() => go("/inventory/new")}>

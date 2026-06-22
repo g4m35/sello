@@ -1,6 +1,7 @@
 import type { ItemCondition } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
 import {
+  classifyMissingAspects,
   resolveEbayAspects,
   type EbayAspectRequirement,
   type EbayAspectRequirementSet,
@@ -291,8 +292,14 @@ export async function preflightEbayListing(
     sellerConfig,
   });
 
-  const missingAspectIds =
-    aspects.missingRequired.length > 0 ? ["ebay_aspects"] : [];
+  // Break size out of the generic "item specifics" bucket so the seller gets a
+  // specific "missing size" reason (the most common blocker) instead of a vague
+  // one. Same classification the readiness view/approve gate use.
+  const classifiedAspects = classifyMissingAspects(aspects.missingRequired);
+  const missingAspectIds = [
+    ...(classifiedAspects.size ? ["ebay_size"] : []),
+    ...(classifiedAspects.specifics.length > 0 ? ["ebay_aspects"] : []),
+  ];
   const conflictingCategoryIds = intelligence.categoryConflict
     ? ["ebay_category"]
     : [];

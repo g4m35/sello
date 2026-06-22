@@ -80,6 +80,15 @@ describe("buildReadinessView", () => {
     selectedMarketplaces: ["ebay", "grailed"],
     recommendedPriceCents: 42500,
     photoCount: 5,
+    condition: "used_good" as const,
+    productCategory: "sneakers",
+    brand: "Jordan",
+    size: "10.5",
+    colorway: "Black/Red",
+    itemSpecifics: {},
+    savedEbayCategoryId: null,
+    savedAspects: {},
+    savedQuantity: null,
   };
 
   it("is ready when all blocking checks pass", () => {
@@ -92,6 +101,12 @@ describe("buildReadinessView", () => {
     const r = buildReadinessView({ ...complete, recommendedPriceCents: 0 });
     expect(r.ready).toBe(false);
     expect(r.checks.find((c) => c.id === "price")?.state).toBe("miss");
+  });
+
+  it("blocks a size-required item that has no size", () => {
+    const r = buildReadinessView({ ...complete, size: null });
+    expect(r.ready).toBe(false);
+    expect(r.checks.find((c) => c.id === "size")?.state).toBe("miss");
   });
 
   it("treats low photo count as a non-blocking warning", () => {

@@ -1,4 +1,4 @@
-import { AppError } from "@/lib/errors";
+import { safePersistedFailureReason } from "@/lib/errors";
 import { FEATURE_ACCESS_COPY } from "@/lib/auth/feature-access";
 
 import { getEbayEnvironment } from "./adapters/ebay/config";
@@ -92,6 +92,7 @@ const MISSING_LABELS: Record<string, string> = {
   condition: "Condition",
   categoryId: "Category",
   ebay_category: "Category",
+  ebay_size: "Size",
   ebay_aspects: "Item specifics",
   quantity: "Quantity",
   ebay_connection: "eBay connection",
@@ -108,6 +109,20 @@ function friendlyMissing(code: string): string {
     MISSING_LABELS[code] ??
     code.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   );
+}
+
+// Pulls the missing-field codes off a readiness EbayIntegrationError and maps
+// them to seller-facing labels, de-duped (several codes can map to one label).
+function readinessMissingLabels(error: EbayIntegrationError): string[] {
+  const raw = error.details?.missing;
+  if (!Array.isArray(raw)) return [];
+  const labels: string[] = [];
+  for (const code of raw) {
+    if (typeof code !== "string") continue;
+    const label = friendlyMissing(code);
+    if (!labels.includes(label)) labels.push(label);
+  }
+  return labels;
 }
 
 const LIVE_LISTING_STATUSES = new Set(["LISTED", "PUBLISHING", "DELISTING"]);
@@ -172,24 +187,29 @@ export function defaultBulkPublishDeps(
           return { itemId, status: "skipped", message: "This item is already listed on eBay." };
         }
         if (error instanceof EbayIntegrationError && error.code === ebayErrorCodes.readinessFailed) {
+          // Surface the exact missing fields so a retry isn't a guessing game.
+          const missing = readinessMissingLabels(error);
           return {
             itemId,
             status: "needs_details",
-            message: "This listing needs a few more details before it can go live.",
+            message:
+              missing.length > 0
+                ? `Needs ${missing.join(", ")} before it can go live.`
+                : "This listing needs a few more details before it can go live.",
+            missing,
           };
         }
-        if (error instanceof AppError) {
-          return {
-            itemId,
-            status: "failed",
-            message: "This item couldn’t be published.",
-            retrySafe: true,
-          };
-        }
+        // Any other failure: a safe, specific reason (author-written messages
+        // pass through scrubbed; raw provider/DB errors collapse to a generic
+        // fallback — never a leak). Retry stays safe: a failed attempt never
+        // poisons the item, so the seller can try again.
         return {
           itemId,
           status: "failed",
-          message: "Something went wrong publishing this item.",
+          message: safePersistedFailureReason(
+            error,
+            "Something went wrong publishing this item.",
+          ),
           retrySafe: true,
         };
       }

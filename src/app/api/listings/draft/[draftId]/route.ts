@@ -4,7 +4,8 @@ import { Prisma } from "@/generated/prisma/client";
 import { GeminiListingDraftSchema } from "@/lib/ai/listing-draft";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { ListingDraftUpdateSchema } from "@/lib/listing-draft-update";
-import { evaluateReadiness } from "@/lib/lifecycle/readiness";
+import { evaluateDraftReadiness } from "@/lib/listing/draft-readiness";
+import { asStringRecord, readEbayDraftFields } from "@/lib/listing/ebay-draft-fields";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 import { loadItemDetailState } from "@/lib/view/load-item-detail";
@@ -32,8 +33,17 @@ export async function PATCH(
         id: true,
         inventoryItemId: true,
         marketplaceDrafts: true,
+        itemSpecifics: true,
         inventoryItem: {
-          select: { productName: true },
+          select: {
+            productName: true,
+            condition: true,
+            category: true,
+            brand: true,
+            size: true,
+            colorway: true,
+            _count: { select: { photos: true } },
+          },
         },
       },
     });
@@ -43,13 +53,29 @@ export async function PATCH(
     }
 
     if (update.approve) {
-      const readiness = evaluateReadiness({
-        productName: existingDraft.inventoryItem.productName,
+      const mergedDrafts = mergeMarketplaceDrafts(
+        existingDraft.marketplaceDrafts,
+        update.marketplaceDrafts,
+      );
+      const ebay = readEbayDraftFields(mergedDrafts);
+      const item = existingDraft.inventoryItem;
+      const readiness = evaluateDraftReadiness({
+        productName: item.productName,
         title: update.title,
         description: update.description,
         bulletPoints: update.bulletPoints,
         selectedMarketplaces: update.selectedMarketplaces,
         recommendedPriceCents: update.recommendedPriceCents,
+        condition: item.condition,
+        productCategory: item.category ?? null,
+        brand: item.brand,
+        size: item.size,
+        colorway: item.colorway,
+        itemSpecifics: asStringRecord(existingDraft.itemSpecifics),
+        savedEbayCategoryId: ebay.categoryId,
+        savedAspects: ebay.aspects,
+        savedQuantity: ebay.quantity,
+        photoCount: item._count.photos,
       });
 
       if (!readiness.ready) {
@@ -169,6 +195,7 @@ export async function POST(
       include: {
         inventoryItem: {
           include: {
+            _count: { select: { photos: true } },
             aiOutputs: {
               where: {
                 kind: "listing_draft",
@@ -193,14 +220,28 @@ export async function POST(
     if (action === "approve") {
       // Mark a saved draft ready to publish without resending every field.
       // Readiness is re-checked from the stored draft so an incomplete item is
-      // never silently approved; the seller gets a plain-language reason.
-      const readiness = evaluateReadiness({
-        productName: existingDraft.inventoryItem.productName,
+      // never silently approved; the seller gets a plain-language reason. This
+      // is the same evaluator the detail/inventory/dashboard views use, so the
+      // "mark ready" gate matches what those surfaces show (incl. size).
+      const item = existingDraft.inventoryItem;
+      const ebay = readEbayDraftFields(existingDraft.marketplaceDrafts);
+      const readiness = evaluateDraftReadiness({
+        productName: item.productName,
         title: existingDraft.title ?? "",
         description: existingDraft.description ?? "",
         bulletPoints: existingDraft.bulletPoints ?? [],
         selectedMarketplaces: (existingDraft.selectedMarketplaces ?? []) as string[],
         recommendedPriceCents: existingDraft.recommendedPriceCents,
+        condition: item.condition,
+        productCategory: item.category ?? null,
+        brand: item.brand,
+        size: item.size,
+        colorway: item.colorway,
+        itemSpecifics: asStringRecord(existingDraft.itemSpecifics),
+        savedEbayCategoryId: ebay.categoryId,
+        savedAspects: ebay.aspects,
+        savedQuantity: ebay.quantity,
+        photoCount: item._count.photos,
       });
       if (!readiness.ready) {
         throw new AppError(

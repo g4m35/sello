@@ -5,6 +5,8 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
+import { asStringRecord } from "@/lib/listing/ebay-draft-fields";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { AppError, safeClientMessage, safePersistedFailureReason } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
@@ -105,6 +107,18 @@ export async function POST(request: Request) {
     const gemini = await generateListingDraftWithGemini(photos);
     const { identification, listingDraft } = gemini.draft;
 
+    // Default the new draft toward publish-ready: resale quantity 1 and a
+    // high-confidence inferred eBay category, without overwriting AI values.
+    const marketplaceDrafts = applyDefaultEbayDraftFields({
+      title: listingDraft.title,
+      brand: identification.brand,
+      description: listingDraft.description,
+      productCategory: identification.category,
+      size: identification.size,
+      itemSpecifics: asStringRecord(listingDraft.itemSpecifics),
+      marketplaceDrafts: gemini.draft.marketplaceDrafts,
+    });
+
     const [inventoryItem, draft, aiOutput] = await prisma.$transaction([
       prisma.inventoryItem.update({
         where: { id: createdInventoryItemId },
@@ -131,7 +145,7 @@ export async function POST(request: Request) {
           recommendedPriceCents: listingDraft.recommendedPriceCents,
           pricingRationale: listingDraft.pricingRationale,
           itemSpecifics: listingDraft.itemSpecifics as Prisma.InputJsonValue,
-          marketplaceDrafts: gemini.draft.marketplaceDrafts as Prisma.InputJsonValue,
+          marketplaceDrafts: marketplaceDrafts as Prisma.InputJsonValue,
           measurements: listingDraft.measurements.map((m) => ({
             ...m,
             source: m.source ?? "ai",

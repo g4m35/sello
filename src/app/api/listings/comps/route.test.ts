@@ -271,4 +271,35 @@ describe("price comps API auth boundaries", () => {
     expect(payload.discovery.paidProvidersEnabled).toBe(false);
     expect(serialized).not.toMatch(/apify-ebay-sold|global_budget_exceeded/);
   });
+
+  it("does not surface a cooldown countdown when fresh comps are disabled", async () => {
+    // Env kill switch off, but a recent run exists. The seller should see the
+    // disabled state, not a (stale, un-actionable) refresh countdown.
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "");
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      priceComp: { findMany: vi.fn().mockResolvedValue([]) },
+      compSearchRun: {
+        findFirst: vi.fn().mockResolvedValue({
+          status: "found_comps",
+          queries: [],
+          sourceErrors: [],
+          createdAt: new Date(), // just now -> would otherwise show a full cooldown
+          acceptedCount: 0,
+          rejectedCount: 0,
+        }),
+      },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+
+    const response = await GET(
+      new Request("http://localhost/api/listings/comps?inventoryItemId=item-1"),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.discovery.paidProvidersEnabled).toBe(false);
+    expect(payload.discovery.cooldownSecondsRemaining).toBe(0);
+  });
 });

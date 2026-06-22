@@ -349,7 +349,11 @@ export function AutoPricing({
   }
 
   const cooldownRemaining = cooldown;
-  const refreshDisabled = refreshing || cooldownRemaining > 0;
+  // Env kill switch (server-provided). When off, the refresh is blocked by the
+  // disabled state — not a leftover cooldown — so say so plainly and don't show
+  // a countdown the seller can't act on. Manual comps still work below.
+  const freshCompsOff = discovery?.paidProvidersEnabled === false;
+  const refreshDisabled = refreshing || cooldownRemaining > 0 || freshCompsOff;
   const refreshBtn = featureAccess.access.paidComps ? (
     <Btn
       variant="secondary"
@@ -357,17 +361,21 @@ export function AutoPricing({
       icon="refresh"
       onClick={refresh}
       title={
-        cooldownRemaining > 0
-          ? `Sold comps were just refreshed. Refresh available in ${cooldownRemaining}s.`
-          : "Search for fresh sold comps"
+        freshCompsOff
+          ? "Fresh sold comps are turned off for this account/environment right now. Manual comps still work."
+          : cooldownRemaining > 0
+            ? `Sold comps were just refreshed. Refresh available in ${cooldownRemaining}s.`
+            : "Search for fresh sold comps"
       }
       disabled={refreshDisabled}
     >
       {refreshing
         ? "Checking…"
-        : cooldownRemaining > 0
-          ? `Refresh available in ${cooldownRemaining}s`
-          : "Refresh comps"}
+        : freshCompsOff
+          ? "Fresh comps off"
+          : cooldownRemaining > 0
+            ? `Refresh available in ${cooldownRemaining}s`
+            : "Refresh comps"}
     </Btn>
   ) : null;
 
