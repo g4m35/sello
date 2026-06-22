@@ -801,7 +801,13 @@ export default function ListingDetailPage() {
             <div className="page__title-meta">{metaParts.join(" · ")}</div>
           </div>
           <div className="page__actions">
-            <Btn variant="ghost" size="sm" icon="x" onClick={() => router.back()}>
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="trash"
+              disabled={lifecycleBusy}
+              onClick={() => void deleteListing()}
+            >
               Discard
             </Btn>
             <Btn
