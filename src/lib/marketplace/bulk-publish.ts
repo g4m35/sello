@@ -92,6 +92,7 @@ const MISSING_LABELS: Record<string, string> = {
   condition: "Condition",
   categoryId: "Category",
   ebay_category: "Category",
+  ebay_size: "Size",
   ebay_aspects: "Item specifics",
   quantity: "Quantity",
   ebay_connection: "eBay connection",

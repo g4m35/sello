@@ -295,7 +295,7 @@ describe("publishEbayListing — preconditions", () => {
       ),
     ).rejects.toMatchObject({
       code: "EBAY_READINESS_FAILED",
-      details: expect.objectContaining({ missing: expect.arrayContaining(["ebay_aspects"]) }),
+      details: expect.objectContaining({ missing: expect.arrayContaining(["ebay_size"]) }),
     });
     expect(deps.resolveAccessToken).not.toHaveBeenCalled();
     expect(deps.createClient).not.toHaveBeenCalled();

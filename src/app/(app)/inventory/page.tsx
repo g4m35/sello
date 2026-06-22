@@ -20,6 +20,7 @@ import type {
   BulkPreflightResult,
 } from "@/lib/marketplace/bulk-publish";
 import { matchesItemSearch } from "@/lib/view/inventory-actions";
+import { inventoryDisplayBucket } from "@/lib/view/item-readiness-bucket";
 import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
 import {
   conditionLabel,
@@ -105,7 +106,9 @@ export default function InventoryPage() {
       delisted: 0,
       error: 0,
     };
-    for (const it of items ?? []) base[it.lifecycleState] += 1;
+    // Bucket by display readiness, not raw lifecycle, so an approved-but-not-
+    // ready item counts under "Needs attention", matching the dashboard.
+    for (const it of items ?? []) base[inventoryDisplayBucket(it)] += 1;
     return base;
   }, [items]);
 
@@ -129,7 +132,7 @@ export default function InventoryPage() {
   const filtered = useMemo(() => {
     const list = items ?? [];
     const byTab =
-      tab === "all" ? list : list.filter((it) => it.lifecycleState === tab);
+      tab === "all" ? list : list.filter((it) => inventoryDisplayBucket(it) === tab);
     const matched = byTab.filter((it) => matchesItemSearch(it, search.trim()));
     return sortItems(matched, sort);
   }, [items, tab, search, sort]);

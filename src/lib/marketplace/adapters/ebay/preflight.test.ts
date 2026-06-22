@@ -412,7 +412,9 @@ describe("preflightEbayListing", () => {
     );
 
     expect(result.ready).toBe(false);
-    expect(result.missing).toContain("ebay_aspects");
+    // Size gets its own specific code, not the generic item-specifics bucket.
+    expect(result.missing).toContain("ebay_size");
+    expect(result.missing).not.toContain("ebay_aspects");
     expect(result.preview).toBeNull();
     expect(result.aspects.missingRequired).toEqual([
       expect.objectContaining({ name: "US Shoe Size", label: "Shoe size" }),

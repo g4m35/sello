@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
+import { isPublishReady } from "@/lib/view/item-readiness-bucket";
 import { Badge, Btn, Check } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/icon";
 import { MpLogo, MpDots, Thumb } from "@/components/ui/marketplace";
@@ -108,16 +109,22 @@ export default function DashboardPage() {
   }, [token, reloadKey]);
 
   const activeCount = items.filter((i) => i.lifecycleState === "active").length;
-  const readyItems = useMemo(
-    () => items.filter((i) => i.lifecycleState === "ready"),
-    [items],
-  );
+  // Only truly publishable items (approved AND passing server readiness) count
+  // as ready, so the dashboard never advertises an item the publish flow would
+  // reject. Mirrors the inventory "Ready" tab exactly.
+  const readyItems = useMemo(() => items.filter(isPublishReady), [items]);
   const draftItems = useMemo(
     () => items.filter((i) => i.lifecycleState === "draft"),
     [items],
   );
   const failedItems = useMemo(
     () => items.filter((i) => i.lifecycleState === "error"),
+    [items],
+  );
+  // Items approved before a field became required (lifecycle "ready" but
+  // readiness now fails) — surfaced as needs-attention, never as ready.
+  const regressedItems = useMemo(
+    () => items.filter((i) => i.lifecycleState === "ready" && !i.ready),
     [items],
   );
   // Drafts that still need fields vs drafts that are complete but not yet
@@ -159,8 +166,18 @@ export default function DashboardPage() {
           : "Add details",
       tone: "warn",
     }));
-    return [...fromFailed, ...fromDrafts];
-  }, [failedItems, incompleteDrafts]);
+    const fromRegressed: AttentionRow[] = regressedItems.map((i) => ({
+      id: `regressed-${i.id}`,
+      itemId: i.id,
+      title: `Finish listing — ${i.title}`,
+      sub:
+        i.missingCount > 0
+          ? `${i.missingCount} required detail${i.missingCount === 1 ? "" : "s"} missing`
+          : "Required details missing",
+      tone: "warn",
+    }));
+    return [...fromFailed, ...fromRegressed, ...fromDrafts];
+  }, [failedItems, regressedItems, incompleteDrafts]);
 
   const togglePick = (id: string) => {
     setPicked((prev) => {

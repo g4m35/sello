@@ -106,28 +106,30 @@ describe("mergeSavedItemState", () => {
 
 describe("readiness reflects a saved price", () => {
   it("clears the missing-price check once a price is saved", () => {
-    const before = buildReadinessView({
+    const base = {
       productName: "Black Tee",
       title: "Black crewneck T-shirt, size M",
       description: "A clean black tee in great shape, barely worn.",
       bulletPoints: ["Soft cotton", "True to size", "No flaws"],
       selectedMarketplaces: ["ebay"],
-      recommendedPriceCents: null,
       photoCount: 3,
-    });
+      condition: "used_good" as const,
+      productCategory: "streetwear",
+      brand: "Stussy",
+      size: "M",
+      colorway: "Black",
+      itemSpecifics: {},
+      savedEbayCategoryId: null,
+      // Apparel needs an item Type aspect; provide it so only price varies here.
+      savedAspects: { Type: "T-Shirt" },
+      savedQuantity: null,
+    };
+    const before = buildReadinessView({ ...base, recommendedPriceCents: null });
     const priceCheckBefore = before.checks.find((c) => c.id === "price");
     expect(priceCheckBefore?.state).toBe("miss");
     expect(before.ready).toBe(false);
 
-    const after = buildReadinessView({
-      productName: "Black Tee",
-      title: "Black crewneck T-shirt, size M",
-      description: "A clean black tee in great shape, barely worn.",
-      bulletPoints: ["Soft cotton", "True to size", "No flaws"],
-      selectedMarketplaces: ["ebay"],
-      recommendedPriceCents: 2500,
-      photoCount: 3,
-    });
+    const after = buildReadinessView({ ...base, recommendedPriceCents: 2500 });
     const priceCheckAfter = after.checks.find((c) => c.id === "price");
     expect(priceCheckAfter?.state).toBe("done");
     expect(after.ready).toBe(true);
