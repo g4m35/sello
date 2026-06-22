@@ -55,9 +55,15 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
-        <span className="sidebar__brand-mark">
+        <button
+          type="button"
+          className="sidebar__brand-mark"
+          onClick={() => go("/dashboard")}
+          aria-label="Sello — go to dashboard"
+          title="Go to dashboard"
+        >
           Sello<em>.</em>
-        </span>
+        </button>
       </div>
 
       <button className="nav-new" onClick={() => go("/inventory/new")}>
