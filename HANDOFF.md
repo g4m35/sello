@@ -12,6 +12,22 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-22 — Claude. **Editor "Discard" now actually deletes the draft. Fix on
+`fix/editor-discard-deletes-draft` (PR into `develop`). No env/gate/migration/live
+changes.**
+
+Bug: in the listing editor (`inventory/[id]/page.tsx`), the prominent "Discard"
+button only called `router.back()`, so the already-created draft stayed in
+inventory — there was no obvious way to throw a draft away (the real delete was
+hidden in the kebab menu as "Delete draft"). Fix: wired "Discard" to the existing
+`deleteListing` (confirm "Delete this draft? This cannot be undone.", blocks items
+with a live eBay listing via `partitionDeletable` with a clear notice, redirects
+to `/inventory` on success), icon → trash, disabled while busy. "View in
+inventory" remains the non-destructive leave. The new-listing page's "Discard" was
+already correct (no draft exists pre-submit). Gate green (tsc 0, lint 0 errors,
+835 tests, build OK); PR #43-style flow, not deployed.
+
+## Previous update
 2026-06-20 — Claude. **PR #47 shipped to production; then chrome-free pre-alpha
 hardening (route error-sanitization sweep + bulk-publish test hardening) on
 `chore/pre-alpha-code-hardening` (PR open into `develop`, NOT merged). No
