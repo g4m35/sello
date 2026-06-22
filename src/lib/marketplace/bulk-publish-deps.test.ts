@@ -128,6 +128,32 @@ describe("defaultBulkPublishDeps.executeItem", () => {
     expect((await deps.executeItem(args)).status).toBe("needs_details");
   });
 
+  it("reports the exact missing fields on a readiness failure", async () => {
+    mocks.executePublish.mockRejectedValue(
+      new EbayIntegrationError(ebayErrorCodes.readinessFailed, "not ready", 422, {
+        missing: ["ebay_size", "title"],
+      }),
+    );
+    const deps = defaultBulkPublishDeps(prismaFake() as never, ENV);
+
+    const out = await deps.executeItem(args);
+    expect(out.status).toBe("needs_details");
+    expect(out.missing).toEqual(["Size", "Title"]);
+    expect(out.message).toMatch(/size/i);
+  });
+
+  it("surfaces a safe specific reason (not a flat generic) for a typed failure", async () => {
+    mocks.executePublish.mockRejectedValue(
+      new EbayIntegrationError(ebayErrorCodes.apiFailed, "eBay rejected the listing details.", 502),
+    );
+    const deps = defaultBulkPublishDeps(prismaFake() as never, ENV);
+
+    const out = await deps.executeItem(args);
+    expect(out.status).toBe("failed");
+    expect(out.retrySafe).toBe(true);
+    expect(out.message).toBe("eBay rejected the listing details.");
+  });
+
   it("sanitizes a raw provider/DB error into a generic failed result (no leak)", async () => {
     mocks.executePublish.mockRejectedValue(
       new Error('PrismaClientKnownRequestError: Authorization: Bearer secret.token {"errors":[]}'),
