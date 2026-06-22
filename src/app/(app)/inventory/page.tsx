@@ -9,6 +9,10 @@ import {
   BulkPublishModal,
   type BulkPublishPhase,
 } from "@/components/app/bulk-publish-modal";
+import {
+  BulkDelistModal,
+  type BulkDelistPhase,
+} from "@/components/app/bulk-delist-modal";
 import { Badge, Btn, Check, Tabs } from "@/components/ui/primitives";
 import { MpDots, Thumb } from "@/components/ui/marketplace";
 import { useFeatureAccess } from "@/components/providers/feature-access-provider";
@@ -18,6 +22,10 @@ import type {
   BulkExecutionResult,
   BulkPreflightResult,
 } from "@/lib/marketplace/bulk-publish";
+import type {
+  BulkDelistExecutionResult,
+  BulkDelistPreflightResult,
+} from "@/lib/marketplace/bulk-delist";
 import { matchesItemSearch } from "@/lib/view/inventory-actions";
 import { inventoryDisplayBucket } from "@/lib/view/item-readiness-bucket";
 import type { ItemLifecycleState } from "@/lib/lifecycle/item-status";
@@ -71,6 +79,15 @@ export default function InventoryPage() {
   const [bulkExecution, setBulkExecution] = useState<BulkExecutionResult | null>(null);
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+
+  // Bulk eBay end/delist: same preflight -> confirm -> execute flow as publish.
+  const [delistOpen, setDelistOpen] = useState(false);
+  const [delistIds, setDelistIds] = useState<string[]>([]);
+  const [delistPhase, setDelistPhase] = useState<BulkDelistPhase>("preflight");
+  const [delistPreflight, setDelistPreflight] = useState<BulkDelistPreflightResult | null>(null);
+  const [delistExecution, setDelistExecution] = useState<BulkDelistExecutionResult | null>(null);
+  const [delistConfirm, setDelistConfirm] = useState(false);
+  const [delistError, setDelistError] = useState<string | null>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
@@ -304,6 +321,70 @@ export default function InventoryPage() {
     void runBulkPublish(readyIds);
   }, [bulkConfirm, bulkPreflight, runBulkPublish]);
 
+  const openBulkDelist = useCallback(() => {
+    const ids = (items ?? []).filter((it) => selected.has(it.id)).map((it) => it.id);
+    if (!ids.length) return;
+    setDelistIds(ids);
+    setDelistPreflight(null);
+    setDelistExecution(null);
+    setDelistConfirm(false);
+    setDelistError(null);
+    setDelistPhase("preflight");
+    setDelistOpen(true);
+  }, [items, selected]);
+
+  // Read-only bulk delist preflight on open; no outbound eBay write here.
+  useEffect(() => {
+    if (!delistOpen || delistIds.length === 0) return;
+    let active = true;
+    async function run() {
+      try {
+        const result = await api.preflightBulkDelist(token, delistIds);
+        if (active) {
+          setDelistPreflight(result);
+          setDelistPhase("ready");
+        }
+      } catch (e) {
+        if (active) {
+          setDelistError(
+            (e as { error?: string })?.error ?? "Could not check the selected items.",
+          );
+          setDelistPhase("ready");
+        }
+      }
+    }
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [delistOpen, delistIds, token]);
+
+  const runBulkDelist = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      setDelistPhase("running");
+      setDelistError(null);
+      try {
+        const result = await api.executeBulkDelist(token, ids);
+        setDelistExecution(result);
+        setDelistPhase("result");
+        setReloadKey((k) => k + 1);
+      } catch (e) {
+        setDelistError((e as { error?: string })?.error ?? "Bulk end/delist failed.");
+        setDelistPhase("ready");
+      }
+    },
+    [token],
+  );
+
+  const executeBulkDelist = useCallback(() => {
+    if (!delistConfirm) return;
+    const eligibleIds = (delistPreflight?.items ?? [])
+      .filter((i) => i.status === "eligible")
+      .map((i) => i.itemId);
+    void runBulkDelist(eligibleIds);
+  }, [delistConfirm, delistPreflight, runBulkDelist]);
+
   if (loadError) {
     return (
       <>
@@ -327,7 +408,7 @@ export default function InventoryPage() {
   const selectionCount = selectedInView.length;
   const bulkTitles: Record<string, string> = {};
   for (const it of items) {
-    if (bulkIds.includes(it.id)) bulkTitles[it.id] = it.title;
+    if (bulkIds.includes(it.id) || delistIds.includes(it.id)) bulkTitles[it.id] = it.title;
   }
 
   const topbarRight = (
@@ -585,6 +666,14 @@ export default function InventoryPage() {
               >
                 {access.liveEbayPublish ? "Publish selected to eBay" : "Preview selected"}
               </Btn>
+              <Btn
+                variant="secondary"
+                icon="pause"
+                onClick={openBulkDelist}
+                disabled={selectionCount === 0}
+              >
+                {access.ebayDelist ? "End on eBay" : "Review ending"}
+              </Btn>
               <Btn variant="secondary" icon="tag" onClick={setPriceSelected} disabled={actionBusy}>
                 Set price
               </Btn>
@@ -656,6 +745,22 @@ export default function InventoryPage() {
         onExecute={executeBulkPublish}
         onRetry={runBulkPublish}
         error={bulkError}
+        itemTitles={bulkTitles}
+      />
+      <BulkDelistModal
+        open={delistOpen}
+        onClose={() => setDelistOpen(false)}
+        selectionCount={delistIds.length}
+        liveDelistAllowed={access.ebayDelist}
+        alphaCopy={copy.ebayDelist}
+        phase={delistPhase}
+        preflight={delistPreflight}
+        execution={delistExecution}
+        confirmLive={delistConfirm}
+        onConfirmChange={setDelistConfirm}
+        onExecute={executeBulkDelist}
+        onRetry={runBulkDelist}
+        error={delistError}
         itemTitles={bulkTitles}
       />
     </>

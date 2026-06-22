@@ -4,6 +4,10 @@ import type {
   BulkExecutionResult,
   BulkPreflightResult,
 } from "@/lib/marketplace/bulk-publish";
+import type {
+  BulkDelistExecutionResult,
+  BulkDelistPreflightResult,
+} from "@/lib/marketplace/bulk-delist";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
 import type {
   AttemptView,
@@ -198,6 +202,37 @@ function mergeBulkExecution(
     skippedCount: parts.reduce((n, p) => n + p.skippedCount, 0),
     failedCount: parts.reduce((n, p) => n + p.failedCount, 0),
     needsDetailsCount: parts.reduce((n, p) => n + p.needsDetailsCount, 0),
+    items: parts.flatMap((p) => p.items),
+  };
+}
+
+function mergeBulkDelistPreflight(
+  parts: BulkDelistPreflightResult[],
+): BulkDelistPreflightResult {
+  const first = parts[0];
+  return {
+    liveDelistAllowed: first.liveDelistAllowed,
+    alphaCopy: parts.find((p) => p.alphaCopy)?.alphaCopy,
+    total: parts.reduce((n, p) => n + p.total, 0),
+    eligibleCount: parts.reduce((n, p) => n + p.eligibleCount, 0),
+    notListedCount: parts.reduce((n, p) => n + p.notListedCount, 0),
+    alreadyEndedCount: parts.reduce((n, p) => n + p.alreadyEndedCount, 0),
+    inFlightCount: parts.reduce((n, p) => n + p.inFlightCount, 0),
+    rejectedCount: parts.reduce((n, p) => n + p.rejectedCount, 0),
+    items: parts.flatMap((p) => p.items),
+  };
+}
+
+function mergeBulkDelistExecution(
+  parts: BulkDelistExecutionResult[],
+  bulkRunId: string,
+): BulkDelistExecutionResult {
+  return {
+    bulkRunId,
+    total: parts.reduce((n, p) => n + p.total, 0),
+    endedCount: parts.reduce((n, p) => n + p.endedCount, 0),
+    skippedCount: parts.reduce((n, p) => n + p.skippedCount, 0),
+    failedCount: parts.reduce((n, p) => n + p.failedCount, 0),
     items: parts.flatMap((p) => p.items),
   };
 }
@@ -583,6 +618,45 @@ export const api = {
       );
     }
     return mergeBulkExecution(parts, bulkRunId);
+  },
+
+  // Read-only bulk end/delist dry run. Available to every seller; classifies
+  // which selected items have a live eBay listing that can be ended.
+  preflightBulkDelist: async (
+    token: string,
+    itemIds: string[],
+  ): Promise<BulkDelistPreflightResult> => {
+    const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
+    const parts = await Promise.all(
+      chunks.map((ids) =>
+        request<BulkDelistPreflightResult>("/api/listings/delist/bulk/preflight", token, {
+          method: "POST",
+          body: JSON.stringify({ itemIds: ids }),
+        }),
+      ),
+    );
+    return mergeBulkDelistPreflight(parts);
+  },
+
+  // Live bulk end/delist. Requires the eBay-delist alpha entitlement server-side
+  // and explicit confirmation here. One bulkRunId ties every chunk together;
+  // chunks run sequentially so eBay is never hammered in parallel.
+  executeBulkDelist: async (
+    token: string,
+    itemIds: string[],
+  ): Promise<BulkDelistExecutionResult> => {
+    const bulkRunId = globalThis.crypto.randomUUID();
+    const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
+    const parts: BulkDelistExecutionResult[] = [];
+    for (const ids of chunks) {
+      parts.push(
+        await request<BulkDelistExecutionResult>("/api/listings/delist/bulk", token, {
+          method: "POST",
+          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLiveDelist: true }),
+        }),
+      );
+    }
+    return mergeBulkDelistExecution(parts, bulkRunId);
   },
 
   scanEbayOrphans: (token: string, itemId: string) =>
