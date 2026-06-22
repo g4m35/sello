@@ -12,7 +12,6 @@ import { MpLogo, MpDots, Thumb } from "@/components/ui/marketplace";
 import { Topbar } from "@/components/app/topbar";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
-import { ImportModal } from "@/components/app/import-modal";
 import {
   formatMoneyCents,
   estPayoutCents,
@@ -56,7 +55,6 @@ export default function DashboardPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishItem, setPublishItem] = useState<ItemView | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
   const [markBusy, setMarkBusy] = useState<string | null>(null);
   const [markError, setMarkError] = useState<string | null>(null);
 
@@ -222,24 +220,14 @@ export default function DashboardPage() {
       <Topbar
         crumbs={["Dashboard"]}
         right={
-          <>
-            <Btn
-              variant="secondary"
-              size="sm"
-              icon="csv"
-              onClick={() => setImportOpen(true)}
-            >
-              Import CSV
-            </Btn>
-            <Btn
-              variant="accent"
-              size="sm"
-              icon="plus"
-              onClick={() => router.push("/inventory/new")}
-            >
-              New listing
-            </Btn>
-          </>
+          <Btn
+            variant="accent"
+            size="sm"
+            icon="plus"
+            onClick={() => router.push("/inventory/new")}
+          >
+            New listing
+          </Btn>
         }
       />
 
@@ -527,11 +515,6 @@ export default function DashboardPage() {
         onClose={() => setPublishOpen(false)}
         item={publishItem}
         onPublished={reload}
-      />
-      <ImportModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onDone={() => router.push("/inventory")}
       />
     </>
   );

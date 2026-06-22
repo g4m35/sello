@@ -9,7 +9,6 @@ import {
   BulkPublishModal,
   type BulkPublishPhase,
 } from "@/components/app/bulk-publish-modal";
-import { ImportModal } from "@/components/app/import-modal";
 import { Badge, Btn, Check, Tabs } from "@/components/ui/primitives";
 import { MpDots, Thumb } from "@/components/ui/marketplace";
 import { useFeatureAccess } from "@/components/providers/feature-access-provider";
@@ -60,7 +59,6 @@ export default function InventoryPage() {
   const [view, setView] = useState<"list" | "grid">("list");
   const [page, setPage] = useState(1);
 
-  const [importOpen, setImportOpen] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -333,14 +331,9 @@ export default function InventoryPage() {
   }
 
   const topbarRight = (
-    <>
-      <Btn variant="secondary" icon="csv" onClick={() => setImportOpen(true)}>
-        Import CSV
-      </Btn>
-      <Btn variant="accent" icon="plus" onClick={() => router.push("/inventory/new")}>
-        New listing
-      </Btn>
-    </>
+    <Btn variant="accent" icon="plus" onClick={() => router.push("/inventory/new")}>
+      New listing
+    </Btn>
   );
 
   const renderBody = () => {
@@ -355,22 +348,13 @@ export default function InventoryPage() {
           }
           desc="Add your first item to start cross-listing."
           actions={
-            <>
-              <Btn
-                variant="accent"
-                icon="plus"
-                onClick={() => router.push("/inventory/new")}
-              >
-                New listing
-              </Btn>
-              <Btn
-                variant="secondary"
-                icon="csv"
-                onClick={() => setImportOpen(true)}
-              >
-                Import CSV
-              </Btn>
-            </>
+            <Btn
+              variant="accent"
+              icon="plus"
+              onClick={() => router.push("/inventory/new")}
+            >
+              New listing
+            </Btn>
           }
         />
       );
@@ -673,11 +657,6 @@ export default function InventoryPage() {
         onRetry={runBulkPublish}
         error={bulkError}
         itemTitles={bulkTitles}
-      />
-      <ImportModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onDone={reload}
       />
     </>
   );
