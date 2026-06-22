@@ -209,6 +209,57 @@ describe("explicit comp refresh route", () => {
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
   });
 
+  it("applies the 60s owner cooldown so an admin can refresh past a long seller cooldown", async () => {
+    // Seller cooldown is configured long (1h); an owner/alpha must only wait 60s.
+    vi.stubEnv("COMPS_REFRESH_COOLDOWN_SECONDS", "3600");
+    vi.stubEnv("ADMIN_EMAILS", "allowed@example.com");
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      compSearchRun: {
+        // Last run 70s ago: still inside the 1h seller window, past the 60s owner cap.
+        findFirst: vi
+          .fn()
+          .mockResolvedValue({ createdAt: new Date(Date.now() - 70_000) }),
+      },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.runCompFetch.mockResolvedValue({ accepted: 0, rejected: 0 });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.runCompFetch).toHaveBeenCalledOnce();
+  });
+
+  it("still enforces the long seller cooldown for a non-admin within 60s..1h", async () => {
+    vi.stubEnv("COMPS_REFRESH_COOLDOWN_SECONDS", "3600");
+    // No ADMIN_EMAILS: this seller is not an owner.
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      compSearchRun: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue({ createdAt: new Date(Date.now() - 70_000) }),
+      },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(mocks.runCompFetch).not.toHaveBeenCalled();
+  });
+
   it("does not run provider fetch for another seller's item", async () => {
     const prisma = {
       inventoryItem: {

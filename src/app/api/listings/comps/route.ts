@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { isAdminUser } from "@/lib/auth/admin";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
 import {
   compsRefreshCooldownMs,
@@ -78,8 +79,16 @@ export async function GET(request: Request) {
     const cooldown = evaluateRefreshCooldown({
       lastRunAt: lastRun?.createdAt ?? null,
       now: new Date(),
-      cooldownMs: compsRefreshCooldownMs(),
+      cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: isAdminUser(user) }),
     });
+    // When fresh comps are disabled for this account/environment, the real
+    // blocker is the disabled state, not a leftover timer from an earlier run.
+    // Don't surface a (possibly long) cooldown countdown the seller can't act on.
+    const cooldownSecondsRemaining = !paidProvidersEnabled
+      ? 0
+      : cooldown.allowed
+        ? 0
+        : cooldown.retryAfterSeconds;
 
     return NextResponse.json({
       inventoryItemId: inventoryItem.id,
@@ -103,7 +112,7 @@ export async function GET(request: Request) {
         lastRunAt: lastRun?.createdAt ?? null,
         acceptedCount: lastRun?.acceptedCount ?? null,
         rejectedCount: lastRun?.rejectedCount ?? null,
-        cooldownSecondsRemaining: cooldown.allowed ? 0 : cooldown.retryAfterSeconds,
+        cooldownSecondsRemaining,
       },
     });
   } catch (error) {

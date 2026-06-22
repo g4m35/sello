@@ -4,6 +4,7 @@ import {
   compsRefreshCooldownMs,
   evaluateRefreshCooldown,
 } from "@/lib/comps/cooldown";
+import { isAdminUser } from "@/lib/auth/admin";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     const cooldown = evaluateRefreshCooldown({
       lastRunAt: lastRun?.createdAt ?? null,
       now: new Date(),
-      cooldownMs: compsRefreshCooldownMs(),
+      cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: isAdminUser(user) }),
     });
     if (!cooldown.allowed) {
       return NextResponse.json(

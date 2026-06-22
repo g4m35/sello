@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
@@ -14,7 +14,14 @@ import { GET } from "./route";
 describe("comps GET metadata", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: null });
+    // Cooldown is only meaningful when fresh comps are enabled for the account.
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("PAID_COMPS_EMAILS", "owner@example.com");
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "owner@example.com" });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("returns the latest run metadata and cooldown remaining", async () => {
