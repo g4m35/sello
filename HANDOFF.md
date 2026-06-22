@@ -12,6 +12,52 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-22 — Claude. **PR #50 (alpha smoke blockers) shipped to production, then
+all Dependabot alerts cleared and shipped. No env/gate/migration changes, no live
+marketplace ops, no browser smoke.**
+
+Deploy chain (all healthy — pages 200, `/api/listings` 401, zero
+error/warning/fatal logs, no leak strings):
+- **PR #50** -> develop (`d38cf5c`) -> `[deploy] Release PR #50` (`bfec607`) ->
+  prod **`dpl_Hw5YHsKjyhWPk9HYTVMAtmcFQvTq`** (READY). Full gate green on develop
+  (prisma valid, lint 0 errors / 2 warnings, tsc 0, 883 tests, build 0).
+- **Dependabot — protobufjs #10 (runtime, the only prod-runtime alert)**:
+  `npm update protobufjs` -> 7.6.4 (>= patched 7.6.3; @google/genai allows
+  ^7.5.4). develop (`b6dea98`) -> `[deploy] Release PR #52` (`fc11647`) -> prod
+  **`dpl_2Axxx7Zaxwa7HBSc9o1WhRYsw69Q`** (READY, healthy).
+- **Dependabot — dev/transitive bumps (hono 4.12.26 incl. high #13 CORS, vite
+  8.0.16 incl. high #8, js-yaml 4.2.0)**: none execute in the prod runtime
+  (hono is only `@prisma/client > prisma > @prisma/dev` tooling; the app never
+  imports hono and sets no CORS-with-credentials, only CSP/Permissions-Policy).
+  develop -> `[deploy] Release PR #54` (`2f5fe04`) -> prod
+  **`dpl_HWCNrsvoaEELGboZ4R5SEnqC5mc7`** (READY, healthy). `npm audit` now reports
+  **0 vulnerabilities**; 0 open Dependabot alerts; Dependabot PRs #32/#33/#34
+  auto-closed. (The push banner said 9 alerts; 8 were open at triage — 1 had
+  auto-resolved.)
+
+**Current prod = `dpl_HWCNrsvoaEELGboZ4R5SEnqC5mc7`** (main `2f5fe04`). Rollback
+candidate before this chain = `dpl_unMJogJ9RrrAnJVDQKmxXWNXRD8t` (Release PR #49).
+
+Still required (owner / browser, NOT done here — no live or browser actions):
+1. Confirm no old disposable eBay listings are still live.
+2. Create 2 ready items + 1 deliberately blocked item (e.g. missing size).
+3. Bulk publish preflight should show ready 2 / blocked 1 with the **exact**
+   missing reason (e.g. "Size").
+4. Publish the ready items only; verify each goes live.
+5. Retry a failed/again item -> no duplicate listing.
+6. Bulk end/delist the listings created in this smoke (per-item results,
+   already-ended skipped, safe reasons).
+7. Final prod log scan (500/error/fatal/raw Prisma/eBay/provider/token/secret).
+8. Alpha verdict.
+
+Alpha users are added via the **feature allowlist emails** (e.g.
+`EBAY_DELIST_EMAILS`, `PAID_COMPS_EMAILS`, live-publish allowlist), **not**
+`ADMIN_EMAILS` (which only grants the owner/admin surfaces + the 60s comps
+cooldown override). No alpha users were added in this session.
+
+---
+
+### Earlier this session (pre-deploy detail)
 2026-06-22 — Claude. **Alpha post-smoke blockers fixed on
 `fix/alpha-smoke-blockers` (PR into `develop`). No env/gate/migration changes, no
 live marketplace ops, no browser smoke.** (Prior "editor Discard deletes the
