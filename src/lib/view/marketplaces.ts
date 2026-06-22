@@ -34,3 +34,16 @@ export function marketplaceName(id: string): string {
 export function mpLogo(id: string): { label: string; color: string } {
   return MP_LOGO[id] ?? { label: id.slice(0, 2).toUpperCase(), color: "#666" };
 }
+
+// Seller-facing capability label for a marketplace card. Marketplaces without a
+// publish adapter are "Copy-ready draft" (build the listing here, copy the
+// ready-to-paste text) — never CSV, which is not part of the normal seller flow.
+export function marketplaceCapabilityLabel(input: {
+  marketplace: string;
+  publish: boolean;
+}): string {
+  if (input.marketplace === "ebay") {
+    return input.publish ? "Live publishing" : "Preview + manual";
+  }
+  return "Copy-ready draft";
+}

@@ -9,6 +9,7 @@ import { Badge, Banner } from "@/components/ui/primitives";
 import { MpLogo } from "@/components/ui/marketplace";
 import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
+import { marketplaceCapabilityLabel } from "@/lib/view/marketplaces";
 import type { ChannelView, ItemView } from "@/lib/view/types";
 
 type RoadmapRow = {
@@ -172,14 +173,16 @@ export default function ChannelsPage() {
                     {c.capabilities.draftPreview && (
                       <Badge status="ready" label="Draft preview" />
                     )}
-                    {isEbay ? (
-                      c.capabilities.publish ? (
-                        <Badge status="published" label="Live publishing" />
-                      ) : (
-                        <Badge outline label="Preview + manual" />
-                      )
+                    {isEbay && c.capabilities.publish ? (
+                      <Badge status="published" label="Live publishing" />
                     ) : (
-                      <Badge outline label="Assisted (draft + export)" />
+                      <Badge
+                        outline
+                        label={marketplaceCapabilityLabel({
+                          marketplace: c.marketplace,
+                          publish: c.capabilities.publish,
+                        })}
+                      />
                     )}
                     <Badge outline label="Inventory sync: not available yet" />
                   </div>

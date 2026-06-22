@@ -10,7 +10,7 @@ import { Icon } from "@/components/ui/icon";
 import { MpLogo } from "@/components/ui/marketplace";
 import { FormSection } from "@/components/ui/form";
 import { Topbar } from "@/components/app/topbar";
-import { ImportModal } from "@/components/app/import-modal";
+import { marketplaceCapabilityLabel } from "@/lib/view/marketplaces";
 import type { ChannelView } from "@/lib/view/types";
 
 const MAX_FILES = 8;
@@ -25,7 +25,6 @@ export default function NewListingPage() {
   const [previews, setPreviews] = useState<Preview[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
   const [channels, setChannels] = useState<ChannelView[]>([]);
 
   useEffect(() => {
@@ -128,17 +127,6 @@ export default function NewListingPage() {
               <span>
                 <span className="qs-btn__title">Upload photos</span>
                 <span className="qs-btn__sub">AI identifies + drafts</span>
-              </span>
-            </button>
-            <button
-              className="qs-btn"
-              onClick={() => setImportOpen(true)}
-              disabled={submitting}
-            >
-              <Icon name="csv" size={16} />
-              <span>
-                <span className="qs-btn__title">Import CSV</span>
-                <span className="qs-btn__sub">Bulk add as drafts</span>
               </span>
             </button>
             <button className="qs-btn" disabled title="Coming soon">
@@ -283,7 +271,10 @@ export default function NewListingPage() {
                         <div className="mp-row__meta">
                           {ch.capabilities.publish
                             ? "Publishing enabled"
-                            : "Draft preview only · CSV later"}
+                            : marketplaceCapabilityLabel({
+                                marketplace: ch.marketplace,
+                                publish: false,
+                              })}
                         </div>
                       </div>
                     </div>
@@ -298,12 +289,6 @@ export default function NewListingPage() {
           </aside>
         </div>
       </main>
-
-      <ImportModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onDone={() => router.push("/inventory")}
-      />
     </>
   );
 }

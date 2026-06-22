@@ -108,7 +108,7 @@ describe("AutoPricing resilience", () => {
     expect(html).toContain("Add sold comp");
   });
 
-  it("keeps manual comps accessible and shows safe panel copy when refresh fails", async () => {
+  it("disables refresh with an off label and keeps manual comps when fresh comps are off", async () => {
     mocks.getComps.mockResolvedValue({
       summary: {
         status: "needs_comps",
@@ -132,9 +132,6 @@ describe("AutoPricing resilience", () => {
       },
       comps: [],
     });
-    mocks.refreshComps.mockRejectedValue({
-      error: "Fresh sold comps are disabled right now. Manual comps still work.",
-    });
 
     renderPricing();
     reactHarness.effects[0]?.();
@@ -144,15 +141,17 @@ describe("AutoPricing resilience", () => {
     reactHarness.cursor = 0;
     reactHarness.effects = [];
     const readyView = AutoPricing({ itemId: "item-1" });
+    // The refresh control is disabled and clearly labelled off, so the seller
+    // can't burn a pointless 409; manual comps remain available.
     const refresh = findElement(
       readyView,
-      (element) => element.props.children === "Refresh comps",
+      (element) => element.props.children === "Fresh comps off",
     );
     expect(refresh).not.toBeNull();
-    await (refresh?.props.onClick as () => Promise<void>)();
+    expect(refresh?.props.disabled).toBe(true);
+    expect(mocks.refreshComps).not.toHaveBeenCalled();
 
     const html = renderPricing();
-    expect(html).toContain("Fresh sold comps are disabled right now. Manual comps still work.");
     expect(html).toContain("Add sold comp");
   });
 });

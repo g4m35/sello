@@ -108,6 +108,15 @@ export function mapItem(item: ItemWithRelations): ItemView {
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     recommendedPriceCents: priceCents,
     photoCount: photoCountOf(item),
+    condition: item.condition,
+    productCategory: item.category ?? null,
+    brand: item.brand,
+    size: item.size,
+    colorway: item.colorway,
+    itemSpecifics: itemSpecificsOf(draft?.itemSpecifics),
+    savedEbayCategoryId: ebayCategoryIdOf(draft?.marketplaceDrafts),
+    savedAspects: ebayAspectsOf(draft?.marketplaceDrafts),
+    savedQuantity: ebaySavedQuantityOf(draft?.marketplaceDrafts),
   });
   const missingCount = readiness.checks.filter(
     (check) => check.blocking && check.state === "miss",
@@ -153,6 +162,15 @@ export function mapItemDetail(
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     recommendedPriceCents: base.priceCents,
     photoCount: photos.length,
+    condition: item.condition,
+    productCategory: item.category ?? null,
+    brand: item.brand,
+    size: item.size,
+    colorway: item.colorway,
+    itemSpecifics: itemSpecificsOf(draft?.itemSpecifics),
+    savedEbayCategoryId: ebayCategoryIdOf(draft?.marketplaceDrafts),
+    savedAspects: ebayAspectsOf(draft?.marketplaceDrafts),
+    savedQuantity: ebaySavedQuantityOf(draft?.marketplaceDrafts),
   });
 
   return {
@@ -194,6 +212,27 @@ function ebayQuantityOf(marketplaceDrafts: unknown): number {
   return Number.isInteger(quantity) && (quantity as number) > 0
     ? (quantity as number)
     : 1;
+}
+
+// Raw saved quantity (null when never set) so readiness can distinguish "default
+// of 1" from an explicit invalid value, instead of silently coercing.
+function ebaySavedQuantityOf(marketplaceDrafts: unknown): number | null {
+  if (!marketplaceDrafts || typeof marketplaceDrafts !== "object") return null;
+  const ebay = (marketplaceDrafts as Record<string, unknown>).ebay;
+  if (!ebay || typeof ebay !== "object") return null;
+  const quantity = (ebay as Record<string, unknown>).quantity;
+  return typeof quantity === "number" ? quantity : null;
+}
+
+function itemSpecificsOf(itemSpecifics: unknown): Record<string, string> {
+  if (!itemSpecifics || typeof itemSpecifics !== "object" || Array.isArray(itemSpecifics)) {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(itemSpecifics as Record<string, unknown>)) {
+    if (typeof value === "string" && value.trim()) out[key] = value;
+  }
+  return out;
 }
 
 function ebayCategoryIdOf(marketplaceDrafts: unknown): string | null {

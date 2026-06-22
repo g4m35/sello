@@ -71,6 +71,7 @@ describe("mapItem readiness (so lists can bucket accurately)", () => {
     return {
       ...base,
       status: "DRAFT_READY" as const,
+      _count: { photos: 3 },
       listingDrafts: [
         {
           ...base.listingDrafts[0],

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_COMPS_REFRESH_COOLDOWN_MS,
+  OWNER_COMPS_REFRESH_COOLDOWN_MS,
   compsRefreshCooldownMs,
   evaluateRefreshCooldown,
 } from "@/lib/comps/cooldown";
@@ -16,6 +17,22 @@ describe("compsRefreshCooldownMs", () => {
   it("reads an explicit value in seconds", () => {
     expect(compsRefreshCooldownMs({ COMPS_REFRESH_COOLDOWN_SECONDS: "30" })).toBe(30_000);
     expect(compsRefreshCooldownMs({ COMPS_REFRESH_COOLDOWN_SECONDS: "0" })).toBe(0);
+  });
+
+  it("caps owner/alpha cooldown at 60s even when the env sets a long one", () => {
+    // Production sets a long cooldown (e.g. ~1h) for sellers; owners/alpha must
+    // never wait more than 60s, without changing the env value.
+    const longEnv = { COMPS_REFRESH_COOLDOWN_SECONDS: "3600" };
+    expect(compsRefreshCooldownMs(longEnv)).toBe(3_600_000);
+    expect(compsRefreshCooldownMs(longEnv, { isOwner: true })).toBe(
+      OWNER_COMPS_REFRESH_COOLDOWN_MS,
+    );
+    expect(OWNER_COMPS_REFRESH_COOLDOWN_MS).toBe(60_000);
+  });
+
+  it("never raises a shorter seller cooldown for owners", () => {
+    const shortEnv = { COMPS_REFRESH_COOLDOWN_SECONDS: "10" };
+    expect(compsRefreshCooldownMs(shortEnv, { isOwner: true })).toBe(10_000);
   });
 });
 

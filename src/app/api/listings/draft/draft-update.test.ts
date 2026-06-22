@@ -24,8 +24,18 @@ function completeStoredDraft() {
     bulletPoints: ["Nike Air Max", "Noise Aqua colorway", "US 10"],
     selectedMarketplaces: ["ebay"],
     recommendedPriceCents: 24000,
+    itemSpecifics: {},
     marketplaceDrafts: {},
-    inventoryItem: { productName: "Nike Air Max", aiOutputs: [] },
+    inventoryItem: {
+      productName: "Nike Air Max",
+      condition: "used_good",
+      category: "sneakers",
+      brand: "Nike",
+      size: "10",
+      colorway: "Aqua",
+      aiOutputs: [],
+      _count: { photos: 3 },
+    },
   };
 }
 
@@ -312,6 +322,34 @@ describe("listing draft update marketplace fields", () => {
     expect(itemUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "APPROVED" } }),
     );
+  });
+
+  it("approve action refuses a size-required draft that has no size", async () => {
+    const stored = completeStoredDraft();
+    const missingSize = {
+      ...stored,
+      inventoryItem: { ...stored.inventoryItem, size: null },
+    };
+    const update = vi.fn();
+    mocks.getPrisma.mockReturnValue({
+      listingDraft: { findFirst: vi.fn().mockResolvedValue(missingSize), update },
+      inventoryItem: { update },
+      $transaction: vi.fn(),
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/draft/draft-1", {
+        method: "POST",
+        headers: { authorization: "Bearer token" },
+        body: JSON.stringify({ action: "approve" }),
+      }),
+      { params: Promise.resolve({ draftId: "draft-1" }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toMatch(/size/i);
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("approve action refuses an incomplete draft with a plain-language reason", async () => {
