@@ -29,6 +29,22 @@ export function Sidebar() {
     };
   }, [token]);
 
+  // Warm the main routes so navigating between screens is instant (the route
+  // bundle + skeleton are ready before the click). Cheap and idempotent.
+  useEffect(() => {
+    for (const href of [
+      "/dashboard",
+      "/inventory",
+      "/inventory/new",
+      "/history",
+      "/channels",
+      "/settings",
+      "/feedback",
+    ]) {
+      router.prefetch?.(href);
+    }
+  }, [router]);
+
   const isActive = (href: string) =>
     href === "/inventory"
       ? pathname.startsWith("/inventory")
