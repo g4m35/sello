@@ -12,6 +12,30 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-24 — Claude. **PR #56 (Etsy marketplace channel) shipped to production.**
+Merged PR #56 -> develop (merge `bbb0eba`), full gate green on develop (prisma
+valid, lint 0 errors / 2 pre-existing warnings, tsc 0, 894 tests, build 0).
+Applied the Etsy enum migration to the prod Supabase DB via `prisma migrate
+deploy` (`20260623000000_add_etsy_marketplace`; `migrate status` = up to date;
+`'etsy'::"Marketplace"` and `ARRAY[...,'etsy']::"Marketplace"[]` both cast OK).
+Promoted develop -> main as `45240a9` **[deploy] Release PR #56** -> prod
+**`dpl_GKpzsF9pxRNbGXfK47weSUavNznk`** (READY, target production, aliased to
+sello.wtf). Health: `/`,`/dashboard`,`/inventory`,`/channels`,
+`/settings/marketplaces` all 200; unauth `/api/listings` 401. Logs: no
+error/warning/fatal/500, no raw Prisma/eBay/provider/token/secret. Prod client
+bundle contains "Etsy" + "Copy-ready draft"; no "CSV later", no MCP/secret leak;
+eBay "Live publishing" still present. No live Etsy/eBay ops, no eBay gate change,
+no alpha users, no env changes, no `db push`.
+
+**Current prod = `dpl_GKpzsF9pxRNbGXfK47weSUavNznk`** (main `45240a9`). Rollback
+candidate before this = `dpl_HWCNrsvoaEELGboZ4R5SEnqC5mc7` (Release PR #54).
+
+Not verifiable here (no seller login; cannot add alpha users / no live ops):
+authenticated click-through that selects Etsy on a real draft and reloads, and
+visually reading the copy/export output. Both are covered by green tests on the
+byte-identical deployed code + the prod DB enum/array casts above.
+
+## Last updated (previous)
 2026-06-23 — Claude. **Added Etsy as a first-class marketplace channel on
 `feature/etsy-marketplace-channel` (off latest `develop`). Etsy is copy-ready
 (no live publish): enum + UI + copy-ready draft export + research doc. Full gate
