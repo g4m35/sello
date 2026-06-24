@@ -1,7 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import type { FeatureAccess } from "@/lib/auth/feature-access";
 import type { AttemptView, ChannelStateView } from "@/lib/view/types";
+
+const DENIED_FEATURE_ACCESS: FeatureAccess = {
+  liveEbayPublish: false,
+  ebayDelist: false,
+  paidComps: false,
+  etsyConnect: false,
+  etsyPublish: false,
+  etsyDelist: false,
+  etsyOrders: false,
+};
 
 import {
   MarketplaceOperationsPanel,
@@ -183,7 +194,7 @@ describe("MarketplaceOperationsPanel (seller view)", () => {
     const html = render({
       channels: [channel({ status: "published" })],
       attempts: [attempt()],
-      featureAccess: { liveEbayPublish: false, ebayDelist: true, paidComps: false },
+      featureAccess: { ...DENIED_FEATURE_ACCESS, ebayDelist: true },
     });
     expect(html).toContain("End eBay listing");
   });
@@ -192,7 +203,7 @@ describe("MarketplaceOperationsPanel (seller view)", () => {
     const html = render({
       channels: [channel({ status: "published" })],
       attempts: [attempt()],
-      featureAccess: { liveEbayPublish: false, ebayDelist: false, paidComps: false },
+      featureAccess: { ...DENIED_FEATURE_ACCESS },
     });
     expect(html).not.toContain("End eBay listing");
     expect(html).toMatch(/selected alpha accounts/i);
@@ -217,7 +228,7 @@ describe("MarketplaceOperationsPanel (seller view)", () => {
     const html = render({
       channels: [channel({ status: "published", externalListingId: null })],
       attempts: [],
-      featureAccess: { liveEbayPublish: false, ebayDelist: true, paidComps: false },
+      featureAccess: { ...DENIED_FEATURE_ACCESS, ebayDelist: true },
     });
     expect(html).not.toContain("End eBay listing");
   });

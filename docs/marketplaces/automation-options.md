@@ -10,13 +10,22 @@ does not enable any live marketplace operation. No secrets or API keys live here
 | Grailed  | Copy-ready draft         | No official listing API                       |
 | Poshmark | Copy-ready draft         | No official public listing API                |
 | Depop    | Copy-ready draft         | Official private API request in progress      |
-| Etsy     | Copy-ready draft         | Official Etsy Open API v3 (research → phased)  |
+| Etsy     | Copy-ready + gated API foundation | Official Etsy Open API v3 — target: live, gated automation |
+
+**Product rule:** every marketplace should reach the highest autonomy that an
+official, compliant API allows. Etsy must not stay copy-ready-only: the Etsy Open
+API v3 supports seller-authorized listing automation, so **Sello targets live Etsy
+automation** (create draft → upload images → activate → deactivate → sync), gated
+exactly like eBay. **Copy-ready is the Phase-1 fallback, not the final autonomy
+level** — it remains available when the API is not connected/enabled.
 
 Capability flags live in the adapter layer (`src/lib/marketplace/adapter.ts`); the
 UI branches on capabilities, never on a hardcoded marketplace id. A channel with no
 real publish adapter returns a typed `NOT_IMPLEMENTED` outcome and is never faked as
 a success. Scraping a marketplace's own web forms is **not** a publish strategy for
-any channel here, Etsy included.
+any channel here, Etsy included. Etsy's runtime integration uses the **Etsy Open API
+v3 directly**; the Etsy Dev MCP server is for documentation/research only and never
+runs production behavior.
 
 ---
 
@@ -144,16 +153,34 @@ is publish-ready.
 ### 9. Recommended rollout
 
 - **Phase 1 — Copy-ready Etsy drafts (shipped).** Local draft generation + export,
-  honest "Needs seller review", no Etsy systems touched.
-- **Phase 2 — Official API auth research.** Register the app, design PKCE OAuth +
-  `x-api-key`, request the minimal scopes, and prototype taxonomy mapping. Use the Dev
-  MCP Server for spec lookups. No live writes.
-- **Phase 3 — Sandbox / dev integration.** Under personal access (≤5 shops), create
-  **draft** listings + upload images against the owner's own shop, behind a feature
-  flag. Read receipts to validate inventory sync. Still seller-published.
-- **Phase 4 — Live publish.** Only after explicit owner approval, Etsy **commercial
-  access** approval, and the same test gates eBay uses (readiness, audited attempts, an
-  allowlist, and a global switch). Drafts-first; never auto-activate.
+  honest "Needs seller review", no Etsy systems touched. Stays as the fallback.
+- **Phase 2 — Gated API integration foundation (this PR).** Etsy adapter with
+  capability flags, fail-closed env config + per-seller allowlists, PKCE OAuth
+  connect/callback/disconnect with encrypted token storage, an Etsy Open API v3 client
+  wrapper with sanitized error mapping, and gated readiness/publish/delist/sync route
+  handlers. Everything fails closed when credentials/gates/connection are missing; no
+  live Etsy calls happen without real env credentials, which are not in the repo.
+- **Phase 3 — Dev/personal validation.** Under personal access (≤5 shops), with real
+  env credentials set in the deployment (never the repo), create **draft** listings +
+  upload images against the owner's own shop behind the allowlist, and read receipts to
+  validate sync. Still seller-confirmed; drafts-first.
+- **Phase 4 — Live publish for sellers.** Only after explicit owner approval, Etsy
+  **commercial access** approval, and the same gates eBay uses (readiness, audited
+  attempts, allowlist, global switch). Drafts-first; never auto-activate.
+
+### 10. Required to enable Etsy live (summary)
+
+A real Etsy app (API key + secret), the env credentials below set in the deployment
+(not the repo), PKCE OAuth, the minimal scopes, a taxonomy/category mapping, the
+seller's shipping profile + return policy + shop section selection, and Etsy
+**commercial access** approval before non-owner sellers can connect.
+
+Runtime env (names only — never commit values):
+`ETSY_API_ENABLED`, `ETSY_CLIENT_ID`, `ETSY_CLIENT_SECRET` (if the app type requires
+it), `ETSY_REDIRECT_URI`, `ETSY_API_BASE_URL`, `ETSY_SCOPES`,
+`ETSY_TOKEN_ENCRYPTION_KEY`, `ETSY_OAUTH_STATE_SECRET`, and the per-seller allowlists
+`ETSY_CONNECT_EMAILS`, `ETSY_PUBLISH_EMAILS`, `ETSY_DELIST_EMAILS`,
+`ETSY_ORDERS_EMAILS`.
 
 ---
 

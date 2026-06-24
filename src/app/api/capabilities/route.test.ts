@@ -48,6 +48,10 @@ describe("GET /api/capabilities", () => {
         liveEbayPublish: true,
         ebayDelist: false,
         paidComps: true,
+        etsyConnect: false,
+        etsyPublish: false,
+        etsyDelist: false,
+        etsyOrders: false,
       },
       copy: {
         liveEbayPublish:
@@ -56,6 +60,14 @@ describe("GET /api/capabilities", () => {
           "Live eBay delisting is currently enabled for selected alpha accounts.",
         paidComps:
           "Fresh sold comps are currently enabled for selected alpha accounts.",
+        etsyConnect:
+          "Connecting an Etsy shop is currently enabled for selected alpha accounts.",
+        etsyPublish:
+          "Live Etsy publishing is currently enabled for selected alpha accounts.",
+        etsyDelist:
+          "Live Etsy delisting is currently enabled for selected alpha accounts.",
+        etsyOrders:
+          "Etsy order sync is currently enabled for selected alpha accounts.",
       },
     });
 
