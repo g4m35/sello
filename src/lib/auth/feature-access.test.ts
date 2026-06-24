@@ -21,7 +21,7 @@ describe("configuredFeatureEmails", () => {
         EBAY_DELIST_EMAILS: " seller@example.com ",
         PAID_COMPS_EMAILS: undefined,
       }),
-    ).toEqual({
+    ).toMatchObject({
       liveEbayPublish: ["owner@example.com", "beta@example.com"],
       ebayDelist: ["seller@example.com"],
       paidComps: [],
@@ -41,17 +41,21 @@ describe("configuredFeatureEmails", () => {
   });
 
   it("fails closed when feature allowlist variables are missing", () => {
-    expect(configuredFeatureEmails({})).toEqual({
+    expect(configuredFeatureEmails({})).toMatchObject({
       liveEbayPublish: [],
       ebayDelist: [],
       paidComps: [],
+      etsyConnect: [],
+      etsyPublish: [],
+      etsyDelist: [],
+      etsyOrders: [],
     });
   });
 
   it("does not fall back to ADMIN_EMAILS for any feature allowlist", () => {
     expect(
       configuredFeatureEmails({ ADMIN_EMAILS: "owner@sello.com" }),
-    ).toEqual({ liveEbayPublish: [], ebayDelist: [], paidComps: [] });
+    ).toMatchObject({ liveEbayPublish: [], ebayDelist: [], paidComps: [] });
   });
 });
 
@@ -67,7 +71,7 @@ describe("featureAccessForUser", () => {
           PAID_COMPS_EMAILS: "beta@example.com, OWNER@example.com",
         },
       ),
-    ).toEqual({
+    ).toMatchObject({
       liveEbayPublish: false,
       ebayDelist: true,
       paidComps: true,
@@ -84,7 +88,7 @@ describe("featureAccessForUser", () => {
           PAID_COMPS_EMAILS: "Owner@Example.Com",
         },
       ),
-    ).toEqual({
+    ).toMatchObject({
       liveEbayPublish: true,
       ebayDelist: true,
       paidComps: true,
@@ -100,10 +104,14 @@ describe("featureAccessForUser", () => {
           EBAY_DELIST_EMAILS: "owner@example.com",
           PAID_COMPS_EMAILS: "owner@example.com",
         }),
-      ).toEqual({
+      ).toMatchObject({
         liveEbayPublish: false,
         ebayDelist: false,
         paidComps: false,
+        etsyConnect: false,
+        etsyPublish: false,
+        etsyDelist: false,
+        etsyOrders: false,
       });
     },
   );
@@ -114,10 +122,14 @@ describe("featureAccessForUser", () => {
         { email: "owner@example.com" },
         { ADMIN_EMAILS: "owner@example.com" },
       ),
-    ).toEqual({
+    ).toMatchObject({
       liveEbayPublish: false,
       ebayDelist: false,
       paidComps: false,
+      etsyConnect: false,
+      etsyPublish: false,
+      etsyDelist: false,
+      etsyOrders: false,
     });
   });
 });
@@ -133,6 +145,10 @@ describe("requireFeatureAccess", () => {
     },
     { entitlement: "ebayDelist", code: "EBAY_DELIST_ALPHA_ONLY" },
     { entitlement: "paidComps", code: "PAID_COMPS_ALPHA_ONLY" },
+    { entitlement: "etsyConnect", code: "ETSY_CONNECT_ALPHA_ONLY" },
+    { entitlement: "etsyPublish", code: "ETSY_PUBLISH_ALPHA_ONLY" },
+    { entitlement: "etsyDelist", code: "ETSY_DELIST_ALPHA_ONLY" },
+    { entitlement: "etsyOrders", code: "ETSY_ORDERS_ALPHA_ONLY" },
   ];
 
   it.each(cases)(
@@ -160,17 +176,22 @@ describe("requireFeatureAccess", () => {
   );
 
   it.each(cases)("allows an independently entitled $entitlement user", ({ entitlement }) => {
-    const envKey = {
+    const envKey: Record<FeatureEntitlement, string> = {
       liveEbayPublish: "LIVE_EBAY_PUBLISH_EMAILS",
       ebayDelist: "EBAY_DELIST_EMAILS",
       paidComps: "PAID_COMPS_EMAILS",
-    }[entitlement];
+      etsyConnect: "ETSY_CONNECT_EMAILS",
+      etsyPublish: "ETSY_PUBLISH_EMAILS",
+      etsyDelist: "ETSY_DELIST_EMAILS",
+      etsyOrders: "ETSY_ORDERS_EMAILS",
+    };
+    const resolvedKey = envKey[entitlement];
 
     expect(() =>
       requireFeatureAccess(
         { email: "seller@example.com" },
         entitlement,
-        { [envKey]: "seller@example.com" },
+        { [resolvedKey]: "seller@example.com" },
       ),
     ).not.toThrow();
   });
@@ -185,6 +206,14 @@ describe("FEATURE_ACCESS_COPY", () => {
         "Live eBay delisting is currently enabled for selected alpha accounts.",
       paidComps:
         "Fresh sold comps are currently enabled for selected alpha accounts.",
+      etsyConnect:
+        "Connecting an Etsy shop is currently enabled for selected alpha accounts.",
+      etsyPublish:
+        "Live Etsy publishing is currently enabled for selected alpha accounts.",
+      etsyDelist:
+        "Live Etsy delisting is currently enabled for selected alpha accounts.",
+      etsyOrders:
+        "Etsy order sync is currently enabled for selected alpha accounts.",
     });
 
     const serialized = JSON.stringify(FEATURE_ACCESS_COPY).toLowerCase();

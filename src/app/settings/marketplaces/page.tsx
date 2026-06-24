@@ -21,6 +21,7 @@ import {
 import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
 
 import { ebayMarketplaceLabels } from "./labels";
+import { EtsyConnectionCard } from "./etsy-card";
 import {
   ebayReadinessHelp,
   ebayReadinessItems,
@@ -284,6 +285,8 @@ export default function MarketplaceSettingsPage() {
           </p>
           <h1 className="text-3xl font-semibold">{labels.heading}</h1>
         </header>
+
+        <EtsyConnectionCard accessToken={session?.access_token ?? null} />
 
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/70">
           <div className="flex flex-col gap-4 border-b border-zinc-800 p-5 sm:flex-row sm:items-center sm:justify-between">

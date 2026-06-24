@@ -12,6 +12,34 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-24 — Claude. **Gated Etsy Open API v3 integration FOUNDATION on
+`feature/etsy-live-api-integration` (off develop). Not deployed; PR opened.** Adds
+the architecture to take Etsy from copy-ready to live, gated automation, all
+fail-closed and credential-free (no live Etsy calls without env credentials, which
+are NOT in the repo).
+
+- New `src/lib/marketplace/adapters/etsy/`: config (fail-closed env + ETSY_API_ENABLED
+  switch), errors (sanitized), token-crypto (AES-256-GCM), oauth (PKCE + signed
+  state cookie), client (x-api-key + Bearer, 401/403/429/5xx mapping, no token/payload
+  leak), capabilities (per-seller allowlist gate), session (load/refresh/shop),
+  readiness, mapper, publish (draft->images->activate), delist (deactivate), sync,
+  media. Plus routes under `src/app/api/marketplaces/etsy/`: connect, callback,
+  disconnect, status, readiness, publish, delist, sync.
+- Reuses existing `MarketplaceConnection` + `MarketplaceListing` (marketplace='etsy',
+  environment='production') so **NO migration / no `db push`** was needed.
+- `feature-access.ts` gained etsy entitlements (ETSY_CONNECT/PUBLISH/DELIST/ORDERS_EMAILS),
+  builders now iterate. Client consumers (panel/provider) keep local deny-all literals
+  (feature-access is server-only; client components import the TYPE only).
+- UI: settings `EtsyConnectionCard` (states: not connected / connected / live-pending /
+  copy-ready-only), gated Connect/Disconnect. Editor live-publish UI (taxonomy/shipping
+  selectors + publish button) is the documented next step.
+- eBay gates/readiness/publish untouched. Copy-ready Etsy export unchanged. Full gate
+  green (prisma valid, lint 0 errors / 2 pre-existing warnings, tsc 0, 984 tests, build 0).
+- Env names to enable live Etsy (set in deployment, never repo) are in
+  `docs/marketplaces/automation-options.md` §10. Etsy live stays OFF until those +
+  Etsy commercial-access approval land.
+
+## Last updated (previous)
 2026-06-24 — Claude. **PR #56 (Etsy marketplace channel) shipped to production.**
 Merged PR #56 -> develop (merge `bbb0eba`), full gate green on develop (prisma
 valid, lint 0 errors / 2 pre-existing warnings, tsc 0, 894 tests, build 0).

@@ -65,6 +65,24 @@ const safeCopy = {
     "Live eBay delisting is currently enabled for selected alpha accounts.",
   paidComps:
     "Fresh sold comps are currently enabled for selected alpha accounts.",
+  etsyConnect:
+    "Connecting an Etsy shop is currently enabled for selected alpha accounts.",
+  etsyPublish:
+    "Live Etsy publishing is currently enabled for selected alpha accounts.",
+  etsyDelist:
+    "Live Etsy delisting is currently enabled for selected alpha accounts.",
+  etsyOrders:
+    "Etsy order sync is currently enabled for selected alpha accounts.",
+};
+
+const deniedAccess = {
+  liveEbayPublish: false,
+  ebayDelist: false,
+  paidComps: false,
+  etsyConnect: false,
+  etsyPublish: false,
+  etsyDelist: false,
+  etsyOrders: false,
 };
 
 function renderProvider() {
@@ -108,11 +126,7 @@ describe("FeatureAccessProvider", () => {
     renderProvider();
     expect(useFeatureAccess()).toEqual({
       loading: true,
-      access: {
-        liveEbayPublish: false,
-        ebayDelist: false,
-        paidComps: false,
-      },
+      access: deniedAccess,
       copy: safeCopy,
     });
 
@@ -140,11 +154,7 @@ describe("FeatureAccessProvider", () => {
 
     expect(useFeatureAccess()).toEqual({
       loading: false,
-      access: {
-        liveEbayPublish: false,
-        ebayDelist: false,
-        paidComps: false,
-      },
+      access: deniedAccess,
       copy: safeCopy,
     });
   });

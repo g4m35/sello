@@ -25,6 +25,10 @@ const DENIED_ACCESS: FeatureAccess = {
   liveEbayPublish: false,
   ebayDelist: false,
   paidComps: false,
+  etsyConnect: false,
+  etsyPublish: false,
+  etsyDelist: false,
+  etsyOrders: false,
 };
 
 const SAFE_COPY: FeatureAccessResponse["copy"] = {
@@ -34,6 +38,14 @@ const SAFE_COPY: FeatureAccessResponse["copy"] = {
     "Live eBay delisting is currently enabled for selected alpha accounts.",
   paidComps:
     "Fresh sold comps are currently enabled for selected alpha accounts.",
+  etsyConnect:
+    "Connecting an Etsy shop is currently enabled for selected alpha accounts.",
+  etsyPublish:
+    "Live Etsy publishing is currently enabled for selected alpha accounts.",
+  etsyDelist:
+    "Live Etsy delisting is currently enabled for selected alpha accounts.",
+  etsyOrders:
+    "Etsy order sync is currently enabled for selected alpha accounts.",
 };
 
 function failClosed(loading: boolean): FeatureAccessContextValue {
