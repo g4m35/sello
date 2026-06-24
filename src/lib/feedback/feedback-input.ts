@@ -19,6 +19,7 @@ export const FEEDBACK_MARKETPLACES = [
   "grailed",
   "poshmark",
   "depop",
+  "etsy",
   "mercari",
   "other",
 ] as const;

@@ -42,7 +42,10 @@ export async function GET(
     const marketplaceParam = new URL(request.url).searchParams.get("marketplace");
     const parsed = ExportMarketplaceSchema.safeParse(marketplaceParam);
     if (!parsed.success) {
-      throw new AppError("Unsupported marketplace. Use depop, poshmark, or grailed.", 400);
+      throw new AppError(
+        "Unsupported marketplace. Use depop, poshmark, grailed, or etsy.",
+        400,
+      );
     }
     const marketplace = parsed.data;
 

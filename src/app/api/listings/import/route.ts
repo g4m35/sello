@@ -49,7 +49,7 @@ export async function POST(request: Request) {
               recommendedPriceCents: row.priceCents ?? null,
               itemSpecifics: {} as Prisma.InputJsonValue,
               marketplaceDrafts: {} as Prisma.InputJsonValue,
-              selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop"],
+              selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop", "etsy"],
             },
           },
         },

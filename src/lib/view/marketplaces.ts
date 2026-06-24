@@ -1,10 +1,11 @@
 // Display metadata for marketplace logos (text mark). Mirrors the design's
-// MpLogo registry. The app currently has real adapters for ebay/grailed/
-// poshmark/depop only; the rest are kept for label rendering robustness.
+// MpLogo registry. The app currently has adapters for ebay/grailed/poshmark/
+// depop/etsy only; the rest are kept for label rendering robustness.
 export const MP_LOGO: Record<string, { label: string; color: string }> = {
   ebay: { label: "eb", color: "#0064D2" },
   depop: { label: "DP", color: "#FF0000" },
   poshmark: { label: "PS", color: "#7B2D8E" },
+  etsy: { label: "Et", color: "#F1641E" },
   mercari: { label: "M", color: "#FF6B35" },
   grailed: { label: "GR", color: "#0B0B0A" },
   stockx: { label: "SX", color: "#0B7C2B" },
@@ -19,6 +20,7 @@ export const MARKETPLACE_NAME: Record<string, string> = {
   grailed: "Grailed",
   poshmark: "Poshmark",
   depop: "Depop",
+  etsy: "Etsy",
   mercari: "Mercari",
   stockx: "StockX",
   goat: "GOAT",

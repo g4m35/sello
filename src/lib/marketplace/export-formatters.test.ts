@@ -121,8 +121,9 @@ describe("ExportMarketplaceSchema", () => {
     expect(ExportMarketplaceSchema.parse("depop")).toBe("depop");
     expect(ExportMarketplaceSchema.parse("poshmark")).toBe("poshmark");
     expect(ExportMarketplaceSchema.parse("grailed")).toBe("grailed");
+    expect(ExportMarketplaceSchema.parse("etsy")).toBe("etsy");
     expect(ExportMarketplaceSchema.safeParse("ebay").success).toBe(false);
-    expect(ExportMarketplaceSchema.safeParse("etsy").success).toBe(false);
+    expect(ExportMarketplaceSchema.safeParse("mercari").success).toBe(false);
   });
 });
 
@@ -258,6 +259,57 @@ describe("missing-field warnings", () => {
   it("warns when the description is empty", () => {
     const result = buildListingExport("poshmark", input({ description: "" }));
     expect(result.warnings).toContain("Missing description");
+  });
+});
+
+describe("etsy copy-ready draft", () => {
+  it("is a registered copy-ready export marketplace", () => {
+    expect(ExportMarketplaceSchema.options).toContain("etsy");
+  });
+
+  it("renders the listing facts, keywords, and a photo checklist", () => {
+    const result = buildListingExport("etsy", input());
+
+    expect(result.marketplace).toBe("etsy");
+    expect(result.title).toBe("Supreme Box Logo Hoodie Heather Grey FW17");
+    expect(result.body).toContain("Brand: Supreme");
+    expect(result.body).toContain("Condition: Used");
+    expect(result.body).toContain("Quantity: 1");
+    expect(result.body).toMatch(/Tags:.*supreme/i);
+    expect(result.body).toContain("Photo checklist");
+  });
+
+  it("flags Etsy-specific required fields as Needs seller review instead of claiming publish-ready", () => {
+    const result = buildListingExport("etsy", input());
+
+    // Honest about what Sello cannot set automatically for Etsy.
+    expect(result.body).toContain("Needs seller review");
+    expect(result.body.toLowerCase()).toContain("shipping");
+    expect(result.body.toLowerCase()).toContain("return");
+    // Never asserts handmade/vintage eligibility on the seller's behalf.
+    expect(result.body.toLowerCase()).toContain("who made it");
+    expect(result.warnings).toContain("Needs seller review for Etsy-specific fields");
+  });
+
+  it("caps keyword tags at the Etsy maximum of 13", () => {
+    const manyTags = Array.from({ length: 20 }, (_, i) => `keyword ${i}`);
+    const result = buildListingExport("etsy", input({ tags: manyTags }));
+
+    const tagLine = result.body
+      .split("\n")
+      .find((line) => line.startsWith("Tags:"));
+    expect(tagLine).toBeDefined();
+    const tagCount = tagLine!.replace("Tags:", "").split(",").filter((t) => t.trim()).length;
+    expect(tagCount).toBeLessThanOrEqual(13);
+  });
+
+  it("still surfaces shared missing-field warnings", () => {
+    const result = buildListingExport(
+      "etsy",
+      input({ brand: null, priceCents: null }),
+    );
+    expect(result.warnings).toContain("Missing brand");
+    expect(result.warnings).toContain("Missing price");
   });
 });
 

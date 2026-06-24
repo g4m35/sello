@@ -1,7 +1,13 @@
 import { Type } from "@google/genai";
 import { z } from "zod";
 
-export const MarketplaceSchema = z.enum(["ebay", "grailed", "poshmark", "depop"]);
+export const MarketplaceSchema = z.enum([
+  "ebay",
+  "grailed",
+  "poshmark",
+  "depop",
+  "etsy",
+]);
 
 export const ConditionSchema = z.enum([
   "new_with_tags",
@@ -116,6 +122,7 @@ export const GeminiListingDraftSchema = z
         grailed: MarketplaceListingSchema,
         poshmark: MarketplaceListingSchema,
         depop: MarketplaceListingSchema,
+        etsy: MarketplaceListingSchema,
       })
       .strict(),
     warnings: z.array(shortAiTextSchema).max(8),
@@ -265,8 +272,9 @@ export const geminiListingDraftResponseSchema = {
         grailed: marketplaceDraftJsonSchema,
         poshmark: marketplaceDraftJsonSchema,
         depop: marketplaceDraftJsonSchema,
+        etsy: marketplaceDraftJsonSchema,
       },
-      required: ["ebay", "grailed", "poshmark", "depop"],
+      required: ["ebay", "grailed", "poshmark", "depop", "etsy"],
     },
     warnings: { type: Type.ARRAY, items: shortAiTextJsonSchema },
   },

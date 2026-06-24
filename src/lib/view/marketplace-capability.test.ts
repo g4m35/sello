@@ -4,7 +4,7 @@ import { marketplaceCapabilityLabel } from "./marketplaces";
 
 describe("marketplaceCapabilityLabel", () => {
   it("labels assisted marketplaces as a copy-ready draft (never CSV)", () => {
-    for (const marketplace of ["grailed", "poshmark", "depop"]) {
+    for (const marketplace of ["grailed", "poshmark", "depop", "etsy"]) {
       const label = marketplaceCapabilityLabel({ marketplace, publish: false });
       expect(label).toBe("Copy-ready draft");
       expect(label).not.toMatch(/csv/i);
