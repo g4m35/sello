@@ -9,6 +9,7 @@ import type {
   BulkDelistPreflightResult,
 } from "@/lib/marketplace/bulk-delist";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
+import type { ExportMarketplace } from "@/lib/marketplace/export-formatters";
 import type {
   AttemptView,
   ChannelView,
@@ -686,10 +687,10 @@ export const api = {
   exportListing: (
     token: string,
     itemId: string,
-    marketplace: "depop" | "poshmark" | "grailed",
+    marketplace: ExportMarketplace,
   ) =>
     request<{
-      marketplace: "depop" | "poshmark" | "grailed";
+      marketplace: ExportMarketplace;
       title: string;
       body: string;
       warnings: string[];

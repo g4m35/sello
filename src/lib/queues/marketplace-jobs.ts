@@ -9,7 +9,7 @@ export const PublishListingJobSchema = z
   .object({
     inventoryItemId: z.string().uuid(),
     listingDraftId: z.string().uuid(),
-    marketplaces: z.array(MarketplaceSchema).min(1).max(4),
+    marketplaces: z.array(MarketplaceSchema).min(1).max(5),
   })
   .strict();
 

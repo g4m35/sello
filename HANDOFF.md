@@ -12,6 +12,31 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-23 — Claude. **Added Etsy as a first-class marketplace channel on
+`feature/etsy-marketplace-channel` (off latest `develop`). Etsy is copy-ready
+(no live publish): enum + UI + copy-ready draft export + research doc. Full gate
+green (prisma valid, lint 0 errors / 2 pre-existing warnings, tsc 0, 894 tests,
+build 0). No env changes, no secrets, no live Etsy/eBay/browser ops, no eBay gate
+changes.**
+
+- Etsy added to the `Marketplace` enum (prisma) + app `MarketplaceSchema`, the
+  adapter registry (copy-ready stub, `publish:false`, returns NOT_IMPLEMENTED),
+  `ExportMarketplaceSchema` + a new `formatEtsy` (title/desc/tags/price/qty/
+  condition/category/photo-checklist + "Needs seller review" advisory), display
+  name/logo, feedback marketplaces, and default selectedMarketplaces.
+- **Migration created but NOT applied**:
+  `prisma/migrations/20260623000000_add_etsy_marketplace/migration.sql`
+  (`ALTER TYPE "Marketplace" ADD VALUE IF NOT EXISTS 'etsy'`). Owner must apply it
+  via the reviewed develop->prod flow before deploying; Etsy selection persistence
+  depends on it. Safe in a txn on PG12+ (value not used in the same migration).
+- Research: `docs/marketplaces/automation-options.md`. The provided Etsy MCP
+  (`mcp.api.etsycloud.com/mcp`) is Etsy's **official Dev MCP Server** — a docs
+  assistant only; it performs no live shop/listing operations. MCP config is in
+  the doc only (not added to app/runtime config).
+- eBay live publish/readiness untouched; Etsy readiness is advisory and isolated
+  (new `src/lib/listing/etsy-readiness-isolation.test.ts`).
+
+## Last updated (previous)
 2026-06-22 — Claude. **PR #50 (alpha smoke blockers) shipped to production, then
 all Dependabot alerts cleared and shipped. No env/gate/migration changes, no live
 marketplace ops, no browser smoke.**
@@ -1752,6 +1777,10 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-23 (Claude): Etsy marketplace channel (copy-ready) on
+  `feature/etsy-marketplace-channel`. Enum + adapter + `formatEtsy` export +
+  research doc + readiness-isolation tests. Migration file created, NOT applied.
+  Gate green (894 tests, build 0). No live ops, no eBay gate changes.
 - 2026-06-17 (Codex): started Comp Cost + Confidence Hardening on
   `feature/comp-confidence-cost-controls` (not deployed, not merged). Added
   conservative comp cost controls (`COMPS_MAX_PROVIDER_RESULTS=20`,

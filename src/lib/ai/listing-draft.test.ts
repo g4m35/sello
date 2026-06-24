@@ -64,6 +64,12 @@ const validDraft = {
       categoryHint: "Sneakers",
       tags: ["nikesb", "dunk", "streetwear"],
     },
+    etsy: {
+      title: "Nike SB Dunk Low Pro Chicago Size 10 Sneakers",
+      description: "Pre-owned Nike SB Dunk Low Pro Chicago sneakers in men's size 10.",
+      categoryHint: "Shoes > Sneakers & Athletic Shoes",
+      tags: ["nike sb dunk", "chicago sneakers", "streetwear shoes"],
+    },
   },
   warnings: ["Confirm size and condition from additional photos before publishing."],
 };

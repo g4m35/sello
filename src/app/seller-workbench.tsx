@@ -34,7 +34,7 @@ import CompsPanel from "./comps-panel";
 import JobsPanel from "./jobs-panel";
 import StatusBadge from "./status-badge";
 
-type Marketplace = "ebay" | "grailed" | "poshmark" | "depop";
+type Marketplace = "ebay" | "grailed" | "poshmark" | "depop" | "etsy";
 
 type MarketplaceDraft = {
   title: string;
@@ -112,6 +112,7 @@ const marketplaces: { id: Marketplace; label: string }[] = [
   { id: "grailed", label: "Grailed" },
   { id: "poshmark", label: "Poshmark" },
   { id: "depop", label: "Depop" },
+  { id: "etsy", label: "Etsy" },
 ];
 
 const navItems: { id: AppSection; label: string; icon: typeof Home }[] = [
@@ -831,7 +832,7 @@ export default function SellerWorkbench() {
               {[
                 ["Draft status", hasDraft ? saveStateLabel : "Awaiting item", hasDraft ? "Refresh-safe autosave" : "Upload 1-3 photos"],
                 ["Price", result ? formatPrice(editableDraft?.recommendedPriceCents ?? null) : "No item", "Manual until comps API"],
-                ["Channels", hasDraft ? `${editableDraft?.selectedMarketplaces.length ?? 0} selected` : "4 available", "eBay, Grailed, Poshmark, Depop"],
+                ["Channels", hasDraft ? `${editableDraft?.selectedMarketplaces.length ?? 0} selected` : "5 available", "eBay, Grailed, Poshmark, Depop, Etsy"],
                 ["Queue", "Idle", "Publishing disabled in MVP"],
               ].map(([label, value, note]) => (
                 <div key={label} className="border border-neutral-300 bg-white p-4">

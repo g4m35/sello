@@ -89,7 +89,20 @@ describe("listing export API", () => {
     const response = await getRequest("ebay");
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toMatch(/depop, poshmark, or grailed/);
+    expect((await response.json()).error).toMatch(/depop, poshmark, grailed, or etsy/);
+  });
+
+  it("exports an Etsy copy-ready draft with a seller-review advisory", async () => {
+    mockItem(itemRow());
+
+    const response = await getRequest("etsy");
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.marketplace).toBe("etsy");
+    expect(payload.body).toContain("Photo checklist");
+    expect(payload.body).toContain("Needs seller review");
+    expect(payload.warnings).toContain("Needs seller review for Etsy-specific fields");
   });
 
   it("rejects a missing marketplace query with 400", async () => {
