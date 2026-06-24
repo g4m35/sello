@@ -12,6 +12,77 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-23 — Claude. **Added Etsy as a first-class marketplace channel on
+`feature/etsy-marketplace-channel` (off latest `develop`). Etsy is copy-ready
+(no live publish): enum + UI + copy-ready draft export + research doc. Full gate
+green (prisma valid, lint 0 errors / 2 pre-existing warnings, tsc 0, 894 tests,
+build 0). No env changes, no secrets, no live Etsy/eBay/browser ops, no eBay gate
+changes.**
+
+- Etsy added to the `Marketplace` enum (prisma) + app `MarketplaceSchema`, the
+  adapter registry (copy-ready stub, `publish:false`, returns NOT_IMPLEMENTED),
+  `ExportMarketplaceSchema` + a new `formatEtsy` (title/desc/tags/price/qty/
+  condition/category/photo-checklist + "Needs seller review" advisory), display
+  name/logo, feedback marketplaces, and default selectedMarketplaces.
+- **Migration created but NOT applied**:
+  `prisma/migrations/20260623000000_add_etsy_marketplace/migration.sql`
+  (`ALTER TYPE "Marketplace" ADD VALUE IF NOT EXISTS 'etsy'`). Owner must apply it
+  via the reviewed develop->prod flow before deploying; Etsy selection persistence
+  depends on it. Safe in a txn on PG12+ (value not used in the same migration).
+- Research: `docs/marketplaces/automation-options.md`. The provided Etsy MCP
+  (`mcp.api.etsycloud.com/mcp`) is Etsy's **official Dev MCP Server** — a docs
+  assistant only; it performs no live shop/listing operations. MCP config is in
+  the doc only (not added to app/runtime config).
+- eBay live publish/readiness untouched; Etsy readiness is advisory and isolated
+  (new `src/lib/listing/etsy-readiness-isolation.test.ts`).
+
+## Last updated (previous)
+2026-06-22 — Claude. **PR #50 (alpha smoke blockers) shipped to production, then
+all Dependabot alerts cleared and shipped. No env/gate/migration changes, no live
+marketplace ops, no browser smoke.**
+
+Deploy chain (all healthy — pages 200, `/api/listings` 401, zero
+error/warning/fatal logs, no leak strings):
+- **PR #50** -> develop (`d38cf5c`) -> `[deploy] Release PR #50` (`bfec607`) ->
+  prod **`dpl_Hw5YHsKjyhWPk9HYTVMAtmcFQvTq`** (READY). Full gate green on develop
+  (prisma valid, lint 0 errors / 2 warnings, tsc 0, 883 tests, build 0).
+- **Dependabot — protobufjs #10 (runtime, the only prod-runtime alert)**:
+  `npm update protobufjs` -> 7.6.4 (>= patched 7.6.3; @google/genai allows
+  ^7.5.4). develop (`b6dea98`) -> `[deploy] Release PR #52` (`fc11647`) -> prod
+  **`dpl_2Axxx7Zaxwa7HBSc9o1WhRYsw69Q`** (READY, healthy).
+- **Dependabot — dev/transitive bumps (hono 4.12.26 incl. high #13 CORS, vite
+  8.0.16 incl. high #8, js-yaml 4.2.0)**: none execute in the prod runtime
+  (hono is only `@prisma/client > prisma > @prisma/dev` tooling; the app never
+  imports hono and sets no CORS-with-credentials, only CSP/Permissions-Policy).
+  develop -> `[deploy] Release PR #54` (`2f5fe04`) -> prod
+  **`dpl_HWCNrsvoaEELGboZ4R5SEnqC5mc7`** (READY, healthy). `npm audit` now reports
+  **0 vulnerabilities**; 0 open Dependabot alerts; Dependabot PRs #32/#33/#34
+  auto-closed. (The push banner said 9 alerts; 8 were open at triage — 1 had
+  auto-resolved.)
+
+**Current prod = `dpl_HWCNrsvoaEELGboZ4R5SEnqC5mc7`** (main `2f5fe04`). Rollback
+candidate before this chain = `dpl_unMJogJ9RrrAnJVDQKmxXWNXRD8t` (Release PR #49).
+
+Still required (owner / browser, NOT done here — no live or browser actions):
+1. Confirm no old disposable eBay listings are still live.
+2. Create 2 ready items + 1 deliberately blocked item (e.g. missing size).
+3. Bulk publish preflight should show ready 2 / blocked 1 with the **exact**
+   missing reason (e.g. "Size").
+4. Publish the ready items only; verify each goes live.
+5. Retry a failed/again item -> no duplicate listing.
+6. Bulk end/delist the listings created in this smoke (per-item results,
+   already-ended skipped, safe reasons).
+7. Final prod log scan (500/error/fatal/raw Prisma/eBay/provider/token/secret).
+8. Alpha verdict.
+
+Alpha users are added via the **feature allowlist emails** (e.g.
+`EBAY_DELIST_EMAILS`, `PAID_COMPS_EMAILS`, live-publish allowlist), **not**
+`ADMIN_EMAILS` (which only grants the owner/admin surfaces + the 60s comps
+cooldown override). No alpha users were added in this session.
+
+---
+
+### Earlier this session (pre-deploy detail)
 2026-06-22 — Claude. **Alpha post-smoke blockers fixed on
 `fix/alpha-smoke-blockers` (PR into `develop`). No env/gate/migration changes, no
 live marketplace ops, no browser smoke.** (Prior "editor Discard deletes the
@@ -1730,6 +1801,22 @@ on auth.ebay.com.
   new-photo AI draft validation, so the auto path was validated by controlled
   production-backed `runCompFetch` calls rather than a new uploaded item. Vercel
   recent log scan found no error/fatal/500/token-like lines.
+- 2026-06-23 (Claude): Etsy marketplace channel (copy-ready) on
+  `feature/etsy-marketplace-channel`. Enum + adapter + `formatEtsy` export +
+  research doc + readiness-isolation tests. Migration file created, NOT applied.
+  Gate green (894 tests, build 0). No live ops, no eBay gate changes.
+- 2026-06-17 (Codex): started Comp Cost + Confidence Hardening on
+  `feature/comp-confidence-cost-controls` (not deployed, not merged). Added
+  conservative comp cost controls (`COMPS_MAX_PROVIDER_RESULTS=20`,
+  `COMPS_MAX_QUERY_VARIANTS=2`, `COMPS_AUTO_MIN_IDENTITY_CONFIDENCE=0.55`),
+  automatic weak-identity skip for generic draft-triggered paid comp runs,
+  Apify request/result caps, stricter match scoring for generic apparel and
+  size mismatches, confidence caps for possible-only / wide-spread / low-count
+  sold comps, medium-confidence "needs review" copy, a paid-provider refresh
+  warning, and eBay no-photo preflight mapping to `ebay_public_photo`. No
+  migration added. Production env should remain
+  `COMPS_AUTO_DISCOVERY_ENABLED=false` until this PR is reviewed, merged,
+  deployed, and manual Refresh quality/cost is revalidated.
 - 2026-06-17 (Codex): monitored post-auto-comps production, disabled
   auto-discovery, cleaned validation data, and configured the eBay public image
   bucket. One auto run since deployment: 30 fetched / 23 accepted / 7 rejected /

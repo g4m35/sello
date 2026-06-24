@@ -75,6 +75,12 @@ export const geminiDraftFixture: GeminiListingDraft = {
       categoryHint: "Sneakers",
       tags: ["nike", "sbdunk", "chicago"],
     },
+    etsy: {
+      title: "Nike SB Dunk Low Pro Chicago US 10 Sneakers",
+      description: "Authentic pair, worn lightly, original box included.",
+      categoryHint: "Shoes > Sneakers & Athletic Shoes",
+      tags: ["nike sb dunk", "chicago sneakers", "streetwear shoes"],
+    },
   },
   warnings: ["Confirm authenticity in hand before shipping."],
 };

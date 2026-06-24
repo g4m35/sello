@@ -10,7 +10,7 @@ import {
 } from "@/lib/listing/intelligence";
 import { conditionLabel, formatMoneyCents } from "@/lib/view/format";
 
-export const ExportMarketplaceSchema = z.enum(["depop", "poshmark", "grailed"]);
+export const ExportMarketplaceSchema = z.enum(["depop", "poshmark", "grailed", "etsy"]);
 export type ExportMarketplace = z.infer<typeof ExportMarketplaceSchema>;
 
 export type ListingExportInput = {
@@ -42,6 +42,9 @@ export type ListingExport = {
 
 const POSHMARK_TITLE_MAX = 80;
 const DEPOP_HASHTAG_MAX = 8;
+// Etsy allows up to 13 search tags, each up to 20 characters.
+const ETSY_TAG_MAX = 13;
+const ETSY_TAG_CHAR_MAX = 20;
 
 const FLAW_KEY_HINTS = ["flaw", "defect", "damage", "stain", "hole", "repair"];
 const MEASUREMENT_KEY_HINTS = [
@@ -243,6 +246,74 @@ function formatGrailed(input: ListingExportInput, fields: ResolvedFields): strin
   ]);
 }
 
+// Etsy search tags: descriptive multi-word phrases (not hashtags), capped at the
+// Etsy maximum of 13 tags / 20 characters each. Built from the listing's own tags
+// plus brand and category so there is always something useful to paste.
+function etsyTags(input: ListingExportInput): string[] {
+  const candidates = [
+    ...input.tags,
+    input.brand ?? "",
+    input.category.replace(/_/g, " "),
+    input.colorway ?? "",
+  ];
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const candidate of candidates) {
+    const tag = candidate.trim().toLowerCase().slice(0, ETSY_TAG_CHAR_MAX).trim();
+    if (tag.length < 2 || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+    if (tags.length >= ETSY_TAG_MAX) break;
+  }
+  return tags;
+}
+
+// Etsy required fields Sello cannot determine for resale items. Surfaced as a
+// "Needs seller review" block (and a warning) rather than pretending the draft is
+// publish-ready — Etsy is a copy-ready draft channel, not a live integration.
+const ETSY_SELLER_REVIEW = [
+  "Needs seller review (Etsy requires these and Sello cannot set them automatically):",
+  "- Listing type: who made it, what it is, and when it was made (handmade, vintage 20+ years, or a craft supply). Resale items are often none of these, so confirm Etsy eligibility before listing.",
+  "- Shipping profile: processing time and shipping rates",
+  "- Return and exchange policy",
+  "- Shop section and the final Etsy category",
+].join("\n");
+
+const ETSY_PHOTO_CHECKLIST = [
+  "Photo checklist:",
+  "- Clear main photo on a clean, well-lit background",
+  "- A scale or size reference shot",
+  "- Every angle (front, back, sides, and sole or label)",
+  "- Close-ups of any flaws",
+  "- The brand label and size tag",
+].join("\n");
+
+function formatEtsy(input: ListingExportInput, fields: ResolvedFields): string {
+  const facts = [
+    input.brand ? `Brand: ${input.brand}` : null,
+    `Size: ${input.size?.trim() || "Not specified"}`,
+    fields.conditionText ? `Condition: ${fields.conditionText}` : null,
+    input.colorway ? `Color: ${input.colorway}` : null,
+    fields.priceText ? `Price: ${fields.priceText}` : null,
+    "Quantity: 1",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const tags = etsyTags(input);
+  const tagLine = tags.length > 0 ? `Tags: ${tags.join(", ")}` : null;
+
+  return joinSections([
+    input.description.trim() || null,
+    facts,
+    tagLine,
+    fields.measurementSection,
+    fields.flawSection,
+    ETSY_PHOTO_CHECKLIST,
+    ETSY_SELLER_REVIEW,
+  ]);
+}
+
 export function buildListingExport(
   marketplace: ExportMarketplace,
   input: ListingExportInput,
@@ -251,6 +322,7 @@ export function buildListingExport(
 
   let title = fields.title;
   let body: string;
+  const warnings = [...fields.warnings];
   switch (marketplace) {
     case "depop":
       body = formatDepop(input, fields);
@@ -262,7 +334,11 @@ export function buildListingExport(
     case "grailed":
       body = formatGrailed(input, fields);
       break;
+    case "etsy":
+      body = formatEtsy(input, fields);
+      warnings.push("Needs seller review for Etsy-specific fields");
+      break;
   }
 
-  return { marketplace, title, body, warnings: fields.warnings };
+  return { marketplace, title, body, warnings };
 }

@@ -90,6 +90,7 @@ enum Marketplace {
   grailed
   poshmark
   depop
+  etsy
 }
 
 enum MarketplaceListingStatus {

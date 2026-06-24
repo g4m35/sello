@@ -154,7 +154,7 @@ export async function POST(request: Request) {
             ...f,
             source: f.source ?? "ai",
           })) as Prisma.InputJsonValue,
-          selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop"],
+          selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop", "etsy"],
         },
       }),
       prisma.aiOutput.create({

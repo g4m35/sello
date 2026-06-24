@@ -59,6 +59,7 @@ const ADAPTERS: Record<Marketplace, MarketplaceAdapter> = {
   grailed: createStubAdapter("grailed", "Grailed"),
   poshmark: createStubAdapter("poshmark", "Poshmark"),
   depop: createStubAdapter("depop", "Depop"),
+  etsy: createStubAdapter("etsy", "Etsy"),
 };
 
 export function getMarketplaceAdapter(
