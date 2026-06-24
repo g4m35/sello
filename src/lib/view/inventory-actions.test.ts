@@ -24,7 +24,16 @@ const searchItem = {
 };
 
 function access(over: Partial<FeatureAccess> = {}): FeatureAccess {
-  return { liveEbayPublish: false, ebayDelist: false, paidComps: false, ...over };
+  return {
+    liveEbayPublish: false,
+    ebayDelist: false,
+    paidComps: false,
+    etsyConnect: false,
+    etsyPublish: false,
+    etsyDelist: false,
+    etsyOrders: false,
+    ...over,
+  };
 }
 
 function channel(over: Partial<ChannelStateView> = {}): ChannelStateView {

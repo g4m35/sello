@@ -23,6 +23,10 @@ const DENIED_FEATURE_ACCESS: FeatureAccess = {
   liveEbayPublish: false,
   ebayDelist: false,
   paidComps: false,
+  etsyConnect: false,
+  etsyPublish: false,
+  etsyDelist: false,
+  etsyOrders: false,
 };
 
 const DEFAULT_DELIST_ALPHA_COPY =

@@ -5,7 +5,11 @@ import { AppError } from "@/lib/errors";
 export type FeatureEntitlement =
   | "liveEbayPublish"
   | "ebayDelist"
-  | "paidComps";
+  | "paidComps"
+  | "etsyConnect"
+  | "etsyPublish"
+  | "etsyDelist"
+  | "etsyOrders";
 
 export type FeatureAccess = Record<FeatureEntitlement, boolean>;
 
@@ -16,19 +20,37 @@ export const FEATURE_ACCESS_COPY = {
     "Live eBay delisting is currently enabled for selected alpha accounts.",
   paidComps:
     "Fresh sold comps are currently enabled for selected alpha accounts.",
+  etsyConnect:
+    "Connecting an Etsy shop is currently enabled for selected alpha accounts.",
+  etsyPublish:
+    "Live Etsy publishing is currently enabled for selected alpha accounts.",
+  etsyDelist:
+    "Live Etsy delisting is currently enabled for selected alpha accounts.",
+  etsyOrders:
+    "Etsy order sync is currently enabled for selected alpha accounts.",
 } as const;
 
 const FEATURE_ENV_KEYS: Record<FeatureEntitlement, string> = {
   liveEbayPublish: "LIVE_EBAY_PUBLISH_EMAILS",
   ebayDelist: "EBAY_DELIST_EMAILS",
   paidComps: "PAID_COMPS_EMAILS",
+  etsyConnect: "ETSY_CONNECT_EMAILS",
+  etsyPublish: "ETSY_PUBLISH_EMAILS",
+  etsyDelist: "ETSY_DELIST_EMAILS",
+  etsyOrders: "ETSY_ORDERS_EMAILS",
 };
 
 const FEATURE_DENIAL_CODES: Record<FeatureEntitlement, string> = {
   liveEbayPublish: "LIVE_EBAY_PUBLISH_ALPHA_ONLY",
   ebayDelist: "EBAY_DELIST_ALPHA_ONLY",
   paidComps: "PAID_COMPS_ALPHA_ONLY",
+  etsyConnect: "ETSY_CONNECT_ALPHA_ONLY",
+  etsyPublish: "ETSY_PUBLISH_ALPHA_ONLY",
+  etsyDelist: "ETSY_DELIST_ALPHA_ONLY",
+  etsyOrders: "ETSY_ORDERS_ALPHA_ONLY",
 };
+
+const FEATURE_ENTITLEMENTS = Object.keys(FEATURE_ENV_KEYS) as FeatureEntitlement[];
 
 function normalizedEmails(value: string | undefined): string[] {
   return [
@@ -44,11 +66,12 @@ function normalizedEmails(value: string | undefined): string[] {
 export function configuredFeatureEmails(
   env: Record<string, string | undefined> = process.env,
 ): Record<FeatureEntitlement, string[]> {
-  return {
-    liveEbayPublish: normalizedEmails(env[FEATURE_ENV_KEYS.liveEbayPublish]),
-    ebayDelist: normalizedEmails(env[FEATURE_ENV_KEYS.ebayDelist]),
-    paidComps: normalizedEmails(env[FEATURE_ENV_KEYS.paidComps]),
-  };
+  return Object.fromEntries(
+    FEATURE_ENTITLEMENTS.map((entitlement) => [
+      entitlement,
+      normalizedEmails(env[FEATURE_ENV_KEYS[entitlement]]),
+    ]),
+  ) as Record<FeatureEntitlement, string[]>;
 }
 
 export function featureAccessForUser(
@@ -56,20 +79,13 @@ export function featureAccessForUser(
   env: Record<string, string | undefined> = process.env,
 ): FeatureAccess {
   const email = user.email?.trim().toLowerCase();
-  if (!email) {
-    return {
-      liveEbayPublish: false,
-      ebayDelist: false,
-      paidComps: false,
-    };
-  }
-
   const configured = configuredFeatureEmails(env);
-  return {
-    liveEbayPublish: configured.liveEbayPublish.includes(email),
-    ebayDelist: configured.ebayDelist.includes(email),
-    paidComps: configured.paidComps.includes(email),
-  };
+  return Object.fromEntries(
+    FEATURE_ENTITLEMENTS.map((entitlement) => [
+      entitlement,
+      email ? configured[entitlement].includes(email) : false,
+    ]),
+  ) as FeatureAccess;
 }
 
 export function requireFeatureAccess(
