@@ -12,11 +12,27 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-06-24 — Claude. **Gated Etsy Open API v3 integration FOUNDATION on
-`feature/etsy-live-api-integration` (off develop). Not deployed; PR opened.** Adds
-the architecture to take Etsy from copy-ready to live, gated automation, all
-fail-closed and credential-free (no live Etsy calls without env credentials, which
-are NOT in the repo).
+2026-06-24 — Claude. **PR #57 (gated Etsy API integration FOUNDATION) shipped to
+production.** Merged PR #57 -> develop (merge `5966848`), full gate green
+(prisma valid, lint 0 errors / 2 pre-existing warnings, tsc 0, 984 tests, build 0).
+Promoted develop -> main as `717a672` **[deploy] Release PR #57** -> prod
+**`dpl_9Va48KVjxPe6CAy9HpuK8U8zs22x`** (READY, target production). No migration, no
+env values set. Health: `/`,`/dashboard`,`/inventory`,`/channels`,
+`/settings/marketplaces` all 200; unauth `/api/listings` 401; new
+`/api/marketplaces/etsy/status` returns 401 (new build live + fail-closed). Logs:
+no error/warning/fatal/500, no raw Prisma/Etsy/eBay/token/secret. Rollback
+candidate before this = `dpl_GKpzsF9pxRNbGXfK47weSUavNznk` (Release PR #56).
+
+**Etsy live API ships OFF**: `ETSY_API_ENABLED` is unset in prod, so every Etsy
+live capability is denied and copy-ready remains. To enable, set the env vars from
+`docs/marketplaces/automation-options.md` §10 in the Vercel Production env (never
+the repo) and redeploy; set `ETSY_API_ENABLED=true` LAST. Then a per-seller smoke:
+connect (allowlist your owner email) -> readiness -> draft (no activate) before any
+live publish. No live Etsy/eBay ops have run.
+
+This adds the architecture to take Etsy from copy-ready to live, gated automation,
+all fail-closed and credential-free (no live Etsy calls without env credentials,
+which are NOT in the repo).
 
 - New `src/lib/marketplace/adapters/etsy/`: config (fail-closed env + ETSY_API_ENABLED
   switch), errors (sanitized), token-crypto (AES-256-GCM), oauth (PKCE + signed
