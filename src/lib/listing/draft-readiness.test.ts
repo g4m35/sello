@@ -74,7 +74,7 @@ describe("evaluateDraftReadiness", () => {
     ).toContain("invalid_quantity");
   });
 
-  it("blocks when the eBay category cannot be resolved", () => {
+  it("blocks when the eBay category cannot be resolved (eBay selected)", () => {
     const result = evaluateDraftReadiness({
       ...readySneakers,
       productCategory: "other",
@@ -83,6 +83,37 @@ describe("evaluateDraftReadiness", () => {
     });
     expect(result.ready).toBe(false);
     expect(result.issues.map((i) => i.code)).toContain("missing_category");
+  });
+
+  it("does NOT require eBay category/size when eBay is not a selected channel", () => {
+    // An unresolvable eBay category blocks an eBay listing, but a copy-ready
+    // listing targeting only Etsy must not inherit eBay-only field requirements.
+    const result = evaluateDraftReadiness({
+      ...readySneakers,
+      productCategory: "other",
+      title: "Mystery vintage piece",
+      productName: "Mystery vintage piece",
+      selectedMarketplaces: ["etsy"],
+    });
+    const codes = result.issues.map((i) => i.code);
+    expect(codes).not.toContain("missing_category");
+    expect(codes).not.toContain("missing_size");
+    expect(codes).not.toContain("missing_item_specifics");
+    expect(result.checks.some((c) => c.id === "category")).toBe(false);
+    expect(result.ready).toBe(true);
+  });
+
+  it("still enforces shared content fields when eBay is not selected", () => {
+    const result = evaluateDraftReadiness({
+      ...readySneakers,
+      selectedMarketplaces: ["etsy"],
+      recommendedPriceCents: null,
+      condition: "unknown",
+    });
+    const codes = result.issues.map((i) => i.code);
+    expect(codes).toContain("missing_price");
+    expect(codes).toContain("missing_condition");
+    expect(result.ready).toBe(false);
   });
 
   it("still enforces the content minimums (title, description, bullets, price, marketplaces)", () => {

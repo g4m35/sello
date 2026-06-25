@@ -9,7 +9,7 @@ import {
   safeFailureText,
   safePersistedFailureReason,
 } from "@/lib/errors";
-import { canPublish, toLifecycleState } from "@/lib/lifecycle/item-status";
+import { TERMINAL_PUBLISH_STATUSES } from "@/lib/lifecycle/item-status";
 import { syncMasterStatusAfterMarketplacePublish } from "@/lib/marketplace/lifecycle-sync";
 
 import { getMarketplaceAdapter, type PublishOutcome } from "./adapter";
@@ -242,11 +242,12 @@ export async function executePublish(
     throw new AppError("Inventory item not found.", 404);
   }
 
-  if (!canPublish(toLifecycleState(item.status))) {
-    throw new AppError(
-      "Publishing is blocked until the item reaches the ready state.",
-      409,
-    );
+  // Readiness is computed from the listing fields, not a manual "ready"/approved
+  // status: the eBay adapter re-checks content + account readiness and returns the
+  // exact missing fields, so there is no separate "mark ready" step. Only a
+  // genuinely terminal item (already sold or archived) is blocked here.
+  if (TERMINAL_PUBLISH_STATUSES.includes(item.status)) {
+    throw new AppError("This item can no longer be published.", 409);
   }
 
   assertPublishingPersistenceDelegates(prisma);

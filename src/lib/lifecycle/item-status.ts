@@ -63,6 +63,14 @@ export function canPublish(state: ItemLifecycleState): boolean {
   return state === "ready" || state === "active";
 }
 
+// Statuses that can never publish: the item is sold or archived. Publish gating
+// is otherwise driven by computed field readiness, not by a manual ready/approved
+// status, so a complete draft can publish without a separate "mark ready" step.
+export const TERMINAL_PUBLISH_STATUSES: readonly InventoryStatus[] = [
+  "SOLD",
+  "ARCHIVED",
+];
+
 const STATE_DESCRIPTIONS: Record<
   ItemLifecycleState,
   { label: string; tone: LifecycleTone }
