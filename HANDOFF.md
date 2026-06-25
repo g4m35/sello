@@ -1873,6 +1873,20 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-25 (Claude): Stripe billing + usage metering + seats, on
+  `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed). Spec +
+  phased plan in `docs/superpowers/`. **Phase 0 + Phase 1 complete and build-green;
+  Phase 2 metering primitives complete.** Shipped: plan catalog (Free $0 / Pro $20
+  / Kingpin $119, `src/lib/billing/plans.ts`), Stripe config loader + SDK client,
+  idempotent product-sync script, Prisma models (Account, AccountMember,
+  Subscription, UsageCounter, StripeEvent) + migration `20260625010000_add_billing_models`
+  (**created, NOT applied** — apply via develop), account resolver, Stripe customer
+  helper, `/api/billing/checkout` + `/portal` + `/webhook` (signed, idempotent),
+  billing errors, entitlements resolver, usage metering primitives. Gate green at
+  checkpoint: 1044 tests, lint 0 errors, prisma valid, build 0. RLS untouched per
+  owner instruction (new tables follow the existing deny-all enable-no-policy
+  convention). Remaining: enforcement wiring into draft/publish/comps/connect
+  routes, pricing + billing UI, team seats. No live Stripe calls; no keys in repo.
 - 2026-06-23 (Claude): Etsy marketplace channel (copy-ready) on
   `feature/etsy-marketplace-channel`. Enum + adapter + `formatEtsy` export +
   research doc + readiness-isolation tests. Migration file created, NOT applied.
@@ -1962,7 +1976,19 @@ on auth.ebay.com.
   auto run was about `$0.3641`; keep it disabled until
   `feature/comp-confidence-cost-controls` lands and production manual Refresh is
   revalidated with the lower caps.
-- **Stripe keys** for monetization.
+- **Stripe billing (operator steps to light up `feature/stripe-billing-metering-seats`, TEST mode first):**
+  1. Apply migration `20260625010000_add_billing_models` via the normal develop
+     migrate flow (creates Account/Subscription/UsageCounter/etc.). Code on the
+     branch assumes it is applied.
+  2. Set TEST env: `STRIPE_SECRET_KEY` (sk_test), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+     (pk_test) in `.env.local` (never the repo).
+  3. Run `STRIPE_SECRET_KEY=sk_test_... npx tsx scripts/stripe/sync-products.ts`,
+     copy the printed `STRIPE_PRICE_PRO` / `STRIPE_PRICE_KINGPIN` into env.
+  4. `stripe listen --forward-to localhost:3000/api/billing/webhook` to get
+     `STRIPE_WEBHOOK_SECRET`; set it in env.
+  5. Manual e2e: checkout Pro with test card 4242…, confirm Subscription row +
+     Account.plan; cancel via portal, confirm downgrade. Flip to live keys only
+     after explicit approval.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
   notification validation, key rotation, remaining npm audit items, and RLS
