@@ -3,13 +3,23 @@ import IORedis from "ioredis";
 import { z } from "zod";
 
 import { MarketplaceSchema } from "@/lib/ai/listing-draft";
+import { isPublishQueueEligible } from "@/lib/marketplace/registry";
 import { getRequiredEnv } from "@/lib/errors";
+
+// Fail closed at the enqueue boundary: only channels with a real publish path
+// (full-native or assisted/copy-ready) may be queued. Gated scaffolds (Vinted)
+// and catalog-match scaffolds (StockX) are rejected here so they can never be
+// enqueued for autonomous publishing, even though they are valid enum values.
+const PublishableMarketplaceSchema = MarketplaceSchema.refine(
+  isPublishQueueEligible,
+  { message: "Marketplace is not eligible for autonomous publishing" },
+);
 
 export const PublishListingJobSchema = z
   .object({
     inventoryItemId: z.string().uuid(),
     listingDraftId: z.string().uuid(),
-    marketplaces: z.array(MarketplaceSchema).min(1).max(5),
+    marketplaces: z.array(PublishableMarketplaceSchema).min(1).max(6),
   })
   .strict();
 
