@@ -153,20 +153,19 @@ describe("executePublish", () => {
     );
   });
 
-  it("blocks an unapproved item with a 409 typed error and writes nothing", async () => {
+  it("publishes a complete draft without requiring an approved/ready status", async () => {
     const prisma = createFakePrisma({ itemStatus: "DRAFT_READY" });
 
-    await expect(
-      executePublish(prisma, {
-        userId: "user-1",
-        inventoryItemId: "item-1",
-        marketplace: "ebay",
-      }),
-    ).rejects.toMatchObject({ status: 409 });
+    // No "mark ready" step: a DRAFT_READY item proceeds straight to the publish
+    // flow (readiness is enforced by the adapter, not a status gate).
+    const result = await executePublish(prisma, {
+      userId: "user-1",
+      inventoryItemId: "item-1",
+      marketplace: "ebay",
+    });
 
-    expect(prisma._state.listings.size).toBe(0);
-    expect(prisma._state.attempts).toHaveLength(0);
-    expect(prisma._state.events).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(prisma._state.listings.size).toBe(1);
   });
 
   it("blocks a sold item with a 409 typed error", async () => {

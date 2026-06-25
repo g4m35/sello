@@ -56,28 +56,9 @@ export default function DashboardPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishItem, setPublishItem] = useState<ItemView | null>(null);
-  const [markBusy, setMarkBusy] = useState<string | null>(null);
-  const [markError, setMarkError] = useState<string | null>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
-
-  const markReady = useCallback(
-    async (item: ItemView) => {
-      if (!item.draftId) return;
-      setMarkBusy(item.id);
-      setMarkError(null);
-      try {
-        await api.draftAction(token, item.draftId, "approve");
-        reload();
-      } catch (e) {
-        setMarkError((e as { error?: string })?.error ?? "Could not mark this listing ready.");
-      } finally {
-        setMarkBusy(null);
-      }
-    },
-    [token, reload],
-  );
 
   useEffect(() => {
     let active = true;
@@ -131,10 +112,6 @@ export default function DashboardPage() {
   // a one-click "Mark ready" so a finished listing is never a dead end.
   const incompleteDrafts = useMemo(
     () => draftItems.filter((i) => !i.ready),
-    [draftItems],
-  );
-  const completeDrafts = useMemo(
-    () => draftItems.filter((i) => i.ready),
     [draftItems],
   );
 
@@ -355,49 +332,12 @@ export default function DashboardPage() {
                   Publish {pickedReadyCount || readyItems.length}
                 </Btn>
               </div>
-              {markError && (
-                <div className="card__body">
-                  <span className="t-small danger">{markError}</span>
-                </div>
-              )}
-              {completeDrafts.length > 0 && (
-                <div>
-                  {completeDrafts.map((item) => (
-                    <div
-                      key={item.id}
-                      className="attn-row"
-                      style={{ gridTemplateColumns: "44px 1fr auto auto" }}
-                    >
-                      <Thumb seed={item.id} size={44} />
-                      <div
-                        style={{ minWidth: 0, cursor: "pointer" }}
-                        onClick={() => router.push(`/inventory/${item.id}`)}
-                      >
-                        <div className="attn-row__title">{item.title}</div>
-                        <div className="attn-row__sub">Complete · mark ready to publish</div>
-                      </div>
-                      <span className="t-num" style={{ fontSize: 13, fontWeight: 500 }}>
-                        {formatMoneyCents(item.priceCents)}
-                      </span>
-                      <Btn
-                        variant="secondary"
-                        size="sm"
-                        icon="check"
-                        disabled={markBusy === item.id}
-                        onClick={() => void markReady(item)}
-                      >
-                        {markBusy === item.id ? "Marking…" : "Mark ready"}
-                      </Btn>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {readyItems.length === 0 && completeDrafts.length === 0 ? (
+              {readyItems.length === 0 ? (
                 <div className="card__body">
                   <EmptyState
                     icon="check-c"
                     title="Nothing ready yet"
-                    desc="Finish a draft and mark it ready, and it shows up here to publish."
+                    desc="Finish a draft's required fields and it shows up here, ready to publish."
                   />
                 </div>
               ) : (

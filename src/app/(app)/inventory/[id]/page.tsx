@@ -428,10 +428,10 @@ export default function ListingDetailPage() {
     }
   }, [token, draftId, router]);
 
-  // Save the current edits and move the draft to the approved/ready lifecycle
-  // state. Shared by "Mark ready" and the publish flow so a complete listing
-  // can always advance, even when production eBay publishing is disabled.
-  const saveAndApprove = useCallback(async () => {
+  // Persist the current edits. Readiness is computed from these fields, so a
+  // complete listing is publishable immediately — there is no separate
+  // "mark ready"/approve step.
+  const saveEdits = useCallback(async () => {
     if (!draftId || !edits) return;
     await api.updateDraft(token, draftId, {
       title: edits.title,
@@ -448,53 +448,28 @@ export default function ListingDetailPage() {
       },
       measurements: savableMeasurements(edits.measurements),
       flaws: savableFlaws(edits.flaws),
-      approve: true,
     });
   }, [token, draftId, edits]);
 
-  // Mark the listing ready without opening the publish modal. The main way to
-  // leave "needs attention"/draft when production publishing is off.
-  const markReady = useCallback(async () => {
-    if (!draftId || !edits) return;
-    setApproving(true);
-    setNotice(null);
-    setPhotoError(null);
-    try {
-      await saveAndApprove();
-      reload();
-      setNotice("Marked ready to publish.");
-    } catch (e) {
-      setSaveState("error");
-      setPhotoError((e as { error?: string })?.error ?? "Could not mark this listing ready.");
-    } finally {
-      setApproving(false);
-    }
-  }, [draftId, edits, saveAndApprove, reload]);
-
-  // Approve the draft (move it to the ready lifecycle state) before opening the
-  // publish modal, so publishing is not rejected with a 409 "not ready" error.
+  // Save the latest edits, then open the publish modal. No approve step: the
+  // publish flow computes readiness server-side and returns exact missing fields.
   const requestPublish = useCallback(async () => {
-    if (
-      !draftId ||
-      !edits ||
-      item?.lifecycleState === "ready" ||
-      item?.lifecycleState === "active"
-    ) {
+    if (!draftId || !edits) {
       setPublishOpen(true);
       return;
     }
     setApproving(true);
     try {
-      await saveAndApprove();
+      await saveEdits();
       reload();
       setPublishOpen(true);
     } catch (e) {
       setSaveState("error");
-      setPhotoError((e as { error?: string })?.error ?? "Could not mark the item ready to publish.");
+      setPhotoError((e as { error?: string })?.error ?? "Could not prepare the item to publish.");
     } finally {
       setApproving(false);
     }
-  }, [draftId, edits, item, saveAndApprove, reload]);
+  }, [draftId, edits, saveEdits, reload]);
 
   const deleteListing = useCallback(async () => {
     if (!window.confirm("Delete this draft? This cannot be undone.")) return;
@@ -835,16 +810,6 @@ export default function ListingDetailPage() {
                 onClick={() => scrollToAnchor(firstMissingAnchor)}
               >
                 Fix required fields
-              </Btn>
-            ) : item.lifecycleState === "draft" ? (
-              <Btn
-                variant="accent"
-                size="sm"
-                icon="check"
-                disabled={approving}
-                onClick={markReady}
-              >
-                {approving ? "Marking…" : "Mark ready"}
               </Btn>
             ) : canLivePublish ? (
               <Btn

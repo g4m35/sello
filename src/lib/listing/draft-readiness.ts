@@ -136,6 +136,12 @@ export function evaluateDraftReadiness(
     price != null && Number.isFinite(price) && price > 0;
   const categoryConflict = Boolean(intelligence.categoryConflict);
 
+  // eBay's field requirements (category, size aspect, item specifics, quantity)
+  // only gate readiness when eBay is actually a selected channel. A copy-ready
+  // listing targeting only Etsy/Depop/etc. is "ready" once its shared content is
+  // complete and must not be blocked by eBay-only fields.
+  const ebaySelected = input.selectedMarketplaces.includes("ebay");
+
   const checks: DraftReadinessCheck[] = [
     {
       id: "identified",
@@ -193,7 +199,10 @@ export function evaluateDraftReadiness(
       state: input.condition === "unknown" ? "miss" : "done",
       blocking: true,
     },
-    {
+  ];
+
+  if (ebaySelected) {
+    checks.push({
       id: "category",
       title: "Category",
       sub: categoryId && !categoryConflict
@@ -203,27 +212,27 @@ export function evaluateDraftReadiness(
           : "Choose a category",
       state: categoryId && !categoryConflict ? "done" : "miss",
       blocking: true,
-    },
-  ];
-
-  if (sizeRequired) {
-    checks.push({
-      id: "size",
-      title: "Size",
-      sub: missingAspects.size ? "Add a size" : input.size?.trim() || "Set",
-      state: missingAspects.size ? "miss" : "done",
-      blocking: true,
     });
-  }
 
-  if (missingAspects.specifics.length > 0) {
-    checks.push({
-      id: "item_specifics",
-      title: "Item specifics",
-      sub: `Add ${missingAspects.specifics.join(", ")}`,
-      state: "miss",
-      blocking: true,
-    });
+    if (sizeRequired) {
+      checks.push({
+        id: "size",
+        title: "Size",
+        sub: missingAspects.size ? "Add a size" : input.size?.trim() || "Set",
+        state: missingAspects.size ? "miss" : "done",
+        blocking: true,
+      });
+    }
+
+    if (missingAspects.specifics.length > 0) {
+      checks.push({
+        id: "item_specifics",
+        title: "Item specifics",
+        sub: `Add ${missingAspects.specifics.join(", ")}`,
+        state: "miss",
+        blocking: true,
+      });
+    }
   }
 
   checks.push({
@@ -234,7 +243,7 @@ export function evaluateDraftReadiness(
     blocking: true,
   });
 
-  if (quantityInvalid) {
+  if (ebaySelected && quantityInvalid) {
     checks.push({
       id: "quantity",
       title: "Quantity",
@@ -275,19 +284,19 @@ export function evaluateDraftReadiness(
   if (hasUnsafeSaleWording(input.title, input.description)) {
     push("sale_wording", "Remove test/placeholder wording from the title or description.");
   }
-  if (!categoryId || categoryConflict) {
+  if (ebaySelected && (!categoryId || categoryConflict)) {
     push("missing_category", "Choose the eBay category for this item.");
   }
-  if (missingAspects.size) {
+  if (ebaySelected && missingAspects.size) {
     push("missing_size", "Add a size.");
   }
-  if (missingAspects.specifics.length > 0) {
+  if (ebaySelected && missingAspects.specifics.length > 0) {
     push("missing_item_specifics", `Add item specifics: ${missingAspects.specifics.join(", ")}.`);
   }
   if (photoCount < 1) {
     push("missing_photos", "Add at least one photo.");
   }
-  if (quantityInvalid) {
+  if (ebaySelected && quantityInvalid) {
     push("invalid_quantity", "Set a quantity of 1 or more.");
   }
 
