@@ -7,6 +7,9 @@ export const MarketplaceSchema = z.enum([
   "poshmark",
   "depop",
   "etsy",
+  "tiktok_shop",
+  "vinted",
+  "stockx",
 ]);
 
 export const ConditionSchema = z.enum([

@@ -91,6 +91,9 @@ enum Marketplace {
   poshmark
   depop
   etsy
+  tiktok_shop
+  vinted
+  stockx
 }
 
 enum MarketplaceListingStatus {
@@ -396,6 +399,7 @@ model MarketplaceConnection {
   createdAt             DateTime           @default(now())
   updatedAt             DateTime           @updatedAt
   ebaySellerConfigs     EbaySellerConfig[]
+  tiktokShopConfigs     TikTokShopConfig[]
 
   @@unique([userId, marketplace, environment])
   @@index([userId])
@@ -420,6 +424,95 @@ model EbaySellerConfig {
   @@unique([userId, marketplaceConnectionId])
   @@index([userId])
   @@index([marketplaceConnectionId])
+}
+
+// Per-seller TikTok Shop connection state that lives beside the shared
+// MarketplaceConnection (which holds the encrypted tokens). shop_cipher and the
+// authorized shop id are required to sign TikTok Shop API requests; they are not
+// secrets but are scoped to the seller and never logged.
+model TikTokShopConfig {
+  id                      String                @id @default(uuid()) @db.Uuid
+  userId                  String                @db.Uuid
+  marketplaceConnectionId String                @db.Uuid
+  marketplaceConnection   MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
+  shopId                  String?
+  shopName                String?
+  shopCipher              String?
+  region                  String?
+  sellerName              String?
+  readinessStatus         String?
+  readinessCheckedAt      DateTime?
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  @@unique([userId, marketplaceConnectionId])
+  @@index([userId])
+  @@index([marketplaceConnectionId])
+}
+
+// External marketplace orders (TikTok Shop first). Deduplicated by
+// (marketplace, environment, externalOrderId) so polling/webhooks are
+// idempotent. Canonical inventory is only marked sold from reliable paid/
+// confirmed statuses by the order-sync logic, never blindly from this row.
+model MarketplaceOrder {
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String      @db.Uuid
+  marketplace       Marketplace
+  environment       String      @default("production")
+  externalOrderId   String
+  externalShopId    String?
+  status            String
+  rawStatus         String?
+  inventoryItemId   String?     @db.Uuid
+  externalProductId String?
+  externalSkuId     String?
+  matched           Boolean     @default(false)
+  payload           Json?
+  lastEventAt       DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([marketplace, environment, externalOrderId])
+  @@index([userId, marketplace])
+  @@index([inventoryItemId])
+}
+
+// Webhook/event de-duplication. A verified inbound event is recorded once;
+// re-delivery of the same (marketplace, eventId) is a no-op. Only sanitized
+// metadata is stored.
+model MarketplaceWebhookEvent {
+  id             String      @id @default(uuid()) @db.Uuid
+  marketplace    Marketplace
+  environment    String      @default("production")
+  eventId        String
+  eventType      String
+  externalShopId String?
+  processedAt    DateTime?
+  payload        Json?
+  createdAt      DateTime    @default(now())
+
+  @@unique([marketplace, eventId])
+  @@index([marketplace, eventType, createdAt])
+}
+
+// Cached TikTok Shop category rules/attributes. Category metadata is large and
+// changes slowly; caching avoids re-fetching on every readiness check and lets
+// readiness validate required attributes offline. fetchedAt drives TTL.
+model TikTokCategoryCache {
+  id           String   @id @default(uuid()) @db.Uuid
+  region       String
+  version      String   @default("v1")
+  categoryId   String
+  categoryName String?
+  isLeaf       Boolean  @default(false)
+  rules        Json?
+  attributes   Json?
+  fetchedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([region, version, categoryId])
+  @@index([region, version])
 }
 
 model JobLog {

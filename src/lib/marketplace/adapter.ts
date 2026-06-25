@@ -60,6 +60,12 @@ const ADAPTERS: Record<Marketplace, MarketplaceAdapter> = {
   poshmark: createStubAdapter("poshmark", "Poshmark"),
   depop: createStubAdapter("depop", "Depop"),
   etsy: createStubAdapter("etsy", "Etsy"),
+  // The generic adapter stays NOT_IMPLEMENTED for these channels: TikTok Shop
+  // publishing runs through its own dedicated adapter/handler (not this generic
+  // publishDraft), and Vinted/StockX are gated scaffolds with no live calls.
+  tiktok_shop: createStubAdapter("tiktok_shop", "TikTok Shop"),
+  vinted: createStubAdapter("vinted", "Vinted"),
+  stockx: createStubAdapter("stockx", "StockX"),
 };
 
 export function getMarketplaceAdapter(

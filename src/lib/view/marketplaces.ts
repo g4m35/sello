@@ -13,6 +13,7 @@ export const MP_LOGO: Record<string, { label: string; color: string }> = {
   whatnot: { label: "WN", color: "#FF4742" },
   vinted: { label: "VT", color: "#09B1BA" },
   facebook: { label: "FB", color: "#1877F2" },
+  tiktok_shop: { label: "TT", color: "#000000" },
 };
 
 export const MARKETPLACE_NAME: Record<string, string> = {
@@ -27,6 +28,7 @@ export const MARKETPLACE_NAME: Record<string, string> = {
   whatnot: "Whatnot",
   vinted: "Vinted",
   facebook: "Facebook",
+  tiktok_shop: "TikTok Shop",
 };
 
 export function marketplaceName(id: string): string {
@@ -46,6 +48,15 @@ export function marketplaceCapabilityLabel(input: {
 }): string {
   if (input.marketplace === "ebay") {
     return input.publish ? "Live publishing" : "Preview + manual";
+  }
+  if (input.marketplace === "tiktok_shop") {
+    return input.publish ? "Live publishing" : "Connect shop";
+  }
+  if (input.marketplace === "vinted") {
+    return "Pro API access required";
+  }
+  if (input.marketplace === "stockx") {
+    return "Catalog match required";
   }
   return "Copy-ready draft";
 }
