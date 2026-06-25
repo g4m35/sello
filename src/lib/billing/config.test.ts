@@ -31,7 +31,7 @@ describe("stripe config", () => {
   });
 
   it("treats an absent publishable key as null, not an error", () => {
-    const { NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: _omit, ...noPk } = full;
+    const noPk = { ...full, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: undefined };
     expect(loadStripeConfig(noPk).publishableKey).toBeNull();
   });
 
