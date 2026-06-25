@@ -4,6 +4,9 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   runCompFetch: vi.fn(),
+  getActiveAccount: vi.fn(),
+  assertWithinQuota: vi.fn(),
+  incrementUsage: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -20,6 +23,14 @@ vi.mock("@/lib/comps/fetch", () => ({
   runCompFetch: mocks.runCompFetch,
 }));
 
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/billing/usage", () => ({
+  assertWithinQuota: mocks.assertWithinQuota,
+  incrementUsage: mocks.incrementUsage,
+}));
+
+import { AppError } from "@/lib/errors";
+
 import { POST } from "./route";
 
 describe("explicit comp refresh route", () => {
@@ -31,10 +42,40 @@ describe("explicit comp refresh route", () => {
       id: "user-1",
       email: "allowed@example.com",
     });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    mocks.assertWithinQuota.mockResolvedValue(undefined);
+    mocks.incrementUsage.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("returns 402 and does not fetch when the monthly comp-refresh quota is exhausted", async () => {
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      compSearchRun: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.assertWithinQuota.mockRejectedValue(
+      new AppError(
+        "You have used all of your comp refreshes for this billing period. Upgrade your plan for more.",
+        402,
+        "QUOTA_EXCEEDED_COMP_REFRESH",
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(402);
+    expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_COMP_REFRESH");
+    expect(mocks.runCompFetch).not.toHaveBeenCalled();
+    expect(mocks.incrementUsage).not.toHaveBeenCalled();
   });
 
   it("returns 403 before database reads or provider work for a nonallowlisted seller", async () => {

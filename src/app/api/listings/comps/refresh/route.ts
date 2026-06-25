@@ -7,9 +7,11 @@ import {
 } from "@/lib/comps/cooldown";
 import { isAdminUser } from "@/lib/auth/admin";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
-import { AppError, safeErrorResponse } from "@/lib/errors";
+import { AppError, logUnexpectedError, safeErrorResponse } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -43,6 +45,11 @@ export async function POST(request: Request) {
       throw new AppError("Item not found", 404);
     }
 
+    // Monthly paid-refresh quota. Checked before the cooldown so an out-of-quota
+    // seller gets a clear 402 upgrade signal rather than a retry timer.
+    const account = await getActiveAccount(user.id);
+    await assertWithinQuota(account, "comp_refresh", new Date());
+
     // Cooldown: spam-clicking Refresh must not fire repeated paid provider calls.
     // Only count the last run that actually queried a provider — a disabled,
     // weak-identity, no-source, or failed run never poisons the cooldown, so the
@@ -74,6 +81,15 @@ export async function POST(request: Request) {
       force: true,
       paidProvidersAllowed: true,
     });
+
+    // Count the refresh against the monthly quota on success only; a failed
+    // fetch (which throws) never burns quota. Best-effort, logged on failure.
+    try {
+      await incrementUsage(account.id, "comp_refresh", new Date());
+    } catch (usageError) {
+      logUnexpectedError("comp_refresh_usage_increment", usageError);
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     // Sanitized: an unexpected failure (e.g. a Prisma/DB error) never leaks raw
