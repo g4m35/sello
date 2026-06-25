@@ -260,6 +260,39 @@ describe("explicit comp refresh route", () => {
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
   });
 
+  it("only counts a real provider run for the cooldown so a disabled/failed/skipped run never poisons it", async () => {
+    // No prior *real* run -> the refresh is allowed even if a disabled/failed
+    // auto run wrote a CompSearchRun moments ago.
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      compSearchRun: { findFirst },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.runCompFetch.mockResolvedValue({ status: "found_comps" });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.runCompFetch).toHaveBeenCalledOnce();
+    // The cooldown query is restricted to statuses that actually queried a
+    // provider; blocked/failed runs are excluded and can never lock out a retry.
+    const where = findFirst.mock.calls[0][0].where;
+    expect(where.inventoryItemId).toBe("item-1");
+    expect(where.status.in).toEqual(
+      expect.arrayContaining(["found_comps", "auto_priced", "no_comps_found", "needs_review"]),
+    );
+    expect(where.status.in).not.toContain("disabled");
+    expect(where.status.in).not.toContain("error");
+    expect(where.status.in).not.toContain("skipped_weak_identity");
+    expect(where.status.in).not.toContain("source_unavailable");
+  });
+
   it("does not run provider fetch for another seller's item", async () => {
     const prisma = {
       inventoryItem: {

@@ -4,6 +4,18 @@
 
 type Env = Record<string, string | undefined>;
 
+// Only a run that actually queried a paid provider and processed a result sets
+// the refresh cooldown. Runs that never reached a provider — disabled, weak
+// identity, no configured source — or that failed must NOT poison the cooldown,
+// so a seller can refresh again immediately after one of those (no misleading
+// "just refreshed" lockout). Mirrors CompSearchRun.status values from fetch.ts.
+export const COOLDOWN_ELIGIBLE_RUN_STATUSES = [
+  "found_comps",
+  "auto_priced",
+  "needs_review",
+  "no_comps_found",
+] as const;
+
 export const DEFAULT_COMPS_REFRESH_COOLDOWN_MS = 60_000;
 
 // Owners/alpha testers iterate fast; cap their manual refresh cooldown at 60s

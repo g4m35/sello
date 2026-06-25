@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import {
+  COOLDOWN_ELIGIBLE_RUN_STATUSES,
   compsRefreshCooldownMs,
   evaluateRefreshCooldown,
 } from "@/lib/comps/cooldown";
@@ -43,8 +44,14 @@ export async function POST(request: Request) {
     }
 
     // Cooldown: spam-clicking Refresh must not fire repeated paid provider calls.
+    // Only count the last run that actually queried a provider — a disabled,
+    // weak-identity, no-source, or failed run never poisons the cooldown, so the
+    // seller can retry immediately after one of those.
     const lastRun = await prisma.compSearchRun.findFirst({
-      where: { inventoryItemId },
+      where: {
+        inventoryItemId,
+        status: { in: [...COOLDOWN_ELIGIBLE_RUN_STATUSES] },
+      },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     });
