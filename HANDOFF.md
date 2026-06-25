@@ -1882,11 +1882,21 @@ on auth.ebay.com.
   Subscription, UsageCounter, StripeEvent) + migration `20260625010000_add_billing_models`
   (**created, NOT applied** — apply via develop), account resolver, Stripe customer
   helper, `/api/billing/checkout` + `/portal` + `/webhook` (signed, idempotent),
-  billing errors, entitlements resolver, usage metering primitives. Gate green at
-  checkpoint: 1044 tests, lint 0 errors, prisma valid, build 0. RLS untouched per
-  owner instruction (new tables follow the existing deny-all enable-no-policy
-  convention). Remaining: enforcement wiring into draft/publish/comps/connect
-  routes, pricing + billing UI, team seats. No live Stripe calls; no keys in repo.
+  billing errors, entitlements resolver, usage metering primitives. **Phase 2
+  enforcement wired for the two highest-value active metered actions:** AI-listing
+  quota on `/api/listings/draft` (402 fail-fast, increment on success) and
+  comp-refresh quota on `/api/listings/comps/refresh` (402 before cooldown/fetch).
+  Gate green: 1063 tests, build 0. RLS untouched per owner instruction (new tables
+  follow the existing deny-all enable-no-policy convention).
+  **Deferred (low current value, gated features dormant):** autopublish quota +
+  bulk batch cap (live publishing dormant), marketplace-connection cap (connects
+  alpha-allowlisted). Pattern proven (see draft/refresh routes): getActiveAccount
+  -> assertWithinQuota(metric) before work -> incrementUsage on success.
+  **Remaining: those points, pricing + billing UI, team seats.** No live Stripe
+  calls; no keys in repo.
+  **Branch base note:** branched before the RLS-clean rebase (hash moved 9ff9471
+  -> fe28c6c); REBASE onto current develop before merge. Work also anchored at
+  branch `recover/stripe-billing-metering-seats`.
 - 2026-06-23 (Claude): Etsy marketplace channel (copy-ready) on
   `feature/etsy-marketplace-channel`. Enum + adapter + `formatEtsy` export +
   research doc + readiness-isolation tests. Migration file created, NOT applied.
