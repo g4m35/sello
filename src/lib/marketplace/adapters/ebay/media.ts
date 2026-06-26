@@ -129,7 +129,6 @@ export function resolveEbayPhotoUrls(
 export async function prepareEbayVisibleImages(
   prisma: EbayMediaPrismaLike,
   {
-    userId,
     item,
     environment,
     env,
