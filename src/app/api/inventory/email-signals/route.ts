@@ -74,7 +74,11 @@ export type EmailIngestPrismaLike = {
     }): Promise<{ id: string }>;
   };
   marketplaceListing: {
-    findFirst(args: {
+    // findMany (take:2), NOT findFirst: externalUrl/externalListingId are not
+    // unique across sellers (the add-URL route accepts arbitrary URLs), so a
+    // findFirst could resolve a DIFFERENT seller's listing. We resolve an owner
+    // ONLY when exactly one listing matches — see resolveOwner.
+    findMany(args: {
       where: {
         marketplace: Marketplace;
         externalListingId?: string;
@@ -85,7 +89,8 @@ export type EmailIngestPrismaLike = {
         inventoryItemId: true;
         inventoryItem: { select: { sellerId: true } };
       };
-    }): Promise<MatchListingRow | null>;
+      take: number;
+    }): Promise<MatchListingRow[]>;
   };
 };
 
@@ -135,32 +140,40 @@ async function resolveOwner(
     inventoryItem: { select: { sellerId: true } },
   } as const;
 
+  // Resolve an owner ONLY when EXACTLY ONE listing matches the hint. Zero matches
+  // means unknown; two-or-more means the hint is ambiguous across sellers (e.g.
+  // two sellers added the same externalUrl) — we fail CLOSED and resolve no user
+  // rather than risk marking the wrong seller's item sold. take:2 is enough to
+  // distinguish "exactly one" from "more than one".
+  const resolveFromMatch = (rows: MatchListingRow[]): Resolution | null => {
+    if (rows.length !== 1) return null;
+    const [row] = rows;
+    if (!row.inventoryItem) return null;
+    return {
+      userId: row.inventoryItem.sellerId,
+      marketplaceListingId: row.id,
+      inventoryItemId: row.inventoryItemId,
+    };
+  };
+
   if (hints.externalListingId) {
-    const byId = await db.marketplaceListing.findFirst({
+    const byId = await db.marketplaceListing.findMany({
       where: { marketplace, externalListingId: hints.externalListingId },
       select,
+      take: 2,
     });
-    if (byId?.inventoryItem) {
-      return {
-        userId: byId.inventoryItem.sellerId,
-        marketplaceListingId: byId.id,
-        inventoryItemId: byId.inventoryItemId,
-      };
-    }
+    const resolved = resolveFromMatch(byId);
+    if (resolved) return resolved;
   }
 
   if (hints.externalUrl) {
-    const byUrl = await db.marketplaceListing.findFirst({
+    const byUrl = await db.marketplaceListing.findMany({
       where: { marketplace, externalUrl: hints.externalUrl },
       select,
+      take: 2,
     });
-    if (byUrl?.inventoryItem) {
-      return {
-        userId: byUrl.inventoryItem.sellerId,
-        marketplaceListingId: byUrl.id,
-        inventoryItemId: byUrl.inventoryItemId,
-      };
-    }
+    const resolved = resolveFromMatch(byUrl);
+    if (resolved) return resolved;
   }
 
   return empty;

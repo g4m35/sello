@@ -1,4 +1,5 @@
 import type {
+  InventoryStatus,
   Marketplace,
   MarketplaceListingStatus,
   Prisma,
@@ -156,6 +157,27 @@ type WorkerListingDelegate = {
   }): Promise<{ id: string }>;
 };
 
+// After a successful eBay delist, executeEbayDelist internally re-derives the
+// master InventoryItem.status (via syncMasterStatusAfterMarketplaceDelist), which
+// can flip a just-sold item back to LISTED/DELISTED. The worker re-reads the item
+// (ownership-scoped) to detect a sold item whose status was overwritten and
+// restore SOLD. Only the two fields needed for that decision are selected.
+type WorkerInventoryItemRow = {
+  status: InventoryStatus;
+  soldSourceMarketplace: Marketplace | null;
+};
+
+type WorkerInventoryItemDelegate = {
+  findFirst(args: {
+    where: { id: string; sellerId: string };
+    select: { status: true; soldSourceMarketplace: true };
+  }): Promise<WorkerInventoryItemRow | null>;
+  update(args: {
+    where: { id: string };
+    data: { status: InventoryStatus };
+  }): Promise<{ id: string }>;
+};
+
 type WorkerNotificationDelegate = NotificationPrismaLike["notification"] & {
   findFirst(args: {
     where: {
@@ -173,6 +195,7 @@ export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
   ReviewTaskPrismaLike & {
     syncJob: WorkerJobDelegate;
     marketplaceListing: WorkerListingDelegate;
+    inventoryItem: WorkerInventoryItemDelegate;
     notification: WorkerNotificationDelegate;
   };
 
@@ -514,7 +537,33 @@ async function execEbayDelist(
       syncJobId: job.id,
     } as Prisma.InputJsonValue,
   });
+
+  // A SOLD item must stay SOLD. executeEbayDelist runs
+  // syncMasterStatusAfterMarketplaceDelist internally, which re-derives the master
+  // InventoryItem.status from the remaining listings and can overwrite the SOLD
+  // that markItemSold just wrote (flipping it back to LISTED/DELISTED). Re-read the
+  // item (ownership-scoped): if it is sold (soldSourceMarketplace set) but its
+  // status was clobbered, restore SOLD with a single update.
+  await restoreSoldStatusIfClobbered(db, job.userId, inventoryItemId);
+
   return finalizeSucceeded(db, job.id);
+}
+
+async function restoreSoldStatusIfClobbered(
+  db: SyncWorkerPrismaLike,
+  userId: string,
+  inventoryItemId: string,
+): Promise<void> {
+  const item = await db.inventoryItem.findFirst({
+    where: { id: inventoryItemId, sellerId: userId },
+    select: { status: true, soldSourceMarketplace: true },
+  });
+  if (item && item.soldSourceMarketplace !== null && item.status !== "SOLD") {
+    await db.inventoryItem.update({
+      where: { id: inventoryItemId },
+      data: { status: "SOLD" },
+    });
+  }
 }
 
 // Create (deduped) a manual_delist_required review task + a delist_failed

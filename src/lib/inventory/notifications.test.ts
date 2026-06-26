@@ -49,33 +49,61 @@ describe("createNotification", () => {
 });
 
 describe("copy builders", () => {
-  it("sold+delisting copy names the marketplace and other-listing count", () => {
+  it("sold+delisting copy names the marketplace and the auto-removed count", () => {
     const copy = soldDelistingCopy({
       productName: "Air Max 1",
       soldMarketplace: "ebay",
-      otherMarketplaceCount: 2,
+      autoDelistCount: 2,
+      manualDelistCount: 0,
     });
     expect(copy.kind).toBe(NotificationKind.soldDelisting);
     expect(copy.title).toContain("eBay");
     expect(copy.body).toContain("Air Max 1");
-    expect(copy.body).toContain("2 other listings");
+    expect(copy.body).toContain("removing it from your 2 other listings");
   });
 
-  it("sold+delisting copy handles a single other listing and zero others", () => {
+  it("sold+delisting copy handles a single auto-removed listing and zero others", () => {
     expect(
       soldDelistingCopy({
         productName: "X",
         soldMarketplace: "depop",
-        otherMarketplaceCount: 1,
+        autoDelistCount: 1,
+        manualDelistCount: 0,
       }).body,
-    ).toContain("1 other listing");
+    ).toContain("removing it from your 1 other listing");
     expect(
       soldDelistingCopy({
         productName: "X",
         soldMarketplace: "depop",
-        otherMarketplaceCount: 0,
+        autoDelistCount: 0,
+        manualDelistCount: 0,
       }).body,
     ).toContain("No other live listings");
+  });
+
+  it("sold+delisting copy does NOT claim automatic removal when only manual delists exist", () => {
+    const copy = soldDelistingCopy({
+      productName: "X",
+      soldMarketplace: "depop",
+      autoDelistCount: 0,
+      manualDelistCount: 1,
+    });
+    // No false "we're removing it" automation claim.
+    expect(copy.body).not.toContain("We're removing it");
+    expect(copy.body.toLowerCase()).toContain("manual delist");
+    expect(copy.body).toContain("1 other listing");
+  });
+
+  it("sold+delisting copy reports both an auto removal AND a manual delist", () => {
+    const copy = soldDelistingCopy({
+      productName: "X",
+      soldMarketplace: "grailed",
+      autoDelistCount: 1,
+      manualDelistCount: 2,
+    });
+    expect(copy.body).toContain("removing it from your 1 other listing");
+    expect(copy.body).toContain("2 other listings need");
+    expect(copy.body.toLowerCase()).toContain("manual delist");
   });
 
   it("possible-sale-confirm copy asks the seller to confirm", () => {

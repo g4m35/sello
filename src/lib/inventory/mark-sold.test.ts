@@ -69,6 +69,54 @@ describe("markItemSold", () => {
     expect(prisma._store.notifications[0].kind).toBe("sold_delisting");
   });
 
+  it("a Depop-only sale does NOT claim automatic removal (queuedJobIds empty, manual tracked)", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem()],
+      listings: [listing({ id: "l-depop", marketplace: "depop" })],
+    });
+
+    const result = await markItemSold(prisma, {
+      inventoryItemId: "item-1",
+      userId: "user-1",
+      // Sold somewhere with no adapter; the only OTHER listing (Depop) also has no
+      // adapter, so nothing is auto-removed — only a manual delist is required.
+      soldMarketplace: "grailed",
+      source: "manual",
+    });
+
+    expect(result.outcome).toBe("marked_sold");
+    if (result.outcome !== "marked_sold") throw new Error("expected marked_sold");
+    expect(result.delist.queuedJobIds).toHaveLength(0);
+    expect(result.delist.manualReviewTaskIds).toHaveLength(1);
+
+    const notif = prisma._store.notifications.find((n) => n.kind === "sold_delisting");
+    expect(notif).toBeTruthy();
+    // The seller is NOT told we're auto-removing a listing we can't touch.
+    expect(notif?.body).not.toContain("We're removing it");
+    expect(notif?.body.toLowerCase()).toContain("manual delist");
+  });
+
+  it("an eBay other-listing IS auto-removed: notification claims automatic removal", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem()],
+      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
+    });
+
+    const result = await markItemSold(prisma, {
+      inventoryItemId: "item-1",
+      userId: "user-1",
+      soldMarketplace: "grailed",
+      source: "manual",
+    });
+
+    expect(result.outcome).toBe("marked_sold");
+    if (result.outcome !== "marked_sold") throw new Error("expected marked_sold");
+    expect(result.delist.queuedJobIds).toHaveLength(1);
+
+    const notif = prisma._store.notifications.find((n) => n.kind === "sold_delisting");
+    expect(notif?.body).toContain("removing it from your 1 other listing");
+  });
+
   it("is idempotent: marking sold twice from the same marketplace creates no duplicate delist jobs", async () => {
     const prisma = createInventoryFakePrisma({
       items: [baseItem()],

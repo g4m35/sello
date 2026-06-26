@@ -69,6 +69,9 @@ export type DelistPrismaLike = SyncJobPrismaLike &
   };
 
 export type QueueDelistResult = {
+  // ONLY auto-executable (adapter-available, i.e. eBay) delist jobs. A non-eBay
+  // listing has no delist adapter; its job is parked as needs_review and tracked
+  // in manualReviewTaskIds instead — never counted as an automatic removal.
   queuedJobIds: string[];
   manualReviewTaskIds: string[];
   skippedSoldSource: boolean;
@@ -141,7 +144,12 @@ export async function queueDelistOtherListings(
         externalUrl: listing.externalUrl,
       } as Prisma.InputJsonValue,
     });
-    result.queuedJobIds.push(job.id);
+    // Only adapter-available (eBay) jobs are auto-executable, so only those count
+    // as a queued automatic delist. A non-eBay job is parked needs_review and
+    // tracked via manualReviewTaskIds below — never a fake "we're removing it".
+    if (adapterAvailable) {
+      result.queuedJobIds.push(job.id);
+    }
 
     if (!adapterAvailable) {
       const label = marketplaceLabel(listing.marketplace);

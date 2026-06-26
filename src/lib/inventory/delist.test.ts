@@ -43,8 +43,11 @@ describe("queueDelistOtherListings", () => {
     const result = await queueDelistOtherListings(prisma, "item-1", "ebay", "user-1");
 
     expect(result.skippedSoldSource).toBe(true);
-    // 2 non-eBay listings queued; the eBay (sold source) one skipped.
-    expect(result.queuedJobIds).toHaveLength(2);
+    // Both remaining listings are non-eBay (no adapter): they are parked as
+    // manual delists, NOT counted as auto-executable queued jobs. The eBay
+    // (sold source) listing is skipped entirely.
+    expect(result.queuedJobIds).toHaveLength(0);
+    expect(result.manualReviewTaskIds).toHaveLength(2);
     const jobMarketplaces = prisma._store.syncJobs.map(
       (j) => (j.payload as { marketplace: string }).marketplace,
     );
@@ -69,6 +72,34 @@ describe("queueDelistOtherListings", () => {
       true,
     );
     // No manual task for eBay — a worker handles it.
+    expect(result.manualReviewTaskIds).toHaveLength(0);
+  });
+
+  it("does NOT count a non-eBay (Depop) job as auto-queued: queuedJobIds empty, manual tracked", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem()],
+      listings: [listing({ id: "l-depop", marketplace: "depop" })],
+    });
+
+    const result = await queueDelistOtherListings(prisma, "item-1", "grailed", "user-1");
+
+    // Depop has no delist adapter: a job IS recorded (needs_review) but it is NOT
+    // an automatic delist, so queuedJobIds stays empty and it is tracked manually.
+    expect(result.queuedJobIds).toHaveLength(0);
+    expect(result.manualReviewTaskIds).toHaveLength(1);
+    expect(prisma._store.syncJobs).toHaveLength(1);
+    expect(prisma._store.syncJobs[0].status).toBe("needs_review");
+  });
+
+  it("counts an eBay job as auto-queued (queuedJobIds has 1, no manual task)", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem()],
+      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
+    });
+
+    const result = await queueDelistOtherListings(prisma, "item-1", "grailed", "user-1");
+
+    expect(result.queuedJobIds).toHaveLength(1);
     expect(result.manualReviewTaskIds).toHaveLength(0);
   });
 
@@ -108,7 +139,11 @@ describe("queueDelistOtherListings", () => {
 
     const result = await queueDelistOtherListings(prisma, "item-1", "ebay", "user-1");
 
-    expect(result.queuedJobIds).toHaveLength(1);
+    // Only the single active (poshmark) listing produces a job. Poshmark has no
+    // adapter, so it is a manual delist, not an auto-executable queued job.
+    expect(prisma._store.syncJobs).toHaveLength(1);
+    expect(result.queuedJobIds).toHaveLength(0);
+    expect(result.manualReviewTaskIds).toHaveLength(1);
     expect(prisma._store.syncJobs[0].marketplaceListingId).toBe("l-active");
   });
 

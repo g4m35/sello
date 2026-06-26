@@ -21,17 +21,24 @@ type FakeDb = {
     findFirst: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
   };
-  marketplaceListing: { findFirst: ReturnType<typeof vi.fn> };
+  marketplaceListing: { findMany: ReturnType<typeof vi.fn> };
 };
 
-function fakeDb(overrides: Partial<{ dedupeRow: unknown; listingRow: unknown }> = {}): FakeDb {
+// resolveOwner now uses findMany(take:2) and resolves only on an EXACTLY-ONE
+// match. `listingRow` is sugar for the single-match case; `listingRows` lets a
+// test inject zero or an ambiguous (>1) set across sellers.
+function fakeDb(
+  overrides: Partial<{ dedupeRow: unknown; listingRow: unknown; listingRows: unknown[] }> = {},
+): FakeDb {
+  const rows =
+    overrides.listingRows ?? (overrides.listingRow ? [overrides.listingRow] : []);
   return {
     emailSignal: {
       findFirst: vi.fn().mockResolvedValue(overrides.dedupeRow ?? null),
       create: vi.fn().mockResolvedValue({ id: "signal-1" }),
     },
     marketplaceListing: {
-      findFirst: vi.fn().mockResolvedValue(overrides.listingRow ?? null),
+      findMany: vi.fn().mockResolvedValue(rows),
     },
   };
 }
@@ -234,6 +241,46 @@ describe("POST /api/inventory/email-signals — processing", () => {
     expect(payload.matched).toBe(true);
     expect(payload.action).toBe("review_possible_sale");
     expect(mocks.handleSaleSignal).toHaveBeenCalledTimes(1);
+  });
+
+  it("ambiguous externalUrl across DIFFERENT sellers resolves no user (fail closed, no cross-user sale)", async () => {
+    // externalUrl is not unique across sellers. Two sellers added the SAME url, so
+    // the match is ambiguous: the route must NOT pick one and must NOT call the
+    // engine. The EmailSignal is still stored, unmatched.
+    const poshmark = {
+      sourceEmail: "support@poshmark.com",
+      destinationEmail: "seller@inbox.sello.app",
+      subject: 'Congratulations on your sale — "Lululemon Align Leggings Size 6"',
+      textBody:
+        "You sold an item! See it: https://poshmark.com/listing/align-6abcdef12",
+      receivedAt: "2026-06-25T10:00:00.000Z",
+      providerMessageId: "msg-posh-ambiguous",
+    };
+    const db = fakeDb({
+      listingRows: [
+        { id: "ml-a", inventoryItemId: "item-a", inventoryItem: { sellerId: "seller-a" } },
+        { id: "ml-b", inventoryItemId: "item-b", inventoryItem: { sellerId: "seller-b" } },
+      ],
+    });
+    mocks.getPrisma.mockReturnValue(db);
+
+    const res = await POST(req(poshmark, { "x-internal-secret": SECRET }));
+    const payload = await res.json();
+
+    expect(res.status).toBe(200);
+    // No owner resolved on ambiguity.
+    expect(payload.matched).toBe(false);
+    expect(payload.action).toBe("none");
+    // The engine is NEVER called — no wrong-seller item is marked sold.
+    expect(mocks.handleSaleSignal).not.toHaveBeenCalled();
+    // The signal is still persisted, unmatched.
+    expect(db.emailSignal.create).toHaveBeenCalledTimes(1);
+    const created = db.emailSignal.create.mock.calls[0][0].data;
+    expect(created.userId).toBeNull();
+    expect(created.matchedInventoryItemId).toBeNull();
+    expect(created.matchedMarketplaceListingId).toBeNull();
+    // The lookup was bounded (take:2) so "more than one" is detectable.
+    expect(db.marketplaceListing.findMany.mock.calls[0][0].take).toBe(2);
   });
 
   it("stores an unmatched email and NEVER calls the engine when no user resolves", async () => {

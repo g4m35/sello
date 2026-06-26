@@ -199,6 +199,60 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     expect(prisma._store.events.some((e) => e.type === "delist_succeeded")).toBe(true);
   });
 
+  it("a successfully-cleaned-up SOLD item stays SOLD (restores status after master-flip)", async () => {
+    const prisma = createInventoryFakePrisma({
+      // Item already sold on grailed; an eBay cleanup delist is queued.
+      items: [
+        item({
+          status: "SOLD",
+          soldAt: new Date(),
+          quantityAvailable: 0,
+          soldSourceMarketplace: "grailed",
+          soldSourceListingId: "g1",
+          lockVersion: 1,
+        }),
+      ],
+      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
+      syncJobs: [ebayJobSeed()],
+    });
+    const db = workerDb(prisma);
+    // Simulate executeEbayDelist's internal syncMasterStatusAfterMarketplaceDelist
+    // overwriting the master status back to DELISTED.
+    const ebayDelist = vi.fn().mockImplementation(async () => {
+      prisma._store.items[0].status = "DELISTED";
+      return { ok: true };
+    });
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(ebayDelist).toHaveBeenCalledTimes(1);
+    // The worker re-read the sold item and restored SOLD after the master flip.
+    expect(prisma._store.items[0].status).toBe("SOLD");
+    // The listing was actually ended (endedAt stamped).
+    expect(prisma._store.listings[0].endedAt).toBeInstanceOf(Date);
+  });
+
+  it("a NON-sold item is left as executeEbayDelist set it (no forced SOLD)", async () => {
+    const prisma = createInventoryFakePrisma({
+      // Not sold: soldSourceMarketplace null. A delist is a normal lifecycle delist.
+      items: [item({ status: "LISTED", soldSourceMarketplace: null })],
+      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
+      syncJobs: [ebayJobSeed()],
+    });
+    const db = workerDb(prisma);
+    const ebayDelist = vi.fn().mockImplementation(async () => {
+      prisma._store.items[0].status = "DELISTED";
+      return { ok: true };
+    });
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    // No sold source => the worker must NOT force SOLD; the delist result stands.
+    expect(prisma._store.items[0].status).toBe("DELISTED");
+  });
+
   it("eBay error: delist_failed event + manual task + needs_review (NEVER fake success)", async () => {
     const prisma = createInventoryFakePrisma({
       items: [item()],

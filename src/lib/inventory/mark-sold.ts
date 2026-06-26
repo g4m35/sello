@@ -268,7 +268,11 @@ export async function markItemSold(
     ...soldDelistingCopy({
       productName: item.productName,
       soldMarketplace: input.soldMarketplace,
-      otherMarketplaceCount: delist.queuedJobIds.length,
+      // queuedJobIds holds ONLY auto-executable (eBay) jobs; non-eBay listings are
+      // in manualReviewTaskIds. Keep the two distinct so we never tell the seller
+      // we're auto-removing a listing we can't touch.
+      autoDelistCount: delist.queuedJobIds.length,
+      manualDelistCount: delist.manualReviewTaskIds.length,
     }),
   });
 

@@ -54,23 +54,36 @@ export function soldDelistingCopy(input: {
   productName: string;
   // null = "source unknown" (e.g. a manual mark-sold with no named marketplace).
   soldMarketplace: Marketplace | null;
-  otherMarketplaceCount: number;
+  // How many OTHER listings we can remove automatically (eBay; adapter-available).
+  autoDelistCount: number;
+  // How many OTHER listings need the seller to remove them by hand (no adapter).
+  manualDelistCount: number;
 }): NotificationCopy {
   const where = input.soldMarketplace
     ? marketplaceLabel(input.soldMarketplace)
     : null;
   const soldClause = where ? `sold on ${where}` : "sold";
-  const others = input.otherMarketplaceCount;
-  const body =
-    others > 0
-      ? `Your ${input.productName} ${soldClause}. We're removing it from your ${others} other listing${others === 1 ? "" : "s"} so it can't sell twice.`
-      : `Your ${input.productName} ${soldClause}. No other live listings to remove.`;
+  const auto = input.autoDelistCount;
+  const manual = input.manualDelistCount;
+
+  // Only ever claim automatic removal for listings we can actually auto-delist.
+  const autoClause =
+    auto > 0
+      ? ` We're removing it from your ${auto} other listing${auto === 1 ? "" : "s"} so it can't sell twice.`
+      : "";
+  const manualClause =
+    manual > 0
+      ? ` ${manual} other listing${manual === 1 ? "" : "s"} need${manual === 1 ? "s" : ""} a manual delist — please remove ${manual === 1 ? "it" : "them"} so it can't sell twice.`
+      : "";
+  const noneClause =
+    auto === 0 && manual === 0 ? " No other live listings to remove." : "";
+
   return {
     kind: NotificationKind.soldDelisting,
     title: where
       ? `Sold on ${where} — cleaning up your other listings`
       : `Sold — cleaning up your other listings`,
-    body,
+    body: `Your ${input.productName} ${soldClause}.${autoClause}${manualClause}${noneClause}`,
   };
 }
 
