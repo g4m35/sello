@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient, type User } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
+import { acceptInvite } from "@/lib/billing/membership";
+
 import { AppError, getRequiredEnv } from "../errors";
 
 function createSupabaseAuthClient() {
@@ -97,7 +99,9 @@ export async function requireSupabaseUser(request: Request): Promise<User> {
     throw new AppError("Sign in before creating a listing draft.", 401);
   }
 
-  return getSupabaseUserFromBearerToken(token);
+  const user = await getSupabaseUserFromBearerToken(token);
+  await acceptPendingInvite(user);
+  return user;
 }
 
 // Resolves the authenticated user for browser-driven routes: cookie session
@@ -122,6 +126,7 @@ export async function requireSupabaseUserFromRequestOrCookies(
         );
       }
     }
+    await acceptPendingInvite(cookieUser);
     return cookieUser;
   }
 
@@ -129,5 +134,12 @@ export async function requireSupabaseUserFromRequestOrCookies(
     throw new AppError("Sign in before creating a listing draft.", 401);
   }
 
-  return getSupabaseUserFromBearerToken(token);
+  const user = await getSupabaseUserFromBearerToken(token);
+  await acceptPendingInvite(user);
+  return user;
+}
+
+async function acceptPendingInvite(user: User): Promise<void> {
+  if (!user.email) return;
+  await acceptInvite(user.id, user.email);
 }

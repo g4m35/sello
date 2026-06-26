@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
+}));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({
     inventoryItem: { findFirst: mocks.itemFindFirst },
@@ -93,9 +96,13 @@ describe("Etsy delist route", () => {
       where: { id: "ml" },
       data: { status: "DELISTED", lastSyncAt: expect.any(Date), lastError: null },
     });
+    expect(mocks.getEtsyAuthorizedSession).toHaveBeenCalledWith({
+      userId: "u1",
+      accountId: "acc-1",
+    });
   });
 
-  it("rejects a different seller's item", async () => {
+  it("rejects an item outside the active account", async () => {
     mocks.itemFindFirst.mockResolvedValue(null);
     const response = await POST(postRequest({ itemId: ITEM_ID, confirm: true }));
     expect(response.status).toBe(404);

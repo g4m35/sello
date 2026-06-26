@@ -66,6 +66,15 @@ connection/readiness/session/cap helpers; `git diff --check` clean. Stale
 seller/user connection-scope scan found only optional direct-caller fallbacks and
 the intentionally user-scoped eBay account-deletion handler.
 
+Also in the current uncommitted batch: Etsy sync/delist now scope item access by
+active account and pass `accountId` into the Etsy session helper; Supabase
+authenticated-user resolution now accepts a matching pending team invite by
+verified email before account resolution, so an invited member's first post-login
+API request can land in the shared account. Verification for this follow-up:
+focused 17-test Etsy sync/delist/publish run; focused 34-test auth/membership/
+Etsy sync/delist/publish run; `npx tsc --noEmit --pretty false`; `git diff
+--check` clean.
+
 ## Last updated (previous)
 2026-06-24 — Claude. **PR #57 (gated Etsy API integration FOUNDATION) shipped to
 production.** Merged PR #57 -> develop (merge `5966848`), full gate green
