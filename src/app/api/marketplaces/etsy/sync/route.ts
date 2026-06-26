@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
 import { getPrisma } from "@/lib/prisma";
 import { isEtsyApiEnabled } from "@/lib/marketplace/adapters/etsy/config";
 import {
@@ -33,8 +34,9 @@ export async function POST(request: Request) {
 
     const body = BodySchema.parse(await request.json());
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const item = await prisma.inventoryItem.findFirst({
-      where: { id: body.itemId, sellerId: user.id },
+      where: { id: body.itemId, accountId: account.id },
       select: { id: true },
     });
     if (!item) {
@@ -54,7 +56,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ synced: false, reason: "no_listing" });
     }
 
-    const session = await getEtsyAuthorizedSession({ userId: user.id });
+    const session = await getEtsyAuthorizedSession({ userId: user.id, accountId: account.id });
     const result = await syncEtsyListing({
       client: session.client,
       listingId: listing.externalListingId,

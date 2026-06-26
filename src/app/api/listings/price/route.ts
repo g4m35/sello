@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -29,10 +31,11 @@ export async function POST(request: Request) {
     }
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
-    // Scope to the seller's own items only.
+    // Scope to the active account's items only.
     const owned = await prisma.inventoryItem.findMany({
-      where: { id: { in: itemIds }, sellerId: user.id },
+      where: { id: { in: itemIds }, ...accountScope(account) },
       select: { id: true },
     });
     const ownedIds = owned.map((o) => o.id);

@@ -59,9 +59,10 @@ export type BulkExecutionResult = {
 
 export type BulkPublishDeps = {
   config: BulkPublishConfig;
-  preflightItem(input: { userId: string; itemId: string }): Promise<ItemPreflightOutcome>;
+  preflightItem(input: { userId: string; accountId?: string; itemId: string }): Promise<ItemPreflightOutcome>;
   executeItem(input: {
     userId: string;
+    accountId?: string;
     itemId: string;
     bulkRunId: string;
   }): Promise<BulkItemResult>;
@@ -70,7 +71,7 @@ export type BulkPublishDeps = {
 export type BulkPublishPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       select: { id: true };
     }): Promise<{ id: string } | null>;
   };
@@ -136,9 +137,9 @@ export function defaultBulkPublishDeps(
 
   return {
     config,
-    async preflightItem({ userId, itemId }) {
+    async preflightItem({ userId, accountId, itemId }) {
       const owned = await prisma.inventoryItem.findFirst({
-        where: { id: itemId, sellerId: userId },
+        where: accountId ? { id: itemId, accountId } : { id: itemId, sellerId: userId },
         select: { id: true },
       });
       if (!owned) return { status: "rejected" };
@@ -153,16 +154,17 @@ export function defaultBulkPublishDeps(
 
       const pre = await preflightEbayListing(
         prisma as never,
-        { userId, inventoryItemId: itemId },
+        { userId, accountId, inventoryItemId: itemId },
         env,
       );
       if (pre.ready) return { status: "ready" };
       return { status: "needs_details", missing: pre.missing.map(friendlyMissing) };
     },
-    async executeItem({ userId, itemId, bulkRunId }) {
+    async executeItem({ userId, accountId, itemId, bulkRunId }) {
       try {
         const r = await executePublish(prisma as unknown as PublishPrismaLike, {
           userId,
+          accountId,
           inventoryItemId: itemId,
           marketplace: "ebay",
           bulkRunId,
@@ -219,12 +221,12 @@ export function defaultBulkPublishDeps(
 
 export async function preflightBulkEbayPublish(
   prisma: BulkPublishPrismaLike,
-  input: { userId: string; itemIds: string[]; livePublishAllowed: boolean },
+  input: { userId: string; accountId?: string; itemIds: string[]; livePublishAllowed: boolean },
   deps: BulkPublishDeps = defaultBulkPublishDeps(prisma),
 ): Promise<BulkPreflightResult> {
   const itemIds = uniqueItemIds(input.itemIds);
   const items = await processInChunks(itemIds, deps.config, async (itemId) => {
-    const outcome = await deps.preflightItem({ userId: input.userId, itemId });
+    const outcome = await deps.preflightItem({ userId: input.userId, accountId: input.accountId, itemId });
     return { itemId, ...outcome };
   });
   const count = (status: ItemPreflightStatus) =>
@@ -244,13 +246,13 @@ export async function preflightBulkEbayPublish(
 
 export async function executeBulkEbayPublish(
   prisma: BulkPublishPrismaLike,
-  input: { userId: string; itemIds: string[]; bulkRunId: string },
+  input: { userId: string; accountId?: string; itemIds: string[]; bulkRunId: string },
   deps: BulkPublishDeps = defaultBulkPublishDeps(prisma),
 ): Promise<BulkExecutionResult> {
   const itemIds = uniqueItemIds(input.itemIds);
   const items = await processInChunks(itemIds, deps.config, async (itemId) => {
     try {
-      return await deps.executeItem({ userId: input.userId, itemId, bulkRunId: input.bulkRunId });
+      return await deps.executeItem({ userId: input.userId, accountId: input.accountId, itemId, bulkRunId: input.bulkRunId });
     } catch {
       return {
         itemId,

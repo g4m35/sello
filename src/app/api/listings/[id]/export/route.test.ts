@@ -5,6 +5,7 @@ import { AppError } from "@/lib/errors";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -14,6 +15,12 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
 }));
+
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: mocks.getActiveAccount,
+}));
+
+vi.mock("server-only", () => ({}));
 
 import { GET } from "./route";
 
@@ -68,6 +75,7 @@ describe("listing export API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
   });
 
   it("returns 401 when the seller is not signed in", async () => {
@@ -122,7 +130,7 @@ describe("listing export API", () => {
     expect(await response.json()).toEqual({ error: "Item not found" });
   });
 
-  it("scopes lookups to the signed-in seller so other users' items 404", async () => {
+  it("scopes lookups to the active account so outsiders' items 404", async () => {
     const findFirst = vi.fn().mockResolvedValue(null);
     mocks.getPrisma.mockReturnValue({ inventoryItem: { findFirst } });
 
@@ -131,7 +139,7 @@ describe("listing export API", () => {
     expect(response.status).toBe(404);
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: ITEM_ID, sellerId: "user-1" }),
+        where: expect.objectContaining({ id: ITEM_ID, accountId: "acc-1" }),
       }),
     );
   });

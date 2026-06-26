@@ -7,6 +7,7 @@ function item() {
   return {
     id: "item-1",
     sellerId: "user-1",
+    accountId: "acc-1",
     status: "APPROVED" as const,
     productName: "Nike Air Max 1",
     brand: "Nike",

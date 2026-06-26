@@ -3,12 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
+}));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: mocks.getActiveAccount,
 }));
 
 import {
@@ -25,6 +29,7 @@ function item(overrides: Partial<FakeItem> = {}): FakeItem {
   return {
     id: ITEM_ID,
     sellerId: "user-1",
+    accountId: "acc-1",
     productName: "Nike Air Max 1",
     status: "LISTED",
     soldAt: null,
@@ -61,6 +66,11 @@ describe("lifecycle mark_sold bridge (double-sell gap closed)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-1",
+      ownerUserId: "user-1",
+      plan: "free",
+    });
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -108,6 +118,11 @@ describe("lifecycle mark_sold bridge (double-sell gap closed)", () => {
     });
     mocks.getPrisma.mockReturnValue(prisma);
     mocks.requireSupabaseUser.mockResolvedValue({ id: "attacker" });
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-2",
+      ownerUserId: "attacker",
+      plan: "free",
+    });
 
     const res = await POST(req({ inventoryItemId: ITEM_ID, action: "mark_sold" }));
 

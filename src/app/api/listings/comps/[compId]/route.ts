@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { getActiveAccount } from "@/lib/billing/account";
+import { inventoryChildScope } from "@/lib/billing/scope";
 import { sellerSafeCompRows } from "@/lib/comps/seller-copy";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { UpdatePriceCompSchema, type UpdatePriceCompInput } from "@/lib/pricing/price-comp-input";
@@ -43,22 +45,24 @@ function toUpdateData(update: UpdatePriceCompInput): Prisma.PriceCompUpdateInput
 async function loadOwnedComp(request: Request, compId: string) {
   const user = await requireSupabaseUser(request);
   const prisma = getPrisma();
+  const account = await getActiveAccount(user.id, prisma);
   const existing = await prisma.priceComp.findFirst({
-    where: { id: compId, inventoryItem: { sellerId: user.id } },
+    where: { id: compId, ...inventoryChildScope(account) },
     select: { id: true, inventoryItemId: true },
   });
   if (!existing) {
     throw new AppError("Comp not found.", 404);
   }
-  return { prisma, existing };
+  return { prisma, existing, account };
 }
 
 async function respondWithComps(
   prisma: ReturnType<typeof getPrisma>,
   inventoryItemId: string,
+  account: { id: string },
 ) {
   const comps = await prisma.priceComp.findMany({
-    where: { inventoryItemId },
+    where: { inventoryItemId, ...inventoryChildScope(account) },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json({
@@ -74,7 +78,7 @@ export async function PATCH(request: Request, context: Context) {
     // Authenticate and verify ownership before parsing the body so an
     // unauthenticated request always 401s, regardless of body validity
     // (matches the auth-first pattern used by the other listing routes).
-    const { prisma, existing } = await loadOwnedComp(request, compId);
+    const { prisma, existing, account } = await loadOwnedComp(request, compId);
     const update = UpdatePriceCompSchema.parse(await request.json());
 
     await prisma.priceComp.update({
@@ -82,7 +86,7 @@ export async function PATCH(request: Request, context: Context) {
       data: toUpdateData(update),
     });
 
-    return respondWithComps(prisma, existing.inventoryItemId);
+    return respondWithComps(prisma, existing.inventoryItemId, account);
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -99,11 +103,11 @@ export async function PATCH(request: Request, context: Context) {
 export async function DELETE(request: Request, context: Context) {
   try {
     const { compId } = await context.params;
-    const { prisma, existing } = await loadOwnedComp(request, compId);
+    const { prisma, existing, account } = await loadOwnedComp(request, compId);
 
     await prisma.priceComp.delete({ where: { id: existing.id } });
 
-    return respondWithComps(prisma, existing.inventoryItemId);
+    return respondWithComps(prisma, existing.inventoryItemId, account);
   } catch (error) {
     if (error instanceof AppError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

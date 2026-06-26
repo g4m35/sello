@@ -5,11 +5,13 @@ import { AppError } from "@/lib/errors";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { GET } from "./route";
 
@@ -26,6 +28,7 @@ function ebayPublish(payload: {
 describe("jobs API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" });
     mocks.getPrisma.mockReturnValue(prisma());
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -52,6 +55,21 @@ describe("jobs API", () => {
     expect(payload.ebayLivePublishEnabled).toBe(true);
     expect(ebayPublish(payload)).toBe(true);
     expect(payload.inventorySyncAvailable).toBe(false);
+  });
+
+  it("scopes job logs to the active account", async () => {
+    const db = prisma();
+    mocks.getPrisma.mockReturnValue(db);
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "member-1", email: "member@example.com" });
+
+    const response = await GET(new Request("http://localhost/api/jobs"));
+
+    expect(response.status).toBe(200);
+    expect(db.jobLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { inventoryItem: { accountId: "acc-1" } },
+      }),
+    );
   });
 
   it("keeps eBay publishing unimplemented for sellers outside the allowlist", async () => {

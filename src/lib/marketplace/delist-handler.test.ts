@@ -21,6 +21,7 @@ type FakeListing = {
 type FakeState = {
   listing: FakeListing | null;
   otherMarketplaceStatuses: string[];
+  itemLookups: Array<Record<string, unknown>>;
   attempts: Array<{
     id: string;
     status: PublishAttemptStatus;
@@ -57,6 +58,7 @@ function createPrisma(opts: {
             ...opts.listing,
           },
     otherMarketplaceStatuses: opts.otherMarketplaceStatuses ?? [],
+    itemLookups: [],
     attempts: [],
     events: [],
     updates: [],
@@ -67,7 +69,10 @@ function createPrisma(opts: {
     _state: state,
     inventoryItem: {
       async findFirst({ where }) {
-        if (where.id !== "item-1" || where.sellerId !== "user-1") return null;
+        state.itemLookups.push(where);
+        if (where.id !== "item-1") return null;
+        if (where.accountId && where.accountId !== "acc-1") return null;
+        if (!where.accountId && where.sellerId !== "user-1") return null;
         return { id: "item-1", status: opts.itemStatus ?? "LISTED" };
       },
       async update({ where, data }) {
@@ -202,6 +207,34 @@ describe("executeEbayDelist", () => {
         userId: "user-1",
         inventoryItemId: "item-1",
         offerId: "offer-1",
+      }),
+    );
+  });
+
+  it("uses account scope for item lookup and passes it to the eBay adapter", async () => {
+    const prisma = createPrisma({});
+    const delist = vi.fn().mockResolvedValue({
+      status: "delisted",
+      code: "EBAY_DELIST_SUCCEEDED",
+      marketplace: "ebay",
+      environment: "sandbox",
+      offerId: "offer-1",
+      listingId: "ebay-listing-1",
+    });
+
+    await executeEbayDelist(
+      prisma,
+      { ...input, accountId: "acc-1" },
+      delist,
+    );
+
+    expect(prisma._state.itemLookups[0]).toEqual({ id: "item-1", accountId: "acc-1" });
+    expect(delist).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "user-1",
+        accountId: "acc-1",
+        inventoryItemId: "item-1",
       }),
     );
   });

@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { safeErrorResponse } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import { markItemSold } from "@/lib/inventory/mark-sold";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUserFromRequestOrCookies } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// Manual "I sold this" action. A thin, auth-gated wrapper over the engine's
-// markItemSold, which loads the item scoped by the signed-in seller (404 if not
-// owned), flips it to SOLD idempotently, queues delist for every OTHER live
-// listing, and notifies the seller. Ownership is enforced inside the engine via
-// the sellerId scope; this route never trusts the body for identity.
+// Manual "I sold this" action. The route authorizes item access through the
+// active account, then passes the creator sellerId to the safety engine as its
+// inventory-owner guard while preserving the signed-in user as actor/audit id.
 
 const BodySchema = z
   .object({
@@ -36,10 +36,21 @@ export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
     const body = BodySchema.parse(await request.json());
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    const item = await prisma.inventoryItem.findFirst({
+      where: { id: body.inventoryItemId, ...accountScope(account) },
+      select: { sellerId: true },
+    });
 
-    const result = await markItemSold(getPrisma(), {
+    if (!item) {
+      throw new AppError("Inventory item not found.", 404);
+    }
+
+    const result = await markItemSold(prisma, {
       inventoryItemId: body.inventoryItemId,
       userId: user.id,
+      inventoryOwnerUserId: item.sellerId,
       soldMarketplace: body.soldMarketplace,
       soldListingId: body.soldListingId ?? null,
       soldPriceCents: body.soldPriceCents ?? null,

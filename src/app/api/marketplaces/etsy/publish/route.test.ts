@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
+}));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({
     inventoryItem: { findFirst: mocks.findFirst },
@@ -161,6 +164,10 @@ describe("Etsy publish route", () => {
     expect(upsertArgs.create.marketplace).toBe("etsy");
     expect(upsertArgs.create.status).toBe("LISTED");
     expect(upsertArgs.create.externalListingId).toBe("555");
+    expect(mocks.getEtsyAuthorizedSession).toHaveBeenCalledWith({
+      userId: "u1",
+      accountId: "acc-1",
+    });
   });
 
   it("does not mark the item live and sanitizes errors when draft creation fails", async () => {

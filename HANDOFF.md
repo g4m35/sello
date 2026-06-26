@@ -38,6 +38,42 @@ migration `20260626000000_inventory_safety_layer` still UNAPPLIED (untouched).
 - Gate (in worktree): `prisma validate` pass; `tsc --noEmit` 0; `lint` 0 errors
   (2 pre-existing warnings in `draft-actions.test.ts`, unrelated); `npm test` 166
   files / **1140 tests pass** (was 1129; +11 new); `next build` success.
+2026-06-25 — Codex. Continued `feature/stripe-billing-metering-seats`
+Phase 4.3 account-scope migration (NOT merged, NOT deployed). No env changes, no
+live Stripe/eBay/Etsy calls, no migrations applied. Committed item-centric slice
+(`7bde3e2`), comps/history/jobs slice (`763e2b9`), and publish/delist slice
+(`c835fbd`). Current uncommitted batch adds migration
+`20260625030000_marketplace_connections_account_scope` and converts marketplace
+credential/config scoping to account-level: `MarketplaceConnection`,
+`EbaySellerConfig`, and `TikTokShopConfig` gain required `accountId` with
+backfill from personal accounts; eBay/Etsy connect/callback/disconnect/readiness/
+status/location/publish paths use active account connections; owner/admin guard
+blocks non-admin members from managing credentials; plan connection caps count
+distinct marketplaces by account (`free` 1, `pro` exactly 3 choices before
+blocking the 4th). eBay publish/preflight/delist/orphan shared helpers and Etsy
+session prefer account connection lookup when route context passes `accountId`.
+`sellerId`/`userId` remain creator/acting-member attribution; direct service
+fallbacks still narrow to `sellerId`/`userId` only when no route-level `accountId`
+is provided. eBay account-deletion remains user-scoped by design because it is a
+marketplace privacy deletion for the external user id. Provider ledger still
+stores userId, with provider usage widened only to active account-member ids.
+
+Verification this session: `npx tsc --noEmit --pretty false`; `npx prisma
+validate`; focused 59-test run for comps/refresh/`[compId]`/provider-usage/
+history/jobs/fetch/fetch-paid-budget; focused 158-test run across publish/delist/
+bulk/eBay adapter/orphan paths; focused 103-test run across marketplace
+connection/readiness/session/cap helpers; `git diff --check` clean. Stale
+seller/user connection-scope scan found only optional direct-caller fallbacks and
+the intentionally user-scoped eBay account-deletion handler.
+
+Also in the current uncommitted batch: Etsy sync/delist now scope item access by
+active account and pass `accountId` into the Etsy session helper; Supabase
+authenticated-user resolution now accepts a matching pending team invite by
+verified email before account resolution, so an invited member's first post-login
+API request can land in the shared account. Verification for this follow-up:
+focused 17-test Etsy sync/delist/publish run; focused 34-test auth/membership/
+Etsy sync/delist/publish run; `npx tsc --noEmit --pretty false`; `git diff
+--check` clean.
 
 ## Last updated (previous)
 2026-06-24 — Claude. **PR #57 (gated Etsy API integration FOUNDATION) shipped to
@@ -1873,6 +1909,75 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-06-25 (Codex): Continued Phase 4.3 account-scope migration on
+  `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed). Migrated
+  comps GET/POST, explicit comp refresh, comp `[compId]` update/delete,
+  provider-usage, history, jobs, and `runCompFetch` to account scope. Comp refresh
+  now checks item ownership with `accountId`, applies account quota on the same
+  account object, and passes `accountId` into `runCompFetch`; provider usage uses
+  `accountMemberIds(account.id)` so active members share usage visibility while
+  revoked/unrelated users are excluded. Verification: `npx tsc --noEmit --pretty
+  false`; focused 59-test run for comps/refresh/`[compId]`/provider-usage/history/
+  jobs/fetch/fetch-paid-budget; stale seller-filter scan clean for this batch;
+  `git diff --check` clean. No env changes, no live calls, no migrations applied.
+- 2026-06-25 (Codex): Continued Phase 4.3 account-scope migration on
+  `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed). Migrated the
+  item-centric seller-data slice to active account scope: inventory detail GET/PATCH
+  and `loadItemDetailState`, photos POST/PATCH/DELETE, copy-ready export,
+  lifecycle action, bulk price update, CSV import (new rows stamp `accountId`), and
+  draft PATCH/POST. Tests now assert account-scoped lookup for detail/export/
+  lifecycle; `server-only` route shims added where the billing scope helper is
+  imported. Verification: `npx tsc --noEmit --pretty false`; focused 35-test run
+  for detail/export/draft/lifecycle/server-map; `npm run lint` 0 errors / 2
+  pre-existing warnings; `npx prisma validate`; `git diff --check` clean. No env
+  changes, no live calls, no migrations applied.
+- 2026-06-25 (Claude): Stripe billing + usage metering + seats, on
+  `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed; rebased onto
+  current `origin/develop` incl. RLS #60). Spec + phased plan in `docs/superpowers/`.
+  **Phases 0-3 complete + Phase 4.1 (seats membership) complete. Gate green: 1092
+  tests, lint 0, prisma valid, build 0.**
+  - **Phase 0-1 (billing core):** plan catalog (Free $0 / Pro $20 / Kingpin $119,
+    `src/lib/billing/plans.ts`), config loader + SDK client, idempotent
+    product-sync script, Prisma models (Account, AccountMember, Subscription,
+    UsageCounter, StripeEvent) + migration `20260625010000_add_billing_models`
+    (**created, NOT applied** — apply via develop), account resolver, customer
+    helper, `/api/billing/checkout` + `/portal` + `/webhook` (signed, idempotent).
+  - **Phase 2 (metering, fully wired):** errors, entitlements, usage primitives;
+    enforcement on AI-listing (`/api/listings/draft`), comp-refresh
+    (`/api/listings/comps/refresh`), autopublish (`/api/listings/publish`), bulk
+    batch cap (publish/delist bulk), marketplace-connection cap (eBay/Etsy connect).
+  - **Phase 3 (UI):** `/api/billing/usage` snapshot, public `/pricing`, in-app
+    `settings/billing` with usage meters + upgrade(checkout)/manage(portal).
+  - **Phase 4.1 (seats):** `membership.ts` invite/accept/revoke + seat-limit
+    enforcement; `/api/account/members` routes. `accountMemberIds()` is the seam.
+  RLS untouched per owner instruction (new tables follow the deny-all
+  enable-no-policy convention). No live Stripe calls; no keys in repo.
+  **Phase 4.2/4.3 (data-scope migration) — STARTED, foundation + core slice done,
+  rest pending.** Done: `InventoryItem.accountId` + index/FK + backfill migration
+  `20260625020000_inventory_account_scope` (created, NOT applied); `scope.ts`
+  (`accountScope`); `getActiveAccount` widened (owner account, then active
+  membership = shared workspace, then personal); inventory LIST + bulk-delete
+  account-scoped; draft create stamps `accountId`; Codex follow-ups migrated item
+  detail/photos/export/lifecycle/price/import/draft-detail routes plus comps/
+  provider-usage/history/jobs to account scope.
+  Behavior-preserving for existing owners (single-member account == old sellerId
+  scope); cross-member resolution tested. SAFE because sharing is dormant in
+  practice: `acceptInvite` is not yet wired into login, so no active non-owner
+  memberships exist.
+  **STILL PENDING (mechanical, well-patterned — replace `{ sellerId: user.id }`
+  with `accountScope(account)` / `{ inventoryItem: { accountId } }`, scope by
+  account after `getActiveAccount`, stamp accountId on writes):** the publish/delist pipeline
+  (`publish-handler`, `bulk-publish`, `delist-handler`, `bulk-delist`) and eBay/Etsy
+  adapters that thread `sellerId` (preflight, publish, delist, orphans, mapper,
+  media, storage paths); decide whether `MarketplaceConnection`/`EbaySellerConfig`
+  are shared or per-member. THEN wire `acceptInvite` into post-login and run a
+  manual cross-member access matrix (member A and B share; outsider C blocked)
+  before announcing seats. ~35 query sites; do NOT announce sharing until all are
+  migrated and verified (a missed site under-shares, but is not a leak — scoping
+  only ever narrows to the acting user).
+  **Operator steps to run it (test mode):** apply the migration via develop; set
+  sk_test/pk_test in `.env.local`; run `scripts/stripe/sync-products.ts`;
+  `stripe listen --forward-to localhost:3000/api/billing/webhook`; test-card e2e.
 - 2026-06-23 (Claude): Etsy marketplace channel (copy-ready) on
   `feature/etsy-marketplace-channel`. Enum + adapter + `formatEtsy` export +
   research doc + readiness-isolation tests. Migration file created, NOT applied.
@@ -1962,7 +2067,19 @@ on auth.ebay.com.
   auto run was about `$0.3641`; keep it disabled until
   `feature/comp-confidence-cost-controls` lands and production manual Refresh is
   revalidated with the lower caps.
-- **Stripe keys** for monetization.
+- **Stripe billing (operator steps to light up `feature/stripe-billing-metering-seats`, TEST mode first):**
+  1. Apply migration `20260625010000_add_billing_models` via the normal develop
+     migrate flow (creates Account/Subscription/UsageCounter/etc.). Code on the
+     branch assumes it is applied.
+  2. Set TEST env: `STRIPE_SECRET_KEY` (sk_test), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+     (pk_test) in `.env.local` (never the repo).
+  3. Run `STRIPE_SECRET_KEY=sk_test_... npx tsx scripts/stripe/sync-products.ts`,
+     copy the printed `STRIPE_PRICE_PRO` / `STRIPE_PRICE_KINGPIN` into env.
+  4. `stripe listen --forward-to localhost:3000/api/billing/webhook` to get
+     `STRIPE_WEBHOOK_SECRET`; set it in env.
+  5. Manual e2e: checkout Pro with test card 4242…, confirm Subscription row +
+     Account.plan; cancel via portal, confirm downgrade. Flip to live keys only
+     after explicit approval.
 - **Worker host** (Railway/Render/Fly, or Vercel Cron) for queues + inventory sync.
 - **Security follow-ups:** externalUserId binding, real eBay deletion
   notification validation, key rotation, remaining npm audit items, and RLS
@@ -2158,3 +2275,46 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
   enforces them; keep that invariant).
 - Email parser is heuristic; only HIGH-confidence + exact match auto-acts, all else
   -> review task (by design, to avoid wrong auto-delist).
+
+---
+
+# Stripe billing / account-scope PR checkpoint (2026-06-26)
+
+- Branch: `feature/stripe-billing-metering-seats`
+- PR: https://github.com/g4m35/resale-crosslister/pull/62 -> `develop`
+- Branch was rebased onto latest `origin/develop`; one additive Prisma schema
+  conflict was resolved by retaining both inventory-safety models and billing
+  account/subscription/usage models.
+- Review fix commit added after PR open:
+  `fix(billing): preserve account scope in mark-sold flows`
+  - `/api/inventory/mark-sold` now authorizes by active account before calling
+    the safety engine.
+  - Lifecycle `mark_sold` passes creator `sellerId` as the inventory-owner guard
+    while preserving signed-in user as actor/audit id.
+- Review findings addressed in progress:
+  - Owner/admin account-management guard added for member invites.
+  - Owner/admin account-management guard added for Stripe portal sessions.
+  - Duplicate pending invites are reused, and duplicate login-time invite
+    acceptance revokes the extra pending invite when the user is already active.
+
+## Latest local validation before review-fix push
+- `npx prisma validate`: pass
+- `npm run lint`: pass, 0 errors / same 2 pre-existing warnings in
+  `src/app/api/listings/draft/draft-actions.test.ts`
+- `npm test`: pass, 187 files / 1252 tests
+- `npm run build`: pass
+- `git diff --check`: pass
+- Focused review-fix tests after guard/idempotency edits:
+  4 files / 30 tests pass
+
+## External status at checkpoint
+- Branch pushed to origin.
+- PR opened.
+- Vercel status reported success, but build was ignored by the configured Vercel
+  ignored-build step.
+- Supabase Preview skipped because there were no `supabase` directory changes.
+- Vercel Agent Review skipped because of insufficient credit.
+- CodeRabbit remained pending with only its in-progress comment at the time of
+  this checkpoint.
+- Codex review produced three actionable findings; all are being fixed before
+  merge.

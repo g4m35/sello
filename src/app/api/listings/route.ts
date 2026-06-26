@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -14,9 +16,10 @@ export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const items = await prisma.inventoryItem.findMany({
-      where: { sellerId: user.id },
+      where: accountScope(account),
       orderBy: { updatedAt: "desc" },
       include: {
         listingDrafts: { orderBy: { updatedAt: "desc" } },
@@ -54,9 +57,10 @@ export async function DELETE(request: Request) {
     const body = await request.json();
     const ids = parseIds(body?.ids);
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const owned = await prisma.inventoryItem.findMany({
-      where: { id: { in: ids }, sellerId: user.id },
+      where: { id: { in: ids }, ...accountScope(account) },
       select: { id: true, marketplaceListings: { select: { status: true } } },
     });
 
@@ -69,7 +73,7 @@ export async function DELETE(request: Request) {
 
     if (deletable.length > 0) {
       await prisma.inventoryItem.deleteMany({
-        where: { id: { in: deletable }, sellerId: user.id },
+        where: { id: { in: deletable }, ...accountScope(account) },
       });
     }
 

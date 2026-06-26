@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireUser: vi.fn(),
   markItemSold: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -14,6 +15,7 @@ vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUserFromRequestOrCookies: mocks.requireUser,
 }));
 vi.mock("@/lib/inventory/mark-sold", () => ({ markItemSold: mocks.markItemSold }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { POST } from "./route";
 
@@ -30,8 +32,13 @@ function req(body: unknown): Request {
 describe("POST /api/inventory/mark-sold", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getPrisma.mockReturnValue({});
+    mocks.getPrisma.mockReturnValue({
+      inventoryItem: {
+        findFirst: vi.fn().mockResolvedValue({ sellerId: "owner-1" }),
+      },
+    });
     mocks.requireUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -67,6 +74,7 @@ describe("POST /api/inventory/mark-sold", () => {
     expect(mocks.markItemSold.mock.calls[0][1]).toEqual({
       inventoryItemId: ITEM_ID,
       userId: "user-1",
+      inventoryOwnerUserId: "owner-1",
       soldMarketplace: "grailed",
       soldListingId: "g-123",
       soldPriceCents: 24000,
@@ -74,11 +82,16 @@ describe("POST /api/inventory/mark-sold", () => {
     });
   });
 
-  it("surfaces the engine's 404 (ownership) without leaking internals", async () => {
-    mocks.markItemSold.mockRejectedValue(new AppError("Inventory item not found.", 404));
+  it("fails closed when the item is outside the active account", async () => {
+    mocks.getPrisma.mockReturnValue({
+      inventoryItem: {
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    });
     const res = await POST(req({ inventoryItemId: ITEM_ID, soldMarketplace: "ebay" }));
     expect(res.status).toBe(404);
     expect((await res.json()).error.message).toBe("Inventory item not found.");
+    expect(mocks.markItemSold).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid marketplace with a 400 before calling the engine", async () => {

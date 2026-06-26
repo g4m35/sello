@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import type { InventoryStatus } from "@/generated/prisma/client";
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { markItemSold } from "@/lib/inventory/mark-sold";
 import {
@@ -32,10 +34,11 @@ export async function POST(request: Request) {
       await request.json(),
     );
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const item = await prisma.inventoryItem.findFirst({
-      where: { id: inventoryItemId, sellerId: user.id },
-      select: { id: true, status: true },
+      where: { id: inventoryItemId, ...accountScope(account) },
+      select: { id: true, sellerId: true, status: true },
     });
 
     if (!item) {
@@ -60,6 +63,7 @@ export async function POST(request: Request) {
       await markItemSold(prisma, {
         inventoryItemId: item.id,
         userId: user.id,
+        inventoryOwnerUserId: item.sellerId,
         soldMarketplace: null,
         source: "manual",
       });

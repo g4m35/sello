@@ -138,6 +138,10 @@ enum PublishAttemptStatus {
 model InventoryItem {
   id                    String               @id @default(uuid()) @db.Uuid
   sellerId              String               @db.Uuid
+  // Owning account (shared workspace). Nullable during backfill; the app scopes
+  // reads by account once present. sellerId stays as the creating member.
+  accountId             String?              @db.Uuid
+  account               Account?             @relation(fields: [accountId], references: [id])
   status                InventoryStatus      @default(DRAFTING)
   productName           String
   brand                 String?
@@ -171,6 +175,7 @@ model InventoryItem {
   reviewTasks           ReviewTask[]
 
   @@index([sellerId, status])
+  @@index([accountId, status])
   @@index([createdAt])
 }
 
@@ -408,6 +413,8 @@ model MarketplaceEvent {
 model MarketplaceConnection {
   id                    String             @id @default(uuid()) @db.Uuid
   userId                String             @db.Uuid
+  accountId             String             @db.Uuid
+  account               Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
   marketplace           Marketplace
   environment           String
   externalUserId        String?
@@ -422,13 +429,17 @@ model MarketplaceConnection {
   tiktokShopConfigs     TikTokShopConfig[]
 
   @@unique([userId, marketplace, environment])
+  @@unique([accountId, marketplace, environment])
   @@index([userId])
+  @@index([accountId])
   @@index([marketplace, environment])
 }
 
 model EbaySellerConfig {
   id                      String                @id @default(uuid()) @db.Uuid
   userId                  String                @db.Uuid
+  accountId               String                @db.Uuid
+  account                 Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
   marketplaceConnectionId String                @db.Uuid
   marketplaceConnection   MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
   marketplaceId           String                @default("EBAY_US")
@@ -442,7 +453,9 @@ model EbaySellerConfig {
   updatedAt               DateTime              @updatedAt
 
   @@unique([userId, marketplaceConnectionId])
+  @@unique([accountId, marketplaceConnectionId])
   @@index([userId])
+  @@index([accountId])
   @@index([marketplaceConnectionId])
 }
 
@@ -453,6 +466,8 @@ model EbaySellerConfig {
 model TikTokShopConfig {
   id                      String                @id @default(uuid()) @db.Uuid
   userId                  String                @db.Uuid
+  accountId               String                @db.Uuid
+  account                 Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
   marketplaceConnectionId String                @db.Uuid
   marketplaceConnection   MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
   shopId                  String?
@@ -466,7 +481,9 @@ model TikTokShopConfig {
   updatedAt               DateTime              @updatedAt
 
   @@unique([userId, marketplaceConnectionId])
+  @@unique([accountId, marketplaceConnectionId])
   @@index([userId])
+  @@index([accountId])
   @@index([marketplaceConnectionId])
 }
 
@@ -721,4 +738,113 @@ model Notification {
 
   @@index([userId, createdAt])
   @@index([userId, readAt])
+}
+
+// --- Billing: accounts, subscriptions, usage metering, team seats ---------
+// An Account owns the subscription and usage counters. One account per user to
+// start (the owner); members are real once team seats ship. Billing and usage
+// are account-keyed from day one so they never get rewritten when seats land.
+
+enum PlanTier {
+  free
+  pro
+  kingpin
+}
+
+enum MemberRole {
+  owner
+  admin
+  member
+}
+
+enum MemberStatus {
+  active
+  invited
+  revoked
+}
+
+enum SubscriptionStatus {
+  active
+  trialing
+  past_due
+  canceled
+  incomplete
+  incomplete_expired
+  unpaid
+}
+
+enum UsageMetric {
+  ai_listing
+  autopublish
+  comp_refresh
+}
+
+model Account {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerUserId String   @unique @db.Uuid
+  plan        PlanTier @default(free)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members      AccountMember[]
+  subscription Subscription?
+  usage        UsageCounter[]
+  inventory    InventoryItem[]
+  marketplaceConnections MarketplaceConnection[]
+  ebaySellerConfigs      EbaySellerConfig[]
+  tiktokShopConfigs      TikTokShopConfig[]
+}
+
+model AccountMember {
+  id           String       @id @default(uuid()) @db.Uuid
+  accountId    String       @db.Uuid
+  userId       String?      @db.Uuid
+  invitedEmail String?
+  role         MemberRole   @default(member)
+  status       MemberStatus @default(invited)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, userId])
+  @@index([userId])
+  @@index([accountId, status])
+}
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  accountId            String             @unique @db.Uuid
+  stripeCustomerId     String             @unique
+  stripeSubscriptionId String?            @unique
+  plan                 PlanTier           @default(free)
+  status               SubscriptionStatus @default(active)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model UsageCounter {
+  id          String      @id @default(uuid()) @db.Uuid
+  accountId   String      @db.Uuid
+  metric      UsageMetric
+  periodStart DateTime    @db.Date
+  count       Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, metric, periodStart])
+  @@index([accountId, periodStart])
+}
+
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }

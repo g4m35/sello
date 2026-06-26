@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { parseFlaws, parseMeasurements } from "@/lib/ai/listing-draft";
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { analyzeListing } from "@/lib/listing/intelligence";
 import {
@@ -50,8 +52,9 @@ export async function GET(
     const marketplace = parsed.data;
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const item = await prisma.inventoryItem.findFirst({
-      where: { id, sellerId: user.id },
+      where: { id, ...accountScope(account) },
       include: { listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } },
     });
     if (!item) {

@@ -10,11 +10,11 @@ import type { ItemDetailView } from "@/lib/view/types";
 
 export async function loadItemDetailState(
   itemId: string,
-  sellerId: string,
+  account: { id: string },
 ): Promise<ItemDetailView | null> {
   const prisma = getPrisma();
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: itemId, sellerId },
+    where: { id: itemId, accountId: account.id },
     include: {
       listingDrafts: { orderBy: { updatedAt: "desc" } },
       marketplaceListings: true,

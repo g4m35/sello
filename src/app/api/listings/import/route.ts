@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
+import { getActiveAccount } from "@/lib/billing/account";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import {
   ImportRequestSchema,
@@ -25,12 +26,14 @@ export async function POST(request: Request) {
     }
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const createdIds: string[] = [];
 
     for (const row of parsed.data.rows) {
       const item = await prisma.inventoryItem.create({
         data: {
           sellerId: user.id,
+          accountId: account.id,
           status: "DRAFTING",
           productName: row.title,
           brand: row.brand ?? null,

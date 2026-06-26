@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertBulkBatchSize } from "@/lib/billing/batch";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { executeBulkEbayPublish } from "@/lib/marketplace/bulk-publish";
 import {
@@ -37,8 +39,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await executeBulkEbayPublish(getPrisma(), {
+    // Plan bulk-batch cap (stricter than the global per-request ceiling).
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    assertBulkBatchSize(account, itemIds.length);
+
+    const result = await executeBulkEbayPublish(prisma, {
       userId: user.id,
+      accountId: account.id,
       itemIds,
       bulkRunId: bulkRunId ?? randomUUID(),
     });

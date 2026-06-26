@@ -23,6 +23,7 @@ export type EtsyAuthorizedSession = {
 // a typed notConnected/reconnectRequired/shopMissing when any of that is missing.
 export async function getEtsyAuthorizedSession(args: {
   userId: string;
+  accountId?: string;
   fetchImpl?: typeof fetch;
   env?: Record<string, string | undefined>;
   now?: number;
@@ -33,13 +34,21 @@ export async function getEtsyAuthorizedSession(args: {
   const now = args.now ?? Date.now();
 
   const connection = await prisma.marketplaceConnection.findUnique({
-    where: {
-      userId_marketplace_environment: {
-        userId: args.userId,
-        marketplace: "etsy",
-        environment: ETSY_ENVIRONMENT,
-      },
-    },
+    where: args.accountId
+      ? {
+          accountId_marketplace_environment: {
+            accountId: args.accountId,
+            marketplace: "etsy",
+            environment: ETSY_ENVIRONMENT,
+          },
+        }
+      : {
+          userId_marketplace_environment: {
+            userId: args.userId,
+            marketplace: "etsy",
+            environment: ETSY_ENVIRONMENT,
+          },
+        },
   });
 
   if (!connection) {

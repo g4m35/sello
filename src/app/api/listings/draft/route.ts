@@ -4,11 +4,18 @@ import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
 import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
 import { asStringRecord } from "@/lib/listing/ebay-draft-fields";
 import { runCompFetch } from "@/lib/comps/fetch";
-import { AppError, safeClientMessage, safePersistedFailureReason } from "@/lib/errors";
+import {
+  AppError,
+  logUnexpectedError,
+  safeClientMessage,
+  safePersistedFailureReason,
+} from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { prepareListingPhotos, uploadListingPhotos } from "@/lib/storage/listing-photos";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -71,6 +78,13 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireSupabaseUser(request);
+
+    // Enforce the monthly AI-listing quota before doing any work (and before an
+    // inventory item exists), so an over-quota request fails fast with 402 and
+    // leaves nothing behind.
+    const account = await getActiveAccount(user.id);
+    await assertWithinQuota(account, "ai_listing", new Date());
+
     const formData = await request.formData();
     const files = extractListingPhotos(formData);
     const photos = await prepareListingPhotos(files);
@@ -83,6 +97,7 @@ export async function POST(request: Request) {
       data: {
         id: createdInventoryItemId,
         sellerId: user.id,
+        accountId: account.id,
         productName: "Awaiting Gemini identification",
       },
     });
@@ -170,6 +185,15 @@ export async function POST(request: Request) {
         },
       }),
     ]);
+
+    // Count the successful generation against the monthly quota. Best-effort:
+    // the draft already succeeded, so a counter-write failure is logged loudly
+    // rather than failing the response (which would wrongly mark the item).
+    try {
+      await incrementUsage(account.id, "ai_listing", new Date());
+    } catch (usageError) {
+      logUnexpectedError("ai_listing_usage_increment", usageError);
+    }
 
     // Best-effort: gather automatic comps now that the item is identified.
     // No-op (and fast) when no comp source is configured; never blocks the draft.

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
 import { getPrisma } from "@/lib/prisma";
 import { requireEtsyCapability } from "@/lib/marketplace/adapters/etsy/capabilities";
 import {
@@ -50,8 +51,9 @@ export async function POST(request: Request) {
     }
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const item = await prisma.inventoryItem.findFirst({
-      where: { id: body.itemId, sellerId: user.id },
+      where: { id: body.itemId, accountId: account.id },
       include: {
         listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 },
         photos: true,
@@ -64,8 +66,8 @@ export async function POST(request: Request) {
 
     const connection = await prisma.marketplaceConnection.findUnique({
       where: {
-        userId_marketplace_environment: {
-          userId: user.id,
+        accountId_marketplace_environment: {
+          accountId: account.id,
           marketplace: "etsy",
           environment: ETSY_ENVIRONMENT,
         },
@@ -120,7 +122,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const session = await getEtsyAuthorizedSession({ userId: user.id });
+    const session = await getEtsyAuthorizedSession({ userId: user.id, accountId: account.id });
     const listingBody = buildEtsyDraftBody({
       title,
       description,

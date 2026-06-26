@@ -14,6 +14,13 @@ vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUserFromRequestOrCookies:
     mocks.requireSupabaseUserFromRequestOrCookies,
 }));
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
+}));
+vi.mock("@/lib/billing/connections", () => ({
+  assertCanManageMarketplaceConnections: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({ marketplaceConnection: { upsert: mocks.upsert } }),
 }));
@@ -79,6 +86,8 @@ describe("Etsy callback route", () => {
     expect(response.headers.get("location")).toContain("/settings/marketplaces");
     expect(mocks.upsert).toHaveBeenCalledTimes(1);
     const args = mocks.upsert.mock.calls[0][0];
+    expect(args.where.accountId_marketplace_environment.accountId).toBe("acc-1");
+    expect(args.create.accountId).toBe("acc-1");
     expect(args.create.marketplace).toBe("etsy");
     expect(args.create.environment).toBe("production");
     expect(args.create.externalUserId).toBe("12345");
