@@ -19,6 +19,10 @@ function item() {
     recommendedPriceCents: 24000,
     pricingRationale: null,
     soldAt: null,
+    quantityAvailable: 1,
+    soldSourceMarketplace: null,
+    soldSourceListingId: null,
+    lockVersion: 0,
     createdAt: now,
     updatedAt: now,
     listingDrafts: [

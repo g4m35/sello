@@ -105,6 +105,12 @@ enum MarketplaceListingStatus {
   DELISTING
   DELISTED
   FAILED
+  // Added for the cross-marketplace inventory safety layer + TikTok Shop audit flow.
+  ENDED
+  UNKNOWN
+  NEEDS_REVIEW
+  SUBMITTED_FOR_AUDIT
+  REJECTED
 }
 
 enum JobStatus {
@@ -144,6 +150,13 @@ model InventoryItem {
   recommendedPriceCents Int?
   pricingRationale      String?
   soldAt                DateTime?
+  // Inventory safety / double-sell prevention (source of truth).
+  quantityAvailable     Int                  @default(1)
+  soldSourceMarketplace Marketplace?
+  soldSourceListingId   String?
+  // Optimistic-concurrency guard: bumped on every sold/quantity mutation so two
+  // concurrent sale signals cannot both win. See lib/inventory/mark-sold.
+  lockVersion           Int                  @default(0)
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   photos                ItemPhoto[]
@@ -154,6 +167,8 @@ model InventoryItem {
   jobLogs               JobLog[]
   priceComps            PriceComp[]
   compSearchRuns        CompSearchRun[]
+  inventoryEvents       InventoryEvent[]
+  reviewTasks           ReviewTask[]
 
   @@index([sellerId, status])
   @@index([createdAt])
@@ -338,8 +353,13 @@ model MarketplaceListing {
   sku               String?
   externalOfferId   String?
   externalListingId String?
+  externalUrl       String?
+  titleSnapshot     String?
+  skuSnapshot       String?
+  metadata          Json?
   lastSyncAt        DateTime?
   lastError         String?
+  endedAt           DateTime?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
   publishAttempts   PublishAttempt[]
@@ -530,4 +550,175 @@ model JobLog {
 
   @@index([inventoryItemId])
   @@index([queueName, status])
+}
+
+// ============================================================
+// Inventory safety layer / double-sell prevention (Part 1).
+// All tables follow the project RLS pattern: RLS enabled, no policies; access is
+// the trusted resale_app role (BYPASSRLS), ownership enforced via userId filters.
+// ============================================================
+
+enum InventoryEventType {
+  listing_created
+  listing_active
+  sale_detected
+  sale_confirmed
+  sale_rejected
+  delist_requested
+  delist_succeeded
+  delist_failed
+  manual_action_required
+  notification_sent
+  sync_conflict
+}
+
+enum SignalSource {
+  api
+  email
+  manual
+  system
+}
+
+enum ReviewTaskType {
+  confirm_possible_sale
+  manual_delist_required
+  unmatched_marketplace_email
+  sync_conflict
+}
+
+enum ReviewTaskStatus {
+  open
+  resolved
+  dismissed
+}
+
+enum SyncJobType {
+  detect_status
+  mark_sold
+  delist_marketplace_listing
+  notify_user
+  create_review_task
+  update_inventory_quantity
+  update_price
+  sync_order
+}
+
+enum SyncJobStatus {
+  queued
+  running
+  succeeded
+  failed
+  skipped
+  needs_review
+}
+
+enum EmailSignalType {
+  sale_detected
+  offer_received
+  listing_published
+  listing_removed
+  payment_received
+  shipping_needed
+  unknown
+}
+
+// Append-only, item-scoped audit trail of every safety action/signal.
+model InventoryEvent {
+  id              String             @id @default(uuid()) @db.Uuid
+  inventoryItemId String             @db.Uuid
+  inventoryItem   InventoryItem      @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  userId          String             @db.Uuid
+  type            InventoryEventType
+  source          SignalSource
+  marketplace     Marketplace?
+  confidence      Float?
+  payload         Json
+  createdAt       DateTime           @default(now())
+
+  @@index([inventoryItemId, createdAt])
+  @@index([userId, createdAt])
+}
+
+// System-generated tasks requiring seller action (never auto-resolved).
+model ReviewTask {
+  id              String           @id @default(uuid()) @db.Uuid
+  userId          String           @db.Uuid
+  inventoryItemId String?          @db.Uuid
+  inventoryItem   InventoryItem?   @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  marketplace     Marketplace?
+  type            ReviewTaskType
+  status          ReviewTaskStatus @default(open)
+  title           String
+  description     String
+  payload         Json
+  createdAt       DateTime         @default(now())
+  resolvedAt      DateTime?
+
+  @@index([userId, status])
+  @@index([inventoryItemId])
+}
+
+// Durable, idempotent sync/delist/notify job record. idempotencyKey is a FULL
+// unique: enqueueing the same key twice is a no-op (retries bump attempts on the
+// existing row), so marking sold twice can never duplicate delist jobs.
+model SyncJob {
+  id                   String        @id @default(uuid()) @db.Uuid
+  userId               String        @db.Uuid
+  inventoryItemId      String?       @db.Uuid
+  marketplaceListingId String?       @db.Uuid
+  type                 SyncJobType
+  status               SyncJobStatus @default(queued)
+  attempts             Int           @default(0)
+  maxAttempts          Int           @default(5)
+  idempotencyKey       String        @unique
+  errorCode            String?
+  errorMessage         String?
+  payload              Json
+  runAfter             DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  @@index([status, runAfter])
+  @@index([userId, createdAt])
+  @@index([inventoryItemId])
+  @@index([marketplaceListingId])
+}
+
+// Parsed inbound marketplace emails (sale/payment/shipping signals). Deduped by
+// providerMessageId so the same email is never reprocessed. Low-confidence rows
+// never auto-delist; they create review tasks.
+model EmailSignal {
+  id                          String          @id @default(uuid()) @db.Uuid
+  userId                      String?         @db.Uuid
+  sourceEmail                 String
+  destinationEmail            String
+  marketplaceGuess            Marketplace?
+  signalType                  EmailSignalType
+  confidence                  Float
+  subject                     String
+  bodySnippet                 String
+  parsedPayload               Json
+  matchedInventoryItemId      String?         @db.Uuid
+  matchedMarketplaceListingId String?         @db.Uuid
+  providerMessageId           String?         @unique
+  processedAt                 DateTime?
+  createdAt                   DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([signalType, createdAt])
+}
+
+// Minimal in-app notification feed for safety events.
+model Notification {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  kind            String
+  title           String
+  body            String
+  inventoryItemId String?   @db.Uuid
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
 }
