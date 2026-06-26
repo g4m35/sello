@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { preflightBulkEbayPublish } from "@/lib/marketplace/bulk-publish";
 import {
@@ -31,8 +32,11 @@ export async function POST(request: Request) {
     }
 
     const livePublishAllowed = featureAccessForUser(user).liveEbayPublish;
-    const result = await preflightBulkEbayPublish(getPrisma(), {
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    const result = await preflightBulkEbayPublish(prisma, {
       userId: user.id,
+      accountId: account.id,
       itemIds,
       livePublishAllowed,
     });

@@ -40,11 +40,13 @@ export async function POST(request: Request) {
     }
 
     // Plan bulk-batch cap (stricter than the global per-request ceiling).
-    const account = await getActiveAccount(user.id);
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     assertBulkBatchSize(account, itemIds.length);
 
-    const result = await executeBulkEbayPublish(getPrisma(), {
+    const result = await executeBulkEbayPublish(prisma, {
       userId: user.id,
+      accountId: account.id,
       itemIds,
       bulkRunId: bulkRunId ?? randomUUID(),
     });

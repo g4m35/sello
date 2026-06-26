@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { preflightBulkEbayDelist } from "@/lib/marketplace/bulk-delist";
 import { BulkDelistPreflightRequestSchema } from "@/lib/marketplace/bulk-delist-request";
@@ -28,8 +29,11 @@ export async function POST(request: Request) {
     }
 
     const liveDelistAllowed = featureAccessForUser(user).ebayDelist;
-    const result = await preflightBulkEbayDelist(getPrisma() as never, {
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    const result = await preflightBulkEbayDelist(prisma as never, {
       userId: user.id,
+      accountId: account.id,
       itemIds,
       liveDelistAllowed,
     });

@@ -31,11 +31,13 @@ export async function POST(request: Request) {
     }
 
     // Monthly autopublish quota, enforced before the publish attempt.
-    const account = await getActiveAccount(user.id);
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     await assertWithinQuota(account, "autopublish", new Date());
 
-    const result = await executePublish(getPrisma(), {
+    const result = await executePublish(prisma, {
       userId: user.id,
+      accountId: account.id,
       inventoryItemId,
       marketplace,
     });

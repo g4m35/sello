@@ -73,10 +73,6 @@ export function validateEbayListingReadiness(
   const missing: string[] = [];
   const warnings: string[] = [];
 
-  if (input.item.sellerId !== input.userId) {
-    missing.push("item_ownership");
-  }
-
   if (!hasText(input.draft.title)) {
     missing.push("title");
   }

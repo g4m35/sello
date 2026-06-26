@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { safeErrorResponse } from "@/lib/errors";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
 import { DelistRequestSchema } from "@/lib/marketplace/delist-request";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
 import {
@@ -19,9 +20,12 @@ export async function POST(request: Request) {
     const user = await requireSupabaseUser(request);
     requireFeatureAccess(user, "ebayDelist");
     const parsed = DelistRequestSchema.parse(await request.json());
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
-    const result = await executeEbayDelist(getPrisma() as unknown as DelistPrismaLike, {
+    const result = await executeEbayDelist(prisma as unknown as DelistPrismaLike, {
       userId: user.id,
+      accountId: account.id,
       inventoryItemId: parsed.inventoryItemId,
       confirmLiveDelist: parsed.confirmLiveDelist,
     });

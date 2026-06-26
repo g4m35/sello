@@ -59,10 +59,12 @@ export type BulkDelistDeps = {
   config: BulkPublishConfig;
   preflightItem(input: {
     userId: string;
+    accountId?: string;
     itemId: string;
   }): Promise<{ status: DelistPreflightStatus }>;
   executeItem(input: {
     userId: string;
+    accountId?: string;
     itemId: string;
     bulkRunId: string;
   }): Promise<BulkDelistItemResult>;
@@ -71,7 +73,7 @@ export type BulkDelistDeps = {
 export type BulkDelistPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       select: { id: true };
     }): Promise<{ id: string } | null>;
   };
@@ -106,9 +108,9 @@ export function defaultBulkDelistDeps(
 
   return {
     config,
-    async preflightItem({ userId, itemId }) {
+    async preflightItem({ userId, accountId, itemId }) {
       const owned = await prisma.inventoryItem.findFirst({
-        where: { id: itemId, sellerId: userId },
+        where: accountId ? { id: itemId, accountId } : { id: itemId, sellerId: userId },
         select: { id: true },
       });
       if (!owned) return { status: "rejected" };
@@ -145,10 +147,11 @@ export function defaultBulkDelistDeps(
       }
       return { status: "not_listed" };
     },
-    async executeItem({ userId, itemId }) {
+    async executeItem({ userId, accountId, itemId }) {
       try {
         await executeEbayDelist(prisma as unknown as DelistPrismaLike, {
           userId,
+          accountId,
           inventoryItemId: itemId,
           confirmLiveDelist: true,
         });
@@ -184,12 +187,12 @@ export function defaultBulkDelistDeps(
 
 export async function preflightBulkEbayDelist(
   prisma: BulkDelistPrismaLike,
-  input: { userId: string; itemIds: string[]; liveDelistAllowed: boolean },
+  input: { userId: string; accountId?: string; itemIds: string[]; liveDelistAllowed: boolean },
   deps: BulkDelistDeps = defaultBulkDelistDeps(prisma),
 ): Promise<BulkDelistPreflightResult> {
   const itemIds = uniqueItemIds(input.itemIds);
   const items = await processInChunks(itemIds, deps.config, async (itemId) => {
-    const { status } = await deps.preflightItem({ userId: input.userId, itemId });
+    const { status } = await deps.preflightItem({ userId: input.userId, accountId: input.accountId, itemId });
     return { itemId, status };
   });
   const count = (status: DelistPreflightStatus) =>
@@ -210,13 +213,13 @@ export async function preflightBulkEbayDelist(
 
 export async function executeBulkEbayDelist(
   prisma: BulkDelistPrismaLike,
-  input: { userId: string; itemIds: string[]; bulkRunId: string },
+  input: { userId: string; accountId?: string; itemIds: string[]; bulkRunId: string },
   deps: BulkDelistDeps = defaultBulkDelistDeps(prisma),
 ): Promise<BulkDelistExecutionResult> {
   const itemIds = uniqueItemIds(input.itemIds);
   const items = await processInChunks(itemIds, deps.config, async (itemId) => {
     try {
-      return await deps.executeItem({ userId: input.userId, itemId, bulkRunId: input.bulkRunId });
+      return await deps.executeItem({ userId: input.userId, accountId: input.accountId, itemId, bulkRunId: input.bulkRunId });
     } catch {
       return {
         itemId,

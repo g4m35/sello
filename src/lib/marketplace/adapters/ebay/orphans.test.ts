@@ -26,14 +26,18 @@ function createFakePrisma() {
     },
     updates: [] as Array<Record<string, unknown>>,
     inventoryUpdates: [] as Array<Record<string, unknown>>,
+    itemLookups: [] as Array<Record<string, unknown>>,
   };
 
   const prisma = {
     _state: state,
     inventoryItem: {
-      async findFirst() {
+      async findFirst({ where }: { where: Record<string, unknown> }) {
+        state.itemLookups.push(where);
+        if (where.accountId && where.accountId !== "acc-1") return null;
         return {
           id: "item-1",
+          accountId: "acc-1",
           sellerId: "user-1",
           brand: "Nike",
           condition: "used_good",
@@ -147,6 +151,28 @@ describe("eBay orphan publish artifact recovery", () => {
     expect(scan.offers[0].offerId).toBe("offer-1");
     expect(client.getInventoryItem).toHaveBeenCalledWith("percsitem1");
     expect(client.getOffersBySku).toHaveBeenCalledWith("percsitem1");
+  });
+
+  it("uses account scope when the route provides an active account", async () => {
+    const prisma = createFakePrisma();
+    const client = {
+      getInventoryItem: vi.fn().mockResolvedValue(null),
+      getOffersBySku: vi.fn().mockResolvedValue([]),
+      deleteOffer: vi.fn(),
+      deleteInventoryItem: vi.fn(),
+    };
+
+    await scanEbayOrphanArtifacts(prisma, {
+      userId: "member-1",
+      accountId: "acc-1",
+      inventoryItemId: "item-1",
+    }, {
+      env: testEnv,
+      resolveAccessToken: vi.fn().mockResolvedValue("token"),
+      createClient: vi.fn().mockReturnValue(client),
+    });
+
+    expect(prisma._state.itemLookups[0]).toEqual({ id: "item-1", accountId: "acc-1" });
   });
 
   it("requires confirmation before cleanup", async () => {

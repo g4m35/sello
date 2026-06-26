@@ -31,6 +31,7 @@ type ConnectionRow = {
 
 type ItemRow = {
   id: string;
+  accountId?: string | null;
   sellerId: string;
   brand: string | null;
   condition: ItemCondition;
@@ -51,7 +52,7 @@ type MarketplaceListingRow = {
 export type EbayOrphanPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       include?: unknown;
       select?: unknown;
     }): Promise<ItemRow | null>;
@@ -173,6 +174,7 @@ export type EbayOrphanScanResult = {
 
 export type EbayOrphanInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
 };
 
@@ -357,7 +359,9 @@ async function loadOrphanContext(
 ) {
   const environment = getEbayEnvironment(deps.env);
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     include: { listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } },
   });
   if (!item) {

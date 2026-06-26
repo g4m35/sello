@@ -75,7 +75,7 @@ type ItemRow = {
 export type EbayPreflightPrismaLike = EbayMediaPrismaLike & {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       include?: unknown;
     }): Promise<ItemRow | null>;
   };
@@ -138,6 +138,7 @@ export type EbayPreflightResult = {
 
 export type EbayPreflightInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
 };
 
@@ -201,7 +202,9 @@ export async function preflightEbayListing(
       : isEbaySandboxPublishEnabled(env);
 
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     include: {
       listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 },
       photos: { orderBy: { position: "asc" } },

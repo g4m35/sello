@@ -175,6 +175,7 @@ describe("publish API auth boundaries", () => {
     expect(response.status).toBe(200);
     expect(mocks.executePublish).toHaveBeenCalledWith(prisma, {
       userId: "user-1",
+      accountId: "acc-1",
       inventoryItemId: "11111111-1111-4111-8111-111111111111",
       marketplace: "ebay",
     });
@@ -212,6 +213,7 @@ describe("publish API auth boundaries", () => {
     expect(response.status).toBe(501);
     expect(mocks.executePublish).toHaveBeenCalledWith(prisma, {
       userId: "user-1",
+      accountId: "acc-1",
       inventoryItemId: "22222222-2222-4222-8222-222222222222",
       marketplace: "grailed",
     });

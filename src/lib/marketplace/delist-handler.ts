@@ -24,7 +24,7 @@ import {
 export type DelistPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       select?: { id: true; status?: true; sellerId?: true };
     }): Promise<{ id: string; status?: InventoryStatus; sellerId?: string } | null>;
     update(args: {
@@ -107,6 +107,7 @@ export type DelistPrismaLike = {
 
 export type ExecuteEbayDelistInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
   confirmLiveDelist: boolean;
 };
@@ -115,6 +116,7 @@ export type EbayDelistFn = (
   prisma: EbayDelistPrismaLike,
   input: {
     userId: string;
+    accountId?: string;
     inventoryItemId: string;
     offerId: string;
     listingId: string | null;
@@ -139,7 +141,9 @@ export async function executeEbayDelist(
   assertDelistPersistenceDelegates(prisma);
 
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     select: { id: true, status: true, sellerId: true },
   });
 
@@ -228,6 +232,7 @@ export async function executeEbayDelist(
   try {
     result = await ebayDelist(prisma as unknown as EbayDelistPrismaLike, {
       userId: input.userId,
+      accountId: input.accountId,
       inventoryItemId: input.inventoryItemId,
       offerId: listing.externalOfferId!,
       listingId: listing.externalListingId,

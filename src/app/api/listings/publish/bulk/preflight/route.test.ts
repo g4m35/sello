@@ -5,12 +5,14 @@ import { AppError } from "@/lib/errors";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
   preflightBulkEbayPublish: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/marketplace/bulk-publish", () => ({
   preflightBulkEbayPublish: mocks.preflightBulkEbayPublish,
 }));
@@ -31,6 +33,7 @@ describe("bulk publish preflight route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "allowed@example.com");
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.getPrisma.mockReturnValue({});
     mocks.preflightBulkEbayPublish.mockResolvedValue({
       livePublishAllowed: false,
@@ -57,7 +60,7 @@ describe("bulk publish preflight route", () => {
     expect(res.status).toBe(200);
     expect(mocks.preflightBulkEbayPublish).toHaveBeenCalledWith(
       {},
-      expect.objectContaining({ userId: "user-1", livePublishAllowed: false }),
+      expect.objectContaining({ userId: "user-1", accountId: "acc-1", livePublishAllowed: false }),
     );
   });
 
@@ -66,7 +69,7 @@ describe("bulk publish preflight route", () => {
     await POST(req({ itemIds: [u(1)] }));
     expect(mocks.preflightBulkEbayPublish).toHaveBeenCalledWith(
       {},
-      expect.objectContaining({ livePublishAllowed: true }),
+      expect.objectContaining({ accountId: "acc-1", livePublishAllowed: true }),
     );
   });
 

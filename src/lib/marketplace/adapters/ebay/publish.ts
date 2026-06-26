@@ -80,7 +80,7 @@ type SellerConfigRow = {
 export type EbayPublishPrismaLike = EbayMediaPrismaLike & {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       include?: unknown;
       select?: unknown;
     }): Promise<ItemRow | null>;
@@ -136,6 +136,7 @@ export type EbayPublishDeps = {
 
 export type EbayPublishInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
 };
 
@@ -263,7 +264,9 @@ export async function publishEbayListing(
   }
 
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     include: {
       listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 },
       photos: { orderBy: { position: "asc" } },

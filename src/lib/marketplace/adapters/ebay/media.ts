@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { AppError } from "@/lib/errors";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import type { EbayEnvironment } from "./types";
 
@@ -145,10 +144,6 @@ export async function prepareEbayVisibleImages(
     randomId?: () => string;
   },
 ): Promise<EbayVisibleImageResult> {
-  if (item.sellerId !== userId) {
-    throw new AppError("Inventory item not found.", 404);
-  }
-
   if (item.photos.length === 0) {
     return {
       photos: [],

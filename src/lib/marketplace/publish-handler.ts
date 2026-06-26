@@ -55,7 +55,7 @@ export class PublishingMigrationMissingError extends AppError {
 export type PublishPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       select?: { id: true; status: true };
     }): Promise<{ id: string; status: InventoryStatus } | null>;
     update?(args: {
@@ -194,6 +194,7 @@ export type PublishPrismaLike = {
 
 export type ExecutePublishInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
   marketplace: Marketplace;
   bulkRunId?: string;
@@ -216,7 +217,7 @@ type AdapterResolver = (marketplace: Marketplace) => {
 
 export type EbayPublishFn = (
   prisma: EbayPublishPrismaLike,
-  input: { userId: string; inventoryItemId: string },
+  input: { userId: string; accountId?: string; inventoryItemId: string },
 ) => Promise<EbayPublishResult>;
 
 const defaultEbayPublish: EbayPublishFn = (prisma, input) =>
@@ -234,7 +235,9 @@ export async function executePublish(
   ebayPublish: EbayPublishFn = defaultEbayPublish,
 ): Promise<ExecutePublishResult> {
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     select: { id: true, status: true },
   });
 
@@ -431,6 +434,7 @@ async function executeEbayPublish(
   try {
     result = await ebayPublish(prisma as unknown as EbayPublishPrismaLike, {
       userId: input.userId,
+      accountId: input.accountId,
       inventoryItemId: input.inventoryItemId,
     });
   } catch (error) {
