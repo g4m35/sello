@@ -138,6 +138,10 @@ enum PublishAttemptStatus {
 model InventoryItem {
   id                    String               @id @default(uuid()) @db.Uuid
   sellerId              String               @db.Uuid
+  // Owning account (shared workspace). Nullable during backfill; the app scopes
+  // reads by account once present. sellerId stays as the creating member.
+  accountId             String?              @db.Uuid
+  account               Account?             @relation(fields: [accountId], references: [id])
   status                InventoryStatus      @default(DRAFTING)
   productName           String
   brand                 String?
@@ -171,6 +175,7 @@ model InventoryItem {
   reviewTasks           ReviewTask[]
 
   @@index([sellerId, status])
+  @@index([accountId, status])
   @@index([createdAt])
 }
 
@@ -772,6 +777,7 @@ model Account {
   members      AccountMember[]
   subscription Subscription?
   usage        UsageCounter[]
+  inventory    InventoryItem[]
 }
 
 model AccountMember {
