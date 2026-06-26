@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   executePublishActual: undefined as
     | undefined
     | ((...args: unknown[]) => Promise<unknown>),
+  getActiveAccount: vi.fn(),
+  assertWithinQuota: vi.fn(),
+  incrementUsage: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -20,6 +23,12 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
+}));
+
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/billing/usage", () => ({
+  assertWithinQuota: mocks.assertWithinQuota,
+  incrementUsage: mocks.incrementUsage,
 }));
 
 vi.mock("@/lib/marketplace/publish-handler", async (importOriginal) => {
@@ -39,10 +48,36 @@ describe("publish API auth boundaries", () => {
     vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "allowed@example.com");
     mocks.executePublish.mockReset();
     mocks.executePublish.mockImplementation(mocks.executePublishActual!);
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "kingpin" });
+    mocks.assertWithinQuota.mockResolvedValue(undefined);
+    mocks.incrementUsage.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("returns 402 and does not publish when the autopublish quota is exhausted", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
+    mocks.assertWithinQuota.mockRejectedValue(
+      new AppError(
+        "You have used all of your autopublishes for this billing period. Upgrade your plan for more.",
+        402,
+        "QUOTA_EXCEEDED_AUTOPUBLISH",
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "11111111-1111-4111-8111-111111111111", marketplace: "ebay" }),
+      }),
+    );
+
+    expect(response.status).toBe(402);
+    expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_AUTOPUBLISH");
+    expect(mocks.executePublish).not.toHaveBeenCalled();
+    expect(mocks.incrementUsage).not.toHaveBeenCalled();
   });
 
   it("rejects publish attempts when the seller is not signed in", async () => {

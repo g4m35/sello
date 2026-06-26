@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { safeErrorResponse } from "@/lib/errors";
+import { logUnexpectedError, safeErrorResponse } from "@/lib/errors";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { getPrisma } from "@/lib/prisma";
 import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
@@ -28,11 +30,25 @@ export async function POST(request: Request) {
       requireFeatureAccess(user, "liveEbayPublish");
     }
 
+    // Monthly autopublish quota, enforced before the publish attempt.
+    const account = await getActiveAccount(user.id);
+    await assertWithinQuota(account, "autopublish", new Date());
+
     const result = await executePublish(getPrisma(), {
       userId: user.id,
       inventoryItemId,
       marketplace,
     });
+
+    // Count only a real, successful publish (2xx). Draft-only NOT_IMPLEMENTED
+    // (501) and failures never burn quota. Best-effort, logged on failure.
+    if (result.httpStatus >= 200 && result.httpStatus < 300) {
+      try {
+        await incrementUsage(account.id, "autopublish", new Date());
+      } catch (usageError) {
+        logUnexpectedError("autopublish_usage_increment", usageError);
+      }
+    }
 
     return NextResponse.json(
       {
