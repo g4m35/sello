@@ -1962,3 +1962,73 @@ on auth.ebay.com.
 - **ESLint `react-hooks/set-state-in-effect` is an error**: do data fetching in an async function defined *inside* the effect; trigger refetches via a `reloadKey` state, not by calling a setState-bearing `useCallback` in the effect.
 - **DB env**: runtime reads `DATABASE_URL` (the `resale_app` pooler role); don't switch to the postgres owner. Vercel also injects `POSTGRES_*` — keep `DATABASE_URL` set explicitly. `getRequiredEnv()` rejects any value containing `[`.
 - **Integrity**: never fake publishing/comps; never invent prices; no secrets in code/logs/this file; scope every query to the seller.
+
+---
+
+# Inventory safety layer (double-sell prevention) — feat/marketplace-safety-layer
+
+Pre-paid-customer marketplace safety layer, Part 1 (core). Built in an isolated
+worktree off develop; additive only; existing eBay/Etsy/export behavior unchanged.
+
+## What was built (validated, landed)
+- Source-of-truth inventory model + idempotent double-sell engine.
+- Email-signal ingestion MVP (parser + fail-closed endpoint).
+- Manual action routes (mark sold / add marketplace URL / resolve review task).
+
+## Tables added/changed (migration 20260626000000_inventory_safety_layer)
+- InventoryItem +: quantityAvailable, soldSourceMarketplace, soldSourceListingId,
+  lockVersion (optimistic concurrency).
+- MarketplaceListing +: externalUrl, titleSnapshot, skuSnapshot, metadata; status
+  enum +ENDED/UNKNOWN/NEEDS_REVIEW/SUBMITTED_FOR_AUDIT/REJECTED.
+- New: InventoryEvent, ReviewTask, SyncJob (idempotencyKey FULL unique), EmailSignal
+  (providerMessageId unique), Notification. RLS enabled, no policies (resale_app
+  BYPASSRLS pattern). NOT applied to any DB.
+
+## Endpoints added
+- POST /api/inventory/email-signals  (internal-secret, fail-closed)
+- POST /api/inventory/mark-sold
+- POST /api/inventory/listings        (manual marketplace URL)
+- POST /api/inventory/review-tasks/[id]/resolve
+
+## Env vars
+- INVENTORY_EMAIL_INGEST_SECRET (server-only). Unset => endpoint returns 503.
+
+## Automated vs manual
+- Automated: high-confidence sale signal -> mark sold -> queue delist for other
+  platforms -> notify. eBay delist enqueued via the existing adapter path; all
+  non-eBay marketplaces create a manual_delist_required review task with URL +
+  instructions.
+- Manual: medium/low-confidence signals create review tasks only (never auto-
+  delist). Manual mark-sold and add-URL via the routes above.
+
+## Marketplace keys
+- vinted / stockx / tiktok_shop were ALREADY present (enum, registry, capability
+  matrix, labels, tests — PR #59). They ALREADY fail closed via the stub adapter
+  (NOT_IMPLEMENTED). No live calls exist for them.
+
+## Known limitations / NOT done this pass (sequenced next steps)
+- TikTok Shop full native integration (auth/signing/products/orders/webhooks):
+  DEFERRED. Must be implemented against official TikTok Shop API docs (no invented
+  endpoints) and stay fail-closed behind TIKTOK_SHOP_ENABLED. Today TikTok is a
+  fail-closed stub, which satisfies "block live calls unless enabled".
+- Part 3 pricing tiers (Free/Pro/Kingpin, usage metering, seats): OWNED BY THE
+  CONCURRENT BILLING BRANCH (src/lib/billing/* on security/rls-least-privilege),
+  which already implements the plan catalog/entitlements/usage and is wired into
+  draft/publish/bulk routes. NOT rebuilt here to avoid a destructive conflict. The
+  safety engine is tier-agnostic; gate its automation (auto-delist / sold
+  detection) behind billing entitlements (fullInventorySync/autoDelist/
+  soldDetection) when that branch merges. Until then, gated automation should fall
+  back to manual review tasks (the engine already creates them).
+- Inventory sync UI (platform chips, sync panel, buttons), notifications UI, and
+  the order-sync/webhook consumers: DEFERRED.
+- Migration is NOT applied; apply via the documented Supabase path after develop merge.
+
+## Validation (in worktree, against develop)
+- prisma validate: pass; tsc --noEmit: clean; lint: 0 errors (2 pre-existing
+  warnings); npm test: 163 files / 1094 tests pass; next build: success.
+
+## Risks
+- resale_app BYPASSRLS: isolation depends on app-layer userId filters (engine
+  enforces them; keep that invariant).
+- Email parser is heuristic; only HIGH-confidence + exact match auto-acts, all else
+  -> review task (by design, to avoid wrong auto-delist).
