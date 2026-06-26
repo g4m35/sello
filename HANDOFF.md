@@ -1874,29 +1874,37 @@ on auth.ebay.com.
 
 ## Recent work (newest first)
 - 2026-06-25 (Claude): Stripe billing + usage metering + seats, on
-  `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed). Spec +
-  phased plan in `docs/superpowers/`. **Phase 0 + Phase 1 complete and build-green;
-  Phase 2 metering primitives complete.** Shipped: plan catalog (Free $0 / Pro $20
-  / Kingpin $119, `src/lib/billing/plans.ts`), Stripe config loader + SDK client,
-  idempotent product-sync script, Prisma models (Account, AccountMember,
-  Subscription, UsageCounter, StripeEvent) + migration `20260625010000_add_billing_models`
-  (**created, NOT applied** — apply via develop), account resolver, Stripe customer
-  helper, `/api/billing/checkout` + `/portal` + `/webhook` (signed, idempotent),
-  billing errors, entitlements resolver, usage metering primitives. **Phase 2
-  enforcement wired for the two highest-value active metered actions:** AI-listing
-  quota on `/api/listings/draft` (402 fail-fast, increment on success) and
-  comp-refresh quota on `/api/listings/comps/refresh` (402 before cooldown/fetch).
-  Gate green: 1063 tests, build 0. RLS untouched per owner instruction (new tables
-  follow the existing deny-all enable-no-policy convention).
-  **Deferred (low current value, gated features dormant):** autopublish quota +
-  bulk batch cap (live publishing dormant), marketplace-connection cap (connects
-  alpha-allowlisted). Pattern proven (see draft/refresh routes): getActiveAccount
-  -> assertWithinQuota(metric) before work -> incrementUsage on success.
-  **Remaining: those points, pricing + billing UI, team seats.** No live Stripe
-  calls; no keys in repo.
-  **Branch base note:** branched before the RLS-clean rebase (hash moved 9ff9471
-  -> fe28c6c); REBASE onto current develop before merge. Work also anchored at
-  branch `recover/stripe-billing-metering-seats`.
+  `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed; rebased onto
+  current `origin/develop` incl. RLS #60). Spec + phased plan in `docs/superpowers/`.
+  **Phases 0-3 complete + Phase 4.1 (seats membership) complete. Gate green: 1092
+  tests, lint 0, prisma valid, build 0.**
+  - **Phase 0-1 (billing core):** plan catalog (Free $0 / Pro $20 / Kingpin $119,
+    `src/lib/billing/plans.ts`), config loader + SDK client, idempotent
+    product-sync script, Prisma models (Account, AccountMember, Subscription,
+    UsageCounter, StripeEvent) + migration `20260625010000_add_billing_models`
+    (**created, NOT applied** — apply via develop), account resolver, customer
+    helper, `/api/billing/checkout` + `/portal` + `/webhook` (signed, idempotent).
+  - **Phase 2 (metering, fully wired):** errors, entitlements, usage primitives;
+    enforcement on AI-listing (`/api/listings/draft`), comp-refresh
+    (`/api/listings/comps/refresh`), autopublish (`/api/listings/publish`), bulk
+    batch cap (publish/delist bulk), marketplace-connection cap (eBay/Etsy connect).
+  - **Phase 3 (UI):** `/api/billing/usage` snapshot, public `/pricing`, in-app
+    `settings/billing` with usage meters + upgrade(checkout)/manage(portal).
+  - **Phase 4.1 (seats):** `membership.ts` invite/accept/revoke + seat-limit
+    enforcement; `/api/account/members` routes. `accountMemberIds()` is the seam.
+  RLS untouched per owner instruction (new tables follow the deny-all
+  enable-no-policy convention). No live Stripe calls; no keys in repo.
+  **DEFERRED — Phase 4.2/4.3 (data-scope migration):** make invited members
+  actually SHARE one inventory by adding `accountId` to seller-scoped tables and
+  rewriting every `sellerId/userId = me` query to account membership. NOT done:
+  it is tenant-isolation-critical (a mistake leaks one user's data to another) and
+  touches dozens of routes; it needs its own focused pass with the full gate plus a
+  manual cross-member access matrix. Until then, seats can be invited/accepted but
+  members still see only their own data. `acceptInvite` also still needs wiring into
+  the post-login flow.
+  **Operator steps to run it (test mode):** apply the migration via develop; set
+  sk_test/pk_test in `.env.local`; run `scripts/stripe/sync-products.ts`;
+  `stripe listen --forward-to localhost:3000/api/billing/webhook`; test-card e2e.
 - 2026-06-23 (Claude): Etsy marketplace channel (copy-ready) on
   `feature/etsy-marketplace-channel`. Enum + adapter + `formatEtsy` export +
   research doc + readiness-isolation tests. Migration file created, NOT applied.
