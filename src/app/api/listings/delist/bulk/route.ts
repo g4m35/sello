@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertBulkBatchSize } from "@/lib/billing/batch";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { executeBulkEbayDelist } from "@/lib/marketplace/bulk-delist";
 import { BulkDelistExecuteRequestSchema } from "@/lib/marketplace/bulk-delist-request";
@@ -34,6 +36,10 @@ export async function POST(request: Request) {
         "BULK_DELIST_TOO_MANY_ITEMS",
       );
     }
+
+    // Plan bulk-batch cap (stricter than the global per-request ceiling).
+    const account = await getActiveAccount(user.id);
+    assertBulkBatchSize(account, itemIds.length);
 
     const result = await executeBulkEbayDelist(getPrisma() as never, {
       userId: user.id,

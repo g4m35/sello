@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertBulkBatchSize } from "@/lib/billing/batch";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { executeBulkEbayPublish } from "@/lib/marketplace/bulk-publish";
 import {
@@ -36,6 +38,10 @@ export async function POST(request: Request) {
         "BULK_PUBLISH_TOO_MANY_ITEMS",
       );
     }
+
+    // Plan bulk-batch cap (stricter than the global per-request ceiling).
+    const account = await getActiveAccount(user.id);
+    assertBulkBatchSize(account, itemIds.length);
 
     const result = await executeBulkEbayPublish(getPrisma(), {
       userId: user.id,

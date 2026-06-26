@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   executeBulkEbayPublish: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -14,6 +15,7 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 vi.mock("@/lib/marketplace/bulk-publish", () => ({
   executeBulkEbayPublish: mocks.executeBulkEbayPublish,
 }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { POST } from "./route";
 
@@ -32,6 +34,7 @@ describe("bulk publish execution route", () => {
     vi.clearAllMocks();
     vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "allowed@example.com");
     mocks.getPrisma.mockReturnValue({});
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.executeBulkEbayPublish.mockResolvedValue({
       bulkRunId: u(999),
       total: 1,
@@ -43,6 +46,18 @@ describe("bulk publish execution route", () => {
     });
   });
   afterEach(() => vi.unstubAllEnvs());
+
+  it("rejects a batch larger than the plan's bulk limit before publishing", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
+    // free plan caps bulk batches at 5; send 6.
+    const res = await POST(
+      req({ itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)], confirmLivePublish: true }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("BULK_BATCH_TOO_LARGE");
+    expect(mocks.executeBulkEbayPublish).not.toHaveBeenCalled();
+  });
 
   it("rejects anonymous callers before any side effects", async () => {
     mocks.requireSupabaseUser.mockRejectedValue(new AppError("Sign in", 401));

@@ -6,10 +6,12 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(() => ({})),
   requireSupabaseUser: vi.fn(),
   executeBulkEbayDelist: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/marketplace/bulk-delist", async (orig) => {
   const actual = await orig<typeof import("@/lib/marketplace/bulk-delist")>();
   return { ...actual, executeBulkEbayDelist: mocks.executeBulkEbayDelist };
@@ -31,6 +33,7 @@ describe("bulk delist execute route", () => {
     vi.clearAllMocks();
     vi.stubEnv("EBAY_DELIST_EMAILS", "owner@example.com");
     mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "owner@example.com" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" });
   });
 
   afterEach(() => vi.unstubAllEnvs());
