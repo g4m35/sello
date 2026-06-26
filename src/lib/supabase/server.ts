@@ -2,8 +2,6 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient, type User } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-import { acceptInvite } from "@/lib/billing/membership";
-
 import { AppError, getRequiredEnv } from "../errors";
 
 function createSupabaseAuthClient() {
@@ -141,5 +139,6 @@ export async function requireSupabaseUserFromRequestOrCookies(
 
 async function acceptPendingInvite(user: User): Promise<void> {
   if (!user.email) return;
+  const { acceptInvite } = await import("@/lib/billing/membership");
   await acceptInvite(user.id, user.email);
 }
