@@ -97,6 +97,7 @@ export async function POST(request: Request) {
       data: {
         id: createdInventoryItemId,
         sellerId: user.id,
+        accountId: account.id,
         productName: "Awaiting Gemini identification",
       },
     });

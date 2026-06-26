@@ -59,11 +59,24 @@ export async function getOrCreateAccount(
   }
 }
 
-// The account whose data and billing the user acts under. Phase 1: the user's
-// own account. (Widened to active membership when team seats ship.)
+// The account whose data and billing the user acts under. Prefers an account
+// the user owns (their primary workspace, unchanged for existing users), then an
+// account they were invited to and are an active member of, otherwise creates
+// their personal account. Returning a shared account is how invited members see
+// the same inventory.
 export async function getActiveAccount(
   userId: string,
   prisma: Db = getPrisma(),
 ): Promise<AccountRecord> {
+  const owned = await prisma.account.findUnique({ where: { ownerUserId: userId } });
+  if (owned) return toRecord(owned);
+
+  const membership = await prisma.accountMember.findFirst({
+    where: { userId, status: "active" },
+    orderBy: { createdAt: "asc" },
+    include: { account: true },
+  });
+  if (membership?.account) return toRecord(membership.account);
+
   return getOrCreateAccount(userId, prisma);
 }

@@ -7,11 +7,13 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   findMany: vi.fn(),
   deleteMany: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { DELETE } from "./route";
 
@@ -26,6 +28,7 @@ describe("DELETE /api/listings — live-listing delete safety", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.deleteMany.mockResolvedValue({ count: 0 });
     mocks.getPrisma.mockReturnValue({
       inventoryItem: { findMany: mocks.findMany, deleteMany: mocks.deleteMany },
@@ -60,7 +63,7 @@ describe("DELETE /api/listings — live-listing delete safety", () => {
     ]);
     // Only the safe ids are passed to deleteMany; live ids never cascade.
     expect(mocks.deleteMany).toHaveBeenCalledWith({
-      where: { id: { in: ["a", "c"] }, sellerId: "user-1" },
+      where: { id: { in: ["a", "c"] }, accountId: "acc-1" },
     });
   });
 
@@ -74,9 +77,9 @@ describe("DELETE /api/listings — live-listing delete safety", () => {
 
     expect(payload.deleted).toEqual([]);
     expect(payload.blocked).toEqual([{ itemId: "b", reason: "LIVE_MARKETPLACE_LISTING" }]);
-    // Unowned ids appear in neither bucket; findMany is seller-scoped.
+    // Unowned ids appear in neither bucket; findMany is account-scoped.
     expect(mocks.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ sellerId: "user-1" }) }),
+      expect.objectContaining({ where: expect.objectContaining({ accountId: "acc-1" }) }),
     );
     expect(mocks.deleteMany).not.toHaveBeenCalled();
   });

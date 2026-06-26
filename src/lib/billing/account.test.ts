@@ -4,7 +4,7 @@ import type { getPrisma } from "@/lib/prisma";
 
 vi.mock("server-only", () => ({}));
 
-import { getOrCreateAccount } from "./account";
+import { getActiveAccount, getOrCreateAccount } from "./account";
 
 type Db = ReturnType<typeof getPrisma>;
 
@@ -73,5 +73,54 @@ describe("getOrCreateAccount", () => {
 
     expect(account).toEqual(found);
     expect(findUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("getActiveAccount", () => {
+  function db(parts: {
+    accountFind?: ReturnType<typeof vi.fn>;
+    memberFind?: ReturnType<typeof vi.fn>;
+    accountCreate?: ReturnType<typeof vi.fn>;
+  }): Db {
+    return {
+      account: {
+        findUnique: parts.accountFind ?? vi.fn().mockResolvedValue(null),
+        create: parts.accountCreate ?? vi.fn(),
+      },
+      accountMember: {
+        findFirst: parts.memberFind ?? vi.fn().mockResolvedValue(null),
+      },
+    } as unknown as Db;
+  }
+
+  it("returns the account the user owns (unchanged for existing users)", async () => {
+    const accountFind = vi
+      .fn()
+      .mockResolvedValue({ id: "acc-own", ownerUserId: "user-1", plan: "pro" });
+    const memberFind = vi.fn();
+    const account = await getActiveAccount("user-1", db({ accountFind, memberFind }));
+
+    expect(account).toEqual({ id: "acc-own", ownerUserId: "user-1", plan: "pro" });
+    expect(memberFind).not.toHaveBeenCalled();
+  });
+
+  it("returns the shared account an invitee is an active member of", async () => {
+    const accountFind = vi.fn().mockResolvedValue(null);
+    const memberFind = vi.fn().mockResolvedValue({
+      account: { id: "acc-team", ownerUserId: "owner-9", plan: "kingpin" },
+    });
+    const account = await getActiveAccount("invitee-2", db({ accountFind, memberFind }));
+
+    expect(account).toEqual({ id: "acc-team", ownerUserId: "owner-9", plan: "kingpin" });
+  });
+
+  it("creates a personal account when the user has none", async () => {
+    const accountCreate = vi
+      .fn()
+      .mockResolvedValue({ id: "acc-new", ownerUserId: "fresh-3", plan: "free" });
+    const account = await getActiveAccount("fresh-3", db({ accountCreate }));
+
+    expect(account).toEqual({ id: "acc-new", ownerUserId: "fresh-3", plan: "free" });
+    expect(accountCreate).toHaveBeenCalledTimes(1);
   });
 });
