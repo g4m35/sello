@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertCanConnectMarketplace } from "@/lib/billing/connections";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import {
   getEbayConfig,
@@ -18,6 +20,12 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
+
+    // Plan connection cap: block a new marketplace once at the plan limit
+    // (reconnecting eBay is always allowed).
+    const account = await getActiveAccount(user.id);
+    await assertCanConnectMarketplace(account, "ebay");
+
     const config = getEbayConfig();
     const state = createRandomEbayOAuthState();
     const authorizationUrl = buildEbayAuthorizationUrl(config, state);

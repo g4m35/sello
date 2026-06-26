@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertCanConnectMarketplace } from "@/lib/billing/connections";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getEtsyConfig, getEtsyOAuthStateSecret } from "@/lib/marketplace/adapters/etsy/config";
 import { requireEtsyCapability } from "@/lib/marketplace/adapters/etsy/capabilities";
@@ -20,6 +22,11 @@ export async function GET(request: Request) {
     // Fail closed: only an allowlisted seller with the global switch on may begin
     // an Etsy OAuth flow.
     requireEtsyCapability(user, "connect");
+
+    // Plan connection cap: block a new marketplace once at the plan limit
+    // (reconnecting Etsy is always allowed).
+    const account = await getActiveAccount(user.id);
+    await assertCanConnectMarketplace(account, "etsy");
 
     const config = getEtsyConfig();
     const state = createRandomEtsyOAuthState();
