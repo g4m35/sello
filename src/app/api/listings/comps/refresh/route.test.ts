@@ -123,7 +123,7 @@ describe("explicit comp refresh route", () => {
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
   });
 
-  it("runs provider fetch only for an explicit seller-scoped refresh", async () => {
+  it("runs provider fetch only for an explicit account-scoped refresh", async () => {
     const prisma = {
       inventoryItem: {
         findFirst: vi.fn().mockResolvedValue({ id: "item-1" }),
@@ -144,14 +144,14 @@ describe("explicit comp refresh route", () => {
 
     expect(response.status).toBe(200);
     expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
-      where: { id: "item-1", sellerId: "user-1" },
+      where: { id: "item-1", accountId: "acc-1" },
       select: { id: true },
     });
     expect(mocks.runCompFetch).toHaveBeenCalledWith(
       prisma,
       "item-1",
       "user-1",
-      { force: true, paidProvidersAllowed: true },
+      { force: true, paidProvidersAllowed: true, accountId: "acc-1" },
     );
   });
 

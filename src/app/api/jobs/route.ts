@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { inventoryChildScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { summarizeJobLogs } from "@/lib/jobs/summary";
 import { listMarketplaceAdapters } from "@/lib/marketplace/adapter";
@@ -16,9 +18,10 @@ export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const jobs = await prisma.jobLog.findMany({
-      where: { inventoryItem: { sellerId: user.id } },
+      where: inventoryChildScope(account),
       orderBy: { createdAt: "desc" },
       take: 25,
       select: {

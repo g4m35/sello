@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -10,6 +11,7 @@ vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
 }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { AppError } from "@/lib/errors";
 
@@ -20,6 +22,7 @@ const params = Promise.resolve({ compId: "11111111-1111-1111-1111-111111111111" 
 describe("price comp [compId] API auth boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.requireSupabaseUser.mockRejectedValue(
       new AppError("Sign in before creating a listing draft.", 401),
     );
@@ -102,6 +105,14 @@ describe("price comp [compId] API auth boundaries", () => {
     const serialized = JSON.stringify(payload);
 
     expect(response.status).toBe(200);
+    expect(prisma.priceComp.findFirst).toHaveBeenCalledWith({
+      where: { id: "11111111-1111-1111-1111-111111111111", inventoryItem: { accountId: "acc-1" } },
+      select: { id: true, inventoryItemId: true },
+    });
+    expect(prisma.priceComp.findMany).toHaveBeenCalledWith({
+      where: { inventoryItemId: "item-1", inventoryItem: { accountId: "acc-1" } },
+      orderBy: { createdAt: "desc" },
+    });
     expect(payload.comps[0].source).toBe("Fresh sold comps");
     expect(serialized).not.toContain("apify-ebay-sold");
   });

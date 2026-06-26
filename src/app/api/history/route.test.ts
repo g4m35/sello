@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { AppError } from "@/lib/errors";
 
@@ -18,7 +20,10 @@ const req = () => new Request("http://localhost/api/history");
 // Representative coverage for the route error-sanitization sweep: the same
 // safeClientMessage wiring is applied identically across the swept routes.
 describe("GET /api/history error sanitization", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it("returns the safe author message for an AppError (401)", async () => {
@@ -50,5 +55,20 @@ describe("GET /api/history error sanitization", () => {
     // The raw message is not echoed into logs either (class + code only).
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain("token=secret");
     consoleError.mockRestore();
+  });
+
+  it("scopes attempt history to the active account", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "member-1" });
+    mocks.getPrisma.mockReturnValue({ publishAttempt: { findMany } });
+
+    const res = await GET(req());
+
+    expect(res.status).toBe(200);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { marketplaceListing: { inventoryItem: { accountId: "acc-1" } } },
+      }),
+    );
   });
 });

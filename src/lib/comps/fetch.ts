@@ -49,6 +49,7 @@ export type RunCompFetchOptions = {
   sources?: CompSource[];
   force?: boolean;
   paidProvidersAllowed?: boolean;
+  accountId?: string;
 };
 
 export function isAutoDiscoveryEnabled(): boolean {
@@ -107,8 +108,8 @@ function hasMeaningfulIdentity(item: {
 
 // Runs every enabled comp source for an item, dedupes + trims outliers, and
 // replaces the item's automatic comps (source "auto:*"). Manual comps, if any,
-// are left untouched. The lookup is scoped to the owning seller so the helper is
-// safe even if a caller forgets to verify ownership first.
+// are left untouched. Routes pass accountId so team members share the same
+// inventory; the sellerId fallback keeps older direct callers fail-closed.
 export async function runCompFetch(
   prisma: Db,
   inventoryItemId: string,
@@ -116,7 +117,9 @@ export async function runCompFetch(
   options: RunCompFetchOptions = {},
 ): Promise<CompFetchResult> {
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: inventoryItemId, sellerId },
+    where: options.accountId
+      ? { id: inventoryItemId, accountId: options.accountId }
+      : { id: inventoryItemId, sellerId },
     include: { listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } },
   });
   if (!item) {

@@ -40,18 +40,15 @@ migration `20260626000000_inventory_safety_layer` still UNAPPLIED (untouched).
   files / **1140 tests pass** (was 1129; +11 new); `next build` success.
 2026-06-25 — Codex. Continued `feature/stripe-billing-metering-seats`
 Phase 4.3 account-scope migration (NOT merged, NOT deployed). No env changes, no
-live Stripe/eBay/Etsy calls, no migrations applied. Item-centric routes now use
-active account scope instead of acting-user ownership filters: listing detail
-GET/PATCH + `loadItemDetailState`, photos POST/PATCH/DELETE, copy-ready export,
-lifecycle, bulk price update, CSV import (stamps `accountId`), and draft
-PATCH/POST. `sellerId` remains the acting member/creator attribution. Focused
-verification green: `npx tsc --noEmit --pretty false`; `npm test -- --run
-'src/app/api/listings/[id]/route.test.ts'
-'src/app/api/listings/[id]/export/route.test.ts'
-'src/app/api/listings/draft/draft-update.test.ts'
-src/app/api/listings/lifecycle/route.test.ts src/lib/view/server-map.test.ts`
-(35 tests); `npm run lint` 0 errors / 2 pre-existing warnings in
-`draft-actions.test.ts`; `npx prisma validate`; `git diff --check` clean.
+live Stripe/eBay/Etsy calls, no migrations applied. Committed item-centric slice
+(`7bde3e2`) and then migrated comps/history/jobs slice: comps GET/POST,
+refresh, `[compId]`, provider-usage, history, jobs, and `runCompFetch` account
+option now use active account scope where available. `sellerId` remains creator/
+acting-member attribution; provider ledger still stores userId, with provider
+usage widened only to active account-member ids. Verification for latest batch:
+`npx tsc --noEmit --pretty false`; focused 59-test run for comps/refresh/
+`[compId]`/provider-usage/history/jobs/fetch/fetch-paid-budget; `git diff --check`
+clean.
 
 ## Last updated (previous)
 2026-06-24 — Claude. **PR #57 (gated Etsy API integration FOUNDATION) shipped to
@@ -1888,6 +1885,17 @@ on auth.ebay.com.
 
 ## Recent work (newest first)
 - 2026-06-25 (Codex): Continued Phase 4.3 account-scope migration on
+  `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed). Migrated
+  comps GET/POST, explicit comp refresh, comp `[compId]` update/delete,
+  provider-usage, history, jobs, and `runCompFetch` to account scope. Comp refresh
+  now checks item ownership with `accountId`, applies account quota on the same
+  account object, and passes `accountId` into `runCompFetch`; provider usage uses
+  `accountMemberIds(account.id)` so active members share usage visibility while
+  revoked/unrelated users are excluded. Verification: `npx tsc --noEmit --pretty
+  false`; focused 59-test run for comps/refresh/`[compId]`/provider-usage/history/
+  jobs/fetch/fetch-paid-budget; stale seller-filter scan clean for this batch;
+  `git diff --check` clean. No env changes, no live calls, no migrations applied.
+- 2026-06-25 (Codex): Continued Phase 4.3 account-scope migration on
   `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed). Migrated the
   item-centric seller-data slice to active account scope: inventory detail GET/PATCH
   and `loadItemDetailState`, photos POST/PATCH/DELETE, copy-ready export,
@@ -1924,16 +1932,16 @@ on auth.ebay.com.
   `20260625020000_inventory_account_scope` (created, NOT applied); `scope.ts`
   (`accountScope`); `getActiveAccount` widened (owner account, then active
   membership = shared workspace, then personal); inventory LIST + bulk-delete
-  account-scoped; draft create stamps `accountId`; Codex follow-up migrated item
-  detail/photos/export/lifecycle/price/import/draft-detail routes to account scope.
+  account-scoped; draft create stamps `accountId`; Codex follow-ups migrated item
+  detail/photos/export/lifecycle/price/import/draft-detail routes plus comps/
+  provider-usage/history/jobs to account scope.
   Behavior-preserving for existing owners (single-member account == old sellerId
   scope); cross-member resolution tested. SAFE because sharing is dormant in
   practice: `acceptInvite` is not yet wired into login, so no active non-owner
   memberships exist.
   **STILL PENDING (mechanical, well-patterned — replace `{ sellerId: user.id }`
   with `accountScope(account)` / `{ inventoryItem: { accountId } }`, scope by
-  account after `getActiveAccount`, stamp accountId on writes):** comps read +
-  refresh + `[compId]`; history; jobs; the publish/delist pipeline
+  account after `getActiveAccount`, stamp accountId on writes):** the publish/delist pipeline
   (`publish-handler`, `bulk-publish`, `delist-handler`, `bulk-delist`) and eBay/Etsy
   adapters that thread `sellerId` (preflight, publish, delist, orphans, mapper,
   media, storage paths); decide whether `MarketplaceConnection`/`EbaySellerConfig`
