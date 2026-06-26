@@ -20,6 +20,7 @@ export interface MemberRecord {
 
 interface RawMember {
   id: string;
+  accountId?: string;
   userId: string | null;
   invitedEmail: string | null;
   role: string;
@@ -71,6 +72,26 @@ export async function listMembers(
   return members.map(toRecord);
 }
 
+export async function assertCanManageAccount(
+  account: { id: string; ownerUserId: string },
+  userId: string,
+  prisma: Db = getPrisma(),
+): Promise<void> {
+  if (account.ownerUserId === userId) return;
+
+  const membership = await prisma.accountMember.findFirst({
+    where: { accountId: account.id, userId, status: "active", role: "admin" },
+    select: { id: true },
+  });
+  if (membership) return;
+
+  throw new AppError(
+    "Only account owners and admins can manage this account.",
+    403,
+    "ACCOUNT_MANAGEMENT_FORBIDDEN",
+  );
+}
+
 // A pending invite OR an active member both consume a seat. Revoked rows do not.
 async function seatsUsed(accountId: string, prisma: Db): Promise<number> {
   return prisma.accountMember.count({
@@ -91,6 +112,15 @@ export async function inviteMember(
   if (role === "owner") {
     throw new AppError("Cannot invite a second owner.", 400, "INVALID_INVITE_ROLE");
   }
+
+  const existing = await prisma.accountMember.findFirst({
+    where: {
+      accountId: account.id,
+      invitedEmail,
+      status: { in: ["active", "invited"] },
+    },
+  });
+  if (existing) return toRecord(existing);
 
   const limit = seatLimit(account.plan);
   if ((await seatsUsed(account.id, prisma)) >= limit) {
@@ -120,6 +150,19 @@ export async function acceptInvite(
     orderBy: { createdAt: "asc" },
   });
   if (!invite) return null;
+
+  if (invite.accountId) {
+    const active = await prisma.accountMember.findFirst({
+      where: { accountId: invite.accountId, userId, status: "active" },
+    });
+    if (active) {
+      await prisma.accountMember.update({
+        where: { id: invite.id },
+        data: { status: "revoked", userId: null },
+      });
+      return toRecord(active);
+    }
+  }
 
   const member = await prisma.accountMember.update({
     where: { id: invite.id },

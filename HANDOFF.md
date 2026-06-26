@@ -2275,3 +2275,46 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
   enforces them; keep that invariant).
 - Email parser is heuristic; only HIGH-confidence + exact match auto-acts, all else
   -> review task (by design, to avoid wrong auto-delist).
+
+---
+
+# Stripe billing / account-scope PR checkpoint (2026-06-26)
+
+- Branch: `feature/stripe-billing-metering-seats`
+- PR: https://github.com/g4m35/resale-crosslister/pull/62 -> `develop`
+- Branch was rebased onto latest `origin/develop`; one additive Prisma schema
+  conflict was resolved by retaining both inventory-safety models and billing
+  account/subscription/usage models.
+- Review fix commit added after PR open:
+  `fix(billing): preserve account scope in mark-sold flows`
+  - `/api/inventory/mark-sold` now authorizes by active account before calling
+    the safety engine.
+  - Lifecycle `mark_sold` passes creator `sellerId` as the inventory-owner guard
+    while preserving signed-in user as actor/audit id.
+- Review findings addressed in progress:
+  - Owner/admin account-management guard added for member invites.
+  - Owner/admin account-management guard added for Stripe portal sessions.
+  - Duplicate pending invites are reused, and duplicate login-time invite
+    acceptance revokes the extra pending invite when the user is already active.
+
+## Latest local validation before review-fix push
+- `npx prisma validate`: pass
+- `npm run lint`: pass, 0 errors / same 2 pre-existing warnings in
+  `src/app/api/listings/draft/draft-actions.test.ts`
+- `npm test`: pass, 187 files / 1252 tests
+- `npm run build`: pass
+- `git diff --check`: pass
+- Focused review-fix tests after guard/idempotency edits:
+  4 files / 30 tests pass
+
+## External status at checkpoint
+- Branch pushed to origin.
+- PR opened.
+- Vercel status reported success, but build was ignored by the configured Vercel
+  ignored-build step.
+- Supabase Preview skipped because there were no `supabase` directory changes.
+- Vercel Agent Review skipped because of insufficient credit.
+- CodeRabbit remained pending with only its in-progress comment at the time of
+  this checkpoint.
+- Codex review produced three actionable findings; all are being fixed before
+  merge.

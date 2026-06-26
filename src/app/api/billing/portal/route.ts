@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getActiveAccount } from "@/lib/billing/account";
+import { assertCanManageAccount } from "@/lib/billing/membership";
 import { getStripe } from "@/lib/billing/stripe";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
@@ -14,9 +15,11 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const account = await getActiveAccount(user.id);
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    await assertCanManageAccount(account, user.id, prisma);
 
-    const subscription = await getPrisma().subscription.findUnique({
+    const subscription = await prisma.subscription.findUnique({
       where: { accountId: account.id },
       select: { stripeCustomerId: true },
     });

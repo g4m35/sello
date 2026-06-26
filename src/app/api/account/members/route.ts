@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getActiveAccount } from "@/lib/billing/account";
-import { inviteMember, listMembers } from "@/lib/billing/membership";
+import {
+  assertCanManageAccount,
+  inviteMember,
+  listMembers,
+} from "@/lib/billing/membership";
 import { safeErrorResponse } from "@/lib/errors";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -31,6 +35,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const account = await getActiveAccount(user.id);
+    await assertCanManageAccount(account, user.id);
     const { email, role } = InviteBody.parse(await request.json());
     const member = await inviteMember(account, email, role ?? "member");
     return NextResponse.json({ member }, { status: 201 });
