@@ -106,6 +106,17 @@ function secretMatches(provided: string, expected: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+// Prisma surfaces a unique-constraint violation as P2002. Here it can only mean
+// a concurrent insert of the same providerMessageId (the one unique on the row).
+function isProviderMessageIdConflict(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
+
 async function resolveOwner(
   db: EmailIngestPrismaLike,
   marketplace: Marketplace | undefined,
@@ -219,23 +230,34 @@ export async function ingest(
       receivedAt: body.receivedAt,
     } satisfies Prisma.InputJsonValue;
 
-    const signal = await db.emailSignal.create({
-      data: {
-        userId: resolution.userId,
-        sourceEmail: body.sourceEmail,
-        destinationEmail: body.destinationEmail,
-        marketplaceGuess: parsed.marketplaceGuess ?? null,
-        signalType: parsed.signalType,
-        confidence: parsed.confidence,
-        subject: body.subject,
-        bodySnippet: body.textBody.slice(0, BODY_SNIPPET_MAX),
-        parsedPayload,
-        matchedInventoryItemId: resolution.inventoryItemId,
-        matchedMarketplaceListingId: resolution.marketplaceListingId,
-        providerMessageId: body.providerMessageId ?? null,
-        processedAt: new Date(),
-      },
-    });
+    let signal: { id: string };
+    try {
+      signal = await db.emailSignal.create({
+        data: {
+          userId: resolution.userId,
+          sourceEmail: body.sourceEmail,
+          destinationEmail: body.destinationEmail,
+          marketplaceGuess: parsed.marketplaceGuess ?? null,
+          signalType: parsed.signalType,
+          confidence: parsed.confidence,
+          subject: body.subject,
+          bodySnippet: body.textBody.slice(0, BODY_SNIPPET_MAX),
+          parsedPayload,
+          matchedInventoryItemId: resolution.inventoryItemId,
+          matchedMarketplaceListingId: resolution.marketplaceListingId,
+          providerMessageId: body.providerMessageId ?? null,
+          processedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      // Concurrent re-delivery race: a second copy of the same provider message
+      // lost the unique(providerMessageId) write. Acknowledge it as a dedupe
+      // (idempotent), never reprocess or 500.
+      if (isProviderMessageIdConflict(error)) {
+        return NextResponse.json({ ok: true, deduped: true });
+      }
+      throw error;
+    }
 
     // Never act without a resolved user, and only on actionable signal types.
     // Confidence still flows to the engine, which enforces the no-auto-delist

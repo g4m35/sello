@@ -52,18 +52,24 @@ export type NotificationCopy = { kind: NotificationKind; title: string; body: st
 
 export function soldDelistingCopy(input: {
   productName: string;
-  soldMarketplace: Marketplace;
+  // null = "source unknown" (e.g. a manual mark-sold with no named marketplace).
+  soldMarketplace: Marketplace | null;
   otherMarketplaceCount: number;
 }): NotificationCopy {
-  const where = marketplaceLabel(input.soldMarketplace);
+  const where = input.soldMarketplace
+    ? marketplaceLabel(input.soldMarketplace)
+    : null;
+  const soldClause = where ? `sold on ${where}` : "sold";
   const others = input.otherMarketplaceCount;
   const body =
     others > 0
-      ? `Your ${input.productName} sold on ${where}. We're removing it from your ${others} other listing${others === 1 ? "" : "s"} so it can't sell twice.`
-      : `Your ${input.productName} sold on ${where}. No other live listings to remove.`;
+      ? `Your ${input.productName} ${soldClause}. We're removing it from your ${others} other listing${others === 1 ? "" : "s"} so it can't sell twice.`
+      : `Your ${input.productName} ${soldClause}. No other live listings to remove.`;
   return {
     kind: NotificationKind.soldDelisting,
-    title: `Sold on ${where} — cleaning up your other listings`,
+    title: where
+      ? `Sold on ${where} — cleaning up your other listings`
+      : `Sold — cleaning up your other listings`,
     body,
   };
 }

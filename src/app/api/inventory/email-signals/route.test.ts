@@ -102,6 +102,33 @@ describe("POST /api/inventory/email-signals — processing", () => {
     expect(mocks.handleSaleSignal).not.toHaveBeenCalled();
   });
 
+  it("a concurrent re-delivery race (P2002 on providerMessageId) is 200 deduped, not 500", async () => {
+    const db = fakeDb();
+    // findFirst missed (the racing insert had not committed yet), but create then
+    // loses the unique(providerMessageId) write.
+    db.emailSignal.create.mockRejectedValue(
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" }),
+    );
+    mocks.getPrisma.mockReturnValue(db);
+
+    const res = await POST(req(ebaySale, { "x-internal-secret": SECRET }));
+    const payload = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(payload).toEqual({ ok: true, deduped: true });
+    expect(mocks.handleSaleSignal).not.toHaveBeenCalled();
+  });
+
+  it("malformed body -> 400", async () => {
+    const db = fakeDb();
+    mocks.getPrisma.mockReturnValue(db);
+
+    const res = await POST(
+      req({ sourceEmail: "only-this" }, { "x-internal-secret": SECRET }),
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("high-confidence matched email triggers mark-sold via the engine", async () => {
     const db = fakeDb({
       listingRow: {

@@ -52,7 +52,7 @@ export type MarkSoldTransaction = DelistPrismaLike & {
         status: InventoryStatus;
         quantityAvailable: number;
         soldAt: Date;
-        soldSourceMarketplace: Marketplace;
+        soldSourceMarketplace: Marketplace | null;
         soldSourceListingId: string | null;
         lockVersion: { increment: number };
       };
@@ -84,7 +84,9 @@ export type MarkSoldPrismaLike = DelistPrismaLike &
 export type MarkItemSoldInput = {
   inventoryItemId: string;
   userId: string;
-  soldMarketplace: Marketplace;
+  // null = "source unknown" (e.g. a manual mark-sold via the lifecycle route):
+  // record no sold source and delist EVERY active listing.
+  soldMarketplace: Marketplace | null;
   soldListingId?: string | null;
   soldPriceCents?: number | null;
   source: "api" | "email" | "manual" | "system";
@@ -94,18 +96,18 @@ export type MarkItemSoldResult =
   | {
       outcome: "marked_sold";
       inventoryItemId: string;
-      soldMarketplace: Marketplace;
+      soldMarketplace: Marketplace | null;
       delist: QueueDelistResult;
     }
   | {
       outcome: "already_sold";
       inventoryItemId: string;
-      soldMarketplace: Marketplace;
+      soldMarketplace: Marketplace | null;
     }
   | {
       outcome: "conflict";
       inventoryItemId: string;
-      soldMarketplace: Marketplace;
+      soldMarketplace: Marketplace | null;
       conflictMarketplace: Marketplace;
       reviewTaskId: string;
     };
@@ -142,8 +144,12 @@ export async function markItemSold(
       };
     }
 
-    // Different source (or sold with no recorded source): never overwrite.
+    // Different source (or sold with no recorded source): never overwrite. An
+    // unnamed (null) new source is described generically.
     const conflictMarketplace = existingSource ?? input.soldMarketplace;
+    const conflictingLabel = input.soldMarketplace
+      ? `from ${input.soldMarketplace}`
+      : "from another source";
     const task = await createReviewTask(db, {
       userId: input.userId,
       type: "sync_conflict",
@@ -153,7 +159,7 @@ export async function markItemSold(
       description:
         `"${item.productName}" is already marked sold` +
         (existingSource ? ` on ${existingSource}` : "") +
-        `, but a new sale signal arrived from ${input.soldMarketplace}. ` +
+        `, but a new sale signal arrived ${conflictingLabel}. ` +
         `Review which sale is real before any listing is changed.`,
       payload: {
         inventoryItemId: item.id,
@@ -177,7 +183,9 @@ export async function markItemSold(
       } as Prisma.InputJsonValue,
     });
 
-    if (existingSource) {
+    // The seller-facing conflict notification only fires when both the existing
+    // source and the conflicting source are named marketplaces.
+    if (existingSource && input.soldMarketplace) {
       await createNotification(db, {
         userId: input.userId,
         inventoryItemId: item.id,
@@ -193,7 +201,7 @@ export async function markItemSold(
       outcome: "conflict",
       inventoryItemId: item.id,
       soldMarketplace: input.soldMarketplace,
-      conflictMarketplace,
+      conflictMarketplace: conflictMarketplace as Marketplace,
       reviewTaskId: task.id,
     };
   }

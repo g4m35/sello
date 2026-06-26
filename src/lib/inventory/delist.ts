@@ -84,7 +84,9 @@ export function delistIdempotencyKey(
 export async function queueDelistOtherListings(
   db: DelistPrismaLike = getPrisma(),
   inventoryItemId: string,
-  soldMarketplace: Marketplace,
+  // null = "source unknown" (e.g. a manual mark-sold with no named marketplace):
+  // skip NO listing, queue a delist for EVERY active listing.
+  soldMarketplace: Marketplace | null,
   userId: string,
 ): Promise<QueueDelistResult> {
   // Ownership: only the owning seller's item is ever inspected/acted on.
@@ -109,8 +111,9 @@ export async function queueDelistOtherListings(
   };
 
   for (const listing of listings) {
-    // Never delist the marketplace the sale came from.
-    if (listing.marketplace === soldMarketplace) {
+    // Never delist the marketplace the sale came from. With an unknown source
+    // (null) there is nothing to skip — every active listing is delisted.
+    if (soldMarketplace !== null && listing.marketplace === soldMarketplace) {
       result.skippedSoldSource = true;
       continue;
     }
@@ -143,6 +146,9 @@ export async function queueDelistOtherListings(
     if (!adapterAvailable) {
       const label = marketplaceLabel(listing.marketplace);
       const where = listing.externalUrl ? ` (${listing.externalUrl})` : "";
+      const soldWhere = soldMarketplace
+        ? `sold on ${marketplaceLabel(soldMarketplace)}`
+        : "sold";
       const task = await createReviewTask(db, {
         userId,
         type: "manual_delist_required",
@@ -150,7 +156,7 @@ export async function queueDelistOtherListings(
         marketplace: listing.marketplace,
         title: `Remove "${item.productName}" from ${label}`,
         description:
-          `Your "${item.productName}" sold on ${marketplaceLabel(soldMarketplace)}. ` +
+          `Your "${item.productName}" ${soldWhere}. ` +
           `We can't remove the ${label} listing for you automatically. Please open your ` +
           `${label} listing${where} and end it now so the item can't sell twice.`,
         payload: {

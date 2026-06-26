@@ -359,6 +359,7 @@ model MarketplaceListing {
   metadata          Json?
   lastSyncAt        DateTime?
   lastError         String?
+  endedAt           DateTime?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
   publishAttempts   PublishAttempt[]

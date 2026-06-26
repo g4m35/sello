@@ -1978,20 +1978,60 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
 ## Tables added/changed (migration 20260626000000_inventory_safety_layer)
 - InventoryItem +: quantityAvailable, soldSourceMarketplace, soldSourceListingId,
   lockVersion (optimistic concurrency).
-- MarketplaceListing +: externalUrl, titleSnapshot, skuSnapshot, metadata; status
-  enum +ENDED/UNKNOWN/NEEDS_REVIEW/SUBMITTED_FOR_AUDIT/REJECTED.
+- MarketplaceListing +: externalUrl, titleSnapshot, skuSnapshot, metadata, endedAt;
+  status enum +ENDED/UNKNOWN/NEEDS_REVIEW/SUBMITTED_FOR_AUDIT/REJECTED.
 - New: InventoryEvent, ReviewTask, SyncJob (idempotencyKey FULL unique), EmailSignal
   (providerMessageId unique), Notification. RLS enabled, no policies (resale_app
   BYPASSRLS pattern). NOT applied to any DB.
 
+## Sync-job worker / executors (src/lib/inventory-sync/jobs/worker.ts)
+- Pure, db-injectable (default getPrisma()) like the engine. Entrypoints:
+  claimQueuedSyncJobs(db,{limit}), runSyncJob(db,jobId,deps), runQueuedSyncJobs(db,{limit}).
+- Claim is atomic: a conditional updateMany(where:{id,status:'queued'}) — count===1
+  means this worker won; two workers can NEVER both claim. Limit caps at 25 (default 10).
+- maxAttempts is enforced: a delist that FAILS at attempts>=maxAttempts ends terminal
+  'failed' (never re-queued); endless retry is impossible. All error text is scrubbed
+  via safeFailureText before being persisted to job/event/task.
+- delist_marketplace_listing: ownership-scoped load; missing/already-terminal listing
+  => 'succeeded' (no-op); sold-source listing => 'skipped'; eBay => the EXISTING
+  executeEbayDelist (CALLED, not reimplemented) then endedAt + delist_succeeded +
+  'succeeded'; on error => delist_failed event + manual_delist_required task +
+  'needs_review' (or 'failed' if attempts exhausted). Non-eBay is defensive only:
+  NEVER fakes a delist — parks a manual task + 'needs_review'.
+- notify_user: createNotification + notification_sent event once (deduped by unread
+  user+kind+inventoryItemId+title); invalid payload => 'failed'. Nothing enqueues
+  these yet (forward use).
+- create_review_task: createReviewTask (dedupes open tasks) => 'succeeded'.
+- FAIL CLOSED (no executor yet): detect_status, mark_sold, update_inventory_quantity,
+  update_price, sync_order => 'skipped' + errorCode 'NOT_IMPLEMENTED'. They do NOT
+  silently succeed and invent no marketplace API calls. TODO (next): implement each
+  against the real provider APIs (no invented endpoints), keep them fail-closed behind
+  the per-marketplace adapter/enablement flags, and only then flip from 'skipped' to a
+  real executor. Order/quantity/price sync also need the inbound polling source first.
+
 ## Endpoints added
 - POST /api/inventory/email-signals  (internal-secret, fail-closed)
+- POST /api/inventory/sync-jobs/run   (internal-secret, fail-closed; worker trigger;
+  optional {limit}; returns ONLY a sanitized summary {claimed,succeeded,failed,skipped,
+  needsReview}; not public-user callable)
 - POST /api/inventory/mark-sold
 - POST /api/inventory/listings        (manual marketplace URL)
 - POST /api/inventory/review-tasks/[id]/resolve
 
+## Lifecycle bridge (double-sell gap closed)
+- POST /api/listings/lifecycle action 'mark_sold' now routes through the engine
+  (markItemSold) instead of a bare SOLD flip, so OTHER active listings are queued for
+  delist. The marketplace is unknown for a manual action: markItemSold /
+  queueDelistOtherListings now accept soldMarketplace: Marketplace | null — null =
+  "source unknown" => soldSourceMarketplace=null and delist EVERY active listing (skip
+  none). Auth (401), ownership (404), and canTransition (409) behavior preserved; the
+  existing { inventoryItem } response shape is kept (re-read after the engine call).
+  The 'delist' action is unchanged.
+
 ## Env vars
 - INVENTORY_EMAIL_INGEST_SECRET (server-only). Unset => endpoint returns 503.
+- INVENTORY_SYNC_WORKER_SECRET (server-only). Unset => /api/inventory/sync-jobs/run
+  returns 503; wrong x-internal-secret => 401 (timing-safe compare).
 
 ## Automated vs manual
 - Automated: high-confidence sale signal -> mark sold -> queue delist for other

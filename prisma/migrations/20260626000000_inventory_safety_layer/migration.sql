@@ -32,6 +32,7 @@ ALTER TABLE "MarketplaceListing" ADD COLUMN "externalUrl" TEXT;
 ALTER TABLE "MarketplaceListing" ADD COLUMN "titleSnapshot" TEXT;
 ALTER TABLE "MarketplaceListing" ADD COLUMN "skuSnapshot" TEXT;
 ALTER TABLE "MarketplaceListing" ADD COLUMN "metadata" JSONB;
+ALTER TABLE "MarketplaceListing" ADD COLUMN "endedAt" TIMESTAMP(3);
 
 -- InventoryEvent.
 CREATE TABLE "InventoryEvent" (

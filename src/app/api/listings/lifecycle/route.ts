@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import type { InventoryStatus } from "@/generated/prisma/client";
 import { AppError, safeClientMessage } from "@/lib/errors";
+import { markItemSold } from "@/lib/inventory/mark-sold";
 import {
   canTransition,
   toLifecycleState,
@@ -51,12 +52,27 @@ export async function POST(request: Request) {
       );
     }
 
+    // Marking sold must go through the safety engine so OTHER active listings are
+    // delisted (closing the double-sell gap). The marketplace is unknown for a
+    // manual lifecycle action, so soldSourceMarketplace is null and EVERY active
+    // listing is queued for delist. The plain update is kept for 'delist'.
+    if (action === "mark_sold") {
+      await markItemSold(prisma, {
+        inventoryItemId: item.id,
+        userId: user.id,
+        soldMarketplace: null,
+        source: "manual",
+      });
+      // Re-read for the existing { inventoryItem } response shape (API compat).
+      const inventoryItem = await prisma.inventoryItem.findUnique({
+        where: { id: item.id },
+      });
+      return NextResponse.json({ inventoryItem });
+    }
+
     const inventoryItem = await prisma.inventoryItem.update({
       where: { id: item.id },
-      data: {
-        status: target.status,
-        soldAt: target.state === "sold" ? new Date() : undefined,
-      },
+      data: { status: target.status },
     });
 
     return NextResponse.json({ inventoryItem });

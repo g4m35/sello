@@ -58,6 +58,7 @@ describe("inventory safety layer migration", () => {
     expect(sql).toContain(`ADD COLUMN "titleSnapshot" TEXT`);
     expect(sql).toContain(`ADD COLUMN "skuSnapshot" TEXT`);
     expect(sql).toContain(`ADD COLUMN "metadata" JSONB`);
+    expect(sql).toContain(`ADD COLUMN "endedAt" TIMESTAMP(3)`);
   });
 
   it("adds the new MarketplaceListingStatus variants additively", () => {
