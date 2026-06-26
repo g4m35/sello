@@ -92,6 +92,7 @@ CREATE UNIQUE INDEX "SyncJob_idempotencyKey_key" ON "SyncJob"("idempotencyKey");
 CREATE INDEX "SyncJob_status_runAfter_idx" ON "SyncJob"("status", "runAfter");
 CREATE INDEX "SyncJob_userId_createdAt_idx" ON "SyncJob"("userId", "createdAt");
 CREATE INDEX "SyncJob_inventoryItemId_idx" ON "SyncJob"("inventoryItemId");
+CREATE INDEX "SyncJob_marketplaceListingId_idx" ON "SyncJob"("marketplaceListingId");
 
 -- EmailSignal.
 CREATE TABLE "EmailSignal" (

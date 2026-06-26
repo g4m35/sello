@@ -41,8 +41,11 @@ export type MarkSoldItemRow = {
   lockVersion: number;
 };
 
-export type MarkSoldTransaction = InventoryEventPrismaLike & {
-  inventoryItem: {
+// The mark-sold transaction does the SOLD flip, the audit event, AND the delist
+// queueing atomically, so it needs the full delist surface (DelistPrismaLike)
+// plus inventoryItem.update.
+export type MarkSoldTransaction = DelistPrismaLike & {
+  inventoryItem: DelistPrismaLike["inventoryItem"] & {
     update(args: {
       where: { id: string; lockVersion: number };
       data: {
@@ -195,12 +198,16 @@ export async function markItemSold(
     };
   }
 
-  // Fresh sale: flip to SOLD and record the audit event atomically. The
-  // lockVersion guard makes two concurrent sales mutually exclusive — the loser's
-  // update matches no row and throws, so it never double-sells.
+  // Fresh sale: flip to SOLD, record the audit event, AND queue delist for every
+  // OTHER live listing — all in ONE transaction. This is atomic on purpose: an
+  // item can never end up SOLD without its delist jobs (no crash window between
+  // commit and queueing that could strand a live listing on another marketplace).
+  // The lockVersion guard makes two concurrent sales mutually exclusive — the
+  // loser's update matches no row and throws, so it never double-sells.
   const now = new Date();
+  let delist: QueueDelistResult;
   try {
-    await db.$transaction(async (tx) => {
+    delist = await db.$transaction(async (tx) => {
       await tx.inventoryItem.update({
         where: { id: item.id, lockVersion: item.lockVersion },
         data: {
@@ -225,6 +232,12 @@ export async function markItemSold(
           source: input.source,
         } as Prisma.InputJsonValue,
       });
+      return queueDelistOtherListings(
+        tx,
+        item.id,
+        input.soldMarketplace,
+        input.userId,
+      );
     });
   } catch (error) {
     // A concurrent sale won the lockVersion race. Treat as already-sold (the
@@ -239,15 +252,8 @@ export async function markItemSold(
     throw error;
   }
 
-  // Post-commit, idempotent side effects: queue delist for every OTHER live
-  // listing and notify the seller. Safe to repeat — sync jobs upsert on key.
-  const delist = await queueDelistOtherListings(
-    db,
-    item.id,
-    input.soldMarketplace,
-    input.userId,
-  );
-
+  // Non-critical side effect, OUTSIDE the transaction: notifying the seller must
+  // never roll back a completed sale.
   await createNotification(db, {
     userId: input.userId,
     inventoryItemId: item.id,

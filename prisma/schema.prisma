@@ -680,6 +680,7 @@ model SyncJob {
   @@index([status, runAfter])
   @@index([userId, createdAt])
   @@index([inventoryItemId])
+  @@index([marketplaceListingId])
 }
 
 // Parsed inbound marketplace emails (sale/payment/shipping signals). Deduped by
