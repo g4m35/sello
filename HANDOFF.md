@@ -1894,14 +1894,28 @@ on auth.ebay.com.
     enforcement; `/api/account/members` routes. `accountMemberIds()` is the seam.
   RLS untouched per owner instruction (new tables follow the deny-all
   enable-no-policy convention). No live Stripe calls; no keys in repo.
-  **DEFERRED — Phase 4.2/4.3 (data-scope migration):** make invited members
-  actually SHARE one inventory by adding `accountId` to seller-scoped tables and
-  rewriting every `sellerId/userId = me` query to account membership. NOT done:
-  it is tenant-isolation-critical (a mistake leaks one user's data to another) and
-  touches dozens of routes; it needs its own focused pass with the full gate plus a
-  manual cross-member access matrix. Until then, seats can be invited/accepted but
-  members still see only their own data. `acceptInvite` also still needs wiring into
-  the post-login flow.
+  **Phase 4.2/4.3 (data-scope migration) — STARTED, foundation + core slice done,
+  rest pending.** Done: `InventoryItem.accountId` + index/FK + backfill migration
+  `20260625020000_inventory_account_scope` (created, NOT applied); `scope.ts`
+  (`accountScope`); `getActiveAccount` widened (owner account, then active
+  membership = shared workspace, then personal); inventory LIST + bulk-delete
+  account-scoped; draft create stamps `accountId`. Behavior-preserving for existing
+  owners (single-member account == old sellerId scope); cross-member resolution
+  tested. SAFE because sharing is dormant in practice: `acceptInvite` is not yet
+  wired into login, so no active non-owner memberships exist.
+  **STILL PENDING (mechanical, well-patterned — replace `{ sellerId: user.id }`
+  with `accountScope(account)` / `{ inventoryItem: { accountId } }`, scope by
+  account after `getActiveAccount`, stamp accountId on writes):** inventory detail
+  `[id]`, photos, lifecycle, price, import, export; drafts `[draftId]`; comps
+  read + refresh + `[compId]`; history; jobs; the publish/delist pipeline
+  (`publish-handler`, `bulk-publish`, `delist-handler`, `bulk-delist`) and eBay/Etsy
+  adapters that thread `sellerId` (preflight, publish, delist, orphans, mapper,
+  media, storage paths); decide whether `MarketplaceConnection`/`EbaySellerConfig`
+  are shared or per-member. THEN wire `acceptInvite` into post-login and run a
+  manual cross-member access matrix (member A and B share; outsider C blocked)
+  before announcing seats. ~35 query sites; do NOT announce sharing until all are
+  migrated and verified (a missed site under-shares, but is not a leak — scoping
+  only ever narrows to the acting user).
   **Operator steps to run it (test mode):** apply the migration via develop; set
   sk_test/pk_test in `.env.local`; run `scripts/stripe/sync-products.ts`;
   `stripe listen --forward-to localhost:3000/api/billing/webhook`; test-card e2e.
