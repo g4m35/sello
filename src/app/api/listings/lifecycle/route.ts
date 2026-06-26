@@ -38,7 +38,7 @@ export async function POST(request: Request) {
 
     const item = await prisma.inventoryItem.findFirst({
       where: { id: inventoryItemId, ...accountScope(account) },
-      select: { id: true, status: true },
+      select: { id: true, sellerId: true, status: true },
     });
 
     if (!item) {
@@ -63,6 +63,7 @@ export async function POST(request: Request) {
       await markItemSold(prisma, {
         inventoryItemId: item.id,
         userId: user.id,
+        inventoryOwnerUserId: item.sellerId,
         soldMarketplace: null,
         source: "manual",
       });

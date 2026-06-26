@@ -91,10 +91,11 @@ export async function queueDelistOtherListings(
   // skip NO listing, queue a delist for EVERY active listing.
   soldMarketplace: Marketplace | null,
   userId: string,
+  inventoryOwnerUserId: string = userId,
 ): Promise<QueueDelistResult> {
   // Ownership: only the owning seller's item is ever inspected/acted on.
   const item = await db.inventoryItem.findFirst({
-    where: { id: inventoryItemId, sellerId: userId },
+    where: { id: inventoryItemId, sellerId: inventoryOwnerUserId },
     select: { id: true, productName: true },
   });
   if (!item) {

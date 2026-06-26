@@ -15,6 +15,7 @@ import type { SaleSignalPrismaLike } from "./sale-signal";
 export type FakeItem = {
   id: string;
   sellerId: string;
+  accountId?: string;
   productName: string;
   status: InventoryStatus;
   soldAt: Date | null;
@@ -151,11 +152,14 @@ export function createInventoryFakePrisma(seed: {
     async findFirst({
       where,
     }: {
-      where: { id: string; sellerId: string };
+      where: { id: string; sellerId?: string; accountId?: string };
       select: unknown;
     }) {
       const item = store.items.find(
-        (i) => i.id === where.id && i.sellerId === where.sellerId,
+        (i) =>
+          i.id === where.id &&
+          (where.sellerId === undefined || i.sellerId === where.sellerId) &&
+          (where.accountId === undefined || i.accountId === where.accountId),
       );
       return item ? { ...item } : null;
     },

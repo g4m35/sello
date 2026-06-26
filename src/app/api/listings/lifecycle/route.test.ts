@@ -41,8 +41,12 @@ describe("item lifecycle API auth boundaries", () => {
   });
 
   it("scopes lifecycle changes to the active account", async () => {
-    const findFirst = vi.fn().mockResolvedValue({ id: ITEM_ID, status: "APPROVED" });
-    const update = vi.fn().mockResolvedValue({ id: ITEM_ID, status: "SOLD" });
+    const findFirst = vi.fn().mockResolvedValue({
+      id: ITEM_ID,
+      sellerId: "owner-1",
+      status: "LISTED",
+    });
+    const update = vi.fn().mockResolvedValue({ id: ITEM_ID, status: "DELISTED" });
     mocks.getPrisma.mockReturnValue({
       inventoryItem: { findFirst, update },
     });
@@ -50,19 +54,19 @@ describe("item lifecycle API auth boundaries", () => {
     const response = await POST(
       new Request("http://localhost/api/listings/lifecycle", {
         method: "POST",
-        body: JSON.stringify({ inventoryItemId: ITEM_ID, action: "mark_sold" }),
+        body: JSON.stringify({ inventoryItemId: ITEM_ID, action: "delist" }),
       }),
     );
 
     expect(response.status).toBe(200);
     expect(findFirst).toHaveBeenCalledWith({
       where: { id: ITEM_ID, accountId: "acc-1" },
-      select: { id: true, status: true },
+      select: { id: true, sellerId: true, status: true },
     });
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: ITEM_ID },
-        data: expect.objectContaining({ status: "SOLD" }),
+        data: expect.objectContaining({ status: "DELISTED" }),
       }),
     );
   });

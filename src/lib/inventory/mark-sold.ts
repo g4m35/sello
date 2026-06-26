@@ -84,6 +84,7 @@ export type MarkSoldPrismaLike = DelistPrismaLike &
 export type MarkItemSoldInput = {
   inventoryItemId: string;
   userId: string;
+  inventoryOwnerUserId?: string;
   // null = "source unknown" (e.g. a manual mark-sold via the lifecycle route):
   // record no sold source and delist EVERY active listing.
   soldMarketplace: Marketplace | null;
@@ -116,8 +117,9 @@ export async function markItemSold(
   db: MarkSoldPrismaLike = getPrisma(),
   input: MarkItemSoldInput,
 ): Promise<MarkItemSoldResult> {
+  const inventoryOwnerUserId = input.inventoryOwnerUserId ?? input.userId;
   const item = await db.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: { id: input.inventoryItemId, sellerId: inventoryOwnerUserId },
     select: {
       id: true,
       sellerId: true,
@@ -245,6 +247,7 @@ export async function markItemSold(
         item.id,
         input.soldMarketplace,
         input.userId,
+        inventoryOwnerUserId,
       );
     });
   } catch (error) {
