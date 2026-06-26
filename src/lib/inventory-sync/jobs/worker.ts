@@ -38,6 +38,16 @@ import { getPrisma } from "@/lib/prisma";
 const DEFAULT_CLAIM_LIMIT = 10;
 const MAX_CLAIM_LIMIT = 25;
 
+// Stale-running reaper defaults. A 'running' job is "stale" once its updatedAt is
+// older than this; bounded to a sane window so a clock skew or a misconfigured
+// caller can never requeue/fail an enormous backlog at once.
+const DEFAULT_STALE_MINUTES = 15;
+const MIN_STALE_MINUTES = 5;
+const MAX_STALE_MINUTES = 1440;
+
+const MAX_ATTEMPTS_EXHAUSTED_MESSAGE =
+  "The job exceeded its maximum attempts.";
+
 // --- Job row shapes ----------------------------------------------------------
 
 export type ClaimedSyncJob = {
@@ -56,20 +66,49 @@ export type ClaimedSyncJob = {
 // Narrow structural surfaces (not the full PrismaClient) keep these functions
 // trivially unit-testable, matching the engine's pattern.
 
+type ClaimCandidateFindMany = {
+  where: {
+    status: "queued";
+    OR: [{ runAfter: null }, { runAfter: { lte: Date } }];
+  };
+  select: { id: true };
+  take: number;
+  orderBy: { createdAt: "asc" };
+};
+
+// The reaper sweeps 'running' rows whose updatedAt is older than the cutoff.
+type StaleRunningFindMany = {
+  where: { status: "running"; updatedAt: { lte: Date } };
+  select: { id: true; attempts: true; maxAttempts: true };
+  take: number;
+  orderBy: { updatedAt: "asc" };
+};
+
+type ClaimUpdateMany = {
+  where: { id: string; status: "queued" };
+  data: { status: "running"; attempts: { increment: number } };
+};
+
+// Race-safe reaper writes: each conditional on status:'running' so a row that a
+// real worker already moved on is never clobbered. attempts is NOT reset.
+type RequeueStaleUpdateMany = {
+  where: { id: string; status: "running" };
+  data: { status: "queued"; runAfter: Date };
+};
+
+type FailStaleUpdateMany = {
+  where: { id: string; status: "running" };
+  data: { status: "failed"; errorCode: string; errorMessage: string };
+};
+
 type WorkerJobDelegate = {
-  findMany(args: {
-    where: {
-      status: "queued";
-      OR: [{ runAfter: null }, { runAfter: { lte: Date } }];
-    };
-    select: { id: true };
-    take: number;
-    orderBy: { createdAt: "asc" };
-  }): Promise<Array<{ id: string }>>;
-  updateMany(args: {
-    where: { id: string; status: "queued" };
-    data: { status: "running"; attempts: { increment: number } };
-  }): Promise<{ count: number }>;
+  findMany(args: ClaimCandidateFindMany): Promise<Array<{ id: string }>>;
+  findMany(
+    args: StaleRunningFindMany,
+  ): Promise<Array<{ id: string; attempts: number; maxAttempts: number }>>;
+  updateMany(args: ClaimUpdateMany): Promise<{ count: number }>;
+  updateMany(args: RequeueStaleUpdateMany): Promise<{ count: number }>;
+  updateMany(args: FailStaleUpdateMany): Promise<{ count: number }>;
   findFirst(args: {
     where: { id: string };
     select: {
@@ -280,6 +319,68 @@ export async function runQueuedSyncJobs(
         break;
       default:
         break;
+    }
+  }
+  return summary;
+}
+
+// --- Stale-running reaper ----------------------------------------------------
+
+export type RequeueStaleSummary = {
+  requeued: number;
+  failed: number;
+};
+
+/**
+ * Recover jobs stuck in 'running' (a worker crashed mid-run, so they never
+ * reached a terminal status and would otherwise sit forever). Finds 'running'
+ * rows untouched since `olderThanMinutes` ago, bounded by `limit`, and:
+ *   - attempts < maxAttempts => REQUEUE (status -> 'queued', runAfter = now) so a
+ *     later pass re-claims them. attempts is NOT reset (the claim already counted).
+ *   - attempts >= maxAttempts => FAIL terminal ('failed', MAX_ATTEMPTS_EXHAUSTED)
+ *     so endless retry is impossible.
+ * Each write is a RACE-SAFE conditional updateMany(where:{id,status:'running'}):
+ * count===1 means we won the transition; a row a live worker already finished is
+ * skipped. The reaper creates NO events/tasks/notifications (status change only —
+ * never duplicates side effects). Returns SANITIZED counts only.
+ */
+export async function requeueStaleRunningSyncJobs(
+  db: SyncWorkerPrismaLike = getPrisma() as unknown as SyncWorkerPrismaLike,
+  opts: { olderThanMinutes?: number; limit?: number } = {},
+): Promise<RequeueStaleSummary> {
+  const limit = clampLimit(opts.limit);
+  const minutes = clampStaleMinutes(opts.olderThanMinutes);
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - minutes * 60_000);
+
+  const stale = await db.syncJob.findMany({
+    where: { status: "running", updatedAt: { lte: cutoff } },
+    select: { id: true, attempts: true, maxAttempts: true },
+    take: limit,
+    orderBy: { updatedAt: "asc" },
+  });
+
+  const summary: RequeueStaleSummary = { requeued: 0, failed: 0 };
+  for (const job of stale) {
+    if (job.attempts < job.maxAttempts) {
+      const result = await db.syncJob.updateMany({
+        where: { id: job.id, status: "running" },
+        data: { status: "queued", runAfter: now },
+      });
+      if (result.count === 1) summary.requeued += 1;
+    } else {
+      const result = await db.syncJob.updateMany({
+        where: { id: job.id, status: "running" },
+        data: {
+          status: "failed",
+          errorCode: "MAX_ATTEMPTS_EXHAUSTED",
+          errorMessage: safeFailureText(
+            MAX_ATTEMPTS_EXHAUSTED_MESSAGE,
+            MAX_ATTEMPTS_EXHAUSTED_MESSAGE,
+          ),
+        },
+      });
+      if (result.count === 1) summary.failed += 1;
     }
   }
   return summary;
@@ -650,6 +751,16 @@ function clampLimit(limit?: number): number {
     return DEFAULT_CLAIM_LIMIT;
   }
   return Math.min(Math.floor(limit), MAX_CLAIM_LIMIT);
+}
+
+// Clamp the stale-running window to [MIN, MAX] minutes; a missing/garbage value
+// falls back to the default. Never trust the caller to bound this — a tiny window
+// would requeue freshly-claimed jobs that are still legitimately running.
+function clampStaleMinutes(minutes?: number): number {
+  if (typeof minutes !== "number" || !Number.isFinite(minutes)) {
+    return DEFAULT_STALE_MINUTES;
+  }
+  return Math.min(Math.max(Math.floor(minutes), MIN_STALE_MINUTES), MAX_STALE_MINUTES);
 }
 
 async function readJob(

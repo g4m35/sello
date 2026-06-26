@@ -61,6 +61,7 @@ export type FakeSyncJob = {
   errorMessage: string | null;
   runAfter: Date | null;
   createdAt: Date;
+  updatedAt: Date;
   payload: unknown;
 };
 
@@ -106,6 +107,7 @@ export type FakeSyncJobSeed = {
   maxAttempts?: number;
   runAfter?: Date | null;
   createdAt?: Date;
+  updatedAt?: Date;
   payload?: unknown;
 };
 
@@ -124,6 +126,9 @@ function seedSyncJob(seed: FakeSyncJobSeed): FakeSyncJob {
     errorMessage: null,
     runAfter: seed.runAfter ?? null,
     createdAt: seed.createdAt ?? new Date(),
+    // Mirrors Prisma @updatedAt. Seedable so a test can backdate a 'running' row
+    // to make it look stale to the reaper.
+    updatedAt: seed.updatedAt ?? seed.createdAt ?? new Date(),
     payload: seed.payload ?? {},
   };
 }
@@ -377,6 +382,7 @@ export function createInventoryFakePrisma(seed: {
         errorMessage: null,
         runAfter: create.runAfter ?? null,
         createdAt: new Date(),
+        updatedAt: new Date(),
         payload: create.payload,
       };
       store.syncJobs.push(job);
@@ -390,42 +396,74 @@ export function createInventoryFakePrisma(seed: {
     },
     async findMany({
       where,
+      select,
       take,
     }: {
       where: {
         status: string;
         OR?: Array<{ runAfter: null } | { runAfter: { lte: Date } }>;
+        updatedAt?: { lte: Date };
       };
-      select: unknown;
+      select?: {
+        id?: true;
+        attempts?: true;
+        maxAttempts?: true;
+      };
       take?: number;
       orderBy?: unknown;
     }) {
       const now = new Date();
-      const rows = store.syncJobs
-        .filter((j) => {
-          if (j.status !== where.status) return false;
-          // Due when runAfter is null or in the past.
-          return j.runAfter === null || j.runAfter <= now;
-        })
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      // Reaper path: status + updatedAt<=cutoff, ordered by updatedAt, selecting
+      // attempts/maxAttempts. Claim path: status + runAfter due, ordered by createdAt.
+      const isStaleSweep = where.updatedAt !== undefined;
+      const filtered = store.syncJobs.filter((j) => {
+        if (j.status !== where.status) return false;
+        if (where.updatedAt) {
+          return j.updatedAt <= where.updatedAt.lte;
+        }
+        // Due when runAfter is null or in the past.
+        return j.runAfter === null || j.runAfter <= now;
+      });
+      const sorted = filtered.sort((a, b) =>
+        isStaleSweep
+          ? a.updatedAt.getTime() - b.updatedAt.getTime()
+          : a.createdAt.getTime() - b.createdAt.getTime(),
+      );
+      const wantsAttempts = select?.attempts === true;
+      return sorted
         .slice(0, take ?? store.syncJobs.length)
-        .map((j) => ({ id: j.id }));
-      return rows;
+        .map((j) =>
+          wantsAttempts
+            ? { id: j.id, attempts: j.attempts, maxAttempts: j.maxAttempts }
+            : { id: j.id },
+        );
     },
     async updateMany({
       where,
       data,
     }: {
       where: { id: string; status: string };
-      data: { status: string; attempts: { increment: number } };
+      data: {
+        status: string;
+        attempts?: { increment: number };
+        runAfter?: Date | null;
+        errorCode?: string | null;
+        errorMessage?: string | null;
+      };
     }) {
-      // Atomic conditional claim: only flips a row still in the expected status.
+      // Atomic conditional write: only flips a row still in the expected status.
+      // Used by both the claim (queued->running) and the reaper (running->queued
+      // or running->failed).
       const job = store.syncJobs.find(
         (j) => j.id === where.id && j.status === where.status,
       );
       if (!job) return { count: 0 };
       job.status = data.status;
-      job.attempts += data.attempts.increment;
+      if (data.attempts) job.attempts += data.attempts.increment;
+      if (data.runAfter !== undefined) job.runAfter = data.runAfter;
+      if (data.errorCode !== undefined) job.errorCode = data.errorCode;
+      if (data.errorMessage !== undefined) job.errorMessage = data.errorMessage;
+      job.updatedAt = new Date();
       return { count: 1 };
     },
     async findFirst({
@@ -455,6 +493,7 @@ export function createInventoryFakePrisma(seed: {
       if (data.attempts) job.attempts += data.attempts.increment;
       if (data.errorCode !== undefined) job.errorCode = data.errorCode;
       if (data.errorMessage !== undefined) job.errorMessage = data.errorMessage;
+      job.updatedAt = new Date();
       return { id: job.id };
     },
   };

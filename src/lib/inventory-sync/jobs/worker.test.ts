@@ -10,6 +10,7 @@ import {
 
 import {
   claimQueuedSyncJobs,
+  requeueStaleRunningSyncJobs,
   runQueuedSyncJobs,
   runSyncJob,
   type SyncWorkerPrismaLike,
@@ -504,6 +505,190 @@ describe("runSyncJob — idempotent no-op", () => {
     const result = await runSyncJob(db, "j-1");
     expect(result.status).toBe("succeeded");
     // Untouched.
+    expect(prisma._store.notifications).toHaveLength(0);
+  });
+});
+
+describe("requeueStaleRunningSyncJobs", () => {
+  const HOUR_AGO = () => new Date(Date.now() - 60 * 60_000);
+  const NOW = () => new Date();
+
+  it("requeues a stale running job (status=queued, runAfter set, attempts UNCHANGED)", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        {
+          id: "j-stale",
+          userId: "user-1",
+          type: "notify_user",
+          status: "running",
+          attempts: 2,
+          maxAttempts: 5,
+          updatedAt: HOUR_AGO(),
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+
+    const summary = await requeueStaleRunningSyncJobs(db, {
+      olderThanMinutes: 15,
+      limit: 10,
+    });
+
+    expect(summary).toEqual({ requeued: 1, failed: 0 });
+    const job = prisma._store.syncJobs.find((j) => j.id === "j-stale");
+    expect(job?.status).toBe("queued");
+    expect(job?.runAfter).toBeInstanceOf(Date);
+    // attempts is NOT reset (the claim already counted it).
+    expect(job?.attempts).toBe(2);
+  });
+
+  it("leaves a FRESH running job (updatedAt within threshold) untouched", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        {
+          id: "j-fresh",
+          userId: "user-1",
+          type: "notify_user",
+          status: "running",
+          attempts: 1,
+          maxAttempts: 5,
+          updatedAt: NOW(),
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+
+    const summary = await requeueStaleRunningSyncJobs(db, {
+      olderThanMinutes: 15,
+      limit: 10,
+    });
+
+    expect(summary).toEqual({ requeued: 0, failed: 0 });
+    const job = prisma._store.syncJobs.find((j) => j.id === "j-fresh");
+    expect(job?.status).toBe("running");
+  });
+
+  it("fails (terminal) a stale running job at attempts >= maxAttempts (not requeued)", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        {
+          id: "j-exhausted",
+          userId: "user-1",
+          type: "notify_user",
+          status: "running",
+          attempts: 5,
+          maxAttempts: 5,
+          updatedAt: HOUR_AGO(),
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+
+    const summary = await requeueStaleRunningSyncJobs(db, {
+      olderThanMinutes: 15,
+      limit: 10,
+    });
+
+    expect(summary).toEqual({ requeued: 0, failed: 1 });
+    const job = prisma._store.syncJobs.find((j) => j.id === "j-exhausted");
+    expect(job?.status).toBe("failed");
+    expect(job?.errorCode).toBe("MAX_ATTEMPTS_EXHAUSTED");
+    // Sanitized, generic copy — never raw internals.
+    expect(job?.errorMessage).toBe("The job exceeded its maximum attempts.");
+  });
+
+  it("respects the limit (only `limit` stale rows are touched)", async () => {
+    const stale = Array.from({ length: 8 }, (_, i) => ({
+      id: `j-${i}`,
+      userId: "user-1",
+      type: "notify_user" as const,
+      status: "running" as const,
+      attempts: 1,
+      maxAttempts: 5,
+      updatedAt: HOUR_AGO(),
+    }));
+    const prisma = createInventoryFakePrisma({ items: [item()], syncJobs: stale });
+    const db = workerDb(prisma);
+
+    const summary = await requeueStaleRunningSyncJobs(db, {
+      olderThanMinutes: 15,
+      limit: 3,
+    });
+
+    expect(summary.requeued).toBe(3);
+    const requeued = prisma._store.syncJobs.filter((j) => j.status === "queued");
+    expect(requeued).toHaveLength(3);
+    // The rest stay running, untouched.
+    expect(prisma._store.syncJobs.filter((j) => j.status === "running")).toHaveLength(5);
+  });
+
+  it("clamps a too-small olderThanMinutes up to the safe minimum (>=5)", async () => {
+    // A job last updated 6 minutes ago: stale only if the window is clamped to a
+    // minimum of 5 (not the 1 the caller asked for, which would NOT match it... it
+    // would match either way; the real risk is a 0/negative window catching a
+    // truly fresh job). Here a 2-minute-old job must NOT be requeued when caller
+    // passes minutes=0, proving the window was clamped to >=5.
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        {
+          id: "j-recent",
+          userId: "user-1",
+          type: "notify_user",
+          status: "running",
+          attempts: 1,
+          maxAttempts: 5,
+          updatedAt: new Date(Date.now() - 2 * 60_000),
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+
+    const summary = await requeueStaleRunningSyncJobs(db, {
+      olderThanMinutes: 0,
+      limit: 10,
+    });
+
+    // Clamped to >=5 min, so a 2-min-old running job is NOT stale yet.
+    expect(summary).toEqual({ requeued: 0, failed: 0 });
+    expect(prisma._store.syncJobs[0].status).toBe("running");
+  });
+
+  it("creates NO review tasks, events, or notifications (status change only)", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        {
+          id: "j-stale",
+          userId: "user-1",
+          type: "delist_marketplace_listing",
+          status: "running",
+          attempts: 5,
+          maxAttempts: 5,
+          inventoryItemId: "item-1",
+          updatedAt: HOUR_AGO(),
+        },
+        {
+          id: "j-stale-2",
+          userId: "user-1",
+          type: "notify_user",
+          status: "running",
+          attempts: 1,
+          maxAttempts: 5,
+          inventoryItemId: "item-1",
+          updatedAt: HOUR_AGO(),
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+
+    await requeueStaleRunningSyncJobs(db, { olderThanMinutes: 15, limit: 10 });
+
+    expect(prisma._store.reviewTasks).toHaveLength(0);
+    expect(prisma._store.events).toHaveLength(0);
     expect(prisma._store.notifications).toHaveLength(0);
   });
 });

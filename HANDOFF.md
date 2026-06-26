@@ -12,6 +12,34 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-06-25 — Claude. **Ops-hardening for the sync-job worker (PR #61, branch
+`feat/marketplace-safety-layer`). NOT merged/deployed.** Added a stale-running
+reaper + extended the worker-route. STRICT scope: no eBay adapter/route/
+delist-handler, billing, auth, or UI files touched; no secrets in code/logs/tests;
+migration `20260626000000_inventory_safety_layer` still UNAPPLIED (untouched).
+- New: `requeueStaleRunningSyncJobs(db,{olderThanMinutes,limit})` in
+  `src/lib/inventory-sync/jobs/worker.ts`. Recovers jobs stuck in 'running' (a
+  worker crashed before reaching a terminal status). See the **Stale-running
+  reaper** subsection in the inventory-safety-layer section below for full behavior.
+- `POST /api/inventory/sync-jobs/run`: **renamed the secret header
+  `x-internal-secret` -> `x-inventory-sync-worker-secret`** (env
+  `INVENTORY_SYNC_WORKER_SECRET` + 503-unset / 401-mismatch / timing-safe compare
+  unchanged). Body now also accepts `requeueStale?: boolean` (default false) and
+  `staleOlderThanMinutes?: number` (server-clamped to [5,1440], default 15);
+  `limit` still bounded (max 25, default 10). When `requeueStale` is true the reaper
+  runs FIRST, then `runQueuedSyncJobs`, so recovered jobs are re-claimed in the same
+  pass. Response is sanitized counts only:
+  `{ ok, requeuedStale, failedStale, claimed, succeeded, failed, skipped, needsReview }`.
+- **Scheduler DECISION: NO Vercel cron added (no `vercel.json`, no GET handler).**
+  The repo has no existing cron-route/CRON_SECRET pattern, and Vercel Cron can only
+  send `GET` + `Authorization: Bearer $CRON_SECRET` (no custom header, no POST body),
+  so it cannot authenticate this POST + custom-header endpoint without weakening it.
+  Use an EXTERNAL scheduler instead (see the ops subsection for exact setup).
+- Gate (in worktree): `prisma validate` pass; `tsc --noEmit` 0; `lint` 0 errors
+  (2 pre-existing warnings in `draft-actions.test.ts`, unrelated); `npm test` 166
+  files / **1140 tests pass** (was 1129; +11 new); `next build` success.
+
+## Last updated (previous)
 2026-06-24 — Claude. **PR #57 (gated Etsy API integration FOUNDATION) shipped to
 production.** Merged PR #57 -> develop (merge `5966848`), full gate green
 (prisma valid, lint 0 errors / 2 pre-existing warnings, tsc 0, 984 tests, build 0).
@@ -2009,10 +2037,59 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
   the per-marketplace adapter/enablement flags, and only then flip from 'skipped' to a
   real executor. Order/quantity/price sync also need the inbound polling source first.
 
+## Stale-running reaper (ops hardening, PR #61)
+- `requeueStaleRunningSyncJobs(db, { olderThanMinutes, limit }): Promise<{ requeued; failed }>`
+  in `src/lib/inventory-sync/jobs/worker.ts`. Same db-injectable pattern as the rest
+  of the worker (default `getPrisma()`); fully unit-tested with the in-memory fake.
+- Why: a worker that crashes mid-run leaves a SyncJob in 'running' that never reaches
+  a terminal status and would otherwise sit forever. The reaper recovers them.
+- Behavior: cutoff = now - olderThanMinutes. Finds `status='running' AND updatedAt <=
+  cutoff`, ordered by updatedAt asc, bounded by `take: limit` (limit clamped to max 25,
+  default 10). For each:
+  - `attempts < maxAttempts` => REQUEUE via a RACE-SAFE conditional
+    `updateMany({ where:{ id, status:'running' }, data:{ status:'queued', runAfter: now } })`.
+    count===1 => requeued++. **attempts is NOT reset** (the original claim already
+    counted it). Creates NO event/task/notification (status change only — never
+    duplicates side effects).
+  - `attempts >= maxAttempts` => FAIL terminal via
+    `updateMany({ where:{ id, status:'running' }, data:{ status:'failed',
+    errorCode:'MAX_ATTEMPTS_EXHAUSTED', errorMessage:<safeFailureText> } })`.
+    count===1 => failed++. Not requeued. errorMessage is the sanitized generic
+    "The job exceeded its maximum attempts." (no raw internals).
+- The conditional `status:'running'` guard makes it race-safe against a live worker
+  that finishes the same row: that row no longer matches, count===0, it is skipped.
+- `staleOlderThanMinutes` is clamped server-side to a safe minimum of 5 and max of
+  1440 (default 15) so a tiny/negative window can never requeue freshly-claimed jobs
+  that are still legitimately running.
+
+## Worker-route trigger (POST /api/inventory/sync-jobs/run)
+- Header (RENAMED): `x-inventory-sync-worker-secret: $INVENTORY_SYNC_WORKER_SECRET`
+  (was `x-internal-secret`). 503 if env unset, 401 on mismatch, timing-safe compare.
+- Body (all optional; empty body works; present-but-malformed JSON => 400):
+  `{ "limit": 10, "requeueStale": true, "staleOlderThanMinutes": 15 }`.
+  When `requeueStale` is true the reaper runs FIRST (clamped minutes + bounded limit),
+  THEN `runQueuedSyncJobs`, so recovered jobs are re-claimed in the same invocation.
+  When false: `requeuedStale=0, failedStale=0`.
+- Response (sanitized counts only — NEVER payloads/provider errors/secrets):
+  `{ ok:true, requeuedStale, failedStale, claimed, succeeded, failed, skipped, needsReview }`.
+
+## Scheduler decision (NO Vercel cron)
+- DECISION: do NOT add `vercel.json` cron and do NOT add a GET handler.
+  Reasons: (1) the repo has no existing safe cron-route / CRON_SECRET pattern to reuse;
+  (2) Vercel Cron can only issue `GET` + `Authorization: Bearer $CRON_SECRET` — no
+  custom header, no POST body — so it cannot authenticate this POST + custom-header
+  endpoint without weakening the auth model, which we will not do.
+- Use an EXTERNAL scheduler (GitHub Actions cron / Upstash QStash / any cron service):
+  - POST to `https://<app-domain>/api/inventory/sync-jobs/run` every 5-10 minutes.
+  - Header: `x-inventory-sync-worker-secret: $INVENTORY_SYNC_WORKER_SECRET`
+  - Body: `{"limit":10,"requeueStale":true,"staleOlderThanMinutes":15}`
+  - Keep the secret in the scheduler's secret store, never in the repo.
+
 ## Endpoints added
-- POST /api/inventory/email-signals  (internal-secret, fail-closed)
-- POST /api/inventory/sync-jobs/run   (internal-secret, fail-closed; worker trigger;
-  optional {limit}; returns ONLY a sanitized summary {claimed,succeeded,failed,skipped,
+- POST /api/inventory/email-signals  (x-internal-secret, fail-closed)
+- POST /api/inventory/sync-jobs/run   (x-inventory-sync-worker-secret, fail-closed;
+  worker trigger; optional {limit, requeueStale, staleOlderThanMinutes}; returns ONLY a
+  sanitized summary {requeuedStale,failedStale,claimed,succeeded,failed,skipped,
   needsReview}; not public-user callable)
 - POST /api/inventory/mark-sold
 - POST /api/inventory/listings        (manual marketplace URL)
@@ -2029,9 +2106,10 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
   The 'delist' action is unchanged.
 
 ## Env vars
-- INVENTORY_EMAIL_INGEST_SECRET (server-only). Unset => endpoint returns 503.
-- INVENTORY_SYNC_WORKER_SECRET (server-only). Unset => /api/inventory/sync-jobs/run
+- INVENTORY_EMAIL_INGEST_SECRET (server-only). Unset => /api/inventory/email-signals
   returns 503; wrong x-internal-secret => 401 (timing-safe compare).
+- INVENTORY_SYNC_WORKER_SECRET (server-only). Unset => /api/inventory/sync-jobs/run
+  returns 503; wrong `x-inventory-sync-worker-secret` header => 401 (timing-safe compare).
 
 ## Automated vs manual
 - Automated: high-confidence sale signal -> mark sold -> queue delist for other
@@ -2062,10 +2140,18 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
 - Inventory sync UI (platform chips, sync panel, buttons), notifications UI, and
   the order-sync/webhook consumers: DEFERRED.
 - Migration is NOT applied; apply via the documented Supabase path after develop merge.
+- Worker scheduling is EXTERNAL (no in-repo cron). Until an external scheduler is
+  configured (see "Scheduler decision"), the reaper + worker only run when something
+  POSTs the route. No background loop ships in the app.
 
-## Validation (in worktree, against develop)
-- prisma validate: pass; tsc --noEmit: clean; lint: 0 errors (2 pre-existing
-  warnings); npm test: 163 files / 1094 tests pass; next build: success.
+## Validation (in worktree)
+- Inventory safety layer (earlier pass): prisma validate pass; tsc clean; lint 0
+  errors (2 pre-existing warnings); 163 files / 1094 tests; next build success.
+- Ops-hardening pass (PR #61, 2026-06-25): `prisma validate` pass; `tsc --noEmit` 0;
+  `npm run lint` 0 errors / 2 pre-existing warnings (`draft-actions.test.ts`, unrelated);
+  `npm test` 166 files / **1140 tests pass** (baseline was 1129; +11 new reaper/route
+  tests); `next build` success. No eBay/billing/auth/UI files modified; no secrets in
+  code/logs/tests; migration `20260626000000_inventory_safety_layer` untouched/unapplied.
 
 ## Risks
 - resale_app BYPASSRLS: isolation depends on app-layer userId filters (engine
