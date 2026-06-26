@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { ItemUpdateSchema } from "@/lib/listing-item-update";
 import { getPrisma } from "@/lib/prisma";
@@ -20,9 +22,10 @@ export async function GET(
     const user = await requireSupabaseUser(request);
     const { id } = await params;
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const item = await prisma.inventoryItem.findFirst({
-      where: { id, sellerId: user.id },
+      where: { id, ...accountScope(account) },
       include: {
         listingDrafts: { orderBy: { updatedAt: "desc" } },
         marketplaceListings: true,
@@ -91,8 +94,9 @@ export async function PATCH(
     }
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const existing = await prisma.inventoryItem.findFirst({
-      where: { id, sellerId: user.id },
+      where: { id, ...accountScope(account) },
       select: { id: true },
     });
     if (!existing) {
@@ -116,7 +120,7 @@ export async function PATCH(
     // not fail the request (the client refreshes on its next load).
     let item = null;
     try {
-      item = await loadItemDetailState(id, user.id);
+      item = await loadItemDetailState(id, account);
     } catch {
       item = null;
     }

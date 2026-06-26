@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   createSupabaseServiceClient: vi.fn(),
+  getActiveAccount: vi.fn(),
   runCompFetch: vi.fn(),
   enabledCompSources: vi.fn(),
   mapAttempt: vi.fn((attempt) => attempt),
@@ -19,6 +20,10 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServiceClient: mocks.createSupabaseServiceClient,
 }));
 
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: mocks.getActiveAccount,
+}));
+
 vi.mock("@/lib/comps/fetch", () => ({
   runCompFetch: mocks.runCompFetch,
 }));
@@ -32,6 +37,8 @@ vi.mock("@/lib/view/server-map", () => ({
   mapItemDetail: mocks.mapItemDetail,
 }));
 
+vi.mock("server-only", () => ({}));
+
 import { AppError } from "@/lib/errors";
 import { GET } from "./route";
 
@@ -39,6 +46,7 @@ describe("listing detail route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.enabledCompSources.mockReturnValue(["ebay_browse"]);
     mocks.createSupabaseServiceClient.mockReturnValue({
       storage: {
@@ -75,6 +83,9 @@ describe("listing detail route", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: "item-1", accountId: "acc-1" }) }),
+    );
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
     expect(prisma.priceComp.count).not.toHaveBeenCalled();
   });

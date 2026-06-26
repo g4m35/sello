@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -12,6 +13,12 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
 }));
+
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: mocks.getActiveAccount,
+}));
+
+vi.mock("server-only", () => ({}));
 
 import { PATCH, POST } from "./[draftId]/route";
 
@@ -57,6 +64,7 @@ describe("listing draft update marketplace fields", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
   });
 
   it("saves the eBay category ID into marketplaceDrafts for the signed-in seller", async () => {

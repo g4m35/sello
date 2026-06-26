@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { coverOrder } from "@/lib/photo-order";
@@ -21,9 +23,10 @@ export async function POST(
     const user = await requireSupabaseUser(request);
     const { id } = await params;
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const item = await prisma.inventoryItem.findFirst({
-      where: { id, sellerId: user.id },
+      where: { id, ...accountScope(account) },
       select: { id: true },
     });
     if (!item) {
@@ -87,8 +90,9 @@ export async function PATCH(
     }
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const item = await prisma.inventoryItem.findFirst({
-      where: { id, sellerId: user.id },
+      where: { id, ...accountScope(account) },
       select: { id: true },
     });
     if (!item) {
@@ -135,8 +139,9 @@ export async function DELETE(
     }
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const photo = await prisma.itemPhoto.findFirst({
-      where: { id: photoId, inventoryItem: { id, sellerId: user.id } },
+      where: { id: photoId, inventoryItem: { id, ...accountScope(account) } },
     });
     if (!photo) {
       throw new AppError("Photo not found", 404);
