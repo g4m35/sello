@@ -8,6 +8,17 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
 }));
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({
+    id: "acc-1",
+    ownerUserId: "11111111-1111-4111-8111-111111111111",
+    plan: "free",
+  }),
+}));
+vi.mock("@/lib/billing/connections", () => ({
+  assertCanManageMarketplaceConnections: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUserFromRequestOrCookies: mocks.requireSupabaseUserFromRequestOrCookies,
@@ -20,7 +31,7 @@ describe("eBay disconnect route", () => {
     vi.clearAllMocks();
   });
 
-  it("deletes only the current user's sandbox connection", async () => {
+  it("deletes only the active account's sandbox connection", async () => {
     const deleteMany = vi.fn().mockResolvedValue({ count: 1 });
     mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
@@ -38,7 +49,7 @@ describe("eBay disconnect route", () => {
     expect(response.status).toBe(200);
     expect(deleteMany).toHaveBeenCalledWith({
       where: {
-        userId: "11111111-1111-4111-8111-111111111111",
+        accountId: "acc-1",
         marketplace: "ebay",
         environment: "sandbox",
       },

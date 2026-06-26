@@ -13,11 +13,23 @@ function createPrisma(connection: null | { id: string } = { id: "connection-1" }
     configRows,
     marketplaceConnection: {
       async findUnique({ where }) {
-        if (where.userId_marketplace_environment.userId !== "user-1") return null;
+        if (
+          where.accountId_marketplace_environment?.accountId &&
+          where.accountId_marketplace_environment.accountId !== "acc-1"
+        ) {
+          return null;
+        }
+        if (
+          where.userId_marketplace_environment?.userId &&
+          where.userId_marketplace_environment.userId !== "user-1"
+        ) {
+          return null;
+        }
         return connection
           ? {
               id: connection.id,
               userId: "user-1",
+              accountId: "acc-1",
               marketplace: "ebay",
               environment: "sandbox",
               accessTokenEnc: "enc",
@@ -65,7 +77,11 @@ describe("eBay readiness", () => {
       prisma.marketplaceConnection,
     );
     prisma.marketplaceConnection.findUnique = async (args) => {
-      environments.push(args.where.userId_marketplace_environment.environment);
+      environments.push(
+        args.where.userId_marketplace_environment?.environment ??
+          args.where.accountId_marketplace_environment?.environment ??
+          "missing",
+      );
       return findUnique(args);
     };
 

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { getActiveAccount } from "@/lib/billing/account";
-import { assertCanConnectMarketplace } from "@/lib/billing/connections";
+import {
+  assertCanConnectMarketplace,
+  assertCanManageMarketplaceConnections,
+} from "@/lib/billing/connections";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { getEtsyConfig, getEtsyOAuthStateSecret } from "@/lib/marketplace/adapters/etsy/config";
 import { requireEtsyCapability } from "@/lib/marketplace/adapters/etsy/capabilities";
@@ -26,6 +29,7 @@ export async function GET(request: Request) {
     // Plan connection cap: block a new marketplace once at the plan limit
     // (reconnecting Etsy is always allowed).
     const account = await getActiveAccount(user.id);
+    await assertCanManageMarketplaceConnections(account, user.id);
     await assertCanConnectMarketplace(account, "etsy");
 
     const config = getEtsyConfig();

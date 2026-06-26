@@ -25,8 +25,13 @@ export type EbayDelistPrismaLike = {
   marketplaceConnection: {
     findUnique(args: {
       where: {
-        userId_marketplace_environment: {
+        userId_marketplace_environment?: {
           userId: string;
+          marketplace: "ebay";
+          environment: EbayEnvironment;
+        };
+        accountId_marketplace_environment?: {
+          accountId: string;
           marketplace: "ebay";
           environment: EbayEnvironment;
         };
@@ -100,13 +105,21 @@ export async function delistEbayListing(
   }
 
   const connection = await prisma.marketplaceConnection.findUnique({
-    where: {
-      userId_marketplace_environment: {
-        userId: input.userId,
-        marketplace: "ebay",
-        environment,
-      },
-    },
+    where: input.accountId
+      ? {
+          accountId_marketplace_environment: {
+            accountId: input.accountId,
+            marketplace: "ebay",
+            environment,
+          },
+        }
+      : {
+          userId_marketplace_environment: {
+            userId: input.userId,
+            marketplace: "ebay",
+            environment,
+          },
+        },
   });
 
   if (!connection) {

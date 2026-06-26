@@ -19,6 +19,7 @@ vi.mock("@/lib/billing/account", () => ({
 }));
 vi.mock("@/lib/billing/connections", () => ({
   assertCanConnectMarketplace: vi.fn().mockResolvedValue(undefined),
+  assertCanManageMarketplaceConnections: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { GET } from "./route";

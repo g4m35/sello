@@ -413,6 +413,8 @@ model MarketplaceEvent {
 model MarketplaceConnection {
   id                    String             @id @default(uuid()) @db.Uuid
   userId                String             @db.Uuid
+  accountId             String             @db.Uuid
+  account               Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
   marketplace           Marketplace
   environment           String
   externalUserId        String?
@@ -427,13 +429,17 @@ model MarketplaceConnection {
   tiktokShopConfigs     TikTokShopConfig[]
 
   @@unique([userId, marketplace, environment])
+  @@unique([accountId, marketplace, environment])
   @@index([userId])
+  @@index([accountId])
   @@index([marketplace, environment])
 }
 
 model EbaySellerConfig {
   id                      String                @id @default(uuid()) @db.Uuid
   userId                  String                @db.Uuid
+  accountId               String                @db.Uuid
+  account                 Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
   marketplaceConnectionId String                @db.Uuid
   marketplaceConnection   MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
   marketplaceId           String                @default("EBAY_US")
@@ -447,7 +453,9 @@ model EbaySellerConfig {
   updatedAt               DateTime              @updatedAt
 
   @@unique([userId, marketplaceConnectionId])
+  @@unique([accountId, marketplaceConnectionId])
   @@index([userId])
+  @@index([accountId])
   @@index([marketplaceConnectionId])
 }
 
@@ -458,6 +466,8 @@ model EbaySellerConfig {
 model TikTokShopConfig {
   id                      String                @id @default(uuid()) @db.Uuid
   userId                  String                @db.Uuid
+  accountId               String                @db.Uuid
+  account                 Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
   marketplaceConnectionId String                @db.Uuid
   marketplaceConnection   MarketplaceConnection @relation(fields: [marketplaceConnectionId], references: [id], onDelete: Cascade)
   shopId                  String?
@@ -471,7 +481,9 @@ model TikTokShopConfig {
   updatedAt               DateTime              @updatedAt
 
   @@unique([userId, marketplaceConnectionId])
+  @@unique([accountId, marketplaceConnectionId])
   @@index([userId])
+  @@index([accountId])
   @@index([marketplaceConnectionId])
 }
 
@@ -778,6 +790,9 @@ model Account {
   subscription Subscription?
   usage        UsageCounter[]
   inventory    InventoryItem[]
+  marketplaceConnections MarketplaceConnection[]
+  ebaySellerConfigs      EbaySellerConfig[]
+  tiktokShopConfigs      TikTokShopConfig[]
 }
 
 model AccountMember {

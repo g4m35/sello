@@ -82,8 +82,13 @@ export type EbayPreflightPrismaLike = EbayMediaPrismaLike & {
   marketplaceConnection: {
     findUnique(args: {
       where: {
-        userId_marketplace_environment: {
+        userId_marketplace_environment?: {
           userId: string;
+          marketplace: "ebay";
+          environment: EbayEnvironment;
+        };
+        accountId_marketplace_environment?: {
+          accountId: string;
           marketplace: "ebay";
           environment: EbayEnvironment;
         };
@@ -92,7 +97,7 @@ export type EbayPreflightPrismaLike = EbayMediaPrismaLike & {
   };
   ebaySellerConfig: {
     findFirst(args: {
-      where: { userId: string; marketplaceConnectionId: string };
+      where: { userId?: string; accountId?: string; marketplaceConnectionId: string };
     }): Promise<{
       marketplaceId: string;
       paymentPolicyId: string | null;
@@ -216,18 +221,28 @@ export async function preflightEbayListing(
   }
 
   const connection = await prisma.marketplaceConnection.findUnique({
-    where: {
-      userId_marketplace_environment: {
-        userId: input.userId,
-        marketplace: "ebay",
-        environment,
-      },
-    },
+    where: input.accountId
+      ? {
+          accountId_marketplace_environment: {
+            accountId: input.accountId,
+            marketplace: "ebay",
+            environment,
+          },
+        }
+      : {
+          userId_marketplace_environment: {
+            userId: input.userId,
+            marketplace: "ebay",
+            environment,
+          },
+        },
   });
 
   const sellerConfig = connection
     ? await prisma.ebaySellerConfig.findFirst({
-        where: { userId: input.userId, marketplaceConnectionId: connection.id },
+        where: input.accountId
+          ? { accountId: input.accountId, marketplaceConnectionId: connection.id }
+          : { userId: input.userId, marketplaceConnectionId: connection.id },
       })
     : null;
 

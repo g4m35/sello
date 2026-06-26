@@ -41,20 +41,30 @@ migration `20260626000000_inventory_safety_layer` still UNAPPLIED (untouched).
 2026-06-25 — Codex. Continued `feature/stripe-billing-metering-seats`
 Phase 4.3 account-scope migration (NOT merged, NOT deployed). No env changes, no
 live Stripe/eBay/Etsy calls, no migrations applied. Committed item-centric slice
-(`7bde3e2`) and comps/history/jobs slice (`763e2b9`). Current uncommitted batch
-has migrated publish/delist pipeline and eBay publish/preflight/delist/orphan
-adapter item lookups to active account scope where route context is available:
-publish, bulk publish, bulk publish preflight, delist, bulk delist, bulk delist
-preflight, eBay preflight/publish/delist/orphan item lookup, readiness/media
-helpers. `sellerId` remains creator/acting-member attribution; direct service
-fallbacks still narrow to `sellerId` only when no route-level `accountId` is
-provided. Provider ledger still stores userId, with provider usage widened only
-to active account-member ids. Verification for committed comps batch:
-`npx tsc --noEmit --pretty false`; focused 59-test run for comps/refresh/
-`[compId]`/provider-usage/history/jobs/fetch/fetch-paid-budget; `git diff --check`
-clean. Verification for current publish/delist batch: `npx tsc --noEmit --pretty
-false`; focused 158-test run across publish/delist/bulk/eBay adapter/orphan
-paths; stale seller-scope scan found only optional direct-caller fallback types.
+(`7bde3e2`), comps/history/jobs slice (`763e2b9`), and publish/delist slice
+(`c835fbd`). Current uncommitted batch adds migration
+`20260625030000_marketplace_connections_account_scope` and converts marketplace
+credential/config scoping to account-level: `MarketplaceConnection`,
+`EbaySellerConfig`, and `TikTokShopConfig` gain required `accountId` with
+backfill from personal accounts; eBay/Etsy connect/callback/disconnect/readiness/
+status/location/publish paths use active account connections; owner/admin guard
+blocks non-admin members from managing credentials; plan connection caps count
+distinct marketplaces by account (`free` 1, `pro` exactly 3 choices before
+blocking the 4th). eBay publish/preflight/delist/orphan shared helpers and Etsy
+session prefer account connection lookup when route context passes `accountId`.
+`sellerId`/`userId` remain creator/acting-member attribution; direct service
+fallbacks still narrow to `sellerId`/`userId` only when no route-level `accountId`
+is provided. eBay account-deletion remains user-scoped by design because it is a
+marketplace privacy deletion for the external user id. Provider ledger still
+stores userId, with provider usage widened only to active account-member ids.
+
+Verification this session: `npx tsc --noEmit --pretty false`; `npx prisma
+validate`; focused 59-test run for comps/refresh/`[compId]`/provider-usage/
+history/jobs/fetch/fetch-paid-budget; focused 158-test run across publish/delist/
+bulk/eBay adapter/orphan paths; focused 103-test run across marketplace
+connection/readiness/session/cap helpers; `git diff --check` clean. Stale
+seller/user connection-scope scan found only optional direct-caller fallbacks and
+the intentionally user-scoped eBay account-deletion handler.
 
 ## Last updated (previous)
 2026-06-24 — Claude. **PR #57 (gated Etsy API integration FOUNDATION) shipped to

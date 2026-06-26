@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
 import { getPrisma } from "@/lib/prisma";
 import { resolveEtsyCapabilities } from "@/lib/marketplace/adapters/etsy/capabilities";
 import { isEtsyApiEnabled } from "@/lib/marketplace/adapters/etsy/config";
@@ -26,8 +27,9 @@ export async function GET(request: Request) {
     }
 
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
     const item = await prisma.inventoryItem.findFirst({
-      where: { id: itemId, sellerId: user.id },
+      where: { id: itemId, accountId: account.id },
       include: {
         listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 },
         photos: { select: { id: true } },
@@ -40,8 +42,8 @@ export async function GET(request: Request) {
 
     const connection = await prisma.marketplaceConnection.findUnique({
       where: {
-        userId_marketplace_environment: {
-          userId: user.id,
+        accountId_marketplace_environment: {
+          accountId: account.id,
           marketplace: "etsy",
           environment: ETSY_ENVIRONMENT,
         },

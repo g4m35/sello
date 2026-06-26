@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getPrisma } from "@/lib/prisma";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertCanManageMarketplaceConnections } from "@/lib/billing/connections";
 import {
   getEbayConfig,
   getEbayOAuthStateSecret,
@@ -63,16 +65,21 @@ export async function GET(request: Request) {
     }
 
     const now = Date.now();
-    await getPrisma().marketplaceConnection.upsert({
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    await assertCanManageMarketplaceConnections(account, user.id, prisma);
+
+    await prisma.marketplaceConnection.upsert({
       where: {
-        userId_marketplace_environment: {
-          userId: oauthState.userId,
+        accountId_marketplace_environment: {
+          accountId: account.id,
           marketplace: "ebay",
           environment: config.environment,
         },
       },
       create: {
         userId: oauthState.userId,
+        accountId: account.id,
         marketplace: "ebay",
         environment: config.environment,
         accessTokenEnc: encryptEbayToken(

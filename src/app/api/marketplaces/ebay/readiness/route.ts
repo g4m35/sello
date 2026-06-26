@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
 import { getPrisma } from "@/lib/prisma";
 import {
   getEbayConfig,
@@ -29,10 +30,14 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
+    const rawPrisma = getPrisma();
+    const account = await getActiveAccount(user.id, rawPrisma);
+    const prisma = rawPrisma as unknown as EbayReadinessPrismaLike & EbayTokenPrismaLike;
     const readiness = await getStoredEbayReadiness(
-      getEbayPrisma(),
+      prisma,
       user.id,
       getEbayEnvironment(),
+      account.id,
     );
     return NextResponse.json(readiness);
   } catch (error) {
@@ -48,12 +53,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
-    const prisma = getEbayPrisma();
+    const rawPrisma = getPrisma();
+    const account = await getActiveAccount(user.id, rawPrisma);
+    const prisma = rawPrisma as unknown as EbayReadinessPrismaLike & EbayTokenPrismaLike;
     const config = getEbayConfig();
     const connection = await prisma.marketplaceConnection.findUnique({
       where: {
-        userId_marketplace_environment: {
-          userId: user.id,
+        accountId_marketplace_environment: {
+          accountId: account.id,
           marketplace: "ebay",
           environment: config.environment,
         },
@@ -65,6 +72,7 @@ export async function POST(request: Request) {
         prisma,
         user.id,
         config.environment,
+        account.id,
       );
       return NextResponse.json(readiness, { status: 404 });
     }
@@ -81,6 +89,7 @@ export async function POST(request: Request) {
           config.environment,
         ),
         config.environment,
+        account.id,
       );
 
       return NextResponse.json(readiness);
@@ -105,8 +114,4 @@ export async function POST(request: Request) {
     const { payload, status } = toEbayErrorPayload(error);
     return NextResponse.json({ error: payload }, { status });
   }
-}
-
-function getEbayPrisma() {
-  return getPrisma() as unknown as EbayReadinessPrismaLike & EbayTokenPrismaLike;
 }

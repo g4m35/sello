@@ -14,6 +14,7 @@ import type {
 type EbayConnection = {
   id: string;
   userId: string;
+  accountId?: string;
   marketplace: Marketplace | "ebay";
   environment: string;
   accessTokenEnc: string;
@@ -37,8 +38,13 @@ export type EbayReadinessPrismaLike = {
   marketplaceConnection: {
     findUnique(args: {
       where: {
-        userId_marketplace_environment: {
+        userId_marketplace_environment?: {
           userId: string;
+          marketplace: "ebay";
+          environment: EbayEnvironment;
+        };
+        accountId_marketplace_environment?: {
+          accountId: string;
           marketplace: "ebay";
           environment: EbayEnvironment;
         };
@@ -47,12 +53,16 @@ export type EbayReadinessPrismaLike = {
   };
   ebaySellerConfig: {
     findFirst(args: {
-      where: { userId: string; marketplaceConnectionId: string };
+      where: { userId?: string; accountId?: string; marketplaceConnectionId: string };
     }): Promise<EbaySellerConfigRow>;
     upsert(args: {
       where: {
-        userId_marketplaceConnectionId: {
+        userId_marketplaceConnectionId?: {
           userId: string;
+          marketplaceConnectionId: string;
+        };
+        accountId_marketplaceConnectionId?: {
+          accountId: string;
           marketplaceConnectionId: string;
         };
       };
@@ -101,8 +111,9 @@ export async function getStoredEbayReadiness(
   prisma: EbayReadinessPrismaLike,
   userId: string,
   environment: EbayEnvironment,
+  accountId?: string,
 ): Promise<EbayReadinessResponse> {
-  const connection = await findConnection(prisma, userId, environment);
+  const connection = await findConnection(prisma, userId, environment, accountId);
 
   if (!connection) {
     return toResponse({
@@ -114,7 +125,9 @@ export async function getStoredEbayReadiness(
   }
 
   const row = await prisma.ebaySellerConfig.findFirst({
-    where: { userId, marketplaceConnectionId: connection.id },
+    where: accountId
+      ? { accountId, marketplaceConnectionId: connection.id }
+      : { userId, marketplaceConnectionId: connection.id },
   });
 
   return toResponse({
@@ -130,8 +143,9 @@ export async function refreshEbayReadiness(
   userId: string,
   client: EbayApiClient,
   environment: EbayEnvironment,
+  accountId?: string,
 ): Promise<EbayReadinessResponse> {
-  const connection = await findConnection(prisma, userId, environment);
+  const connection = await findConnection(prisma, userId, environment, accountId);
   if (!connection) {
     throw new EbayIntegrationError(
       ebayErrorCodes.notConnected,
@@ -164,6 +178,7 @@ export async function refreshEbayReadiness(
   const now = new Date();
   const row = {
     userId,
+    ...(accountId ? { accountId } : {}),
     marketplaceConnectionId: connection.id,
     marketplaceId: "EBAY_US",
     paymentPolicyId,
@@ -175,12 +190,19 @@ export async function refreshEbayReadiness(
   };
 
   await prisma.ebaySellerConfig.upsert({
-    where: {
-      userId_marketplaceConnectionId: {
-        userId,
-        marketplaceConnectionId: connection.id,
-      },
-    },
+    where: accountId
+      ? {
+          accountId_marketplaceConnectionId: {
+            accountId,
+            marketplaceConnectionId: connection.id,
+          },
+        }
+      : {
+          userId_marketplaceConnectionId: {
+            userId,
+            marketplaceConnectionId: connection.id,
+          },
+        },
     create: row,
     update: row,
   });
@@ -213,15 +235,24 @@ async function findConnection(
   prisma: EbayReadinessPrismaLike,
   userId: string,
   environment: EbayEnvironment,
+  accountId?: string,
 ) {
   return prisma.marketplaceConnection.findUnique({
-    where: {
-      userId_marketplace_environment: {
-        userId,
-        marketplace: "ebay",
-        environment,
-      },
-    },
+    where: accountId
+      ? {
+          accountId_marketplace_environment: {
+            accountId,
+            marketplace: "ebay",
+            environment,
+          },
+        }
+      : {
+          userId_marketplace_environment: {
+            userId,
+            marketplace: "ebay",
+            environment,
+          },
+        },
   });
 }
 
