@@ -65,6 +65,7 @@ function createPrisma(opts: {
   const item = opts.item ?? strongItem;
   let transactionTail = Promise.resolve();
   let nextLedgerId = 1;
+  let countCalls = 0;
   const costingStatuses = new Set(["attempted", "succeeded", "failed"]);
   const providerCallLedger = {
     aggregate: vi.fn(async ({ where }: { where: { createdAt: { gte: Date } } }) => ({
@@ -82,7 +83,22 @@ function createPrisma(opts: {
     })),
     count: vi.fn(
       async ({ where }: { where: { userId: string; createdAt: { gte: Date } } }) => {
-        const isDailyWindow = where.createdAt.gte.getTime() > Date.now() - 2 * 86_400_000;
+        const now = new Date();
+        const dayStart = Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate(),
+          0,
+          0,
+          0,
+          0,
+        );
+        const monthStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0);
+        const countCall = countCalls++;
+        const isDailyWindow =
+          dayStart === monthStart
+            ? countCall % 2 === 0
+            : where.createdAt.gte.getTime() === dayStart;
         const initialCount = isDailyWindow
           ? (opts.userDailyCount ?? 0)
           : (opts.userMonthlyCount ?? 0);
