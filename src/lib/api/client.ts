@@ -9,6 +9,7 @@ import type {
   BulkDelistPreflightResult,
 } from "@/lib/marketplace/bulk-delist";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
+import type { StockXCatalogCandidate } from "@/lib/marketplace/adapters/stockx/types";
 import type { ExportMarketplace } from "@/lib/marketplace/export-formatters";
 import type {
   AttemptView,
@@ -522,6 +523,43 @@ export const api = {
       token,
       {
         method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    ),
+
+  searchStockXCatalog: (
+    token: string,
+    params: {
+      query: string;
+      brand?: string | null;
+      category?: string | null;
+      size?: string | null;
+    },
+  ) => {
+    const query = new URLSearchParams({ query: params.query });
+    if (params.brand) query.set("brand", params.brand);
+    if (params.category) query.set("category", params.category);
+    if (params.size) query.set("size", params.size);
+    return request<{ candidates: StockXCatalogCandidate[] }>(
+      `/api/marketplaces/stockx/catalog/search?${query.toString()}`,
+      token,
+      { timeoutMs: READ_REQUEST_TIMEOUT_MS },
+    );
+  },
+
+  saveStockXMatch: (
+    token: string,
+    body: StockXCatalogCandidate & {
+      draftId: string;
+      matchSource?: "catalog_search" | "manual";
+      matchConfidence?: number | null;
+    },
+  ) =>
+    request<{ ok: true; item: ItemDetailView | null }>(
+      "/api/marketplaces/stockx/match",
+      token,
+      {
+        method: "POST",
         body: JSON.stringify(body),
       },
     ),

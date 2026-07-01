@@ -185,24 +185,17 @@ export const MARKETPLACE_REGISTRY: Record<Marketplace, MarketplaceDescriptor> = 
     key: "stockx",
     displayName: "StockX",
     integrationMode: "catalog_match_scaffold",
-    bestFutureMode: "Catalog-matched ask/listing automation",
+    bestFutureMode: "Catalog-matched market data and future gated listing automation",
     defaultStatus: "catalog_match_required",
     fallbackMode: "assisted_export",
     capabilities: matrix({
-      // Auto-publish is only ever possible after an exact catalog/product/
-      // variant match (requiresCatalogMatch gates this in resolveCurrentCapabilities).
-      canAutoPublish: true,
-      canUpdateListing: true,
-      canDeleteListing: true,
-      // Inventory sync on StockX is limited (ask quantity only).
-      canSyncInventory: true,
-      // No StockX sold webhook is implemented.
+      canCreateDraft: true,
       canReceiveSoldWebhook: false,
       requiresCatalogMatch: true,
       requiresManualApproval: true,
     }),
     uiCopy:
-      "StockX requires an exact catalog match. Sello can create and manage StockX asks only for eligible catalog-matched sneakers, streetwear, and collectibles.",
+      "StockX requires an exact catalog match. Sello can save StockX product matches and use gated market data; live StockX listing creation is disabled.",
   },
   tiktok_shop: {
     key: "tiktok_shop",

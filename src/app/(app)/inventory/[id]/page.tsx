@@ -14,6 +14,7 @@ import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
 import { AutoPricing } from "@/components/app/auto-pricing";
+import { StockXMatchCard } from "@/components/app/stockx-match-card";
 import {
   EbayPreflightCard,
   ebayCategorySelectionPatch,
@@ -1439,6 +1440,21 @@ export default function ListingDetailPage() {
                 )}
               </div>
             </section>
+
+            <StockXMatchCard
+              accessToken={token}
+              draftId={draftId}
+              match={item.stockxMatch}
+              item={{
+                title: item.title,
+                brand: item.brand,
+                category: item.category,
+                size: item.size,
+              }}
+              onSaved={(nextItem) => {
+                setItem((prev) => (prev ? mergeSavedItemState(prev, nextItem) : nextItem));
+              }}
+            />
 
             <div id="ebay-readiness">
               <EbayPreflightCard

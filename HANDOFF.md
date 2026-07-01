@@ -2318,3 +2318,53 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
   this checkpoint.
 - Codex review produced three actionable findings; all are being fixed before
   merge.
+
+---
+
+# StockX foundation / production-readiness checkpoint (2026-07-01)
+
+- Branch: `feature/stockx-foundation-bulk-safety-release`
+- StockX callback URL used by config and Vercel defaults:
+  `https://sello.wtf/api/marketplaces/stockx/callback`
+- Implementation added a fail-closed StockX foundation:
+  OAuth connect/callback/disconnect/status, encrypted token storage in the existing
+  account-scoped `MarketplaceConnection`, catalog search normalization, listing-draft
+  product/variant matching, StockX paid market-data comp source, settings UI, listing
+  editor match UI, and disabled listing placeholder route.
+- New migration:
+  `20260701010000_stockx_foundation` adds only nullable StockX match metadata fields
+  on `ListingDraft` plus indexes. The existing marketplace token table is reused.
+- Vercel env state checked by name only:
+  - Production and Preview (`develop`) now have non-secret defaults:
+    `STOCKX_REDIRECT_URI`, `STOCKX_API_BASE_URL`, `STOCKX_AUTH_BASE_URL`,
+    `STOCKX_API_ENABLED=false`, `STOCKX_MARKET_DATA_ENABLED=false`,
+    `STOCKX_LISTING_ENABLED=false`.
+  - Production and Preview (`develop`) now have generated app-owned secrets:
+    `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_OAUTH_STATE_SECRET`.
+  - The linked Vercel project did not list `STOCKX_CLIENT_ID`,
+    `STOCKX_CLIENT_SECRET`, or `STOCKX_API_KEY` by name during this pass. No values
+    were printed.
+- StockX OAuth/live API status:
+  disabled by default because `STOCKX_API_ENABLED=false` and required app credentials
+  / API key are not visible by name in the linked Vercel project. Catalog search and
+  market data fail closed until the flags and env are complete.
+- Intentionally disabled:
+  live StockX listing creation, future listing/order sync, and any bulk StockX
+  publishing. `stockx` remains excluded from the autonomous publish queue.
+- Bulk publishing safety validation:
+  registry tests assert StockX is not publish-queue eligible; the new StockX publish
+  route returns disabled/future-readiness errors and performs no marketplace mutation.
+- Migration-ledger readiness:
+  prior read-only Supabase production check found the billing/account-scope schema
+  present but `_prisma_migrations` missing the exact required billing migration names
+  (`20260625010000_add_billing_models`,
+  `20260625020000_inventory_account_scope`,
+  `20260625030000_marketplace_connections_account_scope`). Treat production deploy as
+  blocked until that ledger mismatch is reconciled or formally documented.
+- Validation after this pass:
+  `npx prisma validate` pass; `npm run lint` pass with the same two pre-existing
+  `draft-actions.test.ts` warnings; `npm test` pass (199 files / 1295 tests);
+  `npm run build` pass; `git diff --check` pass.
+- Secret handling:
+  no `.env*` files changed, no StockX credential values printed, and no secrets added
+  to repo docs/tests/source.
