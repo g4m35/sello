@@ -58,6 +58,16 @@ describe("getStockXOAuthConfig", () => {
     }
   });
 
+  it("ignores misnamed StockX credential variables", () => {
+    expect(() =>
+      getStockXOAuthConfig({
+        ...fullEnv,
+        STOCKX_CLIENT_ID: undefined,
+        StockX_client_id: "wrong-case-client-id",
+      }),
+    ).toThrow(StockXIntegrationError);
+  });
+
   it("uses safe production defaults", () => {
     const config = getStockXOAuthConfig({
       ...fullEnv,
