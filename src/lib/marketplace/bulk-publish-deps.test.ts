@@ -52,6 +52,24 @@ describe("defaultBulkPublishDeps.preflightItem", () => {
     expect(mocks.preflightEbayListing).not.toHaveBeenCalled();
   });
 
+  it("uses active account scope before readiness checks", async () => {
+    const prisma = prismaFake({ owned: false });
+    const deps = defaultBulkPublishDeps(prisma as never, ENV);
+
+    const out = await deps.preflightItem({
+      userId: "member-1",
+      accountId: "acc-1",
+      itemId: "item-1",
+    });
+
+    expect(out.status).toBe("rejected");
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
+      where: { id: "item-1", accountId: "acc-1" },
+      select: { id: true },
+    });
+    expect(mocks.preflightEbayListing).not.toHaveBeenCalled();
+  });
+
   it("skips an item that already has a live eBay listing id (no readiness call)", async () => {
     const prisma = prismaFake({ listing: { status: "NOT_LISTED", externalListingId: "1100" } });
     const deps = defaultBulkPublishDeps(prisma as never, ENV);
@@ -97,6 +115,39 @@ describe("defaultBulkPublishDeps.executeItem", () => {
 
     const out = await deps.executeItem(args);
     expect(out).toMatchObject({ status: "published", externalListingId: "L-1" });
+    expect(mocks.executePublish).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "user-1",
+        accountId: undefined,
+        inventoryItemId: "item-1",
+        marketplace: "ebay",
+        bulkRunId: "run-1",
+      }),
+    );
+  });
+
+  it("passes active account scope and acting user separately to executePublish", async () => {
+    mocks.executePublish.mockResolvedValue({ outcome: { status: "published" }, listingId: "L-1" });
+    const deps = defaultBulkPublishDeps(prismaFake() as never, ENV);
+
+    await deps.executeItem({
+      userId: "member-1",
+      accountId: "acc-1",
+      itemId: "item-1",
+      bulkRunId: "run-1",
+    });
+
+    expect(mocks.executePublish).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "member-1",
+        accountId: "acc-1",
+        inventoryItemId: "item-1",
+        marketplace: "ebay",
+        bulkRunId: "run-1",
+      }),
+    );
   });
 
   it("maps a non-published (gate disabled) outcome to a safe skipped result", async () => {

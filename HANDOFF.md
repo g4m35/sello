@@ -2318,3 +2318,108 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
   this checkpoint.
 - Codex review produced three actionable findings; all are being fixed before
   merge.
+
+---
+
+# StockX foundation / production-readiness checkpoint (2026-07-01)
+
+- Branch: `feature/stockx-foundation-bulk-safety-release`
+- StockX callback URL used by config and Vercel defaults:
+  `https://sello.wtf/api/marketplaces/stockx/callback`
+- Implementation added a fail-closed StockX foundation:
+  OAuth connect/callback/disconnect/status, encrypted token storage in the existing
+  account-scoped `MarketplaceConnection`, catalog search normalization, listing-draft
+  product/variant matching, StockX paid market-data comp source, settings UI, listing
+  editor match UI, and disabled listing placeholder route.
+- New migration:
+  `20260701010000_stockx_foundation` adds only nullable StockX match metadata fields
+  on `ListingDraft` plus indexes. The existing marketplace token table is reused.
+- Vercel env state checked by name only:
+  - Production and Preview (`develop`) now have non-secret defaults:
+    `STOCKX_REDIRECT_URI`, `STOCKX_API_BASE_URL`, `STOCKX_AUTH_BASE_URL`,
+    `STOCKX_API_ENABLED=false`, `STOCKX_MARKET_DATA_ENABLED=false`,
+    `STOCKX_LISTING_ENABLED=false`.
+  - Production and Preview (`develop`) now have generated app-owned secrets:
+    `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_OAUTH_STATE_SECRET`.
+  - The linked Vercel project did not list `STOCKX_CLIENT_ID`,
+    `STOCKX_CLIENT_SECRET`, or `STOCKX_API_KEY` by name during this pass. No values
+    were printed.
+- StockX OAuth/live API status:
+  disabled by default because `STOCKX_API_ENABLED=false` and required app credentials
+  / API key are not visible by name in the linked Vercel project. Catalog search and
+  market data fail closed until the flags and env are complete.
+- Intentionally disabled:
+  live StockX listing creation, future listing/order sync, and any bulk StockX
+  publishing. `stockx` remains excluded from the autonomous publish queue.
+- Bulk publishing safety validation:
+  registry tests assert StockX is not publish-queue eligible; the new StockX publish
+  route returns disabled/future-readiness errors and performs no marketplace mutation.
+- Migration-ledger readiness:
+  prior read-only Supabase production check found the billing/account-scope schema
+  present but `_prisma_migrations` missing the exact required billing migration names
+  (`20260625010000_add_billing_models`,
+  `20260625020000_inventory_account_scope`,
+  `20260625030000_marketplace_connections_account_scope`). Treat production deploy as
+  blocked until that ledger mismatch is reconciled or formally documented.
+- Validation after this pass:
+  `npx prisma validate` pass; `npm run lint` pass with the same two pre-existing
+  `draft-actions.test.ts` warnings; `npm test` pass (199 files / 1295 tests);
+  `npm run build` pass; `git diff --check` pass.
+- Secret handling:
+  no `.env*` files changed, no StockX credential values printed, and no secrets added
+  to repo docs/tests/source.
+
+## Follow-up release-readiness pass (2026-07-01)
+
+- Branch was rebased against `origin/develop`; no rebase changes were needed.
+- Vercel StockX env status, checked redacted:
+  - `vercel env ls` shows production names present for:
+    `STOCKX_API_KEY`, `STOCKX_REDIRECT_URI`, `STOCKX_API_BASE_URL`,
+    `STOCKX_AUTH_BASE_URL`, `STOCKX_API_ENABLED`,
+    `STOCKX_MARKET_DATA_ENABLED`, `STOCKX_LISTING_ENABLED`,
+    `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_OAUTH_STATE_SECRET`.
+  - `vercel env ls` still shows misnamed production credential names:
+    `StockX_client_id`, `StockX_client_secret`.
+  - Exact production names `STOCKX_CLIENT_ID` and `STOCKX_CLIENT_SECRET` are
+    still missing. The misnamed values are not retrievable via `vercel env pull`
+    / `vercel env run` in this CLI context, so they must be re-entered under the
+    exact uppercase names by an operator. No credential values were printed.
+  - `STOCKX_API_ENABLED`, `STOCKX_MARKET_DATA_ENABLED`, and
+    `STOCKX_LISTING_ENABLED` were updated through Vercel CLI and verified as
+    fail-closed in the production runtime env (`!== "true"`). StockX live API,
+    market data, and listing creation remain disabled.
+- Read-only production migration ledger query was run through Supabase MCP against
+  project `xkovtxrdxparbkuysunh`:
+  - Present latest ledger entries include
+    `20260624000000_add_tiktok_vinted_stockx_marketplaces`,
+    `20260625000000_rls_least_privilege_hardening`, and
+    `20260626000000_inventory_safety_layer`.
+  - Still missing by exact name:
+    `20260625010000_add_billing_models`,
+    `20260625020000_inventory_account_scope`,
+    `20260625030000_marketplace_connections_account_scope`.
+  - New branch migration `20260701010000_stockx_foundation` is not applied to
+    production. Production deploy remains blocked until the migration ledger is
+    reconciled/documented and the StockX migration is applied through the
+    approved production path.
+- Bulk publish/delist safety audit result:
+  - Bulk publish and delist routes authenticate the user, resolve the active
+    account server-side, enforce plan batch caps, and pass `userId` separately
+    from `accountId` into service execution.
+  - Services re-check item membership with active `accountId` before readiness,
+    publish, or delist work; client-supplied account ids are not accepted.
+  - Bulk publish preflight uses canonical eBay preflight; execution calls
+    single-item `executePublish`, preserving eBay readiness, production gate,
+    duplicate publish guard, idempotency key, and structured per-item results.
+  - Bulk delist preflight and execution route through canonical eBay delist logic,
+    preserving already-ended/in-flight/idempotency checks and structured per-item
+    results.
+  - `stockx` remains excluded from autonomous publish queue; no bulk StockX
+    publishing exists.
+- Additional tests added in this pass:
+  - Free/Pro/Kingpin bulk publish plan cap behavior.
+  - Over-cap batch blocks before marketplace service call.
+  - Active account and acting user are forwarded separately for bulk publish/delist.
+  - Account-scoped item rejection happens before readiness/listing classification.
+  - Revoked membership is not returned by `getActiveAccount`.
+  - Focused validation: 8 files / 70 tests passed.

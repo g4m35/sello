@@ -99,6 +99,15 @@ describe("marketplace registry", () => {
       expect(stockx.capabilities.canReceiveSoldWebhook).toBe(false);
     });
 
+    it("keeps live StockX listing creation disabled in the current ceiling", () => {
+      expect(stockx.capabilities.canAutoPublish).toBe(false);
+      expect(stockx.capabilities.canUpdateListing).toBe(false);
+      expect(stockx.capabilities.canDeleteListing).toBe(false);
+      expect(stockx.capabilities.canSyncInventory).toBe(false);
+      expect(stockx.capabilities.canCreateDraft).toBe(true);
+      expect(stockx.uiCopy).toContain("live StockX listing creation is disabled");
+    });
+
     it("never auto-publishes without an exact catalog match and a real implementation", () => {
       const noMatch = resolveCurrentCapabilities(stockx, {
         enabled: true,

@@ -109,6 +109,25 @@ export type ReadinessView = {
   checks: ReadinessCheckView[];
 };
 
+export type StockXMatchView = {
+  status: "not_matched" | "matched" | "needs_variant" | "market_data_unavailable";
+  productId: string | null;
+  variantId: string | null;
+  title: string | null;
+  brand: string | null;
+  model: string | null;
+  style: string | null;
+  colorway: string | null;
+  color: string | null;
+  size: string | null;
+  image: string | null;
+  category: string | null;
+  url: string | null;
+  matchSource: string | null;
+  matchConfidence: number | null;
+  marketDataCheckedAt: string | null;
+};
+
 export type ItemDetailView = ItemView & {
   sku: string | null;
   description: string;
@@ -122,6 +141,7 @@ export type ItemDetailView = ItemView & {
   ebayQuantity: number;
   /** Seller-saved eBay item specifics (marketplaceDrafts.ebay.aspects). */
   ebayAspects: Record<string, string>;
+  stockxMatch: StockXMatchView;
   selectedMarketplaces: string[];
   readiness: ReadinessView;
   attempts: AttemptView[];

@@ -112,6 +112,30 @@ describe("getActiveAccount", () => {
     const account = await getActiveAccount("invitee-2", db({ accountFind, memberFind }));
 
     expect(account).toEqual({ id: "acc-team", ownerUserId: "owner-9", plan: "kingpin" });
+    expect(memberFind).toHaveBeenCalledWith({
+      where: { userId: "invitee-2", status: "active" },
+      orderBy: { createdAt: "asc" },
+      include: { account: true },
+    });
+  });
+
+  it("does not return a revoked membership account", async () => {
+    const accountFind = vi.fn().mockResolvedValue(null);
+    const memberFind = vi.fn().mockResolvedValue(null);
+    const accountCreate = vi
+      .fn()
+      .mockResolvedValue({ id: "acc-new", ownerUserId: "revoked-1", plan: "free" });
+    const account = await getActiveAccount(
+      "revoked-1",
+      db({ accountFind, memberFind, accountCreate }),
+    );
+
+    expect(account).toEqual({ id: "acc-new", ownerUserId: "revoked-1", plan: "free" });
+    expect(memberFind).toHaveBeenCalledWith({
+      where: { userId: "revoked-1", status: "active" },
+      orderBy: { createdAt: "asc" },
+      include: { account: true },
+    });
   });
 
   it("creates a personal account when the user has none", async () => {

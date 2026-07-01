@@ -146,11 +146,15 @@ export async function runCompFetch(
   const sources = [...freeSources, ...paidSources];
   const draft = item.listingDrafts[0] ?? null;
   const query = capQueryVariants(buildCompQuery({
+    accountId: item.accountId,
+    draftId: draft?.id ?? null,
     productName: draft?.title || item.productName,
     brand: item.brand,
     styleCode: item.styleCode,
     size: item.size,
     category: item.category,
+    stockxProductId: draft?.stockxProductId ?? null,
+    stockxVariantId: draft?.stockxVariantId ?? null,
     colorway: item.colorway,
     condition: item.condition,
     description: draft?.description ?? null,

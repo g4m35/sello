@@ -4,11 +4,15 @@
 // skipped. Nothing is ever invented — a source with no data returns [].
 
 export type CompQuery = {
+  accountId?: string | null;
+  draftId?: string | null;
   styleCode: string | null;
   brand: string | null;
   title: string;
   size: string | null;
   category: string;
+  stockxProductId?: string | null;
+  stockxVariantId?: string | null;
   /** Best free-text search string built from the fields above. */
   keywords: string;
   variants?: CompQueryVariant[];

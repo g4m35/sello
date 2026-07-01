@@ -184,11 +184,60 @@ export function mapItemDetail(
     ebayCategoryId: ebayCategoryIdOf(draft?.marketplaceDrafts),
     ebayQuantity: ebayQuantityOf(draft?.marketplaceDrafts),
     ebayAspects: ebayAspectsOf(draft?.marketplaceDrafts),
+    stockxMatch: stockxMatchOf(draft),
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     readiness,
     attempts,
     photos,
   };
+}
+
+function stockxMatchOf(draft: ListingDraft | null): ItemDetailView["stockxMatch"] {
+  const json = stockxDraftOf(draft?.marketplaceDrafts);
+  const productId = draft?.stockxProductId ?? stringOf(json.productId);
+  const variantId = draft?.stockxVariantId ?? stringOf(json.variantId);
+  const size = stringOf(json.size);
+  const marketDataStatus = stringOf(json.marketDataStatus);
+  const status =
+    !productId
+      ? "not_matched"
+      : !variantId || !size
+        ? "needs_variant"
+        : marketDataStatus === "unavailable"
+          ? "market_data_unavailable"
+          : "matched";
+
+  return {
+    status,
+    productId,
+    variantId,
+    title: stringOf(json.title),
+    brand: stringOf(json.brand),
+    model: stringOf(json.model),
+    style: stringOf(json.style),
+    colorway: stringOf(json.colorway),
+    color: stringOf(json.color),
+    size,
+    image: stringOf(json.image),
+    category: stringOf(json.category),
+    url: stringOf(json.url),
+    matchSource: draft?.stockxMatchSource ?? stringOf(json.matchSource),
+    matchConfidence:
+      draft?.stockxMatchConfidence ??
+      (typeof json.matchConfidence === "number" ? json.matchConfidence : null),
+    marketDataCheckedAt: draft?.stockxMarketDataCheckedAt?.toISOString() ?? null,
+  };
+}
+
+function stockxDraftOf(marketplaceDrafts: unknown): Record<string, unknown> {
+  if (!marketplaceDrafts || typeof marketplaceDrafts !== "object") return {};
+  const stockx = (marketplaceDrafts as Record<string, unknown>).stockx;
+  if (!stockx || typeof stockx !== "object" || Array.isArray(stockx)) return {};
+  return stockx as Record<string, unknown>;
+}
+
+function stringOf(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function ebayAspectsOf(marketplaceDrafts: unknown): Record<string, string> {

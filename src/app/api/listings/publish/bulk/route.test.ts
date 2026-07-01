@@ -59,6 +59,51 @@ describe("bulk publish execution route", () => {
     expect(mocks.executeBulkEbayPublish).not.toHaveBeenCalled();
   });
 
+  it("allows a Pro batch at the plan cap and forwards the active account", async () => {
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-pro", ownerUserId: "owner-1", plan: "pro" });
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "member-1", email: "allowed@example.com" });
+    const itemIds = Array.from({ length: 25 }, (_, i) => u(i + 1));
+    const res = await POST(req({ itemIds, confirmLivePublish: true, bulkRunId: u(999) }));
+
+    expect(res.status).toBe(200);
+    expect(mocks.executeBulkEbayPublish).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        userId: "member-1",
+        accountId: "acc-pro",
+        itemIds,
+      }),
+    );
+  });
+
+  it("blocks a Pro batch above the plan cap before publishing", async () => {
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-pro", ownerUserId: "owner-1", plan: "pro" });
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "member-1", email: "allowed@example.com" });
+    const itemIds = Array.from({ length: 26 }, (_, i) => u(i + 1));
+    const res = await POST(req({ itemIds, confirmLivePublish: true }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("BULK_BATCH_TOO_LARGE");
+    expect(mocks.executeBulkEbayPublish).not.toHaveBeenCalled();
+  });
+
+  it("allows a Kingpin batch above Pro cap", async () => {
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-kingpin", ownerUserId: "owner-1", plan: "kingpin" });
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "admin-1", email: "allowed@example.com" });
+    const itemIds = Array.from({ length: 30 }, (_, i) => u(i + 1));
+    const res = await POST(req({ itemIds, confirmLivePublish: true }));
+
+    expect(res.status).toBe(200);
+    expect(mocks.executeBulkEbayPublish).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        userId: "admin-1",
+        accountId: "acc-kingpin",
+        itemIds,
+      }),
+    );
+  });
+
   it("rejects anonymous callers before any side effects", async () => {
     mocks.requireSupabaseUser.mockRejectedValue(new AppError("Sign in", 401));
     const res = await POST(req({ itemIds: [u(1)], confirmLivePublish: true }));

@@ -245,11 +245,18 @@ model ListingDraft {
   measurements          Json?
   flaws                 Json?
   selectedMarketplaces  Marketplace[] @default([])
+  stockxProductId       String?
+  stockxVariantId       String?
+  stockxMatchSource     String?
+  stockxMatchConfidence Float?
+  stockxMarketDataCheckedAt DateTime?
   approvedAt            DateTime?
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
   @@index([inventoryItemId, status])
+  @@index([stockxProductId])
+  @@index([stockxVariantId])
 }
 
 model PriceComp {
