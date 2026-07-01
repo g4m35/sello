@@ -27,6 +27,7 @@ describe("StockX publish placeholder", () => {
     );
     expect(response.status).toBe(503);
     expect((await response.json()).error.code).toBe("STOCKX_LISTING_NOT_ENABLED");
+    expect(mocks.requireSupabaseUser).not.toHaveBeenCalled();
   });
 
   it("still requires future readiness gates even if the listing flag is enabled", async () => {
