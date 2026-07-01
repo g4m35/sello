@@ -12,6 +12,16 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-01 — Codex. Opened PR #66:
+`https://github.com/g4m35/resale-crosslister/pull/66` from
+`feature/stockx-automation-paid-beta-flow` into `develop`. NOT merged, NOT
+deployed. Vercel status is green but the Preview deployment was ignored by the
+project ignored-build step; Supabase Preview skipped because no Supabase files
+changed; Codex review could not run because the account hit Codex code-review
+usage limits; CodeRabbit reported review limit reached and said the next review
+window was about 21 minutes after PR creation. Do not merge until review/CI are
+actually clean or the owner explicitly accepts this external-review limitation.
+
 2026-07-01 — Codex. Started
 `feature/stockx-automation-paid-beta-flow` from `develop` after pushing the
 previous HANDOFF-only commit `e1b4c80cf577a98c43d00f29c47e22454c526352` to
@@ -1986,6 +1996,13 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-01 (Codex): Opened PR #66,
+  `https://github.com/g4m35/resale-crosslister/pull/66`, for
+  `feature/stockx-automation-paid-beta-flow` into `develop`. Status at handoff:
+  PR open, not merged, not deployed. Vercel Preview was ignored by project
+  ignored-build rules; Supabase Preview skipped; Codex code review could not run
+  due to usage limits; CodeRabbit could not start a full review due to review
+  limits. No actionable review comments were available yet.
 - 2026-07-01 (Codex): Started
   `feature/stockx-automation-paid-beta-flow` (NOT merged, NOT deployed) after
   pushing the prior HANDOFF-only `develop` commit. Added plan/limit data to the
@@ -2221,10 +2238,11 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Push/open PR for `feature/stockx-automation-paid-beta-flow` into `develop`, monitor
-   CI/review, fix blockers, and merge only when clean. Do not deploy production
-   until PR merge, local gate, migration/env checks, and marketplace safety
-   regression pass are clean.
+1. Monitor PR #66 review/CI state. CodeRabbit and Codex review were limited at
+   creation time, and Vercel Preview was ignored; do not merge until review/CI
+   are genuinely clean or the owner explicitly accepts those external-review
+   limitations. Fix any blockers, rerun the full local gate, then merge only
+   when clean.
 2. Run non-destructive production smoke after merge/deploy only: pricing,
    authenticated Free checkout-open (no payment completion), Free portal safety,
    invalid webhook signature, plan/quota visibility, bulk over-cap/duplicate/
