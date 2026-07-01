@@ -81,6 +81,17 @@ describe("bulk publish preflight route", () => {
     expect(mocks.preflightBulkEbayPublish).not.toHaveBeenCalled();
   });
 
+  it("rejects selections over the account plan cap before preflight work", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
+    const res = await POST(
+      req({ itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)] }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("BULK_BATCH_TOO_LARGE");
+    expect(mocks.preflightBulkEbayPublish).not.toHaveBeenCalled();
+  });
+
   it("rejects an empty selection", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
     const res = await POST(req({ itemIds: [] }));

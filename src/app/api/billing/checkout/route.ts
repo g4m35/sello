@@ -4,8 +4,10 @@ import { z } from "zod";
 import { getActiveAccount } from "@/lib/billing/account";
 import { loadStripeConfig } from "@/lib/billing/config";
 import { ensureStripeCustomer } from "@/lib/billing/customer";
+import { assertCanManageAccount } from "@/lib/billing/membership";
 import { getStripe } from "@/lib/billing/stripe";
 import { AppError, safeErrorResponse } from "@/lib/errors";
+import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -28,9 +30,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const account = await getActiveAccount(user.id);
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    await assertCanManageAccount(account, user.id, prisma);
     const config = loadStripeConfig();
-    const customerId = await ensureStripeCustomer(account, user.email);
+    const customerId = await ensureStripeCustomer(account, user.email, prisma);
     const origin = request.headers.get("origin") ?? new URL(request.url).origin;
 
     const session = await getStripe().checkout.sessions.create({

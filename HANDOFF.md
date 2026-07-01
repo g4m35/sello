@@ -12,6 +12,25 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-01 — Codex. Production-readiness pass on
+`feature/paid-beta-production-flow` (NOT merged, NOT deployed). Production is
+currently safe on `https://sello.wtf`, Vercel deployment
+`dpl_Bra69GdJiYetsRm1FQSxYXfc7Jj3`, commit
+`f1f307429a6e3a9c7018f40e3ac3edc7b8f70b7c`. This pass kept live marketplace
+publishing and real paid checkout untouched. Added focused hardening:
+`/api/billing/checkout` now requires account owner/admin authority before a
+Stripe customer/session can be created, matching portal policy; bulk eBay
+publish preflight now enforces the active account plan's bulk batch cap before
+readiness work; StockX config tests now assert misnamed credential vars are
+ignored. No schema changes. Validation: `npx prisma validate` pass; `npm run
+lint` pass with the two known warnings in `draft-actions.test.ts`; `npm test`
+199 files / 1308 tests pass; `npm run build` pass; `git diff --check` pass;
+forbidden-file and diff secret-pattern scans clean. Vercel env-name check:
+Production has the full required StockX name set; Preview is still missing
+`STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`, and `STOCKX_API_KEY` by name. Local
+`npx prisma migrate status` could not run because this shell has no
+`DATABASE_URL`/`DIRECT_URL`; do not invent a DB context.
+
 2026-06-25 — Claude. **Ops-hardening for the sync-job worker (PR #61, branch
 `feat/marketplace-safety-layer`). NOT merged/deployed.** Added a stale-running
 reaper + extended the worker-route. STRICT scope: no eBay adapter/route/
@@ -1869,10 +1888,26 @@ on auth.ebay.com.
 
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
-  `jaky/resale-crosslister`). Production code deployment is
-  `dpl_8WGo6XPBjUKRdQLMyrKnXF7w3onB` from main commit `ebd91e7`, aliased to
-  `https://sello.wtf`; later HANDOFF-only commits may be on top of `origin/main`
-  without a production redeploy.
+  `jaky/resale-crosslister`). Current production deployment is
+  `dpl_Bra69GdJiYetsRm1FQSxYXfc7Jj3` from commit
+  `f1f307429a6e3a9c7018f40e3ac3edc7b8f70b7c`, aliased to
+  `https://sello.wtf`.
+- Active paid-beta readiness branch:
+  `feature/paid-beta-production-flow` from `develop`. It has not been merged or
+  deployed.
+- Stripe live billing is active; production pricing is Free `$0`, Pro `$20/mo`,
+  Kingpin `$119/mo`; webhook endpoint is
+  `https://sello.wtf/api/billing/webhook`, and invalid signatures return
+  `400 INVALID_SIGNATURE`.
+- Production DB migration ledger was previously reconciled for
+  `20260625010000_add_billing_models`,
+  `20260625020000_inventory_account_scope`,
+  `20260625030000_marketplace_connections_account_scope`, and
+  `20260701010000_stockx_foundation`. This branch adds no migration.
+- StockX foundation is deployed but remains fail-closed: live listing creation is
+  disabled, bulk StockX publishing does not exist, StockX is excluded from the
+  autonomous publish queue, and API/market-data/listing flags remain disabled
+  unless explicitly approved.
 - PR #36 marketplace-image migration
   `20260617120000_add_marketplace_images` is applied in production and Prisma
   migration status is up to date.
@@ -1909,6 +1944,18 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-01 (Codex): Started paid-beta production-flow hardening on
+  `feature/paid-beta-production-flow` (NOT merged, NOT deployed). Baseline from
+  `develop` matched expected HEAD `f1f307429a6e3a9c7018f40e3ac3edc7b8f70b7c` and
+  initial gates passed. Fixed two paid-beta gaps with tests: billing checkout is
+  now owner/admin-only before Stripe customer/session creation, and bulk publish
+  preflight blocks selections over the account plan cap before eBay readiness
+  work. Added StockX config coverage for misnamed env vars being ignored. Focused
+  tests were red before implementation for the two behavior fixes, then green.
+  Full validation: `npx prisma validate`; `npm run lint` (2 known warnings only);
+  `npm test` 199 files / 1308 tests; `npm run build`; `git diff --check`. Diff
+  contains no `.env*`, no `LOCAL_DEVELOPMENT_RULES.md`, and secret-pattern scan
+  was clean.
 - 2026-06-25 (Codex): Continued Phase 4.3 account-scope migration on
   `feature/stripe-billing-metering-seats` (NOT merged, NOT deployed). Migrated
   comps GET/POST, explicit comp refresh, comp `[compId]` update/delete,
@@ -2059,6 +2106,20 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
+- **Preview StockX env values:** Vercel Preview has the safe StockX flag/base
+  names but is missing `STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`, and
+  `STOCKX_API_KEY`. Add only through Vercel/secure channel if Preview StockX
+  OAuth/API smoke is needed; never print values.
+- **Migration status in this shell:** `DATABASE_URL` and `DIRECT_URL` are absent
+  here, so `npx prisma migrate status` cannot run locally. Use the approved DB
+  context only; do not create or paste DB URLs into chat/logs.
+- **Real paid checkout:** do not complete a live Stripe checkout unless the
+  operator explicitly approves and uses an operator-owned payment method.
+- **Live marketplace publishing:** do not bulk-publish or live-publish real
+  marketplace listings unless explicitly approved for a controlled window.
+- **StockX live API/listing flags:** keep `STOCKX_API_ENABLED`,
+  `STOCKX_MARKET_DATA_ENABLED`, and `STOCKX_LISTING_ENABLED` disabled unless the
+  operator explicitly approves a controlled enablement.
 - **Live eBay publishing:** `EBAY_PUBLIC_IMAGE_BUCKET` is now configured and
   derivative preflight passed, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent
   unless the owner explicitly approves another controlled live run.
@@ -2086,15 +2147,24 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+1. Push/open PR for `feature/paid-beta-production-flow` into `develop`, monitor
+   CI/review, fix blockers, and merge only when clean. Do not deploy production
+   until PR merge, local gate, migration/env checks, and marketplace safety
+   regression pass are clean.
+2. Run non-destructive production smoke after merge/deploy only: pricing,
+   authenticated Free checkout-open (no payment completion), Free portal safety,
+   invalid webhook signature, plan/quota visibility, bulk over-cap/duplicate/
+   missing-readiness failures, StockX disabled/status/connect/publish posture, and
+   eBay/Etsy fail-closed checks.
+3. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
-2. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+4. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
-3. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+5. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
-4. Continue security follow-ups: externalUserId binding, real eBay deletion
+6. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-5. Stripe subscriptions and background worker host + inventory sync.
+7. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).
