@@ -6,6 +6,7 @@ import { getPrisma } from "@/lib/prisma";
 import { resolveStockXCapabilities } from "@/lib/marketplace/adapters/stockx/capabilities";
 import {
   isStockXApiEnabled,
+  isStockXOAuthConfigured,
   isStockXListingEnabled,
   isStockXMarketDataEnabled,
 } from "@/lib/marketplace/adapters/stockx/config";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     const capabilities = resolveStockXCapabilities();
 
     let connected = false;
-    if (isStockXApiEnabled()) {
+    if (isStockXOAuthConfigured()) {
       const prisma = getPrisma();
       const account = await getActiveAccount(user.id, prisma);
       const connection = await prisma.marketplaceConnection.findUnique({

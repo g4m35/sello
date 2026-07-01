@@ -9,6 +9,7 @@ import {
 
 import { api, type FeatureAccessResponse } from "@/lib/api/client";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
+import { PLAN_CATALOG } from "@/lib/billing/plans";
 
 import { useSession } from "./session-provider";
 
@@ -53,6 +54,8 @@ function failClosed(loading: boolean): FeatureAccessContextValue {
     loading,
     access: DENIED_ACCESS,
     copy: SAFE_COPY,
+    plan: "free",
+    limits: PLAN_CATALOG.free.limits,
   };
 }
 

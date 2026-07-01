@@ -1,5 +1,6 @@
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
+import type { PlanId, PlanLimits } from "@/lib/billing/plans";
 import type {
   BulkExecutionResult,
   BulkPreflightResult,
@@ -24,6 +25,8 @@ export type ApiError = { error: string; status: number };
 export type FeatureAccessResponse = {
   access: FeatureAccess;
   copy: Record<keyof FeatureAccess, string>;
+  plan: PlanId;
+  limits: PlanLimits;
 };
 
 export type PriceCompRow = {

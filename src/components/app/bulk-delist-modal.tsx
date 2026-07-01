@@ -15,6 +15,7 @@ export type BulkDelistModalProps = {
   open: boolean;
   onClose: () => void;
   selectionCount: number;
+  batchLimit: number;
   liveDelistAllowed: boolean;
   alphaCopy: string;
   phase: BulkDelistPhase;
@@ -68,6 +69,7 @@ export function BulkDelistModal({
   open,
   onClose,
   selectionCount,
+  batchLimit,
   liveDelistAllowed,
   alphaCopy,
   phase,
@@ -184,7 +186,7 @@ export function BulkDelistModal({
         <div className="t-small">
           {phase === "result"
             ? "Results stay here until you close."
-            : `${selectionCount} selected`}
+            : `${selectionCount} selected · Plan limit ${batchLimit}`}
         </div>
         <div className="row">
           <Btn variant="ghost" onClick={onClose} disabled={!closeAllowed}>

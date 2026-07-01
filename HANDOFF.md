@@ -12,6 +12,28 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-01 — Codex. Started
+`feature/stockx-automation-paid-beta-flow` from `develop` after pushing the
+previous HANDOFF-only commit `e1b4c80cf577a98c43d00f29c47e22454c526352` to
+`origin/develop`. NOT merged, NOT deployed. This pass added a coherent
+paid-beta safety slice: `/api/capabilities` now returns the authenticated
+account plan and limits (no env/allowlist values), the inventory bulk toolbar
+and publish/delist modals show the active plan bulk limit and block over-limit
+selections before bulk preflight/execute, and StockX status/capabilities now
+distinguish flag presence from real OAuth/API readiness. StockX catalog/market
+data are not exposed unless the required config is complete; listing creation
+still only advances to the placeholder readiness gate when full API config plus
+the explicit listing flag are present. Validation: `npx prisma validate` pass;
+`npm run lint` pass with the two known warnings in `draft-actions.test.ts`;
+`npm test` pass (201 files / 1317 tests); `npm run build` pass; `git
+diff --check` pass; forbidden-file and diff secret-pattern scans clean.
+`npx prisma migrate status` could not run because this shell has no datasource
+URL. Vercel env-name check via `vercel env ls --scope jaky`: Production has the
+required StockX names; Preview for `develop` is missing `STOCKX_CLIENT_ID`,
+`STOCKX_CLIENT_SECRET`, and `STOCKX_API_KEY`. No real paid checkout, no live
+marketplace publish, no live StockX listing creation, no bulk StockX publishing,
+and no env files or secrets committed.
+
 2026-07-01 — Codex. Deployed PR #65 production changes to Sello. Production
 deployment `dpl_BnRkExMNcz3ceMJENqWEdFxLuMEe` is READY and aliased to
 `https://sello.wtf`; deployed commit is
@@ -1912,6 +1934,9 @@ on auth.ebay.com.
   `https://sello.wtf`.
 - PR #65 paid-beta checkout/bulk preflight hardening is merged to `develop` and
   deployed to production.
+- Current local feature branch is `feature/stockx-automation-paid-beta-flow`
+  (not merged/deployed). It adds client-visible plan bulk limits and stricter
+  StockX env-readiness posture without enabling any live StockX listing path.
 - Stripe live billing is active; production pricing is Free `$0`, Pro `$20/mo`,
   Kingpin `$119/mo`; webhook endpoint is
   `https://sello.wtf/api/billing/webhook`, and invalid signatures return
@@ -1961,6 +1986,24 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-01 (Codex): Started
+  `feature/stockx-automation-paid-beta-flow` (NOT merged, NOT deployed) after
+  pushing the prior HANDOFF-only `develop` commit. Added plan/limit data to the
+  authenticated capabilities response, fail-closed Free limits in the client
+  provider, visible bulk limits in inventory + publish/delist modals, and
+  over-limit bulk action blocking before any bulk preflight/execute. Tightened
+  StockX capability resolution so flags alone no longer expose connect/catalog/
+  market-data readiness; status skips connection lookup until OAuth config is
+  complete, catalog/market data require API config, and listing placeholder
+  requires full API config plus the listing flag. Added tests for capabilities,
+  provider fail-closed limits, bulk publish/delist limit copy, StockX config
+  readiness, capability matrix, status route, and publish placeholder env.
+  Validation: `npx prisma validate`; `npm run lint` (2 known warnings only);
+  `npm test` 201 files / 1317 tests; `npm run build`; `git diff --check`;
+  forbidden-file and secret-pattern scans clean. `npx prisma migrate status`
+  blocked locally by absent datasource URL. Vercel Production StockX env names
+  present; Preview `develop` missing `STOCKX_CLIENT_ID`,
+  `STOCKX_CLIENT_SECRET`, and `STOCKX_API_KEY`.
 - 2026-07-01 (Codex): Deployed PR #65 to production. Vercel deployment
   `dpl_BnRkExMNcz3ceMJENqWEdFxLuMEe` is READY and aliased to `sello.wtf`;
   deployed commit `557293980d38f22756227245573bc487da86dec1`. Non-destructive
@@ -2178,7 +2221,7 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Push/open PR for `feature/paid-beta-production-flow` into `develop`, monitor
+1. Push/open PR for `feature/stockx-automation-paid-beta-flow` into `develop`, monitor
    CI/review, fix blockers, and merge only when clean. Do not deploy production
    until PR merge, local gate, migration/env checks, and marketplace safety
    regression pass are clean.

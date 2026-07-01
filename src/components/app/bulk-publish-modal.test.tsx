@@ -19,6 +19,7 @@ function u(i: number): string {
 const base = {
   open: true as const,
   onClose: () => undefined,
+  batchLimit: 25,
   confirmLive: false,
   onConfirmChange: () => undefined,
   onExecute: () => undefined,
@@ -54,6 +55,22 @@ describe("BulkPublishModal", () => {
     expect(html).toContain("Ready 20");
     expect(html).toContain("Needs details 3");
     expect(html).toContain("Already listed 2");
+  });
+
+  it("shows the account bulk limit next to the current selection", () => {
+    const html = renderToStaticMarkup(
+      <BulkPublishModal
+        {...base}
+        selectionCount={6}
+        batchLimit={5}
+        livePublishAllowed
+        phase="ready"
+        preflight={preflight({ total: 5 })}
+        execution={null}
+      />,
+    );
+    expect(html).toContain("6 selected");
+    expect(html).toContain("Plan limit 5");
   });
 
   it("lists per-item missing reasons", () => {

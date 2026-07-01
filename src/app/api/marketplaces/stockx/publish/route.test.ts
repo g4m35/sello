@@ -11,6 +11,17 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import { POST } from "./route";
 
+const stockxApiEnv = {
+  STOCKX_API_ENABLED: "true",
+  STOCKX_LISTING_ENABLED: "true",
+  STOCKX_CLIENT_ID: "client-id",
+  STOCKX_CLIENT_SECRET: "client-secret",
+  STOCKX_API_KEY: "api-key",
+  STOCKX_REDIRECT_URI: "https://sello.wtf/api/marketplaces/stockx/callback",
+  STOCKX_TOKEN_ENCRYPTION_KEY: "a".repeat(64),
+  STOCKX_OAUTH_STATE_SECRET: "x".repeat(40),
+};
+
 describe("StockX publish placeholder", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -31,8 +42,7 @@ describe("StockX publish placeholder", () => {
   });
 
   it("still requires future readiness gates even if the listing flag is enabled", async () => {
-    vi.stubEnv("STOCKX_API_ENABLED", "true");
-    vi.stubEnv("STOCKX_LISTING_ENABLED", "true");
+    for (const [key, value] of Object.entries(stockxApiEnv)) vi.stubEnv(key, value);
     const response = await POST(
       new Request("http://localhost/api/marketplaces/stockx/publish", { method: "POST" }),
     );
