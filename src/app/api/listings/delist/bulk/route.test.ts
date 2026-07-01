@@ -20,6 +20,9 @@ vi.mock("@/lib/marketplace/bulk-delist", async (orig) => {
 import { POST } from "./route";
 
 const ITEM = "11111111-1111-4111-8111-111111111111";
+function u(i: number): string {
+  return `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+}
 
 function req(body: unknown) {
   return new Request("http://localhost/api/listings/delist/bulk", {
@@ -63,5 +66,46 @@ describe("bulk delist execute route", () => {
     const response = await POST(req({ itemIds: [ITEM], confirmLiveDelist: true }));
     expect(response.status).toBe(200);
     expect(mocks.executeBulkEbayDelist).toHaveBeenCalledOnce();
+  });
+
+  it("blocks batches above the account plan cap before delisting", async () => {
+    const itemIds = Array.from({ length: 6 }, (_, i) => u(i + 1));
+    const response = await POST(req({ itemIds, confirmLiveDelist: true }));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe("BULK_BATCH_TOO_LARGE");
+    expect(mocks.executeBulkEbayDelist).not.toHaveBeenCalled();
+  });
+
+  it("forwards acting user and active account separately to the delist service", async () => {
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-team",
+      ownerUserId: "owner-1",
+      plan: "pro",
+    });
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "admin-1", email: "owner@example.com" });
+    mocks.executeBulkEbayDelist.mockResolvedValue({
+      bulkRunId: "run-1",
+      total: 2,
+      endedCount: 1,
+      skippedCount: 1,
+      failedCount: 0,
+      items: [],
+    });
+
+    const response = await POST(
+      req({ itemIds: [u(1), u(2)], confirmLiveDelist: true, bulkRunId: u(999) }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.executeBulkEbayDelist).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        userId: "admin-1",
+        accountId: "acc-team",
+        itemIds: [u(1), u(2)],
+        bulkRunId: u(999),
+      }),
+    );
   });
 });

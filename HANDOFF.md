@@ -2368,3 +2368,58 @@ worktree off develop; additive only; existing eBay/Etsy/export behavior unchange
 - Secret handling:
   no `.env*` files changed, no StockX credential values printed, and no secrets added
   to repo docs/tests/source.
+
+## Follow-up release-readiness pass (2026-07-01)
+
+- Branch was rebased against `origin/develop`; no rebase changes were needed.
+- Vercel StockX env status, checked redacted:
+  - `vercel env ls` shows production names present for:
+    `STOCKX_API_KEY`, `STOCKX_REDIRECT_URI`, `STOCKX_API_BASE_URL`,
+    `STOCKX_AUTH_BASE_URL`, `STOCKX_API_ENABLED`,
+    `STOCKX_MARKET_DATA_ENABLED`, `STOCKX_LISTING_ENABLED`,
+    `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_OAUTH_STATE_SECRET`.
+  - `vercel env ls` still shows misnamed production credential names:
+    `StockX_client_id`, `StockX_client_secret`.
+  - Exact production names `STOCKX_CLIENT_ID` and `STOCKX_CLIENT_SECRET` are
+    still missing. The misnamed values are not retrievable via `vercel env pull`
+    / `vercel env run` in this CLI context, so they must be re-entered under the
+    exact uppercase names by an operator. No credential values were printed.
+  - `STOCKX_API_ENABLED`, `STOCKX_MARKET_DATA_ENABLED`, and
+    `STOCKX_LISTING_ENABLED` were updated through Vercel CLI and verified as
+    fail-closed in the production runtime env (`!== "true"`). StockX live API,
+    market data, and listing creation remain disabled.
+- Read-only production migration ledger query was run through Supabase MCP against
+  project `xkovtxrdxparbkuysunh`:
+  - Present latest ledger entries include
+    `20260624000000_add_tiktok_vinted_stockx_marketplaces`,
+    `20260625000000_rls_least_privilege_hardening`, and
+    `20260626000000_inventory_safety_layer`.
+  - Still missing by exact name:
+    `20260625010000_add_billing_models`,
+    `20260625020000_inventory_account_scope`,
+    `20260625030000_marketplace_connections_account_scope`.
+  - New branch migration `20260701010000_stockx_foundation` is not applied to
+    production. Production deploy remains blocked until the migration ledger is
+    reconciled/documented and the StockX migration is applied through the
+    approved production path.
+- Bulk publish/delist safety audit result:
+  - Bulk publish and delist routes authenticate the user, resolve the active
+    account server-side, enforce plan batch caps, and pass `userId` separately
+    from `accountId` into service execution.
+  - Services re-check item membership with active `accountId` before readiness,
+    publish, or delist work; client-supplied account ids are not accepted.
+  - Bulk publish preflight uses canonical eBay preflight; execution calls
+    single-item `executePublish`, preserving eBay readiness, production gate,
+    duplicate publish guard, idempotency key, and structured per-item results.
+  - Bulk delist preflight and execution route through canonical eBay delist logic,
+    preserving already-ended/in-flight/idempotency checks and structured per-item
+    results.
+  - `stockx` remains excluded from autonomous publish queue; no bulk StockX
+    publishing exists.
+- Additional tests added in this pass:
+  - Free/Pro/Kingpin bulk publish plan cap behavior.
+  - Over-cap batch blocks before marketplace service call.
+  - Active account and acting user are forwarded separately for bulk publish/delist.
+  - Account-scoped item rejection happens before readiness/listing classification.
+  - Revoked membership is not returned by `getActiveAccount`.
+  - Focused validation: 8 files / 70 tests passed.

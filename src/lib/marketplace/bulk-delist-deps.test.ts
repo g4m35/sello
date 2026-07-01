@@ -58,6 +58,23 @@ describe("defaultBulkDelistDeps.preflightItem", () => {
     );
   });
 
+  it("uses active account scope before listing classification", async () => {
+    const prisma = prismaFake({ owned: false });
+    const deps = defaultBulkDelistDeps(prisma as never, ENV);
+    const result = await deps.preflightItem({
+      userId: "member-1",
+      accountId: "acc-1",
+      itemId: "item-1",
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
+      where: { id: "item-1", accountId: "acc-1" },
+      select: { id: true },
+    });
+    expect(prisma.marketplaceListing.findFirst).not.toHaveBeenCalled();
+  });
+
   it("reports not_listed when there is no eBay listing", async () => {
     const deps = defaultBulkDelistDeps(prismaFake({ listing: null }) as never, ENV);
     expect((await deps.preflightItem({ userId: "u1", itemId: "item-1" })).status).toBe(
@@ -105,6 +122,27 @@ describe("defaultBulkDelistDeps.executeItem", () => {
     mocks.executeEbayDelist.mockResolvedValue({ ok: true, status: "delisted" });
     const deps = defaultBulkDelistDeps(prismaFake() as never, ENV);
     expect((await deps.executeItem(args)).status).toBe("ended");
+  });
+
+  it("passes active account scope and acting user separately to executeEbayDelist", async () => {
+    mocks.executeEbayDelist.mockResolvedValue({ ok: true, status: "delisted" });
+    const deps = defaultBulkDelistDeps(prismaFake() as never, ENV);
+    await deps.executeItem({
+      userId: "member-1",
+      accountId: "acc-1",
+      itemId: "item-1",
+      bulkRunId: "run-1",
+    });
+
+    expect(mocks.executeEbayDelist).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "member-1",
+        accountId: "acc-1",
+        inventoryItemId: "item-1",
+        confirmLiveDelist: true,
+      }),
+    );
   });
 
   it("skips safely when the listing is already ended or not live (409 precondition)", async () => {
