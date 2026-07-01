@@ -12,11 +12,29 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-01 — Codex. Deployed PR #65 production changes to Sello. Production
+deployment `dpl_BnRkExMNcz3ceMJENqWEdFxLuMEe` is READY and aliased to
+`https://sello.wtf`; deployed commit is
+`557293980d38f22756227245573bc487da86dec1` (merge of PR #65). No migration was
+added. Local gate before deploy: `npx prisma validate`, `npm run lint` (2 known
+warnings in `draft-actions.test.ts`), `npm test` (199 files / 1308 tests),
+`npm run build`, and `git diff --check` all passed. `DATABASE_URL` and
+`DIRECT_URL` were absent locally, so `npx prisma migrate status` was not run;
+do not fabricate DB status. Production smoke was non-destructive: `/pricing`
+returned 200 and showed Free / Pro `$20/mo` / Kingpin `$119/mo`; anonymous
+checkout, portal, bulk preflight/execute, eBay readiness, Etsy status, and
+StockX status/connect were protected; invalid Stripe webhook signature returned
+`400 INVALID_SIGNATURE`; StockX publish returned
+`503 STOCKX_LISTING_NOT_ENABLED`; `/settings/marketplaces` returned 200 and
+included StockX; Vercel error/fatal/500 log filters for the new deployment had
+no records. Focused authenticated-policy/safety tests passed (12 files / 85
+tests) for checkout/portal/bulk/StockX/queue registry. No real paid checkout,
+no real marketplace publish, no live StockX listing creation, no bulk StockX
+publishing, and no env values/secrets printed.
+
 2026-07-01 — Codex. Production-readiness pass on
-`feature/paid-beta-production-flow` (NOT merged, NOT deployed). Production is
-currently safe on `https://sello.wtf`, Vercel deployment
-`dpl_Bra69GdJiYetsRm1FQSxYXfc7Jj3`, commit
-`f1f307429a6e3a9c7018f40e3ac3edc7b8f70b7c`. This pass kept live marketplace
+`feature/paid-beta-production-flow` (merged as PR #65, later deployed in
+`dpl_BnRkExMNcz3ceMJENqWEdFxLuMEe`). This pass kept live marketplace
 publishing and real paid checkout untouched. Added focused hardening:
 `/api/billing/checkout` now requires account owner/admin authority before a
 Stripe customer/session can be created, matching portal policy; bulk eBay
@@ -1889,12 +1907,11 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_Bra69GdJiYetsRm1FQSxYXfc7Jj3` from commit
-  `f1f307429a6e3a9c7018f40e3ac3edc7b8f70b7c`, aliased to
+  `dpl_BnRkExMNcz3ceMJENqWEdFxLuMEe` from commit
+  `557293980d38f22756227245573bc487da86dec1`, aliased to
   `https://sello.wtf`.
-- Active paid-beta readiness branch:
-  `feature/paid-beta-production-flow` from `develop`. It has not been merged or
-  deployed.
+- PR #65 paid-beta checkout/bulk preflight hardening is merged to `develop` and
+  deployed to production.
 - Stripe live billing is active; production pricing is Free `$0`, Pro `$20/mo`,
   Kingpin `$119/mo`; webhook endpoint is
   `https://sello.wtf/api/billing/webhook`, and invalid signatures return
@@ -1944,6 +1961,16 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-01 (Codex): Deployed PR #65 to production. Vercel deployment
+  `dpl_BnRkExMNcz3ceMJENqWEdFxLuMEe` is READY and aliased to `sello.wtf`;
+  deployed commit `557293980d38f22756227245573bc487da86dec1`. Non-destructive
+  smoke passed for public pricing, protected anonymous checkout/portal/bulk/
+  marketplace routes, invalid Stripe webhook `400 INVALID_SIGNATURE`, StockX
+  publish disabled, StockX settings card presence on `/settings/marketplaces`,
+  and zero error/fatal/500 logs for the new deployment. Authenticated owner/admin
+  checkout-open and member-denial production smoke were not exercised because no
+  authenticated seller session/token was available in this thread; covered by
+  focused tests instead. No real paid checkout or marketplace publish occurred.
 - 2026-07-01 (Codex): Started paid-beta production-flow hardening on
   `feature/paid-beta-production-flow` (NOT merged, NOT deployed). Baseline from
   `develop` matched expected HEAD `f1f307429a6e3a9c7018f40e3ac3edc7b8f70b7c` and
@@ -2106,6 +2133,10 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
+- **Authenticated production smoke:** Owner/admin checkout-open and non-admin
+  member-denial paths need an authenticated production seller session/token to
+  exercise live. This pass did not ask for credentials and did not complete a
+  real payment; route policy is covered by tests.
 - **Preview StockX env values:** Vercel Preview has the safe StockX flag/base
   names but is missing `STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`, and
   `STOCKX_API_KEY`. Add only through Vercel/secure channel if Preview StockX
