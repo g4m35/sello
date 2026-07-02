@@ -12,6 +12,29 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-02 — Codex. Researched and shipped a performance/navigation polish pass
+after owner reported Billing felt ~2s slow. Commit
+`977fe7ccf891b98d95b3bb8ecb72f8926f198708` reduces `/api/billing/usage` from
+repeated subscription lookups plus three usage lookups to one subscription query
+and one usage-counter query, shares the Prisma client through the handler path,
+adds a short-lived client billing usage cache with Sidebar prefetch/warm-on-hover,
+adds a Billing route skeleton, adds restrained Sello token-based page/nav/card/
+usage-meter motion with reduced-motion support, and installs/wires
+`@vercel/speed-insights` for real-user Web Vitals. Production deployment
+`dpl_77sDj5cK3VhkLyH25xp6zBWnGU6J` is READY and aliased to `https://sello.wtf`.
+Validation: focused billing/sidebar tests; `npx prisma validate`; `npm run lint`
+(same two known warnings in `draft-actions.test.ts`); `npm test` (204 files /
+1322 tests); `npm run build`; `git diff --check`; forbidden-file and diff
+secret-pattern scans clean. Local Playwright smoke rendered `/pricing` and the
+Billing auth/config gate; production smoke returned 200 for `/`, `/pricing`, and
+`/settings/billing`, anonymous checkout remained protected with 401, leak scan was
+clean, and Vercel error/fatal/500 log filters for the deployment found no
+records. Existing signed-in Chrome session on `sello.wtf/settings/billing` showed
+real plan/usage content after deploy, but Chrome click automation became
+unreliable before a Dashboard -> Billing click-through could be completed. No
+real paid checkout, no marketplace publish, no env changes, and no secrets
+printed.
+
 2026-07-02 — Codex. Fixed the Stripe Checkout cancel/back return path after the
 signed-in Billing page launched checkout and Stripe returned the seller to public
 `/pricing`. Commit `cf67ea19a5b6ed95e37d971ea5df43ad18040cf2` changes checkout
@@ -1982,8 +2005,8 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_6FiE5HiLunbDx8L9v1R5hJ6bK3yr` from commit
-  `cf67ea19a5b6ed95e37d971ea5df43ad18040cf2`, aliased to
+  `dpl_77sDj5cK3VhkLyH25xp6zBWnGU6J` from commit
+  `977fe7ccf891b98d95b3bb8ecb72f8926f198708`, aliased to
   `https://sello.wtf`.
 - Pricing and billing are now directly discoverable: the public landing page
   links to `/pricing`, the pricing page uses Sello-native styling, the signed-in
@@ -1994,6 +2017,9 @@ on auth.ebay.com.
   hardcoded neutral/red Tailwind colors.
 - Stripe Checkout success and cancel/back returns from the signed-in Billing
   page both land back on `/settings/billing`, not public `/pricing`.
+- Billing navigation is warmed from the Sidebar and `/api/billing/usage` now uses
+  a compact query shape; Vercel Speed Insights is installed for real-user Web
+  Vitals monitoring.
 - PR #66 paid-beta bulk visibility and StockX readiness hardening is merged to
   `develop` and deployed to production. It adds client-visible plan bulk limits,
   over-limit blocking before bulk publish/delist work, stricter StockX
@@ -2049,6 +2075,22 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-02 (Codex): Shipped the performance/navigation polish pass. Researched
+  current Next/Vercel guidance around prefetching, streaming/loading UI,
+  production-safe motion, and Speed Insights. Implemented billing data prefetch
+  and short-lived cache, optimized `/api/billing/usage` to one subscription read
+  plus one usage-counter read, added a Billing skeleton, added smooth Sello
+  route/nav/card/progress transitions with reduced-motion support, and wired
+  `@vercel/speed-insights`. Commit
+  `977fe7ccf891b98d95b3bb8ecb72f8926f198708` deployed as
+  `dpl_77sDj5cK3VhkLyH25xp6zBWnGU6J`, READY and aliased to `https://sello.wtf`.
+  Full local gate passed (`npx prisma validate`, lint with two known warnings,
+  204 test files / 1322 tests, build, diff checks). Live smoke verified `/`,
+  `/pricing`, and `/settings/billing` 200, anonymous checkout protected with
+  401, no leak patterns, no error/fatal/500 logs, and signed-in Billing rendered
+  real plan/usage content in Chrome. Chrome automation did not reliably complete
+  Dashboard -> Billing click-through before final. No real paid checkout or
+  marketplace publish.
 - 2026-07-02 (Codex): Fixed Billing -> Upgrade -> Stripe cancel/back returning
   to the public pricing page. Root cause was a hardcoded checkout `cancel_url`
   of `/pricing`; it now returns to `/settings/billing?status=cancelled`, with
@@ -2334,8 +2376,8 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Monitor production after the billing checkout return-path deploy
-   (`dpl_6FiE5HiLunbDx8L9v1R5hJ6bK3yr`) for any delayed runtime errors, but
+1. Monitor production after the billing performance/navigation deploy
+   (`dpl_77sDj5cK3VhkLyH25xp6zBWnGU6J`) for any delayed runtime errors, but
    initial error/fatal/500 log filters were clean.
 2. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
