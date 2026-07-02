@@ -85,6 +85,24 @@ const deniedAccess = {
   etsyOrders: false,
 };
 
+const freeLimits = {
+  aiListingsPerMonth: 10,
+  autopublishesPerMonth: 10,
+  compRefreshesPerMonth: 10,
+  marketplaceConnections: 1,
+  bulkBatchSize: 5,
+  teamSeats: 1,
+};
+
+const proLimits = {
+  aiListingsPerMonth: 125,
+  autopublishesPerMonth: 125,
+  compRefreshesPerMonth: 100,
+  marketplaceConnections: 3,
+  bulkBatchSize: 25,
+  teamSeats: 1,
+};
+
 function renderProvider() {
   const element = FeatureAccessProvider({ children: "child" }) as ReactElement<{
     value: unknown;
@@ -121,6 +139,8 @@ describe("FeatureAccessProvider", () => {
         paidComps: true,
       },
       copy: safeCopy,
+      plan: "pro",
+      limits: proLimits,
     });
 
     renderProvider();
@@ -128,6 +148,8 @@ describe("FeatureAccessProvider", () => {
       loading: true,
       access: deniedAccess,
       copy: safeCopy,
+      plan: "free",
+      limits: freeLimits,
     });
 
     await runEffect();
@@ -142,6 +164,8 @@ describe("FeatureAccessProvider", () => {
         paidComps: true,
       },
       copy: safeCopy,
+      plan: "pro",
+      limits: proLimits,
     });
   });
 
@@ -156,6 +180,8 @@ describe("FeatureAccessProvider", () => {
       loading: false,
       access: deniedAccess,
       copy: safeCopy,
+      plan: "free",
+      limits: freeLimits,
     });
   });
 });

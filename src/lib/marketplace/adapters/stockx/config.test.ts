@@ -6,8 +6,10 @@ import {
   getStockXOAuthConfig,
   getStockXOAuthStateSecret,
   isStockXApiEnabled,
+  isStockXApiConfigured,
   isStockXListingEnabled,
   isStockXMarketDataEnabled,
+  isStockXOAuthConfigured,
 } from "./config";
 import { StockXIntegrationError, stockxErrorCodes } from "./errors";
 
@@ -93,6 +95,19 @@ describe("StockX API and market-data config", () => {
     expect(() =>
       getStockXMarketDataConfig({ ...fullEnv, STOCKX_MARKET_DATA_ENABLED: "false" }),
     ).toThrow(StockXIntegrationError);
+  });
+});
+
+describe("StockX configuration readiness", () => {
+  it("does not treat flags alone as OAuth or API readiness", () => {
+    expect(isStockXOAuthConfigured({ STOCKX_API_ENABLED: "true" })).toBe(false);
+    expect(isStockXApiConfigured({ STOCKX_API_ENABLED: "true" })).toBe(false);
+  });
+
+  it("distinguishes OAuth readiness from API/catalog readiness", () => {
+    expect(isStockXOAuthConfigured({ ...fullEnv, STOCKX_API_KEY: undefined })).toBe(true);
+    expect(isStockXApiConfigured({ ...fullEnv, STOCKX_API_KEY: undefined })).toBe(false);
+    expect(isStockXApiConfigured(fullEnv)).toBe(true);
   });
 });
 

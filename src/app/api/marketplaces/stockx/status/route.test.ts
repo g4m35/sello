@@ -19,6 +19,15 @@ vi.mock("@/lib/prisma", () => ({
 
 import { GET } from "./route";
 
+const stockxOauthEnv = {
+  STOCKX_API_ENABLED: "true",
+  STOCKX_CLIENT_ID: "client-id",
+  STOCKX_CLIENT_SECRET: "client-secret",
+  STOCKX_REDIRECT_URI: "https://sello.wtf/api/marketplaces/stockx/callback",
+  STOCKX_TOKEN_ENCRYPTION_KEY: "a".repeat(64),
+  STOCKX_OAUTH_STATE_SECRET: "x".repeat(40),
+};
+
 describe("StockX status route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -44,7 +53,7 @@ describe("StockX status route", () => {
   });
 
   it("checks the active account connection only when the API is enabled", async () => {
-    vi.stubEnv("STOCKX_API_ENABLED", "true");
+    for (const [key, value] of Object.entries(stockxOauthEnv)) vi.stubEnv(key, value);
     const response = await GET(new Request("http://localhost/api/marketplaces/stockx/status"));
     const payload = await response.json();
     expect(response.status).toBe(200);
@@ -59,5 +68,19 @@ describe("StockX status route", () => {
       },
       select: { id: true },
     });
+  });
+
+  it("does not check connection or expose catalog capability when credentials are incomplete", async () => {
+    vi.stubEnv("STOCKX_API_ENABLED", "true");
+
+    const response = await GET(new Request("http://localhost/api/marketplaces/stockx/status"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.apiEnabled).toBe(true);
+    expect(payload.connected).toBe(false);
+    expect(payload.capabilities.connect).toBe(false);
+    expect(payload.capabilities.catalogSearch).toBe(false);
+    expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 });

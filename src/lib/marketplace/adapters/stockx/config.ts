@@ -14,6 +14,8 @@ const oauthRequiredEnv = [
   "STOCKX_TOKEN_ENCRYPTION_KEY",
 ] as const;
 
+const minOAuthStateSecretBytes = 32;
+
 export function isStockXApiEnabled(env: StockXEnv = process.env): boolean {
   return env.STOCKX_API_ENABLED === "true";
 }
@@ -24,6 +26,18 @@ export function isStockXMarketDataEnabled(env: StockXEnv = process.env): boolean
 
 export function isStockXListingEnabled(env: StockXEnv = process.env): boolean {
   return env.STOCKX_LISTING_ENABLED === "true";
+}
+
+export function isStockXOAuthConfigured(env: StockXEnv = process.env): boolean {
+  return (
+    isStockXApiEnabled(env) &&
+    oauthRequiredEnv.every((variable) => hasEnvValue(env[variable])) &&
+    hasStrongOAuthStateSecret(env.STOCKX_OAUTH_STATE_SECRET)
+  );
+}
+
+export function isStockXApiConfigured(env: StockXEnv = process.env): boolean {
+  return isStockXOAuthConfigured(env) && hasEnvValue(env.STOCKX_API_KEY);
 }
 
 export function getStockXOAuthConfig(env: StockXEnv = process.env): StockXConfig {
@@ -77,8 +91,6 @@ export function getStockXMarketDataConfig(env: StockXEnv = process.env): StockXC
   return getStockXApiConfig(env);
 }
 
-const minOAuthStateSecretBytes = 32;
-
 export function getStockXOAuthStateSecret(env: StockXEnv = process.env): string {
   const secret = env.STOCKX_OAUTH_STATE_SECRET;
 
@@ -111,6 +123,14 @@ function parseScopes(value: string | undefined): string[] | null {
 function nonPlaceholder(value: string | undefined): string | undefined {
   if (!value || value.includes("[")) return undefined;
   return value;
+}
+
+function hasEnvValue(value: string | undefined): boolean {
+  return Boolean(nonPlaceholder(value));
+}
+
+function hasStrongOAuthStateSecret(value: string | undefined): boolean {
+  return Boolean(value && !value.includes("[") && Buffer.byteLength(value, "utf8") >= minOAuthStateSecretBytes);
 }
 
 function assertEnvValue(value: string | undefined, variable: string) {
