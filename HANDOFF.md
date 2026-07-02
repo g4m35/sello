@@ -12,22 +12,22 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-07-02 — Codex. Fixed pricing/billing discoverability and deployed to
-production. Commit `ace19ee7c8c84fcac9aaafd240958d14325765d7` adds Sello-native
-public navigation to `/pricing`, a direct signed-in sidebar Billing item for
-`/settings/billing`, a Settings billing card, and token-based Sello styling for
-the public pricing and billing plan/usage components. Production deployment
-`dpl_VcR6i2Hcvi9tFQijA8CLJyJixoQC` is READY and aliased to `https://sello.wtf`.
-Validation: `npx prisma validate`; `npm run lint` (same two known warnings in
-`draft-actions.test.ts`); `npm test` (202 files / 1319 tests); `npm run build`;
-`git diff --check`; forbidden-file and diff secret-pattern scans clean. Visual
-smoke used local and production Playwright screenshots for `/pricing` desktop
-and mobile with no horizontal overflow. Production smoke: `/` and `/pricing`
-returned 200 and exposed the pricing/billing links; anonymous billing checkout,
-portal, and usage APIs remained protected with 401; response leak scan was clean;
-Vercel error/fatal/500 log filters for the new deployment found no records. No
-real paid checkout, no marketplace publish, no env changes, and no secrets
-printed.
+2026-07-02 — Codex. Corrected the signed-in billing page theme mismatch and
+deployed to production. Commit `03944265bf2e59628bb6c0f0af7a81f1f22d7af7`
+converts `/settings/billing` from hardcoded neutral/red Tailwind colors to the
+Sello app shell/theme primitives (`Topbar`, `page`, `card`, `badge`, `Btn`,
+`Banner`, and typography tokens) so it follows both light and dark mode with the
+rest of the app. Added a page style regression test that blocks the old hardcoded
+neutral/red classes from coming back. Production deployment
+`dpl_DLGZtZgMSsfmuLhWMBAQLqfWK419` is READY and aliased to `https://sello.wtf`.
+Validation: focused billing/sidebar tests; `npx prisma validate`; `npm run lint`
+(same two known warnings in `draft-actions.test.ts`); `npm test` (203 files /
+1320 tests); `npm run build`; `git diff --check`; forbidden-file and diff
+secret-pattern scans clean. Production smoke: `/`, `/pricing`, and
+`/settings/billing` returned 200; anonymous billing content remained protected by
+the app/auth shell; Vercel error/fatal/500 log filters for the deployment found
+no records. No real paid checkout, no marketplace publish, no env changes, and no
+secrets printed.
 
 2026-07-01 PDT / 2026-07-02 UTC — Codex. Finished PR #66:
 `https://github.com/g4m35/resale-crosslister/pull/66` is merged into `develop`
@@ -1968,13 +1968,16 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_VcR6i2Hcvi9tFQijA8CLJyJixoQC` from commit
-  `ace19ee7c8c84fcac9aaafd240958d14325765d7`, aliased to
+  `dpl_DLGZtZgMSsfmuLhWMBAQLqfWK419` from commit
+  `03944265bf2e59628bb6c0f0af7a81f1f22d7af7`, aliased to
   `https://sello.wtf`.
 - Pricing and billing are now directly discoverable: the public landing page
   links to `/pricing`, the pricing page uses Sello-native styling, the signed-in
   sidebar has a Billing item to `/settings/billing`, and Settings has a Billing
   card with pricing and billing actions.
+- The signed-in billing page now uses the same Sello app shell/theme primitives
+  as the rest of the authenticated UI and follows light/dark mode instead of
+  hardcoded neutral/red Tailwind colors.
 - PR #66 paid-beta bulk visibility and StockX readiness hardening is merged to
   `develop` and deployed to production. It adds client-visible plan bulk limits,
   over-limit blocking before bulk publish/delist work, stricter StockX
@@ -2030,6 +2033,18 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-02 (Codex): Fixed the signed-in `/settings/billing` visual mismatch
+  after live dark-mode review showed near black-on-black hardcoded styling. The
+  page now uses Sello `Topbar`, `page`, `card`, `badge`, `Btn`, `Banner`, and
+  typography primitives, and a source-level style regression test prevents the
+  old hardcoded `text-neutral-*`, `border-neutral-*`, `bg-red-*`, and
+  `text-red-*` classes from returning. Commit
+  `03944265bf2e59628bb6c0f0af7a81f1f22d7af7` deployed as
+  `dpl_DLGZtZgMSsfmuLhWMBAQLqfWK419`, READY and aliased to `https://sello.wtf`.
+  Full local gate passed (`npx prisma validate`, lint with two known warnings,
+  203 test files / 1320 tests, build, diff checks). Live smoke verified `/`,
+  `/pricing`, and `/settings/billing` 200 and no error/fatal/500 logs for the
+  deployment. No real paid checkout or marketplace publish.
 - 2026-07-02 (Codex): Fixed hidden pricing/billing navigation and deployed it to
   production. Public landing now links to `/pricing` from nav, hero, pricing
   section, and footer; signed-in app sidebar has a direct Billing item; Settings
@@ -2292,8 +2307,8 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Monitor production after the pricing/billing navigation deploy
-   (`dpl_VcR6i2Hcvi9tFQijA8CLJyJixoQC`) for any delayed runtime errors, but
+1. Monitor production after the billing page theme deploy
+   (`dpl_DLGZtZgMSsfmuLhWMBAQLqfWK419`) for any delayed runtime errors, but
    initial error/fatal/500 log filters were clean.
 2. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
