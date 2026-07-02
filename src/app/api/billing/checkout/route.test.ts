@@ -62,8 +62,8 @@ describe("POST /api/billing/checkout", () => {
     expect(arg.customer).toBe("cus_1");
     expect(arg.client_reference_id).toBe("acc-1");
     expect(arg.line_items).toEqual([{ price: "price_pro", quantity: 1 }]);
-    expect(arg.success_url).toContain("/settings/billing");
-    expect(arg.cancel_url).toContain("/pricing");
+    expect(arg.success_url).toBe("https://app.test/settings/billing?status=success");
+    expect(arg.cancel_url).toBe("https://app.test/settings/billing?status=cancelled");
     expect(mocks.assertCanManageAccount).toHaveBeenCalledWith(
       { id: "acc-1", ownerUserId: "user-1", plan: "free" },
       "user-1",

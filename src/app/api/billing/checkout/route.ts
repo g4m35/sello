@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       line_items: [{ price: config.priceIds[plan], quantity: 1 }],
       client_reference_id: account.id,
       success_url: `${origin}/settings/billing?status=success`,
-      cancel_url: `${origin}/pricing`,
+      cancel_url: `${origin}/settings/billing?status=cancelled`,
     });
 
     return NextResponse.json({ url: session.url });
