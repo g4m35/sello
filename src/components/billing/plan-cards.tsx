@@ -29,29 +29,23 @@ export function PlanCard({
   cta?: ReactNode;
 }) {
   return (
-    <div
-      className={`flex flex-col rounded-2xl border p-6 ${
-        current ? "border-neutral-900 ring-1 ring-neutral-900" : "border-neutral-200"
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-neutral-900">{plan.name}</h3>
+    <div className={`card plan-card ${current ? "plan-card--current" : ""}`}>
+      <div className="plan-card__head">
+        <h3 className="t-h2">{plan.name}</h3>
         {current ? (
-          <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-xs text-white">
-            Current
-          </span>
+          <span className="badge badge--published">Current</span>
         ) : null}
       </div>
-      <p className="mt-2 text-3xl font-bold text-neutral-900">{priceLabel(plan)}</p>
-      <ul className="mt-4 flex-1 space-y-2 text-sm text-neutral-700">
+      <p className="plan-card__price t-num">{priceLabel(plan)}</p>
+      <ul className="plan-card__list">
         {headlineRows(plan).map((row) => (
-          <li key={row} className="flex gap-2">
-            <span aria-hidden>•</span>
+          <li key={row}>
+            <span aria-hidden className="plan-card__dot" />
             <span>{row}</span>
           </li>
         ))}
       </ul>
-      {cta ? <div className="mt-6">{cta}</div> : null}
+      {cta ? <div className="plan-card__cta">{cta}</div> : null}
     </div>
   );
 }
@@ -64,7 +58,7 @@ export function PlanCards({
   renderCta?: (planId: PlanId) => ReactNode;
 }) {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="plan-grid">
       {PLAN_IDS.map((id) => (
         <PlanCard
           key={id}

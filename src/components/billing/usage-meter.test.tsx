@@ -12,8 +12,8 @@ describe("UsageMeter", () => {
 
   it("flags an at-limit meter in red", () => {
     const html = renderToStaticMarkup(<UsageMeter label="Comps" used={10} limit={10} />);
-    expect(html).toContain("text-red-600");
-    expect(html).toContain("bg-red-500");
+    expect(html).toContain("usage-meter__value--limit");
+    expect(html).toContain("usage-meter__fill--limit");
   });
 
   it("computes the bar width from the ratio", () => {

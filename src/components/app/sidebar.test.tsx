@@ -55,6 +55,13 @@ function findElement(
   node: ReactNode,
   predicate: (element: ReactElement<Record<string, unknown>>) => boolean,
 ): ReactElement<Record<string, unknown>> | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findElement(child as ReactNode, predicate);
+      if (found) return found;
+    }
+    return null;
+  }
   if (!node || typeof node !== "object" || !("props" in node)) return null;
   const element = node as ReactElement<Record<string, unknown>>;
   if (predicate(element)) return element;
@@ -64,6 +71,16 @@ function findElement(
     if (found) return found;
   }
   return null;
+}
+
+function textContent(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textContent).join("");
+  if (typeof node === "object" && "props" in node) {
+    return textContent((node as ReactElement<Record<string, unknown>>).props.children);
+  }
+  return "";
 }
 
 describe("Sidebar brand", () => {
@@ -83,5 +100,21 @@ describe("Sidebar brand", () => {
     expect(brand).not.toBeNull();
     (brand?.props.onClick as () => void)();
     expect(mocks.push).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("provides direct access to billing settings", () => {
+    reactHarness.cursor = 0;
+    const tree = Sidebar();
+    expect(textContent(tree)).toContain("Billing");
+    const billing = findElement(
+      tree,
+      (el) =>
+        typeof el.props.onClick === "function" &&
+        textContent(el.props.children).includes("Billing"),
+    );
+
+    expect(billing).not.toBeNull();
+    (billing?.props.onClick as () => void)();
+    expect(mocks.push).toHaveBeenCalledWith("/settings/billing");
   });
 });

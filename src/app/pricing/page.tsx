@@ -10,29 +10,41 @@ export const metadata = {
 
 export default function PricingPage() {
   return (
-    <main className="mx-auto max-w-5xl px-6 py-16">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-neutral-900">Pricing</h1>
-        <p className="mx-auto mt-3 max-w-xl text-neutral-600">
+    <main className="public-page">
+      <section className="public-hero public-hero--compact">
+        <nav className="public-nav" aria-label="Main">
+          <Link href="/" className="public-brand">
+            Sello<em>.</em>
+          </Link>
+          <div className="public-nav__links">
+            <Link href="/dashboard" className="btn btn--secondary btn--sm">
+              Sign in
+            </Link>
+          </div>
+        </nav>
+
+        <div className="badge badge--outline">Simple reseller plans</div>
+        <h1 className="t-display public-hero__title">Pricing</h1>
+        <p className="public-hero__copy">
           Start free. Upgrade when you are listing consistently, and scale up when you
           are running volume.
         </p>
-      </div>
+      </section>
 
-      <div className="mt-12">
+      <section className="public-section public-section--pricing">
         <PlanCards
           renderCta={(id) => (
             <Link
               href={id === "free" ? "/" : "/settings/billing"}
-              className="block w-full rounded-lg bg-neutral-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-neutral-800"
+              className={`btn ${id === "free" ? "btn--secondary" : "btn--primary"} plan-card__button`}
             >
               {id === "free" ? "Get started" : `Choose ${PLAN_CATALOG[id].name}`}
             </Link>
           )}
         />
-      </div>
+      </section>
 
-      <p className="mt-8 text-center text-sm text-neutral-500">
+      <p className="public-footer public-footer--solo">
         Prices in USD. Cancel anytime from your billing settings.
       </p>
     </main>

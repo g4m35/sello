@@ -13,16 +13,16 @@ export function UsageMeter({
   const atLimit = used >= limit;
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between text-sm">
-        <span className="text-neutral-700">{label}</span>
-        <span className={atLimit ? "font-semibold text-red-600" : "text-neutral-500"}>
+    <div className="usage-meter">
+      <div className="usage-meter__head">
+        <span>{label}</span>
+        <span className={atLimit ? "usage-meter__value usage-meter__value--limit" : "usage-meter__value"}>
           {used} / {limit}
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      <div className="usage-meter__track">
         <div
-          className={`h-full rounded-full ${atLimit ? "bg-red-500" : "bg-neutral-800"}`}
+          className={`usage-meter__fill ${atLimit ? "usage-meter__fill--limit" : ""}`}
           style={{ width: `${pct}%` }}
           role="progressbar"
           aria-valuenow={used}

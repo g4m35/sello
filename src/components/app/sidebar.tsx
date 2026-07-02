@@ -39,6 +39,7 @@ export function Sidebar() {
       "/history",
       "/channels",
       "/settings",
+      "/settings/billing",
       "/feedback",
     ]) {
       router.prefetch?.(href);
@@ -48,6 +49,8 @@ export function Sidebar() {
   const isActive = (href: string) =>
     href === "/inventory"
       ? pathname.startsWith("/inventory")
+      : href === "/settings"
+        ? pathname === "/settings"
       : pathname === href || pathname.startsWith(href + "/");
 
   const primary: NavItem[] = [
@@ -57,6 +60,7 @@ export function Sidebar() {
   const config: NavItem[] = [
     { href: "/history", label: "Publish history", icon: "history" },
     { href: "/channels", label: "Marketplaces", icon: "store", count: counts.channels },
+    { href: "/settings/billing", label: "Billing", icon: "tag" },
     { href: "/settings", label: "Settings", icon: "settings" },
     { href: "/feedback", label: "Send feedback", icon: "send" },
   ];
