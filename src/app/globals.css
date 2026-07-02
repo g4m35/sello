@@ -262,10 +262,10 @@ img { display: block; max-width: 100%; }
 .nav-item {
   display: flex; align-items: center; gap: 10px; padding: 7px var(--s-3);
   border-radius: var(--r-3); color: var(--ink-2); cursor: pointer; font-size: 13.5px;
-  font-weight: 450; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+  font-weight: 450; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
   border: 0; background: transparent; text-align: left; width: 100%;
 }
-.nav-item:hover { background: var(--wash); color: var(--ink); }
+.nav-item:hover { background: var(--wash); color: var(--ink); transform: translateX(1px); }
 .nav-item--active, .nav-item--active:hover { background: var(--ink); color: var(--ink-on-inv); }
 .nav-item__count { margin-left: auto; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .nav-item--active .nav-item__count { color: var(--on-ink-faint); }
@@ -293,7 +293,12 @@ img { display: block; max-width: 100%; }
 .topbar__crumbs strong { color: var(--ink); font-weight: 500; }
 .topbar__actions { display: flex; align-items: center; gap: var(--s-2); }
 
-.page { padding: var(--s-8); max-width: 1480px; margin: 0 auto; }
+.page {
+  padding: var(--s-8);
+  max-width: 1480px;
+  margin: 0 auto;
+  animation: pageEnter var(--dur-2) var(--ease) both;
+}
 .page__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s-6); margin-bottom: var(--s-6); min-width: 0; }
 .page__head > .page__title-row { flex: 1 1 auto; min-width: 0; }
 .page__head > .page__actions { flex-shrink: 0; }
@@ -302,6 +307,11 @@ img { display: block; max-width: 100%; }
 .page__title em { font-style: italic; }
 .page__title-meta { font-size: 12px; color: var(--ink-3); letter-spacing: 0.04em; }
 .page__actions { display: flex; align-items: center; gap: var(--s-2); }
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* ============================================================
    Buttons
@@ -356,7 +366,13 @@ img { display: block; max-width: 100%; }
 /* ============================================================
    Card / KPIs / toolbar
    ============================================================ */
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-4); box-shadow: var(--shadow-1); }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  box-shadow: var(--shadow-1);
+  transition: border-color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease), background var(--dur-2) var(--ease);
+}
 .card__head { padding: 14px var(--s-5); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); min-width: 0; }
 .card__title { font-family: var(--font-serif); font-size: 18px; font-weight: 400; letter-spacing: -0.008em; white-space: nowrap; flex-shrink: 0; }
 .card__body { padding: var(--s-5); }
@@ -364,7 +380,12 @@ img { display: block; max-width: 100%; }
 /* ============================================================
    Public marketing + billing surfaces
    ============================================================ */
-.public-page { min-height: 100vh; background: var(--bg); color: var(--ink); }
+.public-page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  animation: pageEnter var(--dur-2) var(--ease) both;
+}
 .public-hero,
 .public-section,
 .public-footer {
@@ -446,7 +467,7 @@ img { display: block; max-width: 100%; }
 .usage-meter__value { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .usage-meter__value--limit { color: var(--accent); font-weight: 600; }
 .usage-meter__track { height: 6px; width: 100%; overflow: hidden; border-radius: 999px; background: var(--surface-sunk); border: 1px solid var(--line); }
-.usage-meter__fill { height: 100%; border-radius: inherit; background: var(--ink); }
+.usage-meter__fill { height: 100%; border-radius: inherit; background: var(--ink); transition: width var(--dur-3) var(--ease), background var(--dur-2) var(--ease); }
 .usage-meter__fill--limit { background: var(--accent); }
 
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-4); overflow: hidden; margin-bottom: var(--s-6); }
@@ -750,6 +771,17 @@ img { display: block; max-width: 100%; }
 
 .auth-gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); }
 .auth-card { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-5); box-shadow: var(--shadow-2); padding: 28px; display: flex; flex-direction: column; gap: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+  .page, .public-page { animation: none; }
+  .nav-item:hover { transform: none; }
+}
 
 /* ============================================================
    Density modes

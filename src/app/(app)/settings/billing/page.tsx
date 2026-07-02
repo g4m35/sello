@@ -1,26 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useSession } from "@/components/providers/session-provider";
 import { UsageMeter } from "@/components/billing/usage-meter";
 import { Banner, Btn } from "@/components/ui/primitives";
 import { Topbar } from "@/components/app/topbar";
 import { readJsonResponse } from "@/lib/http";
-import { PLAN_CATALOG, type PlanId } from "@/lib/billing/plans";
-
-interface UsageSnapshot {
-  plan: PlanId;
-  limits: {
-    aiListingsPerMonth: number;
-    autopublishesPerMonth: number;
-    compRefreshesPerMonth: number;
-  };
-  usage: { ai_listing: number; autopublish: number; comp_refresh: number };
-  periodEnd: string | null;
-  status: string;
-  cancelAtPeriodEnd: boolean;
-}
+import { PLAN_CATALOG } from "@/lib/billing/plans";
+import {
+  fetchBillingUsage,
+  getCachedBillingUsage,
+  type UsageSnapshot,
+} from "@/components/billing/usage-snapshot";
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -32,19 +24,23 @@ function formatDate(value: string | null): string {
 
 export default function BillingSettingsPage() {
   const { token } = useSession();
-  const [data, setData] = useState<UsageSnapshot | null>(null);
+  const checkoutStatus = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("status");
+  }, []);
+  const [data, setData] = useState<UsageSnapshot | null>(() =>
+    getCachedBillingUsage(token),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
+    const forceRefresh = checkoutStatus === "success";
+
     async function load() {
       try {
-        const payload = await readJsonResponse<UsageSnapshot>(
-          await fetch("/api/billing/usage", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        );
+        const payload = await fetchBillingUsage(token, { force: forceRefresh });
         if (active) {
           setData(payload);
           setError(null);
@@ -59,7 +55,7 @@ export default function BillingSettingsPage() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [checkoutStatus, token]);
 
   async function postFor(path: string, body?: unknown) {
     setBusy(true);
@@ -96,14 +92,22 @@ export default function BillingSettingsPage() {
 
         <div className="stack-4" style={{ display: "grid", gap: 20, maxWidth: 920 }}>
           {error ? <Banner variant="error" title="Billing unavailable" desc={error} /> : null}
-
-          {!data && !error ? (
-            <section className="card">
-              <div className="card__body">
-                <div className="t-small muted">Loading billing…</div>
-              </div>
-            </section>
+          {checkoutStatus === "success" ? (
+            <Banner
+              variant="info"
+              title="Checkout complete"
+              desc="Your billing details are refreshing from Stripe."
+            />
           ) : null}
+          {checkoutStatus === "cancelled" ? (
+            <Banner
+              variant="info"
+              title="Checkout cancelled"
+              desc="No plan changes were made."
+            />
+          ) : null}
+
+          {!data && !error ? <BillingSkeleton /> : null}
 
           {data ? (
             <>
@@ -202,6 +206,50 @@ export default function BillingSettingsPage() {
           ) : null}
         </div>
       </main>
+    </>
+  );
+}
+
+function BillingSkeleton() {
+  return (
+    <>
+      <section className="card">
+        <div className="card__head">
+          <div className="skel" style={{ width: 112, height: 14 }} />
+          <div className="skel" style={{ width: 78, height: 22, borderRadius: 999 }} />
+        </div>
+        <div className="card__body">
+          <div className="row" style={{ justifyContent: "space-between", gap: 16 }}>
+            <div>
+              <div className="skel" style={{ width: 42, height: 10, marginBottom: 10 }} />
+              <div className="skel" style={{ width: 132, height: 34 }} />
+            </div>
+            <div>
+              <div className="skel" style={{ width: 52, height: 10, marginBottom: 10 }} />
+              <div className="skel" style={{ width: 126, height: 18 }} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card__head">
+          <div className="skel" style={{ width: 94, height: 14 }} />
+        </div>
+        <div className="card__body">
+          <div style={{ display: "grid", gap: 18 }}>
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="usage-meter">
+                <div className="usage-meter__head">
+                  <div className="skel" style={{ width: 110, height: 12 }} />
+                  <div className="skel" style={{ width: 42, height: 12 }} />
+                </div>
+                <div className="skel" style={{ height: 6, borderRadius: 999 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </>
   );
 }
