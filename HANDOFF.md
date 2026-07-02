@@ -12,15 +12,27 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-07-01 — Codex. Opened PR #66:
-`https://github.com/g4m35/resale-crosslister/pull/66` from
-`feature/stockx-automation-paid-beta-flow` into `develop`. NOT merged, NOT
-deployed. Vercel status is green but the Preview deployment was ignored by the
-project ignored-build step; Supabase Preview skipped because no Supabase files
-changed; Codex review could not run because the account hit Codex code-review
-usage limits; CodeRabbit reported review limit reached and said the next review
-window was about 21 minutes after PR creation. Do not merge until review/CI are
-actually clean or the owner explicitly accepts this external-review limitation.
+2026-07-01 PDT / 2026-07-02 UTC — Codex. Finished PR #66:
+`https://github.com/g4m35/resale-crosslister/pull/66` is merged into `develop`
+as merge commit `c16859879c89fddb8d444847c30c0b33474eb060` and deployed to
+production as Vercel deployment `dpl_AmqE2rKjaVS66uJcsRzW7XdLBxs1`, READY and
+aliased to `https://sello.wtf`. Strict local review found and fixed one
+blocker before merge: bulk delist preflight now enforces the active account
+plan cap before doing preflight work (`53d2500`). Full gate passed before and
+after merge: `npx prisma validate`, `git diff --check`, `npm run lint` (same two
+known warnings in `draft-actions.test.ts`), `npm test` (202 files / 1318 tests),
+and `npm run build`. No migration was added; local `npx prisma migrate status`
+could not run because this shell has no datasource URL. PR checks were clean:
+CodeRabbit success/no actionable findings, Vercel Preview Comments success,
+Vercel status success but canceled by ignored-build rules, Supabase Preview
+skipped because no Supabase files changed, and Vercel Agent Review neutral.
+Production smoke was non-destructive: public pricing and marketplace/settings
+pages loaded, anonymous checkout/portal/bulk/marketplace APIs remained protected,
+invalid Stripe webhook returned `400 INVALID_SIGNATURE`, StockX publish returned
+`503 STOCKX_LISTING_NOT_ENABLED`, and Vercel error/fatal/500 log filters found
+no records for the new deployment. No real paid checkout, no live marketplace
+publish, no live StockX listing creation, no bulk StockX publishing, no env
+changes, and no secrets printed.
 
 2026-07-01 — Codex. Started
 `feature/stockx-automation-paid-beta-flow` from `develop` after pushing the
@@ -1939,14 +1951,15 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_BnRkExMNcz3ceMJENqWEdFxLuMEe` from commit
-  `557293980d38f22756227245573bc487da86dec1`, aliased to
+  `dpl_AmqE2rKjaVS66uJcsRzW7XdLBxs1` from commit
+  `c16859879c89fddb8d444847c30c0b33474eb060`, aliased to
   `https://sello.wtf`.
-- PR #65 paid-beta checkout/bulk preflight hardening is merged to `develop` and
-  deployed to production.
-- Current local feature branch is `feature/stockx-automation-paid-beta-flow`
-  (not merged/deployed). It adds client-visible plan bulk limits and stricter
-  StockX env-readiness posture without enabling any live StockX listing path.
+- PR #66 paid-beta bulk visibility and StockX readiness hardening is merged to
+  `develop` and deployed to production. It adds client-visible plan bulk limits,
+  over-limit blocking before bulk publish/delist work, stricter StockX
+  env-readiness posture, and a bulk delist preflight plan-cap fix. It does not
+  enable any live StockX listing path.
+- PR #65 paid-beta checkout/bulk preflight hardening is also merged and live.
 - Stripe live billing is active; production pricing is Free `$0`, Pro `$20/mo`,
   Kingpin `$119/mo`; webhook endpoint is
   `https://sello.wtf/api/billing/webhook`, and invalid signatures return
@@ -1955,7 +1968,7 @@ on auth.ebay.com.
   `20260625010000_add_billing_models`,
   `20260625020000_inventory_account_scope`,
   `20260625030000_marketplace_connections_account_scope`, and
-  `20260701010000_stockx_foundation`. This branch adds no migration.
+  `20260701010000_stockx_foundation`. PR #66 added no migration.
 - StockX foundation is deployed but remains fail-closed: live listing creation is
   disabled, bulk StockX publishing does not exist, StockX is excluded from the
   autonomous publish queue, and API/market-data/listing flags remain disabled
@@ -1996,13 +2009,20 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
-- 2026-07-01 (Codex): Opened PR #66,
-  `https://github.com/g4m35/resale-crosslister/pull/66`, for
-  `feature/stockx-automation-paid-beta-flow` into `develop`. Status at handoff:
-  PR open, not merged, not deployed. Vercel Preview was ignored by project
-  ignored-build rules; Supabase Preview skipped; Codex code review could not run
-  due to usage limits; CodeRabbit could not start a full review due to review
-  limits. No actionable review comments were available yet.
+- 2026-07-01 PDT / 2026-07-02 UTC (Codex): Finished PR #66,
+  `https://github.com/g4m35/resale-crosslister/pull/66`. Rebased on
+  `origin/develop`, ran the full local gate, found one strict-review blocker,
+  added a red test, fixed bulk delist preflight to enforce the active account
+  plan cap before preflight work, reran focused and full gates, pushed
+  `53d2500`, re-triggered CodeRabbit, merged PR #66, and deployed production
+  deployment `dpl_AmqE2rKjaVS66uJcsRzW7XdLBxs1` to `https://sello.wtf`.
+  Production smoke was non-destructive: `/pricing`, `/settings/marketplaces`,
+  `/inventory`, and `/channels` returned 200; anonymous checkout/portal/bulk/
+  marketplace routes stayed protected; invalid Stripe webhook returned
+  `400 INVALID_SIGNATURE`; StockX publish returned
+  `503 STOCKX_LISTING_NOT_ENABLED`; and error/fatal/500 log filters for the new
+  deployment found no records. No live paid checkout, marketplace publish, StockX
+  live listing creation, bulk StockX publishing, env changes, or secrets.
 - 2026-07-01 (Codex): Started
   `feature/stockx-automation-paid-beta-flow` (NOT merged, NOT deployed) after
   pushing the prior HANDOFF-only `develop` commit. Added plan/limit data to the
@@ -2193,10 +2213,11 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
-- **Authenticated production smoke:** Owner/admin checkout-open and non-admin
-  member-denial paths need an authenticated production seller session/token to
-  exercise live. This pass did not ask for credentials and did not complete a
-  real payment; route policy is covered by tests.
+- **Authenticated production smoke:** Owner/admin checkout-open, non-admin
+  member-denial, authenticated `/api/capabilities`, and authenticated bulk
+  plan-limit UI paths need an authenticated production seller session/token to
+  exercise live. The PR #66 production pass did not ask for credentials and did
+  not complete a real payment; route/UI policy is covered by tests.
 - **Preview StockX env values:** Vercel Preview has the safe StockX flag/base
   names but is missing `STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`, and
   `STOCKX_API_KEY`. Add only through Vercel/secure channel if Preview StockX
@@ -2238,16 +2259,13 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Monitor PR #66 review/CI state. CodeRabbit and Codex review were limited at
-   creation time, and Vercel Preview was ignored; do not merge until review/CI
-   are genuinely clean or the owner explicitly accepts those external-review
-   limitations. Fix any blockers, rerun the full local gate, then merge only
-   when clean.
-2. Run non-destructive production smoke after merge/deploy only: pricing,
-   authenticated Free checkout-open (no payment completion), Free portal safety,
-   invalid webhook signature, plan/quota visibility, bulk over-cap/duplicate/
-   missing-readiness failures, StockX disabled/status/connect/publish posture, and
-   eBay/Etsy fail-closed checks.
+1. Monitor production after PR #66 (`dpl_AmqE2rKjaVS66uJcsRzW7XdLBxs1`) for any
+   delayed runtime errors, but initial error/fatal/500 log filters were clean.
+2. If an authenticated production owner session is available, run a
+   non-destructive seller smoke for plan/quota visibility, authenticated
+   `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
+   without payment completion, Free portal safety, and StockX disabled/status/
+   connect posture.
 3. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
 4. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
