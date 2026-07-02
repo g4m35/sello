@@ -12,6 +12,20 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-02 — Codex. Fixed the Stripe Checkout cancel/back return path after the
+signed-in Billing page launched checkout and Stripe returned the seller to public
+`/pricing`. Commit `cf67ea19a5b6ed95e37d971ea5df43ad18040cf2` changes checkout
+`cancel_url` to `/settings/billing?status=cancelled` and tightens the route test
+to assert exact success/cancel URLs. Production deployment
+`dpl_6FiE5HiLunbDx8L9v1R5hJ6bK3yr` is READY and aliased to `https://sello.wtf`.
+Validation: focused billing route/style tests; `npx prisma validate`; `npm run
+lint` (same two known warnings in `draft-actions.test.ts`); `npm test` (203 files
+/ 1320 tests); `npm run build`; `git diff --check`; forbidden-file and diff
+secret-pattern scans clean. Production smoke: `/`, `/pricing`, and
+`/settings/billing` returned 200; anonymous checkout remained protected with 401;
+Vercel error logs for the deployment found no records. No real paid checkout, no
+marketplace publish, no env changes, and no secrets printed.
+
 2026-07-02 — Codex. Corrected the signed-in billing page theme mismatch and
 deployed to production. Commit `03944265bf2e59628bb6c0f0af7a81f1f22d7af7`
 converts `/settings/billing` from hardcoded neutral/red Tailwind colors to the
@@ -1968,8 +1982,8 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_DLGZtZgMSsfmuLhWMBAQLqfWK419` from commit
-  `03944265bf2e59628bb6c0f0af7a81f1f22d7af7`, aliased to
+  `dpl_6FiE5HiLunbDx8L9v1R5hJ6bK3yr` from commit
+  `cf67ea19a5b6ed95e37d971ea5df43ad18040cf2`, aliased to
   `https://sello.wtf`.
 - Pricing and billing are now directly discoverable: the public landing page
   links to `/pricing`, the pricing page uses Sello-native styling, the signed-in
@@ -1978,6 +1992,8 @@ on auth.ebay.com.
 - The signed-in billing page now uses the same Sello app shell/theme primitives
   as the rest of the authenticated UI and follows light/dark mode instead of
   hardcoded neutral/red Tailwind colors.
+- Stripe Checkout success and cancel/back returns from the signed-in Billing
+  page both land back on `/settings/billing`, not public `/pricing`.
 - PR #66 paid-beta bulk visibility and StockX readiness hardening is merged to
   `develop` and deployed to production. It adds client-visible plan bulk limits,
   over-limit blocking before bulk publish/delist work, stricter StockX
@@ -2033,6 +2049,17 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-02 (Codex): Fixed Billing -> Upgrade -> Stripe cancel/back returning
+  to the public pricing page. Root cause was a hardcoded checkout `cancel_url`
+  of `/pricing`; it now returns to `/settings/billing?status=cancelled`, with
+  the route test asserting exact success/cancel URLs. Commit
+  `cf67ea19a5b6ed95e37d971ea5df43ad18040cf2` deployed as
+  `dpl_6FiE5HiLunbDx8L9v1R5hJ6bK3yr`, READY and aliased to `https://sello.wtf`.
+  Full local gate passed (`npx prisma validate`, lint with two known warnings,
+  203 test files / 1320 tests, build, diff checks). Live smoke verified `/`,
+  `/pricing`, and `/settings/billing` 200, anonymous checkout protected with
+  401, no leak patterns, and no error logs for the deployment. No real paid
+  checkout or marketplace publish.
 - 2026-07-02 (Codex): Fixed the signed-in `/settings/billing` visual mismatch
   after live dark-mode review showed near black-on-black hardcoded styling. The
   page now uses Sello `Topbar`, `page`, `card`, `badge`, `Btn`, `Banner`, and
@@ -2307,8 +2334,8 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Monitor production after the billing page theme deploy
-   (`dpl_DLGZtZgMSsfmuLhWMBAQLqfWK419`) for any delayed runtime errors, but
+1. Monitor production after the billing checkout return-path deploy
+   (`dpl_6FiE5HiLunbDx8L9v1R5hJ6bK3yr`) for any delayed runtime errors, but
    initial error/fatal/500 log filters were clean.
 2. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
