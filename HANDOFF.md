@@ -12,6 +12,23 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-02 — Codex. Fixed pricing/billing discoverability and deployed to
+production. Commit `ace19ee7c8c84fcac9aaafd240958d14325765d7` adds Sello-native
+public navigation to `/pricing`, a direct signed-in sidebar Billing item for
+`/settings/billing`, a Settings billing card, and token-based Sello styling for
+the public pricing and billing plan/usage components. Production deployment
+`dpl_VcR6i2Hcvi9tFQijA8CLJyJixoQC` is READY and aliased to `https://sello.wtf`.
+Validation: `npx prisma validate`; `npm run lint` (same two known warnings in
+`draft-actions.test.ts`); `npm test` (202 files / 1319 tests); `npm run build`;
+`git diff --check`; forbidden-file and diff secret-pattern scans clean. Visual
+smoke used local and production Playwright screenshots for `/pricing` desktop
+and mobile with no horizontal overflow. Production smoke: `/` and `/pricing`
+returned 200 and exposed the pricing/billing links; anonymous billing checkout,
+portal, and usage APIs remained protected with 401; response leak scan was clean;
+Vercel error/fatal/500 log filters for the new deployment found no records. No
+real paid checkout, no marketplace publish, no env changes, and no secrets
+printed.
+
 2026-07-01 PDT / 2026-07-02 UTC — Codex. Finished PR #66:
 `https://github.com/g4m35/resale-crosslister/pull/66` is merged into `develop`
 as merge commit `c16859879c89fddb8d444847c30c0b33474eb060` and deployed to
@@ -1951,9 +1968,13 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_AmqE2rKjaVS66uJcsRzW7XdLBxs1` from commit
-  `c16859879c89fddb8d444847c30c0b33474eb060`, aliased to
+  `dpl_VcR6i2Hcvi9tFQijA8CLJyJixoQC` from commit
+  `ace19ee7c8c84fcac9aaafd240958d14325765d7`, aliased to
   `https://sello.wtf`.
+- Pricing and billing are now directly discoverable: the public landing page
+  links to `/pricing`, the pricing page uses Sello-native styling, the signed-in
+  sidebar has a Billing item to `/settings/billing`, and Settings has a Billing
+  card with pricing and billing actions.
 - PR #66 paid-beta bulk visibility and StockX readiness hardening is merged to
   `develop` and deployed to production. It adds client-visible plan bulk limits,
   over-limit blocking before bulk publish/delist work, stricter StockX
@@ -2009,6 +2030,18 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-02 (Codex): Fixed hidden pricing/billing navigation and deployed it to
+  production. Public landing now links to `/pricing` from nav, hero, pricing
+  section, and footer; signed-in app sidebar has a direct Billing item; Settings
+  has a Billing card; pricing cards and usage meters use the Sello token/card/
+  button system instead of generic neutral styling. Commit
+  `ace19ee7c8c84fcac9aaafd240958d14325765d7` deployed as
+  `dpl_VcR6i2Hcvi9tFQijA8CLJyJixoQC`, READY and aliased to `https://sello.wtf`.
+  Full local gate passed (`npx prisma validate`, lint with two known warnings,
+  202 test files / 1319 tests, build, diff checks). Live smoke verified `/` and
+  `/pricing` 200 with the new links, protected anonymous billing APIs still 401,
+  no leak patterns, no production screenshot overflow, and no error/fatal/500
+  logs for the deployment. No real paid checkout or marketplace publish.
 - 2026-07-01 PDT / 2026-07-02 UTC (Codex): Finished PR #66,
   `https://github.com/g4m35/resale-crosslister/pull/66`. Rebased on
   `origin/develop`, ran the full local gate, found one strict-review blocker,
@@ -2259,8 +2292,9 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Monitor production after PR #66 (`dpl_AmqE2rKjaVS66uJcsRzW7XdLBxs1`) for any
-   delayed runtime errors, but initial error/fatal/500 log filters were clean.
+1. Monitor production after the pricing/billing navigation deploy
+   (`dpl_VcR6i2Hcvi9tFQijA8CLJyJixoQC`) for any delayed runtime errors, but
+   initial error/fatal/500 log filters were clean.
 2. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
    `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
