@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 
 import { useSession } from "@/components/providers/session-provider";
 import { UsageMeter } from "@/components/billing/usage-meter";
-import { Btn } from "@/components/ui/primitives";
+import { Banner, Btn } from "@/components/ui/primitives";
+import { Topbar } from "@/components/app/topbar";
 import { readJsonResponse } from "@/lib/http";
 import { PLAN_CATALOG, type PlanId } from "@/lib/billing/plans";
 
@@ -80,73 +81,127 @@ export default function BillingSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
-      <h1 className="text-2xl font-semibold text-neutral-900">Billing</h1>
+    <>
+      <Topbar crumbs={["Settings", "Billing"]} />
 
-      {error ? (
-        <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
-      ) : null}
-
-      {!data && !error ? (
-        <p className="mt-6 text-sm text-neutral-500">Loading…</p>
-      ) : null}
-
-      {data ? (
-        <div className="mt-6 space-y-8">
-          <section className="rounded-2xl border border-neutral-200 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-neutral-500">Current plan</p>
-                <p className="text-xl font-semibold text-neutral-900">
-                  {PLAN_CATALOG[data.plan].name}
-                </p>
-              </div>
-              <div className="text-right text-sm text-neutral-500">
-                <p>Status: {data.status}</p>
-                <p>
-                  {data.cancelAtPeriodEnd ? "Ends" : "Renews"} {formatDate(data.periodEnd)}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-4">
-            <h2 className="text-sm font-medium text-neutral-700">This period</h2>
-            <UsageMeter
-              label="AI listings"
-              used={data.usage.ai_listing}
-              limit={data.limits.aiListingsPerMonth}
-            />
-            <UsageMeter
-              label="Autopublishes"
-              used={data.usage.autopublish}
-              limit={data.limits.autopublishesPerMonth}
-            />
-            <UsageMeter
-              label="Comp refreshes"
-              used={data.usage.comp_refresh}
-              limit={data.limits.compRefreshesPerMonth}
-            />
-          </section>
-
-          <section className="flex flex-wrap gap-3">
-            {data.plan === "free" ? (
-              <>
-                <Btn variant="primary" disabled={busy} onClick={() => postFor("/api/billing/checkout", { plan: "pro" })}>
-                  Upgrade to Pro
-                </Btn>
-                <Btn variant="secondary" disabled={busy} onClick={() => postFor("/api/billing/checkout", { plan: "kingpin" })}>
-                  Upgrade to Kingpin
-                </Btn>
-              </>
-            ) : (
-              <Btn variant="primary" disabled={busy} onClick={() => postFor("/api/billing/portal")}>
-                Manage billing
-              </Btn>
-            )}
-          </section>
+      <main className="page">
+        <div className="page__head">
+          <div className="page__title-row">
+            <h1 className="page__title">
+              Billing<em>.</em>
+            </h1>
+            <div className="page__title-meta">Plan, usage, and subscription controls</div>
+          </div>
         </div>
-      ) : null}
-    </div>
+
+        <div className="stack-4" style={{ display: "grid", gap: 20, maxWidth: 920 }}>
+          {error ? <Banner variant="error" title="Billing unavailable" desc={error} /> : null}
+
+          {!data && !error ? (
+            <section className="card">
+              <div className="card__body">
+                <div className="t-small muted">Loading billing…</div>
+              </div>
+            </section>
+          ) : null}
+
+          {data ? (
+            <>
+              <section className="card">
+                <div className="card__head">
+                  <span className="card__title">Current plan</span>
+                  <span className="badge badge--ready">
+                    <span className="badge__dot" />
+                    {data.status}
+                  </span>
+                </div>
+                <div className="card__body">
+                  <div
+                    className="row"
+                    style={{
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 16,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <div className="t-micro">Plan</div>
+                      <div className="t-h1" style={{ marginTop: 6 }}>
+                        {PLAN_CATALOG[data.plan].name}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div className="t-micro">{data.cancelAtPeriodEnd ? "Ends" : "Renews"}</div>
+                      <div className="t-body" style={{ marginTop: 6 }}>
+                        {formatDate(data.periodEnd)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="card">
+                <div className="card__head">
+                  <span className="card__title">This period</span>
+                </div>
+                <div className="card__body">
+                  <div style={{ display: "grid", gap: 18 }}>
+                    <UsageMeter
+                      label="AI listings"
+                      used={data.usage.ai_listing}
+                      limit={data.limits.aiListingsPerMonth}
+                    />
+                    <UsageMeter
+                      label="Autopublishes"
+                      used={data.usage.autopublish}
+                      limit={data.limits.autopublishesPerMonth}
+                    />
+                    <UsageMeter
+                      label="Comp refreshes"
+                      used={data.usage.comp_refresh}
+                      limit={data.limits.compRefreshesPerMonth}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section className="card">
+                <div className="card__body">
+                  <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                    {data.plan === "free" ? (
+                      <>
+                        <Btn
+                          variant="primary"
+                          disabled={busy}
+                          onClick={() => postFor("/api/billing/checkout", { plan: "pro" })}
+                        >
+                          Upgrade to Pro
+                        </Btn>
+                        <Btn
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() => postFor("/api/billing/checkout", { plan: "kingpin" })}
+                        >
+                          Upgrade to Kingpin
+                        </Btn>
+                      </>
+                    ) : (
+                      <Btn
+                        variant="primary"
+                        disabled={busy}
+                        onClick={() => postFor("/api/billing/portal")}
+                      >
+                        Manage billing
+                      </Btn>
+                    )}
+                  </div>
+                </div>
+              </section>
+            </>
+          ) : null}
+        </div>
+      </main>
+    </>
   );
 }
