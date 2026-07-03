@@ -25,7 +25,7 @@ describe("marketplaceCapabilityLabel", () => {
       "Catalog match required",
     );
     expect(marketplaceCapabilityLabel({ marketplace: "stockx", publish: true })).toBe(
-      "Live listing",
+      "Live StockX API",
     );
   });
 });

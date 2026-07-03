@@ -7,6 +7,8 @@ import { AppError, safeClientMessage } from "@/lib/errors";
 import { summarizeJobLogs } from "@/lib/jobs/summary";
 import { listMarketplaceAdapters } from "@/lib/marketplace/adapter";
 import { isEbayProductionPublishEnabled } from "@/lib/marketplace/adapters/ebay/config";
+import { isStockXListingCreationAvailable } from "@/lib/marketplace/adapters/stockx/capabilities";
+import { isStockXApiConfigured } from "@/lib/marketplace/adapters/stockx/config";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -35,11 +37,14 @@ export async function GET(request: Request) {
       },
     });
 
-    // eBay live publishing is real, but gated: it requires the global
-    // production publish flag AND this seller's live-publish entitlement.
-    // Inventory sync has no implementation, so it stays false everywhere.
+    // eBay live publishing is gated by the global production flag plus this
+    // seller's entitlement. StockX listing/deactivation run through dedicated
+    // handlers, so expose their real API readiness instead of the legacy
+    // compatibility adapter's draft-only defaults.
     const ebayLivePublishEnabled =
       isEbayProductionPublishEnabled() && featureAccessForUser(user).liveEbayPublish;
+    const stockxApiConfigured = isStockXApiConfigured();
+    const stockxListingEnabled = isStockXListingCreationAvailable();
 
     const adapters = listMarketplaceAdapters().map((adapter) => ({
       marketplace: adapter.marketplace,
@@ -49,7 +54,14 @@ export async function GET(request: Request) {
         publish:
           adapter.marketplace === "ebay"
             ? ebayLivePublishEnabled
-            : adapter.capabilities.publish,
+            : adapter.marketplace === "stockx"
+              ? stockxListingEnabled
+              : adapter.capabilities.publish,
+        inventorySync:
+          adapter.marketplace === "stockx"
+            ? stockxApiConfigured
+            : adapter.capabilities.inventorySync,
+        delist: adapter.marketplace === "stockx" ? stockxApiConfigured : false,
       },
     }));
 
@@ -57,9 +69,11 @@ export async function GET(request: Request) {
       jobs,
       summary: summarizeJobLogs(jobs),
       adapters,
-      publishingImplemented: ebayLivePublishEnabled,
+      publishingImplemented: ebayLivePublishEnabled || stockxListingEnabled,
       ebayLivePublishEnabled,
-      inventorySyncAvailable: false,
+      stockxListingEnabled,
+      stockxDelistEnabled: stockxApiConfigured,
+      inventorySyncAvailable: stockxApiConfigured,
     });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 400;

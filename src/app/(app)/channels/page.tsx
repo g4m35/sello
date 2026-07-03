@@ -30,9 +30,14 @@ const ROADMAP: RoadmapRow[] = [
     desc: "Live for selected alpha accounts. Gated by an allowlist and a global switch; every attempt is audited.",
   },
   {
-    title: "Inventory sync",
+    title: "StockX listing automation",
+    state: "available",
+    desc: "Create, activate, and end StockX listings after an exact catalog match and live confirmation.",
+  },
+  {
+    title: "Sold-event sync",
     state: "soon",
-    desc: "Live eBay inventory sync is not available yet.",
+    desc: "Marketplace sold webhooks are still gated by each platform's API access.",
   },
   {
     title: "CSV export",
@@ -109,6 +114,9 @@ export default function ChannelsPage() {
   const ebayLive = channels.some(
     (c) => c.marketplace === "ebay" && c.capabilities.publish,
   );
+  const stockxLive = channels.some(
+    (c) => c.marketplace === "stockx" && c.capabilities.publish,
+  );
 
   return (
     <>
@@ -135,21 +143,25 @@ export default function ChannelsPage() {
               {ebayLive
                 ? "eBay live publishing enabled"
                 : "eBay live publishing in alpha"}{" "}
-              · inventory sync not available yet
+              ·{" "}
+              {stockxLive
+                ? "StockX live API enabled"
+                : "StockX catalog match required"}
             </div>
           </div>
         </div>
 
         <Banner
           variant="info"
-          title={ebayLive ? "eBay publishing is live for your account" : "eBay publishing is in alpha"}
-          desc="eBay live publishing is enabled for selected alpha accounts and every attempt is audited. Other marketplaces stay assisted: build the draft here, then copy/export to list manually. Live inventory sync is not available yet."
+          title="Marketplace automation is gated per channel"
+          desc="eBay live publishing is enabled for selected alpha accounts. StockX can create, activate, and end live listings when the item has an exact catalog match and the seller confirms the live action."
         />
 
         <div className="channels-grid" style={{ marginTop: 16 }}>
           {channels.map((c) => {
             const count = targetCounts[c.marketplace] ?? 0;
             const isEbay = c.marketplace === "ebay";
+            const isStockX = c.marketplace === "stockx";
             return (
               <div
                 key={c.marketplace}
@@ -184,12 +196,15 @@ export default function ChannelsPage() {
                         })}
                       />
                     )}
-                    <Badge outline label="Inventory sync: not available yet" />
+                    {isStockX && c.capabilities.publish && (
+                      <Badge outline label="Exact match required" />
+                    )}
+                    <Badge outline label={channelAutomationLabel(c)} />
                   </div>
                   <div className="t-small muted" style={{ marginTop: 8 }}>
                     {count > 0
                       ? `${count} items target this channel`
-                      : "Connected (draft preview)"}
+                      : emptyChannelSummary(c)}
                   </div>
                 </div>
 
@@ -246,4 +261,20 @@ export default function ChannelsPage() {
       </main>
     </>
   );
+}
+
+function channelAutomationLabel(channel: ChannelView): string {
+  if (channel.capabilities.delist) return "Auto delist ready";
+  if (channel.capabilities.inventorySync) return "Inventory sync ready";
+  return "Inventory sync pending";
+}
+
+function emptyChannelSummary(channel: ChannelView): string {
+  if (channel.marketplace === "stockx") {
+    return channel.capabilities.publish
+      ? "Ready after exact StockX catalog match"
+      : "Match each item to StockX before listing";
+  }
+  if (channel.capabilities.publish) return "Live publishing available";
+  return "Connected for draft review";
 }

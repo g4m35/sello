@@ -1,6 +1,5 @@
 // Display metadata for marketplace logos (text mark). Mirrors the design's
-// MpLogo registry. The app currently has adapters for ebay/grailed/poshmark/
-// depop/etsy only; the rest are kept for label rendering robustness.
+// MpLogo registry and includes channels that use dedicated marketplace handlers.
 export const MP_LOGO: Record<string, { label: string; color: string }> = {
   ebay: { label: "eb", color: "#0064D2" },
   depop: { label: "DP", color: "#FF0000" },
@@ -56,7 +55,7 @@ export function marketplaceCapabilityLabel(input: {
     return "Pro API access required";
   }
   if (input.marketplace === "stockx") {
-    return input.publish ? "Live listing" : "Catalog match required";
+    return input.publish ? "Live StockX API" : "Catalog match required";
   }
   return "Copy-ready draft";
 }

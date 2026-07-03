@@ -442,7 +442,12 @@ export const api = {
       adapters: {
         marketplace: string;
         displayName: string;
-        capabilities: { draftPreview: boolean; publish: boolean; inventorySync: boolean };
+        capabilities: {
+          draftPreview: boolean;
+          publish: boolean;
+          inventorySync: boolean;
+          delist?: boolean;
+        };
       }[];
     }>("/api/jobs", token);
     return res.adapters.map((a) => ({

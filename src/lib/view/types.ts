@@ -152,7 +152,12 @@ export type ItemDetailView = ItemView & {
 export type ChannelView = {
   marketplace: string;
   name: string;
-  capabilities: { draftPreview: boolean; publish: boolean; inventorySync: boolean };
+  capabilities: {
+    draftPreview: boolean;
+    publish: boolean;
+    inventorySync: boolean;
+    delist?: boolean;
+  };
   listedCount: number;
 };
 

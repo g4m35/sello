@@ -1,9 +1,10 @@
 import type { Marketplace } from "@/lib/ai/listing-draft";
 
-// Scaffolding only. No adapter performs real publishing, marketplace API
-// calls, Playwright automation, or anti-bot circumvention. The single
-// possible outcome is an explicit, typed "not implemented" so nothing is
-// ever silently dropped or faked as a success.
+// Legacy compatibility adapters for the old publishDraft surface. Live
+// integrations such as eBay, Etsy, TikTok Shop, and StockX use dedicated
+// marketplace handlers instead of this generic adapter. The fallback adapter
+// still returns an explicit, typed "not implemented" so nothing is silently
+// dropped or faked as a success.
 
 export type PublishNotImplemented = {
   status: "not_implemented";
@@ -60,9 +61,8 @@ const ADAPTERS: Record<Marketplace, MarketplaceAdapter> = {
   poshmark: createStubAdapter("poshmark", "Poshmark"),
   depop: createStubAdapter("depop", "Depop"),
   etsy: createStubAdapter("etsy", "Etsy"),
-  // The generic adapter stays NOT_IMPLEMENTED for these channels: TikTok Shop
-  // publishing runs through its own dedicated adapter/handler (not this generic
-  // publishDraft), and Vinted/StockX are gated scaffolds with no live calls.
+  // These channels publish through dedicated handlers when available; the
+  // generic publishDraft adapter remains NOT_IMPLEMENTED.
   tiktok_shop: createStubAdapter("tiktok_shop", "TikTok Shop"),
   vinted: createStubAdapter("vinted", "Vinted"),
   stockx: createStubAdapter("stockx", "StockX"),

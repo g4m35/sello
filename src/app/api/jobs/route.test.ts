@@ -25,6 +25,26 @@ function ebayPublish(payload: {
   return payload.adapters.find((a) => a.marketplace === "ebay")?.capabilities.publish;
 }
 
+function stockx(payload: {
+  adapters: {
+    marketplace: string;
+    capabilities: { publish: boolean; inventorySync: boolean; delist?: boolean };
+  }[];
+}) {
+  return payload.adapters.find((a) => a.marketplace === "stockx");
+}
+
+function stubStockXEnv() {
+  vi.stubEnv("STOCKX_API_ENABLED", "true");
+  vi.stubEnv("STOCKX_LISTING_ENABLED", "true");
+  vi.stubEnv("STOCKX_CLIENT_ID", "client-id");
+  vi.stubEnv("STOCKX_CLIENT_SECRET", "client-secret");
+  vi.stubEnv("STOCKX_REDIRECT_URI", "https://sello.wtf/api/marketplaces/stockx/callback");
+  vi.stubEnv("STOCKX_TOKEN_ENCRYPTION_KEY", "x".repeat(32));
+  vi.stubEnv("STOCKX_OAUTH_STATE_SECRET", "s".repeat(32));
+  vi.stubEnv("STOCKX_API_KEY", "api-key");
+}
+
 describe("jobs API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,6 +75,22 @@ describe("jobs API", () => {
     expect(payload.ebayLivePublishEnabled).toBe(true);
     expect(ebayPublish(payload)).toBe(true);
     expect(payload.inventorySyncAvailable).toBe(false);
+  });
+
+  it("reports StockX live listing and delist readiness from the StockX API config", async () => {
+    stubStockXEnv();
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "owner@example.com" });
+
+    const payload = await (await GET(new Request("http://localhost/api/jobs"))).json();
+    const stockxAdapter = stockx(payload);
+
+    expect(payload.publishingImplemented).toBe(true);
+    expect(payload.stockxListingEnabled).toBe(true);
+    expect(payload.stockxDelistEnabled).toBe(true);
+    expect(payload.inventorySyncAvailable).toBe(true);
+    expect(stockxAdapter?.capabilities.publish).toBe(true);
+    expect(stockxAdapter?.capabilities.inventorySync).toBe(true);
+    expect(stockxAdapter?.capabilities.delist).toBe(true);
   });
 
   it("scopes job logs to the active account", async () => {
