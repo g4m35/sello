@@ -12,8 +12,18 @@ export const stockxErrorCodes = {
   catalogSearchFailed: "STOCKX_CATALOG_SEARCH_FAILED",
   marketDataFailed: "STOCKX_MARKET_DATA_FAILED",
   marketDataNotEnabled: "STOCKX_MARKET_DATA_NOT_ENABLED",
+  alreadyPublished: "STOCKX_ALREADY_PUBLISHED",
+  confirmationRequired: "STOCKX_CONFIRMATION_REQUIRED",
+  listingFailed: "STOCKX_LISTING_FAILED",
   listingNotEnabled: "STOCKX_LISTING_NOT_ENABLED",
+  listingReadinessFailed: "STOCKX_LISTING_READINESS_FAILED",
   listingReadinessRequired: "STOCKX_LISTING_READINESS_REQUIRED",
+  listingStarted: "STOCKX_LISTING_STARTED",
+  listingSubmitted: "STOCKX_LISTING_SUBMITTED",
+  listingSucceeded: "STOCKX_LISTING_SUCCEEDED",
+  delistStarted: "STOCKX_DELIST_STARTED",
+  delistSucceeded: "STOCKX_DELIST_SUCCEEDED",
+  delistFailed: "STOCKX_DELIST_FAILED",
   matchSaveFailed: "STOCKX_MATCH_SAVE_FAILED",
 } as const;
 

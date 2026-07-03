@@ -134,7 +134,7 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
           <CapabilityLine
             icon={<Shield className="h-4 w-4" />}
             label="Listing creation"
-            enabled={false}
+            enabled={status.capabilities.listingCreation && status.connected}
           />
         </div>
       )}
@@ -209,6 +209,7 @@ function describe(state: CardState, status: StockXStatus | null): string {
   if (state === "loading") return "Checking StockX status…";
   if (state === "error" || !status) return "StockX status unavailable.";
   if (!status.apiEnabled) return "Staged · live API off";
+  if (status.connected && status.capabilities.listingCreation) return "Connected · listings enabled";
   if (status.connected && status.capabilities.marketData) return "Connected · market data enabled";
   if (status.connected) return "Connected · matching enabled";
   return "Not connected · matching pending";

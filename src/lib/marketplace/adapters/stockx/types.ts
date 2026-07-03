@@ -49,6 +49,33 @@ export type StockXMarketDataPoint = {
   rawJson: unknown;
 };
 
+export type StockXCreateListingResult = {
+  listingId: string;
+  status: string | null;
+  operationId: string | null;
+  operationStatus: string | null;
+  operationUrl: string | null;
+  rawJson: unknown;
+};
+
+export type StockXActivateListingResult = {
+  listingId: string;
+  status: string | null;
+  operationId: string | null;
+  operationStatus: string | null;
+  operationUrl: string | null;
+  rawJson: unknown;
+};
+
+export type StockXDeactivateListingResult = {
+  listingId: string;
+  status: string | null;
+  operationId: string | null;
+  operationStatus: string | null;
+  operationUrl: string | null;
+  rawJson: unknown;
+};
+
 export type StockXStatusCapabilities = {
   connect: boolean;
   catalogSearch: boolean;

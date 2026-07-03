@@ -358,6 +358,115 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
   });
 });
 
+describe("runSyncJob — delist_marketplace_listing (StockX)", () => {
+  function stockxJobSeed() {
+    return {
+      id: "j-1",
+      userId: "user-1",
+      type: "delist_marketplace_listing" as const,
+      status: "queued" as const,
+      inventoryItemId: "item-1",
+      marketplaceListingId: "l-stockx",
+      payload: {
+        inventoryItemId: "item-1",
+        marketplaceListingId: "l-stockx",
+        marketplace: "stockx",
+        soldMarketplace: "ebay",
+        useAdapter: true,
+      },
+    };
+  }
+
+  it("success: delist_succeeded event + endedAt set + job succeeded", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [stockxJobSeed()],
+    });
+    const db = workerDb(prisma);
+    const stockxDelist = vi.fn().mockResolvedValue({ ok: true });
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(stockxDelist).toHaveBeenCalledTimes(1);
+    expect(stockxDelist.mock.calls[0][1]).toMatchObject({
+      userId: "user-1",
+      inventoryItemId: "item-1",
+      confirmLiveDelist: true,
+    });
+    expect(prisma._store.syncJobs[0].status).toBe("succeeded");
+    expect(prisma._store.listings[0].endedAt).toBeInstanceOf(Date);
+    expect(prisma._store.events.some((e) => e.type === "delist_succeeded")).toBe(true);
+  });
+
+  it("StockX error: delist_failed event + manual task + needs_review", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [stockxJobSeed()],
+    });
+    const db = workerDb(prisma);
+    const stockxDelist = vi.fn().mockRejectedValue(
+      new Error("StockX provider text token=secret"),
+    );
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+
+    expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
+    expect(prisma._store.syncJobs[0].status).toBe("needs_review");
+    expect(prisma._store.events.some((e) => e.type === "delist_failed")).toBe(true);
+    expect(prisma._store.listings[0].endedAt).toBeNull();
+    const task = prisma._store.reviewTasks.find((t) => t.type === "manual_delist_required");
+    expect(task?.marketplace).toBe("stockx");
+    expect(JSON.stringify(prisma._store)).not.toContain("token=secret");
+  });
+
+  it("listing sold on StockX is skipped rather than deactivated", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [
+        {
+          ...stockxJobSeed(),
+          payload: {
+            inventoryItemId: "item-1",
+            marketplaceListingId: "l-stockx",
+            marketplace: "stockx",
+            soldMarketplace: "stockx",
+          },
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+    const stockxDelist = vi.fn();
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+
+    expect(summary).toMatchObject({ claimed: 1, skipped: 1 });
+    expect(stockxDelist).not.toHaveBeenCalled();
+    expect(prisma._store.syncJobs[0].status).toBe("skipped");
+  });
+});
+
 describe("runSyncJob — delist_marketplace_listing (non-eBay defensive)", () => {
   it("never fakes a delist: parks a manual task + needs_review", async () => {
     const prisma = createInventoryFakePrisma({

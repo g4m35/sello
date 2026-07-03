@@ -22,6 +22,7 @@ import {
 import {
   confirmEbayDelist,
   confirmEbayOrphanCleanup,
+  confirmStockXDelist,
   MarketplaceOperationsPanel,
 } from "@/components/app/marketplace-operations-panel";
 import {
@@ -218,6 +219,7 @@ export default function ListingDetailPage() {
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [delistingEbay, setDelistingEbay] = useState(false);
+  const [delistingStockX, setDelistingStockX] = useState(false);
   const [scanningEbayOrphans, setScanningEbayOrphans] = useState(false);
   const [cleaningEbayOrphans, setCleaningEbayOrphans] = useState(false);
   const [ebayOrphanScan, setEbayOrphanScan] =
@@ -547,6 +549,24 @@ export default function ListingDetailPage() {
       setNotice((e as { error?: string })?.error ?? "Could not end the eBay listing.");
     } finally {
       setDelistingEbay(false);
+    }
+  }, [token, id, reload]);
+
+  const runStockXDelist = useCallback(async () => {
+    if (!confirmStockXDelist()) return;
+    setDelistingStockX(true);
+    setNotice(null);
+    try {
+      await api.delistStockX(token, {
+        inventoryItemId: id,
+        marketplace: "stockx",
+        confirmLiveDelist: true,
+      });
+      reload();
+    } catch (e) {
+      setNotice((e as { error?: string })?.error ?? "Could not end the StockX listing.");
+    } finally {
+      setDelistingStockX(false);
     }
   }, [token, id, reload]);
 
@@ -1520,6 +1540,7 @@ export default function ListingDetailPage() {
               channels={item.channels}
               attempts={item.attempts}
               delisting={delistingEbay}
+              delistingStockX={delistingStockX}
               orphanScan={ebayOrphanScan}
               scanningOrphans={scanningEbayOrphans}
               cleaningOrphans={cleaningEbayOrphans}
@@ -1527,6 +1548,7 @@ export default function ListingDetailPage() {
               featureAccess={access}
               delistAlphaCopy={copy.ebayDelist}
               onDelistEbay={() => void runEbayDelist()}
+              onDelistStockX={() => void runStockXDelist()}
               onScanEbayOrphans={() => void runEbayOrphanScan()}
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}
             />

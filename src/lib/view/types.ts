@@ -27,6 +27,7 @@ export type ChannelStateView = {
   sku: string | null;
   externalOfferId: string | null;
   externalListingId: string | null;
+  externalUrl?: string | null;
   lastError: string | null;
 };
 

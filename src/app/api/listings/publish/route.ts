@@ -8,6 +8,10 @@ import { getPrisma } from "@/lib/prisma";
 import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
 import {
+  StockXIntegrationError,
+  stockxErrorCodes,
+} from "@/lib/marketplace/adapters/stockx/errors";
+import {
   executePublish,
   PublishingMigrationMissingError,
 } from "@/lib/marketplace/publish-handler";
@@ -23,11 +27,18 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const { inventoryItemId, marketplace } = PublishRequestSchema.parse(
+    const { inventoryItemId, marketplace, confirmLivePublish } = PublishRequestSchema.parse(
       await request.json(),
     );
     if (marketplace === "ebay" && getEbayEnvironment() === "production") {
       requireFeatureAccess(user, "liveEbayPublish");
+    }
+    if (marketplace === "stockx" && confirmLivePublish !== true) {
+      throw new StockXIntegrationError(
+        stockxErrorCodes.confirmationRequired,
+        "Confirm before creating a live StockX listing.",
+        400,
+      );
     }
 
     // Monthly autopublish quota, enforced before the publish attempt.
@@ -40,6 +51,7 @@ export async function POST(request: Request) {
       accountId: account.id,
       inventoryItemId,
       marketplace,
+      confirmLivePublish,
     });
 
     // Count only a real, successful publish (2xx). Draft-only NOT_IMPLEMENTED
@@ -66,6 +78,10 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof EbayIntegrationError) {
+      return NextResponse.json({ error: error.toPayload() }, { status: error.status });
+    }
+
+    if (error instanceof StockXIntegrationError) {
       return NextResponse.json({ error: error.toPayload() }, { status: error.status });
     }
 

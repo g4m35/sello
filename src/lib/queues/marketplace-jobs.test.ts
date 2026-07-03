@@ -26,7 +26,7 @@ describe("marketplace job payload schemas", () => {
     expect(payload.marketplaces).toContain("tiktok_shop");
   });
 
-  it("fails closed: gated scaffold channels (StockX) cannot be enqueued for publishing", () => {
+  it("fails closed: StockX cannot be background-queued without seller confirmation in the payload", () => {
     expect(() =>
       PublishListingJobSchema.parse({
         inventoryItemId: "00000000-0000-4000-8000-000000000001",
@@ -34,6 +34,17 @@ describe("marketplace job payload schemas", () => {
         marketplaces: ["ebay", "stockx"],
       }),
     ).toThrow();
+  });
+
+  it("accepts StockX background publish when explicit seller confirmation is present", () => {
+    const payload = PublishListingJobSchema.parse({
+      inventoryItemId: "00000000-0000-4000-8000-000000000001",
+      listingDraftId: "00000000-0000-4000-8000-000000000002",
+      marketplaces: ["ebay", "stockx"],
+      confirmLivePublish: true,
+    });
+
+    expect(payload.marketplaces).toContain("stockx");
   });
 
   it("fails closed: gated scaffold channels (Vinted) cannot be enqueued for publishing", () => {

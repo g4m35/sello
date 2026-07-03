@@ -48,6 +48,14 @@ export function isLiveEbayChannel(channel: ChannelStateView | null): boolean {
   );
 }
 
+export function isLiveStockXChannel(channel: ChannelStateView | null): boolean {
+  return Boolean(
+    channel &&
+      (channel.status === "published" || channel.status === "publishing") &&
+      channel.externalListingId,
+  );
+}
+
 export function resolveDelistAction(
   channel: ChannelStateView | null,
   access: FeatureAccess,
@@ -67,6 +75,11 @@ export function ebayListingUrl(externalListingId: string | null | undefined): st
 export function ebayChannelUrl(channel: ChannelStateView | null): string | null {
   if (!channel || channel.status !== "published") return null;
   return ebayListingUrl(channel.externalListingId);
+}
+
+export function stockxChannelUrl(channel: ChannelStateView | null): string | null {
+  if (!channel || !isLiveStockXChannel(channel)) return null;
+  return channel.externalUrl ?? null;
 }
 
 export type RemoveAction =

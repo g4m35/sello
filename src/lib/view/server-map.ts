@@ -14,6 +14,7 @@ import {
   getEbayEnvironment,
   isEbayProductionPublishEnabled,
 } from "@/lib/marketplace/adapters/ebay/config";
+import { isStockXListingCreationAvailable } from "@/lib/marketplace/adapters/stockx/capabilities";
 import { listMarketplaceAdapters } from "@/lib/marketplace/adapter";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import { buildReadinessView } from "@/lib/view/readiness-view";
@@ -33,12 +34,22 @@ const ADAPTER_PUBLISH = new Map(
   listMarketplaceAdapters().map((a) => [a.marketplace as string, a.capabilities.publish]),
 );
 
-function publishImplementedForView(marketplace: string): boolean {
+function publishImplementedForView(
+  marketplace: string,
+  draft: ListingDraft | null = null,
+): boolean {
   if (marketplace === "ebay") {
     if (getEbayEnvironment() === "production") {
       return isEbayProductionPublishEnabled();
     }
     return ADAPTER_PUBLISH.get(marketplace) ?? false;
+  }
+  if (marketplace === "stockx") {
+    return (
+      isStockXListingCreationAvailable() &&
+      hasText(draft?.stockxProductId) &&
+      hasText(draft?.stockxVariantId)
+    );
   }
   return ADAPTER_PUBLISH.get(marketplace) ?? false;
 }
@@ -84,11 +95,12 @@ function channelsOf(item: ItemWithRelations, draft: ListingDraft | null): Channe
       marketplace: mp,
       name: adapter.displayName,
       status,
-      publishImplemented: publishImplementedForView(mp),
+      publishImplemented: publishImplementedForView(mp, draft),
       environment: listing?.environment ?? null,
       sku: listing?.sku ?? null,
       externalOfferId: listing?.externalOfferId ?? null,
       externalListingId: listing?.externalListingId ?? null,
+      externalUrl: listing?.externalUrl ?? null,
       lastError: safeRenderFailure(listing?.lastError),
     };
   });
@@ -238,6 +250,10 @@ function stockxDraftOf(marketplaceDrafts: unknown): Record<string, unknown> {
 
 function stringOf(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function hasText(value: string | null | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function ebayAspectsOf(marketplaceDrafts: unknown): Record<string, string> {

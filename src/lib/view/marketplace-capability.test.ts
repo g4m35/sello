@@ -19,4 +19,13 @@ describe("marketplaceCapabilityLabel", () => {
       "Preview + manual",
     );
   });
+
+  it("labels StockX by live listing availability", () => {
+    expect(marketplaceCapabilityLabel({ marketplace: "stockx", publish: false })).toBe(
+      "Catalog match required",
+    );
+    expect(marketplaceCapabilityLabel({ marketplace: "stockx", publish: true })).toBe(
+      "Live listing",
+    );
+  });
 });

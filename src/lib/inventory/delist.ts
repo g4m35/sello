@@ -11,17 +11,17 @@ import { enqueueSyncJob, type SyncJobPrismaLike } from "./sync-jobs";
 import { marketplaceLabel } from "./notifications";
 
 // Queues delist work for every OTHER live listing of a sold item, idempotently.
-// The sold-source marketplace is never touched. eBay has a real delist adapter,
-// so its job is queued for a worker to execute; every other marketplace has no
-// delist API yet, so its job is parked as needs_review AND a
-// manual_delist_required ReviewTask is created with the listing URL + clear
-// instructions. NO live marketplace/network call happens here — this layer only
-// records intent. Calling twice produces no duplicate jobs or tasks.
+// The sold-source marketplace is never touched. eBay and StockX have real
+// delist adapters, so those jobs are queued for a worker to execute; everything
+// else is parked as needs_review AND a manual_delist_required ReviewTask is
+// created with the listing URL + clear instructions. NO live marketplace/network
+// call happens here — this layer only records intent. Calling twice produces no
+// duplicate jobs or tasks.
 
 // Marketplaces with a real delist adapter that a worker can execute autonomously.
-// Only eBay today; everything else requires the seller to remove the listing.
 const MARKETPLACES_WITH_DELIST_ADAPTER: ReadonlySet<Marketplace> = new Set<Marketplace>([
   "ebay",
+  "stockx",
 ]);
 
 export function hasDelistAdapter(marketplace: Marketplace): boolean {
@@ -69,7 +69,7 @@ export type DelistPrismaLike = SyncJobPrismaLike &
   };
 
 export type QueueDelistResult = {
-  // ONLY auto-executable (adapter-available, i.e. eBay) delist jobs. A non-eBay
+  // ONLY auto-executable (adapter-available) delist jobs. A non-adapter
   // listing has no delist adapter; its job is parked as needs_review and tracked
   // in manualReviewTaskIds instead — never counted as an automatic removal.
   queuedJobIds: string[];
@@ -134,7 +134,8 @@ export async function queueDelistOtherListings(
       idempotencyKey,
       inventoryItemId,
       marketplaceListingId: listing.id,
-      // eBay can be executed by a worker; everything else parks for manual action.
+      // Adapter-backed marketplaces are executed by a worker; everything else
+      // parks for manual action.
       status: adapterAvailable ? "queued" : "needs_review",
       payload: {
         inventoryItemId,

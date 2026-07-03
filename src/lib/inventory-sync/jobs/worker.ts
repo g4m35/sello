@@ -21,7 +21,8 @@ import {
 } from "@/lib/inventory/review-tasks";
 import {
   executeEbayDelist,
-  type DelistPrismaLike as EbayDelistHandlerPrismaLike,
+  type DelistPrismaLike as MarketplaceDelistHandlerPrismaLike,
+  executeStockXDelist,
 } from "@/lib/marketplace/delist-handler";
 import { getPrisma } from "@/lib/prisma";
 
@@ -204,6 +205,7 @@ export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
 // production it is a real PrismaClient. Injectable for tests.
 export type RunSyncJobDeps = {
   ebayDelist?: typeof executeEbayDelist;
+  stockxDelist?: typeof executeStockXDelist;
 };
 
 // --- Claim -------------------------------------------------------------------
@@ -473,11 +475,16 @@ async function execDelist(
   }
 
   if (listing.marketplace === "ebay") {
-    return execEbayDelist(db, job, inventoryItemId, listing, deps);
+    return execEbayDelist(db, job, inventoryItemId, listing, soldMarketplace, deps);
   }
 
-  // Non-eBay is defensive only: these are normally enqueued as needs_review and
-  // never claimed. NEVER fake a delist for a marketplace with no adapter.
+  if (listing.marketplace === "stockx") {
+    return execStockXDelist(db, job, inventoryItemId, listing, soldMarketplace, deps);
+  }
+
+  // Non-adapter marketplaces are defensive only: these are normally enqueued as
+  // needs_review and never claimed. NEVER fake a delist for a marketplace with
+  // no adapter.
   await parkForManualDelist(db, job, listing, soldMarketplace);
   return finalizeNeedsReviewOrFailed(db, job);
 }
@@ -487,6 +494,7 @@ async function execEbayDelist(
   job: ClaimedSyncJob,
   inventoryItemId: string,
   listing: WorkerListingRow,
+  soldMarketplace: Marketplace | null,
   deps: RunSyncJobDeps,
 ): Promise<RunSummary> {
   const ebayDelist = deps.ebayDelist ?? executeEbayDelist;
@@ -494,7 +502,7 @@ async function execEbayDelist(
     // executeEbayDelist is ownership-scoped, records its own MarketplaceEvents,
     // and sets the eBay MarketplaceListing to DELISTED on success. It THROWS on
     // any non-delistable / missing-ID condition — we never fabricate success.
-    await ebayDelist(db as unknown as EbayDelistHandlerPrismaLike, {
+    await ebayDelist(db as unknown as MarketplaceDelistHandlerPrismaLike, {
       userId: job.userId,
       inventoryItemId,
       confirmLiveDelist: true,
@@ -516,7 +524,7 @@ async function execEbayDelist(
         syncJobId: job.id,
       } as Prisma.InputJsonValue,
     });
-    await parkForManualDelist(db, job, listing, null);
+    await parkForManualDelist(db, job, listing, soldMarketplace);
     return finalizeNeedsReviewOrFailed(db, job, error);
   }
 
@@ -544,6 +552,62 @@ async function execEbayDelist(
   // that markItemSold just wrote (flipping it back to LISTED/DELISTED). Re-read the
   // item (ownership-scoped): if it is sold (soldSourceMarketplace set) but its
   // status was clobbered, restore SOLD with a single update.
+  await restoreSoldStatusIfClobbered(db, job.userId, inventoryItemId);
+
+  return finalizeSucceeded(db, job.id);
+}
+
+async function execStockXDelist(
+  db: SyncWorkerPrismaLike,
+  job: ClaimedSyncJob,
+  inventoryItemId: string,
+  listing: WorkerListingRow,
+  soldMarketplace: Marketplace | null,
+  deps: RunSyncJobDeps,
+): Promise<RunSummary> {
+  const stockxDelist = deps.stockxDelist ?? executeStockXDelist;
+  try {
+    await stockxDelist(db as unknown as MarketplaceDelistHandlerPrismaLike, {
+      userId: job.userId,
+      inventoryItemId,
+      confirmLiveDelist: true,
+    });
+  } catch (error) {
+    await recordInventoryEvent(db, {
+      inventoryItemId,
+      userId: job.userId,
+      type: "delist_failed",
+      source: "system",
+      marketplace: listing.marketplace,
+      payload: {
+        marketplaceListingId: listing.id,
+        reason: safeFailureText(
+          error instanceof Error ? error.message : undefined,
+          "The StockX delist could not be completed.",
+        ),
+        syncJobId: job.id,
+      } as Prisma.InputJsonValue,
+    });
+    await parkForManualDelist(db, job, listing, null);
+    return finalizeNeedsReviewOrFailed(db, job, error);
+  }
+
+  await db.marketplaceListing.update({
+    where: { id: listing.id },
+    data: { endedAt: new Date() },
+  });
+  await recordInventoryEvent(db, {
+    inventoryItemId,
+    userId: job.userId,
+    type: "delist_succeeded",
+    source: "system",
+    marketplace: listing.marketplace,
+    payload: {
+      marketplaceListingId: listing.id,
+      syncJobId: job.id,
+    } as Prisma.InputJsonValue,
+  });
+
   await restoreSoldStatusIfClobbered(db, job.userId, inventoryItemId);
 
   return finalizeSucceeded(db, job.id);

@@ -12,6 +12,26 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-03 — Codex. Implemented the next StockX automation slice on this
+working tree, NOT merged and NOT deployed. StockX now has official API
+create-listing + activate-listing plumbing behind the existing fail-closed
+gates: `STOCKX_LISTING_ENABLED`, full API config, connected StockX account,
+exact product/variant match, positive price and quantity, and an explicit live
+confirmation. Generic `/api/listings/publish` and dedicated
+`/api/marketplaces/stockx/publish` both delegate through the audited publish
+handler; submitted StockX operations persist as `RUNNING`/`LISTING` with
+operation metadata and are not marked `LISTED` unless StockX reports
+active/success. StockX remains excluded from the autonomous publish queue
+because queued jobs do not carry seller confirmation. Publish modal now shows a
+StockX live review/confirmation card, handles mixed eBay+StockX copy cleanly,
+and settings/status copy reflects listing creation only when actually available.
+Validation: focused StockX/publish tests, `npm run lint` (only the two known
+warnings in `draft-actions.test.ts`), `npm test -- --run` (207 files / 1343
+tests), `npm run build`, `git diff --check`, and local smoke (`/pricing` 200,
+`/settings/marketplaces` 200, unauthenticated StockX publish 401). No live
+StockX API/listing call, no live marketplace publish, no env change, no deploy,
+and no secrets printed.
+
 2026-07-02 — Codex. Researched and shipped a performance/navigation polish pass
 after owner reported Billing felt ~2s slow. Commit
 `977fe7ccf891b98d95b3bb8ecb72f8926f198708` reduces `/api/billing/usage` from
@@ -2039,6 +2059,12 @@ on auth.ebay.com.
   disabled, bulk StockX publishing does not exist, StockX is excluded from the
   autonomous publish queue, and API/market-data/listing flags remain disabled
   unless explicitly approved.
+- Current unmerged working tree adds the next StockX automation slice: official
+  API listing creation + activation, dedicated/generic route delegation through
+  the audited publish handler, idempotent duplicate guards, submitted-operation
+  persistence, and a StockX live confirmation UI. It is not deployed, and live
+  StockX listing still requires explicit operator approval plus flag/config/
+  connection/catalog-match readiness.
 - PR #36 marketplace-image migration
   `20260617120000_add_marketplace_images` is applied in production and Prisma
   migration status is up to date.
@@ -2075,6 +2101,22 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-03 (Codex): Implemented StockX full-automation foundation without
+  touching live StockX. Added StockX create-listing/activate-listing client
+  methods, mapper/readiness/publish service, dedicated and generic route
+  handling, audited `PublishAttempt`/`MarketplaceEvent` persistence, duplicate
+  guards, capability/status labels, view/server-map gating, and publish-modal
+  StockX confirmation UI. StockX publish now requires the listing flag, full API
+  config, connected account, exact product/variant match, positive price and
+  quantity, and explicit confirmation. Submitted StockX operations stay
+  `RUNNING`/`LISTING` unless activation returns active/success; autonomous queue
+  remains excluded until queued jobs can carry confirmation proof. Validation:
+  focused StockX/publish tests passed; `npm run lint` passed with only the two
+  known warnings in `draft-actions.test.ts`; full `npm test -- --run` passed
+  207 files / 1343 tests; `npm run build` passed; `git diff --check` clean; local
+  smoke showed `/pricing` 200, `/settings/marketplaces` 200, and unauthenticated
+  StockX publish 401. No deploy, env change, live StockX API call, or live
+  marketplace publish.
 - 2026-07-02 (Codex): Shipped the performance/navigation polish pass. Researched
   current Next/Vercel guidance around prefetching, streaming/loading UI,
   production-safe motion, and Speed Insights. Implemented billing data prefetch
@@ -2348,7 +2390,9 @@ on auth.ebay.com.
   marketplace listings unless explicitly approved for a controlled window.
 - **StockX live API/listing flags:** keep `STOCKX_API_ENABLED`,
   `STOCKX_MARKET_DATA_ENABLED`, and `STOCKX_LISTING_ENABLED` disabled unless the
-  operator explicitly approves a controlled enablement.
+  operator explicitly approves a controlled enablement. For the new automation
+  slice, do not flip listing on or create a StockX listing until there is an
+  exact matched item/variant and an approved live test window with cleanup plan.
 - **Live eBay publishing:** `EBAY_PUBLIC_IMAGE_BUCKET` is now configured and
   derivative preflight passed, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent
   unless the owner explicitly approves another controlled live run.
@@ -2376,23 +2420,29 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Monitor production after the billing performance/navigation deploy
+1. Review/merge/deploy the unmerged StockX automation slice only when the owner
+   wants it promoted. Keep StockX listing flags off during deploy smoke; verify
+   public/app routes and that unauthenticated StockX publish remains protected.
+2. For a real StockX smoke, first confirm secure env readiness, connected
+   account, exact product/variant match, price/quantity, and explicit owner
+   approval for one controlled listing operation. Do not bulk queue StockX.
+3. Monitor production after the billing performance/navigation deploy
    (`dpl_77sDj5cK3VhkLyH25xp6zBWnGU6J`) for any delayed runtime errors, but
    initial error/fatal/500 log filters were clean.
-2. If an authenticated production owner session is available, run a
+4. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
    `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
    without payment completion, Free portal safety, and StockX disabled/status/
    connect posture.
-3. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+5. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
-4. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+6. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
-5. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+7. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
-6. Continue security follow-ups: externalUserId binding, real eBay deletion
+8. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-7. Stripe subscriptions and background worker host + inventory sync.
+9. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).

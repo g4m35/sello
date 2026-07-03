@@ -56,7 +56,7 @@ export function marketplaceCapabilityLabel(input: {
     return "Pro API access required";
   }
   if (input.marketplace === "stockx") {
-    return "Catalog match required";
+    return input.publish ? "Live listing" : "Catalog match required";
   }
   return "Copy-ready draft";
 }

@@ -11,6 +11,7 @@ import type { Marketplace } from "@/lib/ai/listing-draft";
 export type MarketplaceIntegrationMode =
   | "full_native"
   | "gated_scaffold"
+  | "catalog_matched_native"
   | "catalog_match_scaffold"
   | "assisted";
 
@@ -63,7 +64,7 @@ export type MarketplaceLiveState = {
   enabled: boolean;
   connected: boolean;
   // True only when a real adapter performs live marketplace API calls. Gated
-  // scaffolds (Vinted/StockX) pass false, so their can* flags never light up.
+  // scaffolds pass false, so their can* flags never light up.
   implemented: boolean;
   shopConnected?: boolean;
   catalogMatched?: boolean;
@@ -184,18 +185,21 @@ export const MARKETPLACE_REGISTRY: Record<Marketplace, MarketplaceDescriptor> = 
   stockx: {
     key: "stockx",
     displayName: "StockX",
-    integrationMode: "catalog_match_scaffold",
-    bestFutureMode: "Catalog-matched market data and future gated listing automation",
+    integrationMode: "full_native",
+    bestFutureMode: "StockX Public API catalog match, listing creation, activation, and deactivation",
     defaultStatus: "catalog_match_required",
     fallbackMode: "assisted_export",
     capabilities: matrix({
+      canAutoPublish: true,
       canCreateDraft: true,
+      canDeleteListing: true,
+      canSyncInventory: true,
       canReceiveSoldWebhook: false,
       requiresCatalogMatch: true,
       requiresManualApproval: true,
     }),
     uiCopy:
-      "StockX requires an exact catalog match. Sello can save StockX product matches and use gated market data; live StockX listing creation is disabled.",
+      "StockX requires an exact catalog match. Sello can create, activate, and deactivate StockX listings through the official API when the seller is connected and confirms the live action.",
   },
   tiktok_shop: {
     key: "tiktok_shop",
@@ -228,13 +232,7 @@ export function getMarketplaceDescriptor(
   return MARKETPLACE_REGISTRY[marketplace];
 }
 
-// Integration modes that have NO live publish path and must fail closed at the
-// enqueue boundary: a gated scaffold (Vinted) and a catalog-match scaffold
-// (StockX) carry capability ceilings but no real adapter, so they must never be
-// accepted into the autonomous publish queue. Assisted/copy-ready channels and
-// full-native channels stay eligible (the worker still returns a typed
-// NOT_IMPLEMENTED outcome until a real adapter lands), preserving existing
-// behavior for eBay/Etsy/Grailed/Poshmark/Depop.
+// Integration modes that must fail closed at the background enqueue boundary.
 const NON_PUBLISHABLE_INTEGRATION_MODES: ReadonlySet<MarketplaceIntegrationMode> =
   new Set(["gated_scaffold", "catalog_match_scaffold"]);
 

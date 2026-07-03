@@ -1,18 +1,23 @@
 import { StockXIntegrationError, stockxErrorCodes } from "./errors";
 import type {
+  StockXActivateListingResult,
   StockXCatalogCandidate,
   StockXConfig,
+  StockXCreateListingResult,
+  StockXDeactivateListingResult,
   StockXMarketDataPoint,
 } from "./types";
+import type { StockXCreateListingPayload } from "./mapper";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   accessToken: string;
   query?: Record<string, string | null | undefined>;
   body?: unknown;
   failureCode?:
     | typeof stockxErrorCodes.catalogSearchFailed
     | typeof stockxErrorCodes.marketDataFailed
+    | typeof stockxErrorCodes.listingFailed
     | typeof stockxErrorCodes.apiFailed;
 };
 
@@ -60,6 +65,64 @@ export async function fetchStockXMarketData(
   });
 
   return normalizeMarketData(json, args);
+}
+
+export async function createStockXListing(
+  config: StockXConfig,
+  accessToken: string,
+  payload: StockXCreateListingPayload,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StockXCreateListingResult> {
+  const json = await stockxApiRequest(config, "/selling/listings", fetchImpl, {
+    method: "POST",
+    accessToken,
+    body: payload,
+    failureCode: stockxErrorCodes.listingFailed,
+  });
+
+  return normalizeListingResult(json);
+}
+
+export async function activateStockXListing(
+  config: StockXConfig,
+  accessToken: string,
+  listingId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StockXActivateListingResult> {
+  const encodedListingId = encodeURIComponent(listingId);
+  const json = await stockxApiRequest(
+    config,
+    `/selling/listings/${encodedListingId}/activate`,
+    fetchImpl,
+    {
+      method: "POST",
+      accessToken,
+      failureCode: stockxErrorCodes.listingFailed,
+    },
+  );
+
+  return normalizeListingResult(json, listingId);
+}
+
+export async function deactivateStockXListing(
+  config: StockXConfig,
+  accessToken: string,
+  listingId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StockXDeactivateListingResult> {
+  const encodedListingId = encodeURIComponent(listingId);
+  const json = await stockxApiRequest(
+    config,
+    `/selling/listings/${encodedListingId}/deactivate`,
+    fetchImpl,
+    {
+      method: "PUT",
+      accessToken,
+      failureCode: stockxErrorCodes.listingFailed,
+    },
+  );
+
+  return normalizeListingResult(json, listingId);
 }
 
 async function stockxApiRequest(
@@ -201,6 +264,44 @@ function normalizeMarketData(
   }
 
   return points.slice(0, 12);
+}
+
+function normalizeListingResult(
+  json: unknown,
+  fallbackListingId?: string,
+): StockXCreateListingResult {
+  const root = asRecord(json) ?? {};
+  const data = asRecord(root.data) ?? root;
+  const listing = asRecord(data.listing) ?? asRecord(data.item) ?? data;
+  const listingId =
+    firstString(listing, ["listingId", "id", "uuid"]) ??
+    firstString(data, ["listingId", "id", "uuid"]) ??
+    fallbackListingId;
+
+  if (!listingId) {
+    throw new StockXIntegrationError(
+      stockxErrorCodes.listingFailed,
+      "StockX listing response did not include a listing id.",
+      502,
+    );
+  }
+
+  return {
+    listingId,
+    status:
+      firstString(listing, ["status", "state", "listingStatus"]) ??
+      firstString(data, ["status", "state", "listingStatus"]),
+    operationId:
+      firstString(data, ["operationId", "operation_id"]) ??
+      firstString(root, ["operationId"]),
+    operationStatus:
+      firstString(data, ["operationStatus", "operation_status"]) ??
+      firstString(root, ["operationStatus"]),
+    operationUrl:
+      firstString(data, ["operationUrl", "url"]) ??
+      firstString(root, ["operationUrl", "url"]),
+    rawJson: json,
+  };
 }
 
 async function safeJson(response: Response): Promise<unknown> {

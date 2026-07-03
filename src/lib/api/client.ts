@@ -622,6 +622,28 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  delistStockX: (
+    token: string,
+    body: {
+      inventoryItemId: string;
+      marketplace: "stockx";
+      confirmLiveDelist: true;
+    },
+  ) =>
+    request<{
+      ok: true;
+      status: "delisted";
+      code: string;
+      marketplace: "stockx";
+      environment: string;
+      listingId: string;
+      marketplaceListingId: string;
+      publishAttemptId: string;
+    }>("/api/listings/delist", token, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // Read-only bulk publish dry run. Available to every seller; returns
   // livePublishAllowed:false plus alpha copy for non-allowlisted accounts.
   // Large selections are chunked internally and merged in selected order.
@@ -750,15 +772,21 @@ export const api = {
       { method: "POST" },
     ),
 
-  // Honest publish: the server returns 501 NOT_IMPLEMENTED. We surface the
-  // outcome rather than treating it as an error toast.
+  // Honest publish: draft-only marketplaces can return 501 NOT_IMPLEMENTED,
+  // while live channels return submitted/published outcomes. Surface expected
+  // typed outcomes as data instead of generic toasts.
   publish: async (
     token: string,
-    body: { inventoryItemId: string; marketplace: string },
+    body: {
+      inventoryItemId: string;
+      marketplace: string;
+      confirmLivePublish?: true;
+    },
   ): Promise<{
     status: string;
     code: string;
     marketplace: string;
+    listingId?: string;
     reason?: string;
     message?: string;
   }> => {

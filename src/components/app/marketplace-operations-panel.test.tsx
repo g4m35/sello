@@ -69,6 +69,7 @@ function render(props: Partial<React.ComponentProps<typeof MarketplaceOperations
       channels={props.channels ?? [channel()]}
       attempts={props.attempts ?? [attempt()]}
       onDelistEbay={() => undefined}
+      onDelistStockX={props.onDelistStockX}
       onScanEbayOrphans={() => undefined}
       onCleanupEbayOrphans={() => undefined}
       delisting={false}
@@ -231,6 +232,31 @@ describe("MarketplaceOperationsPanel (seller view)", () => {
       featureAccess: { ...DENIED_FEATURE_ACCESS, ebayDelist: true },
     });
     expect(html).not.toContain("End eBay listing");
+  });
+
+  it("shows a first-class StockX end action for a live StockX listing", () => {
+    const html = render({
+      channels: [
+        channel({ status: "draft", externalOfferId: null, externalListingId: null }),
+        channel({
+          marketplace: "stockx",
+          name: "StockX",
+          status: "published",
+          publishImplemented: true,
+          environment: "production",
+          sku: null,
+          externalOfferId: null,
+          externalListingId: "stockx-listing-1",
+          externalUrl: "https://stockx.com/nike-air-max-1",
+        }),
+      ],
+      attempts: [],
+      onDelistStockX: () => undefined,
+    });
+
+    expect(html).toContain("StockX");
+    expect(html).toContain("End StockX listing");
+    expect(html).toContain("https://stockx.com/nike-air-max-1");
   });
 
   it("never renders a raw 'Live' badge", () => {

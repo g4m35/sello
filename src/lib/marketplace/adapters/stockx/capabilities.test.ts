@@ -65,5 +65,15 @@ describe("StockX capability resolution", () => {
         STOCKX_LISTING_ENABLED: "true",
       }),
     ).toBe(true);
+    expect(
+      resolveStockXCapabilities({
+        ...oauthEnv,
+        STOCKX_API_KEY: "api-key",
+        STOCKX_LISTING_ENABLED: "true",
+      }),
+    ).toMatchObject({
+      listingCreation: true,
+      listingSync: true,
+    });
   });
 });

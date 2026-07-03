@@ -14,13 +14,14 @@ export function resolveStockXCapabilities(
   const oauthConfigured = isStockXOAuthConfigured(env);
   const apiConfigured = isStockXApiConfigured(env);
   const marketDataEnabled = isStockXMarketDataEnabled(env);
+  const listingCreation = apiConfigured && isStockXListingEnabled(env);
   return {
     connect: oauthConfigured,
     catalogSearch: apiConfigured,
     productMatching: true,
     marketData: apiConfigured && marketDataEnabled,
-    listingCreation: false,
-    listingSync: false,
+    listingCreation,
+    listingSync: listingCreation,
     orderSync: false,
   };
 }

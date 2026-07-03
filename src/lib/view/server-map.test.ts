@@ -41,6 +41,11 @@ function item() {
         measurements: null,
         flaws: null,
         selectedMarketplaces: ["ebay" as const],
+        stockxProductId: null,
+        stockxVariantId: null,
+        stockxMatchSource: null,
+        stockxMatchConfidence: null,
+        stockxMarketDataCheckedAt: null,
         approvedAt: now,
         createdAt: now,
         updatedAt: now,
@@ -131,6 +136,55 @@ describe("mapItem publish channel gating", () => {
     const ebay = mapItem(item()).channels.find((channel) => channel.marketplace === "ebay");
 
     expect(ebay?.publishImplemented).toBe(false);
+  });
+
+  it("shows StockX publishing only when listing config is enabled and the draft has an exact variant match", () => {
+    vi.stubEnv("STOCKX_API_ENABLED", "true");
+    vi.stubEnv("STOCKX_LISTING_ENABLED", "true");
+    vi.stubEnv("STOCKX_CLIENT_ID", "client-id");
+    vi.stubEnv("STOCKX_CLIENT_SECRET", "client-secret");
+    vi.stubEnv("STOCKX_API_KEY", "api-key");
+    vi.stubEnv("STOCKX_REDIRECT_URI", "https://sello.wtf/api/marketplaces/stockx/callback");
+    vi.stubEnv("STOCKX_TOKEN_ENCRYPTION_KEY", "a".repeat(64));
+    vi.stubEnv("STOCKX_OAUTH_STATE_SECRET", "x".repeat(40));
+    const base = item();
+    const withStockX = {
+      ...base,
+      listingDrafts: [
+        {
+          ...base.listingDrafts[0],
+          selectedMarketplaces: ["stockx" as const],
+          stockxProductId: "product-1",
+          stockxVariantId: "variant-1",
+          stockxMatchSource: "catalog_search",
+          stockxMatchConfidence: 0.95,
+          stockxMarketDataCheckedAt: null,
+        },
+      ],
+    };
+
+    const stockx = mapItem(withStockX).channels.find(
+      (channel) => channel.marketplace === "stockx",
+    );
+
+    expect(stockx?.publishImplemented).toBe(true);
+  });
+
+  it("keeps StockX draft-only when the exact variant match is missing", () => {
+    vi.stubEnv("STOCKX_API_ENABLED", "true");
+    vi.stubEnv("STOCKX_LISTING_ENABLED", "true");
+    vi.stubEnv("STOCKX_CLIENT_ID", "client-id");
+    vi.stubEnv("STOCKX_CLIENT_SECRET", "client-secret");
+    vi.stubEnv("STOCKX_API_KEY", "api-key");
+    vi.stubEnv("STOCKX_REDIRECT_URI", "https://sello.wtf/api/marketplaces/stockx/callback");
+    vi.stubEnv("STOCKX_TOKEN_ENCRYPTION_KEY", "a".repeat(64));
+    vi.stubEnv("STOCKX_OAUTH_STATE_SECRET", "x".repeat(40));
+
+    const stockx = mapItem(item()).channels.find(
+      (channel) => channel.marketplace === "stockx",
+    );
+
+    expect(stockx?.publishImplemented).toBe(false);
   });
 });
 

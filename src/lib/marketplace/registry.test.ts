@@ -87,8 +87,8 @@ describe("marketplace registry", () => {
   describe("stockx", () => {
     const stockx = getMarketplaceDescriptor("stockx");
 
-    it("requires an exact catalog match by default", () => {
-      expect(stockx.integrationMode).toBe("catalog_match_scaffold");
+    it("is a full-native API channel that still requires an exact catalog match", () => {
+      expect(stockx.integrationMode).toBe("full_native");
       expect(stockx.defaultStatus).toBe("catalog_match_required");
       expect(stockx.capabilities.requiresCatalogMatch).toBe(true);
       expect(stockx.capabilities.requiresManualApproval).toBe(true);
@@ -99,13 +99,13 @@ describe("marketplace registry", () => {
       expect(stockx.capabilities.canReceiveSoldWebhook).toBe(false);
     });
 
-    it("keeps live StockX listing creation disabled in the current ceiling", () => {
-      expect(stockx.capabilities.canAutoPublish).toBe(false);
+    it("advertises StockX listing creation and deactivation but not sold webhook automation", () => {
+      expect(stockx.capabilities.canAutoPublish).toBe(true);
       expect(stockx.capabilities.canUpdateListing).toBe(false);
-      expect(stockx.capabilities.canDeleteListing).toBe(false);
-      expect(stockx.capabilities.canSyncInventory).toBe(false);
+      expect(stockx.capabilities.canDeleteListing).toBe(true);
+      expect(stockx.capabilities.canSyncInventory).toBe(true);
       expect(stockx.capabilities.canCreateDraft).toBe(true);
-      expect(stockx.uiCopy).toContain("live StockX listing creation is disabled");
+      expect(stockx.uiCopy).toContain("official API");
     });
 
     it("never auto-publishes without an exact catalog match and a real implementation", () => {
@@ -124,6 +124,14 @@ describe("marketplace registry", () => {
         catalogMatched: true,
       });
       expect(notImplemented.canAutoPublish).toBe(false);
+
+      const ready = resolveCurrentCapabilities(stockx, {
+        enabled: true,
+        connected: true,
+        implemented: true,
+        catalogMatched: true,
+      });
+      expect(ready.canAutoPublish).toBe(true);
     });
   });
 
@@ -203,9 +211,8 @@ describe("marketplace registry", () => {
   });
 
   describe("publish-queue eligibility (fail closed at enqueue)", () => {
-    it("rejects gated/catalog scaffolds (Vinted, StockX) from the publish queue", () => {
+    it("rejects channels that cannot safely run in the background queue yet (Vinted)", () => {
       expect(isPublishQueueEligible("vinted")).toBe(false);
-      expect(isPublishQueueEligible("stockx")).toBe(false);
     });
 
     it("allows full-native and assisted channels into the publish queue", () => {
@@ -215,6 +222,7 @@ describe("marketplace registry", () => {
         "grailed",
         "poshmark",
         "depop",
+        "stockx",
         "tiktok_shop",
       ] as const) {
         expect(isPublishQueueEligible(mp)).toBe(true);
@@ -223,7 +231,7 @@ describe("marketplace registry", () => {
 
     it("lists exactly the publish-queue-eligible marketplaces", () => {
       expect(listPublishQueueEligibleMarketplaces().sort()).toEqual(
-        ["depop", "ebay", "etsy", "grailed", "poshmark", "tiktok_shop"].sort(),
+        ["depop", "ebay", "etsy", "grailed", "poshmark", "stockx", "tiktok_shop"].sort(),
       );
     });
   });

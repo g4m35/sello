@@ -43,7 +43,7 @@ describe("queueDelistOtherListings", () => {
     const result = await queueDelistOtherListings(prisma, "item-1", "ebay", "user-1");
 
     expect(result.skippedSoldSource).toBe(true);
-    // Both remaining listings are non-eBay (no adapter): they are parked as
+    // Both remaining listings have no adapter: they are parked as
     // manual delists, NOT counted as auto-executable queued jobs. The eBay
     // (sold source) listing is skipped entirely.
     expect(result.queuedJobIds).toHaveLength(0);
@@ -101,6 +101,28 @@ describe("queueDelistOtherListings", () => {
 
     expect(result.queuedJobIds).toHaveLength(1);
     expect(result.manualReviewTaskIds).toHaveLength(0);
+  });
+
+  it("queues a StockX delist as a normal queued job for a worker", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem()],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+    });
+
+    const result = await queueDelistOtherListings(prisma, "item-1", "ebay", "user-1");
+
+    expect(result.queuedJobIds).toHaveLength(1);
+    expect(result.manualReviewTaskIds).toHaveLength(0);
+    expect(prisma._store.syncJobs[0].status).toBe("queued");
+    expect((prisma._store.syncJobs[0].payload as { useAdapter: boolean }).useAdapter).toBe(
+      true,
+    );
   });
 
   it("parks a non-eBay listing as needs_review and creates a manual_delist_required task", async () => {
