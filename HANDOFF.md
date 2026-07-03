@@ -12,25 +12,38 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
-2026-07-03 — Codex. Implemented the next StockX automation slice on this
-working tree, NOT merged and NOT deployed. StockX now has official API
-create-listing + activate-listing plumbing behind the existing fail-closed
-gates: `STOCKX_LISTING_ENABLED`, full API config, connected StockX account,
-exact product/variant match, positive price and quantity, and an explicit live
-confirmation. Generic `/api/listings/publish` and dedicated
-`/api/marketplaces/stockx/publish` both delegate through the audited publish
-handler; submitted StockX operations persist as `RUNNING`/`LISTING` with
-operation metadata and are not marked `LISTED` unless StockX reports
-active/success. StockX remains excluded from the autonomous publish queue
-because queued jobs do not carry seller confirmation. Publish modal now shows a
-StockX live review/confirmation card, handles mixed eBay+StockX copy cleanly,
-and settings/status copy reflects listing creation only when actually available.
-Validation: focused StockX/publish tests, `npm run lint` (only the two known
-warnings in `draft-actions.test.ts`), `npm test -- --run` (207 files / 1343
-tests), `npm run build`, `git diff --check`, and local smoke (`/pricing` 200,
-`/settings/marketplaces` 200, unauthenticated StockX publish 401). No live
-StockX API/listing call, no live marketplace publish, no env change, no deploy,
-and no secrets printed.
+2026-07-03 — Codex. Implemented, pushed, and deployed the StockX full-native
+automation pass. Code commits: `0353eaf` adds official StockX API create-listing
++ activate-listing and deactivate/delist handling; `c300b01` fixes the
+marketplace page/status API so StockX no longer appears as a draft-only/no-sync
+assisted channel when the API config is present. Production deployment
+`dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh` is READY and aliased to `https://sello.wtf`.
+StockX live automation now has audited paths for dedicated
+`/api/marketplaces/stockx/publish`, generic `/api/listings/publish`, generic
+`/api/listings/delist`, and inventory-sync worker delist jobs. Guards remain:
+full API config, connected StockX account, exact product/variant match, positive
+price/quantity, no duplicate live listing, and explicit live confirmation.
+Submitted StockX publish attempts persist as `RUNNING`/`LISTING` with operation
+metadata and are not marked `LISTED` unless StockX reports active/success.
+StockX deactivation marks `DELISTED` only after the official deactivate endpoint
+confirms.
+
+Validation: focused StockX/delist/queue/UI tests; focused `/api/jobs` and
+capability label tests; full `npm test` (208 files / 1360 tests); `npm run
+lint` (only the two known warnings in `draft-actions.test.ts`); `npm run build`;
+`git diff --check`; diff secret-pattern scan found no credential values (only
+placeholder test strings). Production smoke: `/`, `/channels`, and
+`/settings/marketplaces` returned 200; anonymous StockX publish/delist/status
+remained protected with 401; Vercel inspect showed READY aliases; Vercel error
+log filter found no error/fatal/500 matches. Signed-in Chrome smoke reached
+`https://sello.wtf/channels` and showed the new Sello-styled StockX copy, but
+runtime StockX API readiness is still fail-closed because Vercel production
+StockX variable names exist with empty values. Safe metadata checks printed only
+presence/length/boolean state; no secret values were printed. Local ignored env
+files checked in visible Sello checkouts also had zero `STOCKX_*` keys. A live
+StockX listing/deactivate test is therefore blocked until real production
+`STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`, `STOCKX_API_KEY`, and the required
+StockX config/secret values are populated in Vercel.
 
 2026-07-02 — Codex. Researched and shipped a performance/navigation polish pass
 after owner reported Billing felt ~2s slow. Commit
@@ -2025,8 +2038,7 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_77sDj5cK3VhkLyH25xp6zBWnGU6J` from commit
-  `977fe7ccf891b98d95b3bb8ecb72f8926f198708`, aliased to
+  `dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh` from commit `c300b01`, aliased to
   `https://sello.wtf`.
 - Pricing and billing are now directly discoverable: the public landing page
   links to `/pricing`, the pricing page uses Sello-native styling, the signed-in
@@ -2040,11 +2052,11 @@ on auth.ebay.com.
 - Billing navigation is warmed from the Sidebar and `/api/billing/usage` now uses
   a compact query shape; Vercel Speed Insights is installed for real-user Web
   Vitals monitoring.
-- PR #66 paid-beta bulk visibility and StockX readiness hardening is merged to
-  `develop` and deployed to production. It adds client-visible plan bulk limits,
-  over-limit blocking before bulk publish/delist work, stricter StockX
-  env-readiness posture, and a bulk delist preflight plan-cap fix. It does not
-  enable any live StockX listing path.
+- PR #66 paid-beta bulk visibility and the 2026-07-03 StockX automation pass are
+  merged to `develop` and deployed to production. StockX code now supports
+  official API catalog-backed create/activate/deactivate through audited publish
+  and delist handlers, plus inventory-sync worker delist jobs. Runtime remains
+  fail-closed until real production StockX env values are populated.
 - PR #65 paid-beta checkout/bulk preflight hardening is also merged and live.
 - Stripe live billing is active; production pricing is Free `$0`, Pro `$20/mo`,
   Kingpin `$119/mo`; webhook endpoint is
@@ -2055,16 +2067,11 @@ on auth.ebay.com.
   `20260625020000_inventory_account_scope`,
   `20260625030000_marketplace_connections_account_scope`, and
   `20260701010000_stockx_foundation`. PR #66 added no migration.
-- StockX foundation is deployed but remains fail-closed: live listing creation is
-  disabled, bulk StockX publishing does not exist, StockX is excluded from the
-  autonomous publish queue, and API/market-data/listing flags remain disabled
-  unless explicitly approved.
-- Current unmerged working tree adds the next StockX automation slice: official
-  API listing creation + activation, dedicated/generic route delegation through
-  the audited publish handler, idempotent duplicate guards, submitted-operation
-  persistence, and a StockX live confirmation UI. It is not deployed, and live
-  StockX listing still requires explicit operator approval plus flag/config/
-  connection/catalog-match readiness.
+- StockX production runtime status: Vercel lists the StockX production env names,
+  but safe `vercel env pull` metadata shows empty values. The signed-in
+  marketplace page therefore correctly shows StockX catalog-match/API readiness
+  as pending. Populate the real StockX credentials/config in Vercel before any
+  live StockX listing smoke can run.
 - PR #36 marketplace-image migration
   `20260617120000_add_marketplace_images` is applied in production and Prisma
   migration status is up to date.
@@ -2101,22 +2108,18 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
-- 2026-07-03 (Codex): Implemented StockX full-automation foundation without
-  touching live StockX. Added StockX create-listing/activate-listing client
-  methods, mapper/readiness/publish service, dedicated and generic route
-  handling, audited `PublishAttempt`/`MarketplaceEvent` persistence, duplicate
-  guards, capability/status labels, view/server-map gating, and publish-modal
-  StockX confirmation UI. StockX publish now requires the listing flag, full API
-  config, connected account, exact product/variant match, positive price and
-  quantity, and explicit confirmation. Submitted StockX operations stay
-  `RUNNING`/`LISTING` unless activation returns active/success; autonomous queue
-  remains excluded until queued jobs can carry confirmation proof. Validation:
-  focused StockX/publish tests passed; `npm run lint` passed with only the two
-  known warnings in `draft-actions.test.ts`; full `npm test -- --run` passed
-  207 files / 1343 tests; `npm run build` passed; `git diff --check` clean; local
-  smoke showed `/pricing` 200, `/settings/marketplaces` 200, and unauthenticated
-  StockX publish 401. No deploy, env change, live StockX API call, or live
-  marketplace publish.
+- 2026-07-03 (Codex): Implemented, validated, pushed, and production-deployed
+  StockX full-native automation. Commit `0353eaf` added official API
+  create-listing/activate-listing/deactivate plumbing, audited publish/delist
+  persistence, duplicate guards, inventory-sync worker StockX delist jobs, and
+  seller confirmation UI. Commit `c300b01` fixed marketplace status copy so
+  StockX no longer appears as draft-only/no-sync when the API config is present.
+  Deployment `dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh` is READY on `https://sello.wtf`.
+  Validation: focused StockX/delist/queue/UI/jobs tests, full `npm test` (208
+  files / 1360 tests), `npm run lint` (two known warnings), `npm run build`,
+  `git diff --check`, production public/protected smoke, signed-in `/channels`
+  smoke, and Vercel error-log filter. Live StockX listing smoke did not run
+  because production StockX env variable values are empty.
 - 2026-07-02 (Codex): Shipped the performance/navigation polish pass. Researched
   current Next/Vercel guidance around prefetching, streaming/loading UI,
   production-safe motion, and Speed Insights. Implemented billing data prefetch
@@ -2372,27 +2375,31 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
+- **Production StockX env values:** Vercel Production lists the StockX env names,
+  but safe metadata pull shows empty values for `STOCKX_API_ENABLED`,
+  `STOCKX_LISTING_ENABLED`, `STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`,
+  `STOCKX_API_KEY`, `STOCKX_OAUTH_STATE_SECRET`,
+  `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_REDIRECT_URI`,
+  `STOCKX_API_BASE_URL`, and `STOCKX_AUTH_BASE_URL`. Populate real values
+  through Vercel/secure channel before live StockX OAuth/listing smoke. Never
+  print values.
+- **Live StockX smoke:** Owner approved live listing tests, but live StockX
+  create/deactivate cannot run until production env values are real, the seller
+  connects StockX, and one inventory item has an exact StockX product/variant
+  match, positive price/quantity, and explicit confirmation.
 - **Authenticated production smoke:** Owner/admin checkout-open, non-admin
   member-denial, authenticated `/api/capabilities`, and authenticated bulk
-  plan-limit UI paths need an authenticated production seller session/token to
-  exercise live. The PR #66 production pass did not ask for credentials and did
-  not complete a real payment; route/UI policy is covered by tests.
-- **Preview StockX env values:** Vercel Preview has the safe StockX flag/base
-  names but is missing `STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`, and
-  `STOCKX_API_KEY`. Add only through Vercel/secure channel if Preview StockX
-  OAuth/API smoke is needed; never print values.
+  plan-limit UI paths still need an authenticated production seller session/token
+  if not using the existing signed-in Chrome session. Route/UI policy is covered
+  by tests.
 - **Migration status in this shell:** `DATABASE_URL` and `DIRECT_URL` are absent
   here, so `npx prisma migrate status` cannot run locally. Use the approved DB
   context only; do not create or paste DB URLs into chat/logs.
 - **Real paid checkout:** do not complete a live Stripe checkout unless the
   operator explicitly approves and uses an operator-owned payment method.
-- **Live marketplace publishing:** do not bulk-publish or live-publish real
-  marketplace listings unless explicitly approved for a controlled window.
-- **StockX live API/listing flags:** keep `STOCKX_API_ENABLED`,
-  `STOCKX_MARKET_DATA_ENABLED`, and `STOCKX_LISTING_ENABLED` disabled unless the
-  operator explicitly approves a controlled enablement. For the new automation
-  slice, do not flip listing on or create a StockX listing until there is an
-  exact matched item/variant and an approved live test window with cleanup plan.
+- **Live marketplace publishing:** the owner has approved controlled StockX live
+  listing tests for launch readiness. Still avoid accidental bulk publish; use a
+  single reviewed item and immediately verify the StockX delist/deactivate path.
 - **Live eBay publishing:** `EBAY_PUBLIC_IMAGE_BUCKET` is now configured and
   derivative preflight passed, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent
   unless the owner explicitly approves another controlled live run.
@@ -2420,20 +2427,19 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Review/merge/deploy the unmerged StockX automation slice only when the owner
-   wants it promoted. Keep StockX listing flags off during deploy smoke; verify
-   public/app routes and that unauthenticated StockX publish remains protected.
-2. For a real StockX smoke, first confirm secure env readiness, connected
-   account, exact product/variant match, price/quantity, and explicit owner
-   approval for one controlled listing operation. Do not bulk queue StockX.
-3. Monitor production after the billing performance/navigation deploy
-   (`dpl_77sDj5cK3VhkLyH25xp6zBWnGU6J`) for any delayed runtime errors, but
-   initial error/fatal/500 log filters were clean.
+1. Populate real production StockX env values in Vercel, redeploy, and verify
+   `/api/jobs`/`/channels` report StockX live API + auto-delist readiness. Keep
+   values out of logs/chat.
+2. Connect the seller's StockX account, match one inventory item to an exact
+   StockX product/variant, then run one controlled live create/activate smoke
+   followed immediately by the StockX delist/deactivate smoke.
+3. Monitor production after the StockX automation deploy
+   (`dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh`) for any delayed runtime errors; initial
+   error/fatal/500 log filters were clean.
 4. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
    `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
-   without payment completion, Free portal safety, and StockX disabled/status/
-   connect posture.
+   without payment completion, and Free portal safety.
 5. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
 6. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
@@ -2445,10 +2451,11 @@ on auth.ebay.com.
 9. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
-1. `cd "/Users/jheller/Desktop/perc 30/worktrees/ui"` (the `feature/ui` worktree).
+1. `cd "/Users/jheller/dev/resale-crosslister-safety"` (current Sello checkout).
 2. `git fetch && git merge origin/develop` (stay current); `npm install`; `npx prisma generate`.
 3. Gate: `npm run lint && npx tsc --noEmit && npm test && npm run build`.
-4. Flow: `feature/* → develop → main → production`. Commit + merge to `develop`. **Never push `main` or deploy to production without explicit owner approval.** Preview deploys are fine on request.
+4. Flow: `feature/* → develop → production via Vercel`. Commit + push to
+   `develop`; deploy production only when the owner has explicitly requested it.
 
 ## Key gotchas
 - **Next.js 16**: read `node_modules/next/dist/docs/` before writing Next code; `params`/`searchParams` are async; use `next/font`.
