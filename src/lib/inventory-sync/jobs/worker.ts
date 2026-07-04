@@ -24,6 +24,10 @@ import {
   type DelistPrismaLike as MarketplaceDelistHandlerPrismaLike,
   executeStockXDelist,
 } from "@/lib/marketplace/delist-handler";
+import {
+  syncStockXListingStatus,
+  type StockXStatusSyncPrismaLike,
+} from "@/lib/marketplace/adapters/stockx/status-sync";
 import { getPrisma } from "@/lib/prisma";
 
 // Worker/executor half of the inventory safety layer. The engine (mark-sold,
@@ -206,6 +210,7 @@ export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
 export type RunSyncJobDeps = {
   ebayDelist?: typeof executeEbayDelist;
   stockxDelist?: typeof executeStockXDelist;
+  stockxStatusSync?: typeof syncStockXListingStatus;
 };
 
 // --- Claim -------------------------------------------------------------------
@@ -274,11 +279,12 @@ export async function runSyncJob(
   switch (job.type) {
     case "delist_marketplace_listing":
       return execDelist(db, job, deps);
+    case "detect_status":
+      return execDetectStatus(db, job, deps);
     case "notify_user":
       return execNotify(db, job);
     case "create_review_task":
       return execCreateReviewTask(db, job);
-    case "detect_status":
     case "mark_sold":
     case "update_inventory_quantity":
     case "update_price":
@@ -658,6 +664,89 @@ async function parkForManualDelist(
       syncJobId: job.id,
     } as Prisma.InputJsonValue,
   });
+}
+
+// --- Executor: detect_status -------------------------------------------------
+
+type DetectStatusPayload = {
+  inventoryItemId?: unknown;
+  marketplaceListingId?: unknown;
+  accountId?: unknown;
+};
+
+async function execDetectStatus(
+  db: SyncWorkerPrismaLike,
+  job: ClaimedSyncJob,
+  deps: RunSyncJobDeps,
+): Promise<RunSummary> {
+  const payload = (job.payload ?? {}) as DetectStatusPayload;
+  const inventoryItemId =
+    typeof payload.inventoryItemId === "string"
+      ? payload.inventoryItemId
+      : job.inventoryItemId;
+  const marketplaceListingId =
+    typeof payload.marketplaceListingId === "string"
+      ? payload.marketplaceListingId
+      : job.marketplaceListingId;
+  const accountId = typeof payload.accountId === "string" ? payload.accountId : undefined;
+
+  if (!inventoryItemId || !marketplaceListingId) {
+    return finalizeFailure(db, job, "INVALID_PAYLOAD", undefined, {
+      fallback: "The status-sync job payload was incomplete.",
+    });
+  }
+
+  const listing = await db.marketplaceListing.findFirst({
+    where: {
+      id: marketplaceListingId,
+      inventoryItem: { sellerId: job.userId },
+    },
+    select: { id: true, marketplace: true, status: true, externalUrl: true },
+  });
+
+  if (!listing || TERMINAL_LISTING_STATUSES.has(listing.status)) {
+    return finalizeSucceeded(db, job.id);
+  }
+
+  if (listing.marketplace !== "stockx") {
+    return finalizeSkip(
+      db,
+      job.id,
+      "NOT_IMPLEMENTED",
+      `No status-sync executor implemented for marketplace "${listing.marketplace}".`,
+    );
+  }
+
+  const stockxStatusSync = deps.stockxStatusSync ?? syncStockXListingStatus;
+  try {
+    await stockxStatusSync(db as unknown as StockXStatusSyncPrismaLike, {
+      userId: job.userId,
+      accountId,
+      inventoryItemId,
+      marketplaceListingId,
+    });
+  } catch (error) {
+    await recordInventoryEvent(db, {
+      inventoryItemId,
+      userId: job.userId,
+      type: "sync_conflict",
+      source: "system",
+      marketplace: listing.marketplace,
+      payload: {
+        marketplaceListingId: listing.id,
+        reason: safeFailureText(
+          error instanceof Error ? error.message : undefined,
+          "The StockX status sync could not be completed.",
+        ),
+        syncJobId: job.id,
+      } as Prisma.InputJsonValue,
+    });
+    return finalizeFailure(db, job, "STATUS_SYNC_FAILED", error, {
+      fallback: "The StockX status sync could not be completed.",
+    });
+  }
+
+  return finalizeSucceeded(db, job.id);
 }
 
 // --- Executor: notify_user ---------------------------------------------------

@@ -273,6 +273,13 @@ type EbayFakeState = {
   updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   inventoryUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   listings: Map<string, EbayFakeListing>;
+  syncJobs: Array<{
+    id: string;
+    type: string;
+    idempotencyKey: string;
+    payload: unknown;
+    runAfter: Date;
+  }>;
 };
 
 function createEbayFakePrisma(opts?: {
@@ -287,6 +294,7 @@ function createEbayFakePrisma(opts?: {
     updates: [],
     inventoryUpdates: [],
     listings: new Map(),
+    syncJobs: [],
   };
 
   const prisma = {
@@ -448,6 +456,34 @@ function createEbayFakePrisma(opts?: {
       }) {
         state.events.push({ kind: data.kind, data: data.data });
         return { id: `event-${state.events.length}` };
+      },
+    },
+    syncJob: {
+      async upsert({
+        where,
+        create,
+      }: {
+        where: { idempotencyKey: string };
+        create: {
+          type: string;
+          idempotencyKey: string;
+          payload: unknown;
+          runAfter: Date;
+        };
+      }) {
+        const existing = state.syncJobs.find(
+          (job) => job.idempotencyKey === where.idempotencyKey,
+        );
+        if (existing) return { id: existing.id };
+        const job = {
+          id: `sync-${state.syncJobs.length + 1}`,
+          type: create.type,
+          idempotencyKey: create.idempotencyKey,
+          payload: create.payload,
+          runAfter: create.runAfter,
+        };
+        state.syncJobs.push(job);
+        return { id: job.id };
       },
     },
   };
@@ -1032,6 +1068,18 @@ describe("executePublish — StockX dispatch", () => {
     expect(prisma._state.events.map((event) => event.kind)).toEqual(
       expect.arrayContaining(["publish_started", "stockx_listing_submitted"]),
     );
+    expect(prisma._state.syncJobs).toHaveLength(1);
+    expect(prisma._state.syncJobs[0]).toMatchObject({
+      type: "detect_status",
+      idempotencyKey:
+        "item-1:stockx:production:detect_status:operation-1",
+    });
+    expect(prisma._state.syncJobs[0].payload).toMatchObject({
+      marketplace: "stockx",
+      listingId: "stockx-listing-1",
+      operationId: "operation-1",
+      operationStatus: "PENDING",
+    });
   });
 
   it("records StockX listing disabled without making the listing live", async () => {

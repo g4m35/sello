@@ -76,6 +76,15 @@ export type StockXDeactivateListingResult = {
   rawJson: unknown;
 };
 
+export type StockXListingStatusResult = {
+  listingId: string;
+  status: string | null;
+  operationId: string | null;
+  operationStatus: string | null;
+  operationUrl: string | null;
+  rawJson: unknown;
+};
+
 export type StockXStatusCapabilities = {
   connect: boolean;
   catalogSearch: boolean;

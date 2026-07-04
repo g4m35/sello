@@ -4,6 +4,7 @@ import {
   activateStockXListing,
   createStockXListing,
   deactivateStockXListing,
+  fetchStockXListingStatus,
   fetchStockXMarketData,
   searchStockXCatalog,
 } from "./client";
@@ -240,6 +241,38 @@ describe("StockX listing client", () => {
       listingId: "listing-1",
       operationId: "operation-2",
       operationStatus: "PENDING",
+    });
+  });
+
+  it("fetches a listing status for reconciliation", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              listing: {
+                id: "listing-1",
+                status: "ACTIVE",
+              },
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+
+    const result = await fetchStockXListingStatus(
+      config,
+      "access-token",
+      "listing-1",
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://api.stockx.com/v2/selling/listings/listing-1");
+    expect(init?.method).toBe("GET");
+    expect(result).toMatchObject({
+      listingId: "listing-1",
+      status: "ACTIVE",
     });
   });
 });

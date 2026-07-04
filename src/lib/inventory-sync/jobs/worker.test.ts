@@ -634,7 +634,6 @@ describe("runSyncJob — create_review_task", () => {
 
 describe("runSyncJob — fail-closed executors", () => {
   it.each([
-    "detect_status",
     "mark_sold",
     "update_inventory_quantity",
     "update_price",
@@ -652,6 +651,118 @@ describe("runSyncJob — fail-closed executors", () => {
     const job = prisma._store.syncJobs[0];
     expect(job.status).toBe("skipped");
     expect(job.errorCode).toBe("NOT_IMPLEMENTED");
+  });
+
+  it("detect_status remains fail-closed for marketplaces without a status executor", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
+      syncJobs: [
+        {
+          id: "j-1",
+          userId: "user-1",
+          type: "detect_status",
+          status: "queued",
+          inventoryItemId: "item-1",
+          marketplaceListingId: "l-ebay",
+          payload: {
+            inventoryItemId: "item-1",
+            marketplaceListingId: "l-ebay",
+          },
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 });
+
+    expect(summary).toMatchObject({ claimed: 1, skipped: 1 });
+    const job = prisma._store.syncJobs[0];
+    expect(job.status).toBe("skipped");
+    expect(job.errorCode).toBe("NOT_IMPLEMENTED");
+  });
+});
+
+describe("runSyncJob — detect_status (StockX)", () => {
+  function stockxStatusJobSeed() {
+    return {
+      id: "j-1",
+      userId: "user-1",
+      type: "detect_status" as const,
+      status: "queued" as const,
+      inventoryItemId: "item-1",
+      marketplaceListingId: "l-stockx",
+      payload: {
+        inventoryItemId: "item-1",
+        marketplaceListingId: "l-stockx",
+        marketplace: "stockx",
+        accountId: "account-1",
+      },
+    };
+  }
+
+  it("runs the StockX status sync adapter and succeeds", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item({ accountId: "account-1" })],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          status: "LISTING",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [stockxStatusJobSeed()],
+    });
+    const db = workerDb(prisma);
+    const stockxStatusSync = vi.fn().mockResolvedValue({
+      status: "active",
+      listingId: "stockx-listing-1",
+    });
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxStatusSync });
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(stockxStatusSync).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        userId: "user-1",
+        accountId: "account-1",
+        inventoryItemId: "item-1",
+        marketplaceListingId: "l-stockx",
+      }),
+    );
+    expect(prisma._store.syncJobs[0].status).toBe("succeeded");
+  });
+
+  it("persists only sanitized StockX status-sync failures", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          status: "LISTING",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [stockxStatusJobSeed()],
+    });
+    const db = workerDb(prisma);
+    const stockxStatusSync = vi.fn().mockRejectedValue(
+      new Error("provider secret Bearer abc.def at /app/src/token.ts:1"),
+    );
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxStatusSync });
+
+    expect(summary).toMatchObject({ claimed: 1, failed: 1 });
+    const job = prisma._store.syncJobs[0];
+    expect(job.status).toBe("failed");
+    expect(job.errorCode).toBe("STATUS_SYNC_FAILED");
+    expect(job.errorMessage).not.toContain("Bearer");
+    expect(job.errorMessage).not.toContain("secret");
+    const event = prisma._store.events.find((entry) => entry.type === "sync_conflict");
+    expect(JSON.stringify(event?.payload)).not.toContain("Bearer");
   });
 });
 

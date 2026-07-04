@@ -12,6 +12,25 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-04 — Codex. Continued StockX full-automation development after the owner
+re-added production env values and redeployed outside this local pass. Added the
+StockX reconciliation/status-sync slice:
+`fetchStockXListingStatus` now reads the
+official selling listing status endpoint, pending StockX publish submissions
+enqueue a durable `detect_status` sync job, and the inventory-sync worker now
+executes `detect_status` for StockX only. The sync helper settles remote
+`ACTIVE`/success states to `LISTED` and completes the running publish attempt,
+routes remote `SOLD` through the existing `markItemSold` double-sell safety path,
+marks remote inactive/deactivated listings `ENDED`, and leaves unknown provider
+states non-terminal while recording `lastSyncAt`. No live StockX listing,
+deactivate, or provider status call was made in this pass.
+
+Validation: focused StockX client/status-sync/publish-handler/worker tests
+passed (4 files / 76 tests); full `npm test` passed (209 files / 1367 tests);
+`npm run build` passed; `npm run lint` passed with only the two known warnings in
+`src/app/api/listings/draft/draft-actions.test.ts`. StockX docs re-checked at
+the official Developer Portal/API reference before adding the client endpoint.
+
 2026-07-03 — Codex. Implemented, pushed, and deployed the StockX full-native
 automation pass. Code commits: `0353eaf` adds official StockX API create-listing
 + activate-listing and deactivate/delist handling; `c300b01` fixes the
@@ -2055,8 +2074,10 @@ on auth.ebay.com.
 - PR #66 paid-beta bulk visibility and the 2026-07-03 StockX automation pass are
   merged to `develop` and deployed to production. StockX code now supports
   official API catalog-backed create/activate/deactivate through audited publish
-  and delist handlers, plus inventory-sync worker delist jobs. Runtime remains
-  fail-closed until real production StockX env values are populated.
+  and delist handlers, plus inventory-sync worker delist jobs. A local
+  2026-07-04 follow-up this commit adds StockX listing-status
+  reconciliation for pending publish operations and sold/inactive detection;
+  deploy status must be checked before assuming production has that slice.
 - PR #65 paid-beta checkout/bulk preflight hardening is also merged and live.
 - Stripe live billing is active; production pricing is Free `$0`, Pro `$20/mo`,
   Kingpin `$119/mo`; webhook endpoint is
@@ -2108,6 +2129,18 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-04 (Codex): Added StockX listing-status reconciliation in commit
+  this commit. The
+  StockX client can fetch a stored listing's current status, submitted StockX
+  publishes enqueue an idempotent `detect_status` sync job, and the worker now
+  executes `detect_status` for StockX while keeping other marketplaces
+  fail-closed. Status sync maps active/listed to `LISTED` and completes the
+  pending publish attempt, maps sold through `markItemSold`, maps
+  inactive/deactivated to `ENDED`, and leaves unknown provider states
+  non-terminal. Validation: focused StockX/client/status-sync/publish/worker
+  tests (4 files / 76 tests), full `npm test` (209 files / 1367 tests),
+  `npm run build`, and `npm run lint` (same two known warnings). No live StockX
+  provider call, listing, or deactivate was run.
 - 2026-07-03 (Codex): Implemented, validated, pushed, and production-deployed
   StockX full-native automation. Commit `0353eaf` added official API
   create-listing/activate-listing/deactivate plumbing, audited publish/delist
@@ -2375,14 +2408,10 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
-- **Production StockX env values:** Vercel Production lists the StockX env names,
-  but safe metadata pull shows empty values for `STOCKX_API_ENABLED`,
-  `STOCKX_LISTING_ENABLED`, `STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`,
-  `STOCKX_API_KEY`, `STOCKX_OAUTH_STATE_SECRET`,
-  `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_REDIRECT_URI`,
-  `STOCKX_API_BASE_URL`, and `STOCKX_AUTH_BASE_URL`. Populate real values
-  through Vercel/secure channel before live StockX OAuth/listing smoke. Never
-  print values.
+- **Production StockX env/runtime verification:** Owner said the StockX Vercel
+  envs were re-added and production was redeployed on 2026-07-04. Do not print
+  values. Verify readiness through safe runtime booleans/UI/logs before any live
+  StockX listing smoke; avoid Keychain/session-cookie extraction.
 - **Live StockX smoke:** Owner approved live listing tests, but live StockX
   create/deactivate cannot run until production env values are real, the seller
   connects StockX, and one inventory item has an exact StockX product/variant
@@ -2427,28 +2456,30 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Populate real production StockX env values in Vercel, redeploy, and verify
-   `/api/jobs`/`/channels` report StockX live API + auto-delist readiness. Keep
-   values out of logs/chat.
-2. Connect the seller's StockX account, match one inventory item to an exact
+1. Deploy the 2026-07-04 StockX status-sync slice only if the owner wants it
+   live.
+2. Verify production StockX runtime readiness after the owner's env redeploy via
+   safe UI/API/log checks: `/api/jobs`/`/channels` should report StockX live API
+   + auto-delist readiness. Keep values out of logs/chat.
+3. Connect the seller's StockX account, match one inventory item to an exact
    StockX product/variant, then run one controlled live create/activate smoke
    followed immediately by the StockX delist/deactivate smoke.
-3. Monitor production after the StockX automation deploy
+4. Monitor production after the StockX automation deploy
    (`dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh`) for any delayed runtime errors; initial
    error/fatal/500 log filters were clean.
-4. If an authenticated production owner session is available, run a
+5. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
    `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
    without payment completion, and Free portal safety.
-5. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+6. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
-6. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+7. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
-7. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+8. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
-8. Continue security follow-ups: externalUserId binding, real eBay deletion
+9. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-9. Stripe subscriptions and background worker host + inventory sync.
+10. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/dev/resale-crosslister-safety"` (current Sello checkout).

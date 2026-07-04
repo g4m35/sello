@@ -5,6 +5,7 @@ import type {
   StockXConfig,
   StockXCreateListingResult,
   StockXDeactivateListingResult,
+  StockXListingStatusResult,
   StockXMarketDataPoint,
 } from "./types";
 import type { StockXCreateListingPayload } from "./mapper";
@@ -119,6 +120,26 @@ export async function deactivateStockXListing(
       method: "PUT",
       accessToken,
       failureCode: stockxErrorCodes.listingFailed,
+    },
+  );
+
+  return normalizeListingResult(json, listingId);
+}
+
+export async function fetchStockXListingStatus(
+  config: StockXConfig,
+  accessToken: string,
+  listingId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StockXListingStatusResult> {
+  const encodedListingId = encodeURIComponent(listingId);
+  const json = await stockxApiRequest(
+    config,
+    `/selling/listings/${encodedListingId}`,
+    fetchImpl,
+    {
+      accessToken,
+      failureCode: stockxErrorCodes.apiFailed,
     },
   );
 

@@ -198,6 +198,23 @@ export type PublishPrismaLike = {
       };
     }): Promise<{ id: string }>;
   };
+  syncJob?: {
+    upsert(args: {
+      where: { idempotencyKey: string };
+      update: Record<string, never>;
+      create: {
+        userId: string;
+        type: "detect_status";
+        status: "queued";
+        inventoryItemId: string;
+        marketplaceListingId: string;
+        idempotencyKey: string;
+        payload: Prisma.InputJsonValue;
+        runAfter: Date;
+      };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+  };
 };
 
 export type ExecutePublishInput = {
@@ -779,6 +796,10 @@ async function executeStockXPublish(
       );
     }
 
+    if (!listed) {
+      await enqueueStockXStatusSyncJob(prisma, input, listing.id, result);
+    }
+
     return {
       ok: true,
       httpStatus: listed ? 200 : 202,
@@ -1079,6 +1100,41 @@ async function updatePublishAttempt(
     return prisma.publishAttempt.update({ where: { id }, data });
   }
   return { id };
+}
+
+async function enqueueStockXStatusSyncJob(
+  prisma: PublishPrismaLike,
+  input: ExecutePublishInput,
+  marketplaceListingId: string,
+  result: StockXPublishResult,
+) {
+  if (result.status !== "submitted" || !prisma.syncJob?.upsert) return;
+  const syncKey = result.operationId ?? result.listingId;
+  await prisma.syncJob.upsert({
+    where: {
+      idempotencyKey: `${input.inventoryItemId}:stockx:${STOCKX_ENVIRONMENT}:detect_status:${syncKey}`,
+    },
+    update: {},
+    create: {
+      userId: input.userId,
+      type: "detect_status",
+      status: "queued",
+      inventoryItemId: input.inventoryItemId,
+      marketplaceListingId,
+      idempotencyKey: `${input.inventoryItemId}:stockx:${STOCKX_ENVIRONMENT}:detect_status:${syncKey}`,
+      payload: {
+        inventoryItemId: input.inventoryItemId,
+        marketplaceListingId,
+        marketplace: "stockx",
+        accountId: input.accountId ?? null,
+        listingId: result.listingId,
+        operationId: result.operationId,
+        operationStatus: result.operationStatus,
+      } as Prisma.InputJsonValue,
+      runAfter: new Date(Date.now() + 2 * 60_000),
+    },
+    select: { id: true },
+  });
 }
 
 async function withMigrationDetection<T>(fn: () => Promise<T>): Promise<T> {
