@@ -32,9 +32,11 @@ type FakeListing = {
 function createFake({
   remoteStatus,
   operationStatus = null,
+  sellerId = "user-1",
 }: {
   remoteStatus: string | null;
   operationStatus?: string | null;
+  sellerId?: string;
 }) {
   const listing: FakeListing = {
     id: "listing-row-1",
@@ -43,7 +45,7 @@ function createFake({
     status: "LISTING",
     externalListingId: "stockx-listing-1",
     metadata: { operationId: "operation-1" },
-    inventoryItem: { accountId: "account-1", sellerId: "user-1" },
+    inventoryItem: { accountId: "account-1", sellerId },
     lastSyncAt: null,
     endedAt: null,
   };
@@ -153,12 +155,35 @@ describe("syncStockXListingStatus", () => {
       prisma,
       expect.objectContaining({
         inventoryItemId: "item-1",
+        inventoryOwnerUserId: "user-1",
         soldMarketplace: "stockx",
         soldListingId: "stockx-listing-1",
         source: "api",
       }),
     );
     expect(events.map((event) => event.kind)).toContain("stockx_listing_sold");
+  });
+
+  it("marks the owning seller's inventory sold when status sync runs as a teammate", async () => {
+    const { prisma, markSold, deps } = createFake({
+      remoteStatus: "SOLD",
+      sellerId: "owner-1",
+    });
+
+    await syncStockXListingStatus(prisma, {
+      userId: "member-1",
+      accountId: "account-1",
+      marketplaceListingId: "listing-row-1",
+    }, deps);
+
+    expect(markSold).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        userId: "member-1",
+        inventoryOwnerUserId: "owner-1",
+        inventoryItemId: "item-1",
+      }),
+    );
   });
 
   it("marks removed StockX listings ended without marking the item sold", async () => {

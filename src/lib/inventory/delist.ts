@@ -63,8 +63,8 @@ export type DelistPrismaLike = SyncJobPrismaLike &
     inventoryItem: {
       findFirst(args: {
         where: { id: string; sellerId: string };
-        select: { id: true; productName: true };
-      }): Promise<{ id: string; productName: string } | null>;
+        select: { id: true; accountId: true; productName: true };
+      }): Promise<{ id: string; accountId: string | null; productName: string } | null>;
     };
   };
 
@@ -96,7 +96,7 @@ export async function queueDelistOtherListings(
   // Ownership: only the owning seller's item is ever inspected/acted on.
   const item = await db.inventoryItem.findFirst({
     where: { id: inventoryItemId, sellerId: inventoryOwnerUserId },
-    select: { id: true, productName: true },
+    select: { id: true, accountId: true, productName: true },
   });
   if (!item) {
     // Defense-in-depth: callers already scope, but never act on a foreign item.
@@ -144,6 +144,7 @@ export async function queueDelistOtherListings(
         soldMarketplace,
         useAdapter: adapterAvailable,
         externalUrl: listing.externalUrl,
+        accountId: item.accountId ?? null,
       } as Prisma.InputJsonValue,
     });
     // Only adapter-available (eBay) jobs are auto-executable, so only those count

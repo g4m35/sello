@@ -248,6 +248,7 @@ export async function syncStockXListingStatus(
     await deps.markSold(prisma, {
       inventoryItemId: listing.inventoryItemId,
       userId: input.userId,
+      inventoryOwnerUserId: listing.inventoryItem.sellerId,
       soldMarketplace: "stockx",
       soldListingId: listing.externalListingId,
       source: "api",

@@ -406,6 +406,49 @@ describe("runSyncJob — delist_marketplace_listing (StockX)", () => {
     expect(prisma._store.events.some((e) => e.type === "delist_succeeded")).toBe(true);
   });
 
+  it("runs StockX delist jobs scoped to a shared account", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item({ sellerId: "owner-1", accountId: "account-1" })],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [
+        {
+          ...stockxJobSeed(),
+          userId: "member-1",
+          payload: {
+            inventoryItemId: "item-1",
+            marketplaceListingId: "l-stockx",
+            marketplace: "stockx",
+            soldMarketplace: "ebay",
+            useAdapter: true,
+            accountId: "account-1",
+          },
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+    const stockxDelist = vi.fn().mockResolvedValue({ ok: true });
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(stockxDelist).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        userId: "member-1",
+        accountId: "account-1",
+        inventoryItemId: "item-1",
+        confirmLiveDelist: true,
+      }),
+    );
+    expect(prisma._store.listings[0].endedAt).toBeInstanceOf(Date);
+  });
+
   it("StockX error: delist_failed event + manual task + needs_review", async () => {
     const prisma = createInventoryFakePrisma({
       items: [item()],
@@ -735,9 +778,53 @@ describe("runSyncJob — detect_status (StockX)", () => {
     expect(prisma._store.syncJobs[0].status).toBe("succeeded");
   });
 
+  it("runs StockX status sync jobs scoped to a shared account", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item({ sellerId: "owner-1", accountId: "account-1" })],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          status: "LISTING",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [
+        {
+          ...stockxStatusJobSeed(),
+          userId: "member-1",
+          payload: {
+            inventoryItemId: "item-1",
+            marketplaceListingId: "l-stockx",
+            marketplace: "stockx",
+            accountId: "account-1",
+          },
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+    const stockxStatusSync = vi.fn().mockResolvedValue({
+      status: "active",
+      listingId: "stockx-listing-1",
+    });
+
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxStatusSync });
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(stockxStatusSync).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        userId: "member-1",
+        accountId: "account-1",
+        inventoryItemId: "item-1",
+        marketplaceListingId: "l-stockx",
+      }),
+    );
+  });
+
   it("persists only sanitized StockX status-sync failures", async () => {
     const prisma = createInventoryFakePrisma({
-      items: [item()],
+      items: [item({ accountId: "account-1" })],
       listings: [
         listing({
           id: "l-stockx",

@@ -217,7 +217,7 @@ export function createInventoryFakePrisma(seed: {
       where: {
         inventoryItemId?: string;
         marketplace?: Marketplace;
-        inventoryItem?: { sellerId: string };
+        inventoryItem?: { sellerId?: string; accountId?: string };
       };
       select: unknown;
     }) {
@@ -229,11 +229,26 @@ export function createInventoryFakePrisma(seed: {
           if (where.marketplace && l.marketplace !== where.marketplace) return false;
           if (where.inventoryItem) {
             const item = store.items.find((i) => i.id === l.inventoryItemId);
-            if (!item || item.sellerId !== where.inventoryItem.sellerId) return false;
+            if (!item) return false;
+            if (
+              where.inventoryItem.sellerId !== undefined &&
+              item.sellerId !== where.inventoryItem.sellerId
+            ) {
+              return false;
+            }
+            if (
+              where.inventoryItem.accountId !== undefined &&
+              item.accountId !== where.inventoryItem.accountId
+            ) {
+              return false;
+            }
           }
           return true;
         })
-        .map((l) => ({ ...l }));
+        .map((l) => ({
+          ...l,
+          inventoryItem: store.items.find((i) => i.id === l.inventoryItemId),
+        }));
     },
     async findFirst({
       where,
@@ -241,7 +256,7 @@ export function createInventoryFakePrisma(seed: {
       where: {
         id?: string;
         marketplace?: Marketplace;
-        inventoryItem?: { sellerId: string };
+        inventoryItem?: { sellerId?: string; accountId?: string };
         externalListingId?: string;
         externalUrl?: string;
       };
@@ -252,7 +267,19 @@ export function createInventoryFakePrisma(seed: {
         if (where.marketplace && l.marketplace !== where.marketplace) return false;
         if (where.inventoryItem) {
           const item = store.items.find((i) => i.id === l.inventoryItemId);
-          if (!item || item.sellerId !== where.inventoryItem.sellerId) return false;
+          if (!item) return false;
+          if (
+            where.inventoryItem.sellerId !== undefined &&
+            item.sellerId !== where.inventoryItem.sellerId
+          ) {
+            return false;
+          }
+          if (
+            where.inventoryItem.accountId !== undefined &&
+            item.accountId !== where.inventoryItem.accountId
+          ) {
+            return false;
+          }
         }
         if (where.externalListingId && l.externalListingId !== where.externalListingId) {
           return false;
@@ -260,7 +287,12 @@ export function createInventoryFakePrisma(seed: {
         if (where.externalUrl && l.externalUrl !== where.externalUrl) return false;
         return true;
       });
-      return match ? { ...match } : null;
+      return match
+        ? {
+            ...match,
+            inventoryItem: store.items.find((i) => i.id === match.inventoryItemId),
+          }
+        : null;
     },
     async update({
       where,

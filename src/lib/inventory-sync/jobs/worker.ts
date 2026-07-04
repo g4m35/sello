@@ -144,16 +144,21 @@ type WorkerListingRow = {
   marketplace: Marketplace;
   status: MarketplaceListingStatus;
   externalUrl: string | null;
+  inventoryItem: { accountId: string | null; sellerId: string };
 };
 
 type WorkerListingDelegate = {
   findFirst(args: {
-    where: { id: string; inventoryItem: { sellerId: string } };
+    where: {
+      id: string;
+      inventoryItem: { sellerId?: string; accountId?: string };
+    };
     select: {
       id: true;
       marketplace: true;
       status: true;
       externalUrl: true;
+      inventoryItem: { select: { accountId: true; sellerId: true } };
     };
   }): Promise<WorkerListingRow | null>;
   update(args: {
@@ -425,6 +430,7 @@ type DelistPayload = {
   marketplace?: unknown;
   soldMarketplace?: unknown;
   useAdapter?: unknown;
+  accountId?: unknown;
 };
 
 const TERMINAL_LISTING_STATUSES: ReadonlySet<MarketplaceListingStatus> =
@@ -448,6 +454,7 @@ async function execDelist(
     typeof payload.soldMarketplace === "string"
       ? (payload.soldMarketplace as Marketplace)
       : null;
+  const accountId = typeof payload.accountId === "string" ? payload.accountId : undefined;
 
   if (!inventoryItemId || !marketplaceListingId) {
     return finalizeFailure(db, job, "INVALID_PAYLOAD", undefined, {
@@ -455,13 +462,20 @@ async function execDelist(
     });
   }
 
-  // Ownership-scoped: only the owning seller's listing is ever inspected/acted on.
+  // Scope by account when the queueing path provided it; legacy jobs remain
+  // owner-scoped. This keeps shared-account delists from becoming false no-ops.
   const listing = await db.marketplaceListing.findFirst({
     where: {
       id: marketplaceListingId,
-      inventoryItem: { sellerId: job.userId },
+      inventoryItem: listingOwnerScope(job.userId, accountId),
     },
-    select: { id: true, marketplace: true, status: true, externalUrl: true },
+    select: {
+      id: true,
+      marketplace: true,
+      status: true,
+      externalUrl: true,
+      inventoryItem: { select: { accountId: true, sellerId: true } },
+    },
   });
 
   // Nothing to do: listing gone, or already in a terminal (delisted/ended/sold)
@@ -510,6 +524,7 @@ async function execEbayDelist(
     // any non-delistable / missing-ID condition — we never fabricate success.
     await ebayDelist(db as unknown as MarketplaceDelistHandlerPrismaLike, {
       userId: job.userId,
+      accountId: listing.inventoryItem.accountId ?? undefined,
       inventoryItemId,
       confirmLiveDelist: true,
     });
@@ -558,7 +573,11 @@ async function execEbayDelist(
   // that markItemSold just wrote (flipping it back to LISTED/DELISTED). Re-read the
   // item (ownership-scoped): if it is sold (soldSourceMarketplace set) but its
   // status was clobbered, restore SOLD with a single update.
-  await restoreSoldStatusIfClobbered(db, job.userId, inventoryItemId);
+  await restoreSoldStatusIfClobbered(
+    db,
+    listing.inventoryItem.sellerId,
+    inventoryItemId,
+  );
 
   return finalizeSucceeded(db, job.id);
 }
@@ -575,6 +594,7 @@ async function execStockXDelist(
   try {
     await stockxDelist(db as unknown as MarketplaceDelistHandlerPrismaLike, {
       userId: job.userId,
+      accountId: listing.inventoryItem.accountId ?? undefined,
       inventoryItemId,
       confirmLiveDelist: true,
     });
@@ -614,7 +634,11 @@ async function execStockXDelist(
     } as Prisma.InputJsonValue,
   });
 
-  await restoreSoldStatusIfClobbered(db, job.userId, inventoryItemId);
+  await restoreSoldStatusIfClobbered(
+    db,
+    listing.inventoryItem.sellerId,
+    inventoryItemId,
+  );
 
   return finalizeSucceeded(db, job.id);
 }
@@ -699,9 +723,15 @@ async function execDetectStatus(
   const listing = await db.marketplaceListing.findFirst({
     where: {
       id: marketplaceListingId,
-      inventoryItem: { sellerId: job.userId },
+      inventoryItem: listingOwnerScope(job.userId, accountId),
     },
-    select: { id: true, marketplace: true, status: true, externalUrl: true },
+    select: {
+      id: true,
+      marketplace: true,
+      status: true,
+      externalUrl: true,
+      inventoryItem: { select: { accountId: true, sellerId: true } },
+    },
   });
 
   if (!listing || TERMINAL_LISTING_STATUSES.has(listing.status)) {
@@ -721,7 +751,7 @@ async function execDetectStatus(
   try {
     await stockxStatusSync(db as unknown as StockXStatusSyncPrismaLike, {
       userId: job.userId,
-      accountId,
+      accountId: listing.inventoryItem.accountId ?? accountId,
       inventoryItemId,
       marketplaceListingId,
     });
@@ -963,6 +993,13 @@ function clampStaleMinutes(minutes?: number): number {
     return DEFAULT_STALE_MINUTES;
   }
   return Math.min(Math.max(Math.floor(minutes), MIN_STALE_MINUTES), MAX_STALE_MINUTES);
+}
+
+function listingOwnerScope(
+  userId: string,
+  accountId?: string,
+): { sellerId?: string; accountId?: string } {
+  return accountId ? { accountId } : { sellerId: userId };
 }
 
 async function readJob(
