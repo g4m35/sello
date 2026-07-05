@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/errors";
+import {
+  StockXIntegrationError,
+  stockxErrorCodes,
+} from "@/lib/marketplace/adapters/stockx/errors";
 
 const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
@@ -137,5 +141,33 @@ describe("StockX publish route", () => {
       "autopublish",
       expect.any(Date),
     );
+  });
+
+  it("returns safe StockX provider failure details for live publish diagnostics", async () => {
+    mocks.executePublish.mockRejectedValue(
+      new StockXIntegrationError(
+        stockxErrorCodes.listingFailed,
+        "StockX API request failed.",
+        502,
+        { status: 400 },
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/marketplaces/stockx/publish", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: itemId, confirmLivePublish: true }),
+      }),
+    );
+
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error).toEqual({
+      code: "STOCKX_LISTING_FAILED",
+      message: "StockX API request failed.",
+      details: { status: 400 },
+    });
+    expect(mocks.incrementUsage).not.toHaveBeenCalled();
   });
 });

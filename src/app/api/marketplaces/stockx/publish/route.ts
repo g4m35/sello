@@ -4,7 +4,11 @@ import { z } from "zod";
 import { getActiveAccount } from "@/lib/billing/account";
 import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { logUnexpectedError, safeErrorResponse } from "@/lib/errors";
-import { stockxErrorCodes } from "@/lib/marketplace/adapters/stockx/errors";
+import {
+  StockXIntegrationError,
+  stockxErrorCodes,
+  toStockXErrorPayload,
+} from "@/lib/marketplace/adapters/stockx/errors";
 import {
   executePublish,
   PublishingMigrationMissingError,
@@ -68,6 +72,11 @@ export async function POST(request: Request) {
 
     if (error instanceof PublishingMigrationMissingError) {
       return NextResponse.json({ error: error.toPayload() }, { status: error.status });
+    }
+
+    if (error instanceof StockXIntegrationError) {
+      const { payload, status } = toStockXErrorPayload(error);
+      return NextResponse.json({ error: payload }, { status });
     }
 
     const { status, body } = safeErrorResponse(error, {
