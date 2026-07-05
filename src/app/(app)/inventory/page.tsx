@@ -518,7 +518,7 @@ export default function InventoryPage() {
                 >
                   <Check checked={isSelected} onChange={() => toggleRow(item.id)} />
                 </div>
-                <Thumb seed={item.id} size={88} className="" />
+                <Thumb image={item.coverImage ?? null} size={88} className="" />
                 <div className="table__product-title" style={{ marginTop: 10 }}>
                   {item.title}
                 </div>
@@ -576,7 +576,7 @@ export default function InventoryPage() {
                   </td>
                   <td>
                     <div className="table__product">
-                      <Thumb seed={item.id} />
+                      <Thumb image={item.coverImage ?? null} />
                       <div className="table__product-text">
                         <div className="table__product-title">{item.title}</div>
                         <div className="table__product-meta">

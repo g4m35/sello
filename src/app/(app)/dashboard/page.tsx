@@ -9,7 +9,6 @@ import { isPublishReady } from "@/lib/view/item-readiness-bucket";
 import { Badge, Btn, Check } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/icon";
 import { MpLogo, MpDots, Thumb } from "@/components/ui/marketplace";
-import { marketplaceCapabilityLabel } from "@/lib/view/marketplaces";
 import { Topbar } from "@/components/app/topbar";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
@@ -355,7 +354,7 @@ export default function DashboardPage() {
                         checked={picked.has(item.id)}
                         onChange={() => togglePick(item.id)}
                       />
-                      <Thumb seed={item.id} size={44} />
+                      <Thumb image={item.coverImage ?? null} size={44} />
                       <div style={{ minWidth: 0 }}>
                         <div className="attn-row__title">{item.title}</div>
                         <div className="attn-row__sub">
@@ -401,12 +400,6 @@ export default function DashboardPage() {
                       <MpLogo id={ch.marketplace} size={26} />
                       <div style={{ minWidth: 0 }}>
                         <div className="mp-row__name">{ch.name}</div>
-                        <div className="mp-row__meta">
-                          {marketplaceCapabilityLabel({
-                            marketplace: ch.marketplace,
-                            publish: ch.capabilities.publish,
-                          })}
-                        </div>
                       </div>
                       <span
                         className={`health-dot ${

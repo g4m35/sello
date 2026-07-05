@@ -889,7 +889,7 @@ export default function ListingDetailPage() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={photo.url} alt={`Photo ${idx + 1}`} />
                     ) : (
-                      <Thumb seed={photo.id} size={120} />
+                      <Thumb size={120} />
                     )}
                     {editable && (
                       <button

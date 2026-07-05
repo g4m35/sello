@@ -97,11 +97,8 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span
-            className="grid h-9 w-9 place-items-center rounded font-mono text-sm font-semibold text-white"
-            style={{ background: "#0B7C2B" }}
-          >
-            SX
+          <span className="grid h-9 w-9 place-items-center rounded bg-zinc-950 font-mono text-sm font-semibold text-zinc-100 ring-1 ring-white/10">
+            Sx
           </span>
           <div>
             <div className="font-medium text-zinc-100">StockX</div>
@@ -141,8 +138,7 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
 
       {state === "ready" && status && !status.apiEnabled && (
         <p className="mt-3 text-sm text-zinc-400">
-          StockX is staged for catalog matching. Live API calls are off until the
-          production flags and credentials are complete.
+          StockX catalog matching is staged for connected accounts.
         </p>
       )}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}

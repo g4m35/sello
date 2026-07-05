@@ -1,18 +1,18 @@
 // Display metadata for marketplace logos (text mark). Mirrors the design's
 // MpLogo registry and includes channels that use dedicated marketplace handlers.
 export const MP_LOGO: Record<string, { label: string; color: string }> = {
-  ebay: { label: "eb", color: "#0064D2" },
-  depop: { label: "DP", color: "#FF0000" },
-  poshmark: { label: "PS", color: "#7B2D8E" },
-  etsy: { label: "Et", color: "#F1641E" },
-  mercari: { label: "M", color: "#FF6B35" },
-  grailed: { label: "GR", color: "#0B0B0A" },
-  stockx: { label: "SX", color: "#0B7C2B" },
-  goat: { label: "GT", color: "#0B0B0A" },
-  whatnot: { label: "WN", color: "#FF4742" },
-  vinted: { label: "VT", color: "#09B1BA" },
-  facebook: { label: "FB", color: "#1877F2" },
-  tiktok_shop: { label: "TT", color: "#000000" },
+  ebay: { label: "eB", color: "#0B0B0A" },
+  depop: { label: "De", color: "#0B0B0A" },
+  poshmark: { label: "Po", color: "#0B0B0A" },
+  etsy: { label: "Et", color: "#0B0B0A" },
+  mercari: { label: "Me", color: "#0B0B0A" },
+  grailed: { label: "Gr", color: "#0B0B0A" },
+  stockx: { label: "Sx", color: "#0B0B0A" },
+  goat: { label: "Go", color: "#0B0B0A" },
+  whatnot: { label: "Wh", color: "#0B0B0A" },
+  vinted: { label: "Vi", color: "#0B0B0A" },
+  facebook: { label: "Fb", color: "#0B0B0A" },
+  tiktok_shop: { label: "TT", color: "#0B0B0A" },
 };
 
 export const MARKETPLACE_NAME: Record<string, string> = {
@@ -35,27 +35,25 @@ export function marketplaceName(id: string): string {
 }
 
 export function mpLogo(id: string): { label: string; color: string } {
-  return MP_LOGO[id] ?? { label: id.slice(0, 2).toUpperCase(), color: "#666" };
+  return MP_LOGO[id] ?? { label: id.slice(0, 2).toUpperCase(), color: "#0B0B0A" };
 }
 
-// Seller-facing capability label for a marketplace card. Marketplaces without a
-// publish adapter are "Copy-ready draft" (build the listing here, copy the
-// ready-to-paste text) — never CSV, which is not part of the normal seller flow.
+// Seller-facing capability label for compact selection surfaces.
 export function marketplaceCapabilityLabel(input: {
   marketplace: string;
   publish: boolean;
 }): string {
   if (input.marketplace === "ebay") {
-    return input.publish ? "Live publishing" : "Preview + manual";
+    return input.publish ? "Live" : "Drafts";
   }
   if (input.marketplace === "tiktok_shop") {
-    return input.publish ? "Live publishing" : "Connect shop";
+    return input.publish ? "Live" : "Connect";
   }
   if (input.marketplace === "vinted") {
-    return "Pro API access required";
+    return "API access";
   }
   if (input.marketplace === "stockx") {
-    return input.publish ? "Live StockX API" : "Catalog match required";
+    return "Catalog match";
   }
-  return "Copy-ready draft";
+  return "Drafts";
 }

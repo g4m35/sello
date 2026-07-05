@@ -106,7 +106,10 @@ function channelsOf(item: ItemWithRelations, draft: ListingDraft | null): Channe
   });
 }
 
-export function mapItem(item: ItemWithRelations): ItemView {
+export function mapItem(
+  item: ItemWithRelations,
+  photoUrls: Map<string, string | null> = new Map(),
+): ItemView {
   const draft = latestDraft(item);
   const lifecycleState = toLifecycleState(item.status);
   const priceCents = draft?.recommendedPriceCents ?? item.recommendedPriceCents ?? null;
@@ -149,6 +152,11 @@ export function mapItem(item: ItemWithRelations): ItemView {
     ready: readiness.ready,
     missingCount,
     photoCount: photoCountOf(item),
+    coverImage:
+      [...(item.photos ?? [])].sort((a, b) => a.position - b.position)
+        .map((photo) => photoUrls.get(photo.id) ?? null)
+        .find((url): url is string => typeof url === "string" && url.length > 0) ??
+      null,
     updatedAt: item.updatedAt.toISOString(),
     draftId: draft?.id ?? null,
     channels: channelsOf(item, draft),
@@ -160,7 +168,7 @@ export function mapItemDetail(
   attempts: AttemptView[],
   photoUrls: Map<string, string | null> = new Map(),
 ): ItemDetailView {
-  const base = mapItem(item);
+  const base = mapItem(item, photoUrls);
   const draft = latestDraft(item);
   const photos = [...item.photos]
     .sort((a, b) => a.position - b.position)
