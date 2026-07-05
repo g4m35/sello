@@ -12,6 +12,32 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-05 — Codex. Owner said "make them then proceed" after the blocked
+StockX env preflight. Updated Sello-owned Vercel Production StockX env values
+without printing values: generated fresh `STOCKX_TOKEN_ENCRYPTION_KEY` and
+`STOCKX_OAUTH_STATE_SECRET`, set `STOCKX_API_ENABLED=true`,
+`STOCKX_MARKET_DATA_ENABLED=true`, kept `STOCKX_LISTING_ENABLED=false`, set
+`STOCKX_REDIRECT_URI=https://sello.wtf/api/marketplaces/stockx/callback`,
+`STOCKX_API_BASE_URL=https://api.stockx.com/v2`,
+`STOCKX_AUTH_BASE_URL=https://accounts.stockx.com`, and added
+`STOCKX_SCOPES=offline_access openid`. Did not invent or overwrite
+StockX-issued `STOCKX_CLIENT_ID`, `STOCKX_CLIENT_SECRET`, or `STOCKX_API_KEY`.
+Redeployed production as `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY`, READY and aliased
+to `https://sello.wtf`. Safe runtime callback probe now gets past config and
+returns expected fake-state error `400 STOCKX_OAUTH_STATE_INVALID`; public pages
+load and `/api/marketplaces/stockx/status` remains auth-protected. Signed-in
+marketplace page shows StockX not connected with catalog matching, market data,
+and listing creation visible; clicking Connect StockX calls the connect route
+but returns `403` with user-safe blocker: `Your plan allows 1 connected
+marketplace. Upgrade to connect more.` Stopped before OAuth/catalog/listing
+because account eligibility blocks adding StockX while eBay is connected on the
+current plan. No live StockX listing, provider catalog/market request, token
+exchange, detect-status provider call, delist/deactivate, paid checkout,
+Keychain access, cookie extraction, or bulk action was run. Vercel log filter
+for `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY` returned no StockX/error/fatal/500
+matches. Also corrected `.env.example` to use StockX API base
+`https://api.stockx.com/v2`.
+
 2026-07-05 — Codex. Ran the final live StockX single-item verification
 preflight, but stopped before OAuth/listing because production StockX runtime is
 not enabled. Local baseline passed on `develop` at
@@ -2099,7 +2125,7 @@ on auth.ebay.com.
 ## Current state
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ` from commit `8f679a9`, aliased to
+  `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY` from local commit `10de26a`, aliased to
   `https://sello.wtf`.
 - Pricing and billing are now directly discoverable: the public landing page
   links to `/pricing`, the pricing page uses Sello-native styling, the signed-in
@@ -2131,12 +2157,13 @@ on auth.ebay.com.
   `20260625020000_inventory_account_scope`,
   `20260625030000_marketplace_connections_account_scope`, and
   `20260701010000_stockx_foundation`. PR #66 added no migration.
-- StockX production runtime status: Vercel lists all required StockX Production
-  env names as encrypted, but the 2026-07-05 redacted preflight found production
-  StockX values empty/non-boolean via temp env pull and runtime returned
-  `503 STOCKX_NOT_ENABLED` for `STOCKX_API_ENABLED`. Do not attempt StockX OAuth
-  or live listing until the real Production env values/flags are set and the app
-  has been redeployed.
+- StockX production runtime status: Sello-owned StockX envs/flags were generated
+  or set on 2026-07-05 and redeployed. Safe callback probe now reaches
+  `STOCKX_OAUTH_STATE_INVALID`, which confirms config is past the disabled-env
+  blocker. Signed-in Connect StockX is currently blocked by account eligibility:
+  `Your plan allows 1 connected marketplace. Upgrade to connect more.` Keep
+  `STOCKX_LISTING_ENABLED=false` until OAuth, exact product/variant readiness,
+  and one-item operator approval are complete.
 - PR #36 marketplace-image migration
   `20260617120000_add_marketplace_images` is applied in production and Prisma
   migration status is up to date.
@@ -2173,6 +2200,16 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-05 (Codex): Generated/set Sello-owned StockX Production envs, redeployed
+  `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY`, and proceeded to signed-in StockX Connect
+  preflight. Runtime config is no longer disabled: safe callback probe returns
+  `400 STOCKX_OAUTH_STATE_INVALID` for fake state instead of
+  `STOCKX_NOT_ENABLED`. Signed-in marketplace page shows StockX not connected,
+  but Connect StockX returns `403` because the current plan allows only one
+  connected marketplace and eBay is already connected. Stopped before OAuth/live
+  listing. No secrets printed, no StockX-issued credentials invented, no
+  Keychain/cookie extraction, no paid checkout, no bulk action. `.env.example`
+  corrected to `STOCKX_API_BASE_URL=https://api.stockx.com/v2`.
 - 2026-07-05 (Codex): Ran final live StockX single-item verification preflight
   and stopped safely before OAuth/listing. Local gate passed on `develop`
   (`b2fc862`): Prisma validate, diff check, lint with two known warnings, full
@@ -2476,12 +2513,11 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
-- **Production StockX runtime verification:** Production currently returns
-  `503 STOCKX_NOT_ENABLED` for the safe StockX callback/config probe, and the
-  redacted temp env pull reported StockX values empty/non-boolean. Set real
-  Production StockX values and `STOCKX_API_ENABLED=true`, keep
-  `STOCKX_LISTING_ENABLED=false` until readiness is clean, then redeploy before
-  continuing. Avoid Keychain/session-cookie extraction.
+- **Production StockX account eligibility:** Runtime config is enabled, but the
+  signed-in StockX connect route returns `403`: `Your plan allows 1 connected
+  marketplace. Upgrade to connect more.` Current eBay connection consumes the
+  one allowed marketplace slot. Do not disconnect eBay or alter billing/plan
+  entitlements without explicit operator approval.
 - **Live StockX smoke:** Owner approved live listing tests, but live StockX
   create/deactivate cannot run until production env values are real, the seller
   connects StockX, and one inventory item has an exact StockX product/variant
@@ -2526,32 +2562,28 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Set/redeploy real Production StockX env values and flags:
-   `STOCKX_API_ENABLED=true`; required credential/API/redirect/base-url/token
-   secret values non-empty; keep `STOCKX_LISTING_ENABLED=false` until readiness
-   passes.
-2. Re-run safe production StockX runtime readiness checks. Only proceed if
-   `/settings/marketplaces`/runtime booleans show API configured and no sanitized
-   logs show errors.
-3. Connect the seller's StockX account, match one inventory item to an exact
+1. Resolve StockX connection eligibility: upgrade/entitle the account for at
+   least two connected marketplaces, or explicitly approve a temporary eBay
+   disconnect/reconnect plan. Do not bypass billing gates silently.
+2. Connect the seller's StockX account, match one inventory item to an exact
    StockX product/variant, then run one controlled live create/activate smoke
    followed immediately by the StockX delist/deactivate smoke.
-4. Monitor production after the StockX shared-account/status deploy
-   (`dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ`) for any delayed runtime errors; initial
+3. Monitor production after the StockX env redeploy
+   (`dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY`) for any delayed runtime errors; initial
    error/fatal/500 log filters were clean.
-5. If an authenticated production owner session is available, run a
+4. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
    `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
    without payment completion, and Free portal safety.
-6. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+5. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
-7. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+6. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
-8. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+7. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
-9. Continue security follow-ups: externalUserId binding, real eBay deletion
+8. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-10. Stripe subscriptions and background worker host + inventory sync.
+9. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/dev/resale-crosslister-safety"` (current Sello checkout).
