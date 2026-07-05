@@ -12,6 +12,26 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-05 — Codex. Ran the final live StockX single-item verification
+preflight, but stopped before OAuth/listing because production StockX runtime is
+not enabled. Local baseline passed on `develop` at
+`b2fc862bafb296e9af35d688b2ce0a3438b55a3e`: `npx prisma validate`,
+`git diff --check`, `npm run lint` (same two warnings in
+`src/app/api/listings/draft/draft-actions.test.ts`), full `npm test` (209 files
+/ 1371 tests), and `npm run build`. Worktree was clean and only `.env.example`
+was present; no `.env*` secrets or `LOCAL_DEVELOPMENT_RULES.md` were found.
+Vercel Production metadata still lists the required `STOCKX_*` names as
+encrypted, but a temp-file `vercel env pull` outside the repo reported StockX
+values empty/non-boolean, and a safe runtime callback probe returned
+`503 STOCKX_NOT_ENABLED` for `STOCKX_API_ENABLED`. No secrets were printed; the
+temp file/log were removed. Because Step 1 requires `STOCKX_API_ENABLED=true`
+and non-empty StockX env values before OAuth/readiness, no StockX OAuth,
+catalog search, market-data request, live listing, detect-status provider call,
+delist/deactivate, paid checkout, Keychain access, cookie extraction, or bulk
+action was run. Vercel log filter for deployment
+`dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ` returned no StockX/error/fatal/500/token/secret
+matches.
+
 2026-07-04 — Codex. Used subagents for the overnight StockX pass, fixed the
 shared-account automation gap they found, pushed commit
 `8f679a9110ee1cfac9453ecb12d25afe4003eaf7`, and deployed production
@@ -2112,9 +2132,11 @@ on auth.ebay.com.
   `20260625030000_marketplace_connections_account_scope`, and
   `20260701010000_stockx_foundation`. PR #66 added no migration.
 - StockX production runtime status: Vercel lists all required StockX Production
-  env names as encrypted. Values were not inspected or printed. Anonymous smoke
-  confirms StockX/status/catalog/publish/delist routes remain protected; signed-in
-  runtime readiness and OAuth connection still need a safe browser/UI smoke.
+  env names as encrypted, but the 2026-07-05 redacted preflight found production
+  StockX values empty/non-boolean via temp env pull and runtime returned
+  `503 STOCKX_NOT_ENABLED` for `STOCKX_API_ENABLED`. Do not attempt StockX OAuth
+  or live listing until the real Production env values/flags are set and the app
+  has been redeployed.
 - PR #36 marketplace-image migration
   `20260617120000_add_marketplace_images` is applied in production and Prisma
   migration status is up to date.
@@ -2151,6 +2173,16 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-05 (Codex): Ran final live StockX single-item verification preflight
+  and stopped safely before OAuth/listing. Local gate passed on `develop`
+  (`b2fc862`): Prisma validate, diff check, lint with two known warnings, full
+  tests (209 files / 1371 tests), and build. Vercel deployment
+  `dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ` remains READY and aliased to
+  `https://sello.wtf`. Vercel Production metadata lists required `STOCKX_*`
+  names, but redacted temp env pull reported empty/non-boolean StockX values and
+  safe runtime callback probe returned `503 STOCKX_NOT_ENABLED`. No StockX OAuth,
+  catalog, market data, live publish, detect-status provider call, delist, paid
+  checkout, Keychain/cookie/session extraction, or bulk action was run.
 - 2026-07-04 (Codex): Fixed the StockX shared-account automation gap found by
   subagent audit and deployed it to production. Commit
   `8f679a9110ee1cfac9453ecb12d25afe4003eaf7`; deployment
@@ -2444,11 +2476,12 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
-- **Production StockX runtime verification:** Vercel now lists all required
-  StockX Production env names as encrypted, but values were not inspected and
-  anonymous probes correctly stop at 401. Verify signed-in readiness through safe
-  UI/runtime booleans before any live StockX listing smoke; avoid
-  Keychain/session-cookie extraction.
+- **Production StockX runtime verification:** Production currently returns
+  `503 STOCKX_NOT_ENABLED` for the safe StockX callback/config probe, and the
+  redacted temp env pull reported StockX values empty/non-boolean. Set real
+  Production StockX values and `STOCKX_API_ENABLED=true`, keep
+  `STOCKX_LISTING_ENABLED=false` until readiness is clean, then redeploy before
+  continuing. Avoid Keychain/session-cookie extraction.
 - **Live StockX smoke:** Owner approved live listing tests, but live StockX
   create/deactivate cannot run until production env values are real, the seller
   connects StockX, and one inventory item has an exact StockX product/variant
@@ -2493,28 +2526,32 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Verify production StockX runtime readiness after the owner's env redeploy via
-   safe UI/API/log checks: `/api/jobs`/`/channels` should report StockX live API
-   + auto-delist readiness. Keep values out of logs/chat.
-2. Connect the seller's StockX account, match one inventory item to an exact
+1. Set/redeploy real Production StockX env values and flags:
+   `STOCKX_API_ENABLED=true`; required credential/API/redirect/base-url/token
+   secret values non-empty; keep `STOCKX_LISTING_ENABLED=false` until readiness
+   passes.
+2. Re-run safe production StockX runtime readiness checks. Only proceed if
+   `/settings/marketplaces`/runtime booleans show API configured and no sanitized
+   logs show errors.
+3. Connect the seller's StockX account, match one inventory item to an exact
    StockX product/variant, then run one controlled live create/activate smoke
    followed immediately by the StockX delist/deactivate smoke.
-3. Monitor production after the StockX shared-account/status deploy
+4. Monitor production after the StockX shared-account/status deploy
    (`dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ`) for any delayed runtime errors; initial
    error/fatal/500 log filters were clean.
-4. If an authenticated production owner session is available, run a
+5. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
    `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
    without payment completion, and Free portal safety.
-5. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+6. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
-6. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+7. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
-7. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+8. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
-8. Continue security follow-ups: externalUserId binding, real eBay deletion
+9. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-9. Stripe subscriptions and background worker host + inventory sync.
+10. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
 1. `cd "/Users/jheller/dev/resale-crosslister-safety"` (current Sello checkout).
