@@ -102,7 +102,7 @@ export async function activateStockXListing(
     `/selling/listings/${encodedListingId}/activate`,
     fetchImpl,
     {
-      method: "POST",
+      method: "PUT",
       accessToken,
       failureCode: stockxErrorCodes.listingFailed,
     },

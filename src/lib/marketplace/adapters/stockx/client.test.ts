@@ -229,7 +229,13 @@ describe("StockX listing client", () => {
     const result = await createStockXListing(
       config,
       "access-token",
-      { amount: "125.00", variantId: "variant-1" },
+      {
+        amount: "125",
+        variantId: "variant-1",
+        currencyCode: "USD",
+        active: true,
+        inventoryType: "STANDARD",
+      },
       fetchImpl as unknown as typeof fetch,
     );
 
@@ -237,8 +243,11 @@ describe("StockX listing client", () => {
     expect(String(url)).toBe("https://api.stockx.com/v2/selling/listings");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({
-      amount: "125.00",
+      amount: "125",
       variantId: "variant-1",
+      currencyCode: "USD",
+      active: true,
+      inventoryType: "STANDARD",
     });
     expect(result).toMatchObject({ listingId: "listing-1", status: "CREATED" });
   });
@@ -269,7 +278,7 @@ describe("StockX listing client", () => {
     expect(String(url)).toBe(
       "https://api.stockx.com/v2/selling/listings/listing-1/activate",
     );
-    expect(init?.method).toBe("POST");
+    expect(init?.method).toBe("PUT");
     expect(result).toMatchObject({
       listingId: "listing-1",
       operationId: "operation-1",
@@ -286,7 +295,13 @@ describe("StockX listing client", () => {
       createStockXListing(
         config,
         "access-token",
-        { amount: "125.00", variantId: "variant-1" },
+        {
+          amount: "125",
+          variantId: "variant-1",
+          currencyCode: "USD",
+          active: true,
+          inventoryType: "STANDARD",
+        },
         fetchImpl as unknown as typeof fetch,
       ),
     ).rejects.toMatchObject({ code: "STOCKX_LISTING_FAILED" });

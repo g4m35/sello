@@ -241,17 +241,16 @@ export async function publishStockXListing(
   const client = deps.createClient(accessToken, config);
   const payload = buildStockXCreateListingPayload({ variantId, priceCents });
   const created = await client.createListing(payload);
-  const activated = await client.activateListing(created.listingId);
-  const active = isActiveStockXListing(activated);
+  const active = isActiveStockXListing(created);
   const listingUrl = stringOf(stockxDraft.url);
 
   const common = {
     marketplace: "stockx" as const,
     environment: STOCKX_ENVIRONMENT as typeof STOCKX_ENVIRONMENT,
-    listingId: activated.listingId || created.listingId,
-    operationId: activated.operationId ?? created.operationId,
-    operationStatus: activated.operationStatus ?? created.operationStatus,
-    operationUrl: activated.operationUrl ?? created.operationUrl,
+    listingId: created.listingId,
+    operationId: created.operationId,
+    operationStatus: created.operationStatus,
+    operationUrl: created.operationUrl,
     listingUrl,
   };
 
@@ -281,7 +280,9 @@ function stringOf(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function isActiveStockXListing(result: StockXActivateListingResult): boolean {
+function isActiveStockXListing(
+  result: StockXActivateListingResult | StockXCreateListingResult,
+): boolean {
   const status = `${result.status ?? ""} ${result.operationStatus ?? ""}`.toUpperCase();
   return /\b(ACTIVE|ACTIVATED|LISTED|SUCCEEDED|SUCCESS)\b/.test(status);
 }

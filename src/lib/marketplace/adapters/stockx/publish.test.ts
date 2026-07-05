@@ -102,9 +102,10 @@ function client(overrides: Partial<StockXPublishClient> = {}): StockXPublishClie
     createListing: vi.fn(async () => ({
       listingId: "stockx-listing-1",
       status: "CREATED",
-      operationId: null,
-      operationStatus: null,
-      operationUrl: null,
+      operationId: "operation-1",
+      operationStatus: "PENDING",
+      operationUrl:
+        "https://api.stockx.com/v2/selling/listings/stockx-listing-1/operations/operation-1",
       rawJson: {},
     })),
     activateListing: vi.fn(async () => ({
@@ -145,7 +146,7 @@ describe("publishStockXListing", () => {
     expect(c.createListing).not.toHaveBeenCalled();
   });
 
-  it("creates and activates a matched StockX listing with the official amount/variant payload", async () => {
+  it("creates a matched active StockX listing with the official create-listing payload", async () => {
     const c = client();
 
     const result = await publishStockXListing(
@@ -164,10 +165,13 @@ describe("publishStockXListing", () => {
     );
 
     expect(c.createListing).toHaveBeenCalledWith({
-      amount: "125.00",
+      amount: "125",
       variantId: "variant-1",
+      currencyCode: "USD",
+      active: true,
+      inventoryType: "STANDARD",
     });
-    expect(c.activateListing).toHaveBeenCalledWith("stockx-listing-1");
+    expect(c.activateListing).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       status: "submitted",
       code: "STOCKX_LISTING_SUBMITTED",
