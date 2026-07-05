@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
   preflightBulkEbayDelist: vi.fn(),
+  preflightBulkStockXDelist: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -13,6 +14,7 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/marketplace/bulk-delist", () => ({
   preflightBulkEbayDelist: mocks.preflightBulkEbayDelist,
+  preflightBulkStockXDelist: mocks.preflightBulkStockXDelist,
 }));
 
 import { POST } from "./route";
@@ -43,6 +45,16 @@ describe("bulk delist preflight route", () => {
       rejectedCount: 0,
       items: [],
     });
+    mocks.preflightBulkStockXDelist.mockResolvedValue({
+      liveDelistAllowed: true,
+      total: 1,
+      eligibleCount: 1,
+      notListedCount: 0,
+      alreadyEndedCount: 0,
+      inFlightCount: 0,
+      rejectedCount: 0,
+      items: [],
+    });
   });
 
   it("rejects selections over the account plan cap before preflight work", async () => {
@@ -53,5 +65,29 @@ describe("bulk delist preflight route", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error.code).toBe("BULK_BATCH_TOO_LARGE");
     expect(mocks.preflightBulkEbayDelist).not.toHaveBeenCalled();
+  });
+
+  it("routes StockX delist preflight through active account scope", async () => {
+    const response = await POST(req({ itemIds: [u(1), u(2)], marketplace: "stockx" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.preflightBulkStockXDelist).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        userId: "user-1",
+        accountId: "acc-1",
+        itemIds: [u(1), u(2)],
+      }),
+    );
+    expect(mocks.preflightBulkEbayDelist).not.toHaveBeenCalled();
+  });
+
+  it("blocks StockX delist preflight over the account plan cap before work", async () => {
+    const response = await POST(
+      req({ itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)], marketplace: "stockx" }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.preflightBulkStockXDelist).not.toHaveBeenCalled();
   });
 });

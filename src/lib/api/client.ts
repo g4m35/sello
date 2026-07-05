@@ -655,13 +655,14 @@ export const api = {
   preflightBulkPublish: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkPreflightResult> => {
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
     const parts = await Promise.all(
       chunks.map((ids) =>
         request<BulkPreflightResult>("/api/listings/publish/bulk/preflight", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids }),
+          body: JSON.stringify({ itemIds: ids, marketplace }),
         }),
       ),
     );
@@ -674,6 +675,7 @@ export const api = {
   executeBulkPublish: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkExecutionResult> => {
     const bulkRunId = globalThis.crypto.randomUUID();
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
@@ -682,7 +684,7 @@ export const api = {
       parts.push(
         await request<BulkExecutionResult>("/api/listings/publish/bulk", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLivePublish: true }),
+          body: JSON.stringify({ itemIds: ids, marketplace, bulkRunId, confirmLivePublish: true }),
         }),
       );
     }
@@ -694,13 +696,14 @@ export const api = {
   preflightBulkDelist: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkDelistPreflightResult> => {
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
     const parts = await Promise.all(
       chunks.map((ids) =>
         request<BulkDelistPreflightResult>("/api/listings/delist/bulk/preflight", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids }),
+          body: JSON.stringify({ itemIds: ids, marketplace }),
         }),
       ),
     );
@@ -713,6 +716,7 @@ export const api = {
   executeBulkDelist: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkDelistExecutionResult> => {
     const bulkRunId = globalThis.crypto.randomUUID();
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
@@ -721,7 +725,7 @@ export const api = {
       parts.push(
         await request<BulkDelistExecutionResult>("/api/listings/delist/bulk", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLiveDelist: true }),
+          body: JSON.stringify({ itemIds: ids, marketplace, bulkRunId, confirmLiveDelist: true }),
         }),
       );
     }

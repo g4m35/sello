@@ -6,7 +6,10 @@ import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
 import { AppError, safeErrorResponse } from "@/lib/errors";
-import { executeBulkEbayDelist } from "@/lib/marketplace/bulk-delist";
+import {
+  executeBulkEbayDelist,
+  executeBulkStockXDelist,
+} from "@/lib/marketplace/bulk-delist";
 import { BulkDelistExecuteRequestSchema } from "@/lib/marketplace/bulk-delist-request";
 import { loadBulkPublishConfig } from "@/lib/marketplace/bulk-publish-request";
 import { getPrisma } from "@/lib/prisma";
@@ -14,19 +17,20 @@ import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// Live bulk end/delist. Gated to the eBay-delist alpha allowlist AND an explicit
-// confirmLiveDelist:true. Every item is routed through executeEbayDelist so the
-// live confirmation, ownership, the already-ended / in-flight guards,
-// idempotency, and sanitized failure recording are re-checked per item. One
-// shared bulkRunId ties the whole run together for audit. No local delete.
+// Live bulk end/delist. eBay remains gated to the eBay-delist alpha allowlist;
+// every marketplace requires confirmLiveDelist:true. Each item is routed
+// through the canonical marketplace delist handler so ownership, idempotency,
+// and sanitized failure recording are re-checked per item. No local delete.
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const { itemIds, bulkRunId } = BulkDelistExecuteRequestSchema.parse(
+    const { itemIds, marketplace, bulkRunId } = BulkDelistExecuteRequestSchema.parse(
       await request.json(),
     );
 
-    requireFeatureAccess(user, "ebayDelist");
+    if (marketplace === "ebay") {
+      requireFeatureAccess(user, "ebayDelist");
+    }
 
     const config = loadBulkPublishConfig();
     if (itemIds.length > config.maxItemsPerRequest) {
@@ -42,12 +46,20 @@ export async function POST(request: Request) {
     const account = await getActiveAccount(user.id, prisma);
     assertBulkBatchSize(account, itemIds.length);
 
-    const result = await executeBulkEbayDelist(prisma as never, {
-      userId: user.id,
-      accountId: account.id,
-      itemIds,
-      bulkRunId: bulkRunId ?? randomUUID(),
-    });
+    const result =
+      marketplace === "stockx"
+        ? await executeBulkStockXDelist(prisma as never, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+            bulkRunId: bulkRunId ?? randomUUID(),
+          })
+        : await executeBulkEbayDelist(prisma as never, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+            bulkRunId: bulkRunId ?? randomUUID(),
+          });
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {

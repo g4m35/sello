@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
   preflightBulkEbayPublish: vi.fn(),
+  preflightBulkStockXPublish: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -15,6 +16,7 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/marketplace/bulk-publish", () => ({
   preflightBulkEbayPublish: mocks.preflightBulkEbayPublish,
+  preflightBulkStockXPublish: mocks.preflightBulkStockXPublish,
 }));
 
 import { POST } from "./route";
@@ -37,6 +39,15 @@ describe("bulk publish preflight route", () => {
     mocks.getPrisma.mockReturnValue({});
     mocks.preflightBulkEbayPublish.mockResolvedValue({
       livePublishAllowed: false,
+      total: 1,
+      readyCount: 1,
+      needsDetailsCount: 0,
+      skippedCount: 0,
+      rejectedCount: 0,
+      items: [],
+    });
+    mocks.preflightBulkStockXPublish.mockResolvedValue({
+      livePublishAllowed: true,
       total: 1,
       readyCount: 1,
       needsDetailsCount: 0,
@@ -97,5 +108,32 @@ describe("bulk publish preflight route", () => {
     const res = await POST(req({ itemIds: [] }));
     expect(res.status).toBe(400);
     expect(mocks.preflightBulkEbayPublish).not.toHaveBeenCalled();
+  });
+
+  it("routes StockX preflight through active account scope without requiring eBay allowlist", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "nope@example.com" });
+
+    const res = await POST(req({ itemIds: [u(1), u(2)], marketplace: "stockx" }));
+
+    expect(res.status).toBe(200);
+    expect(mocks.preflightBulkStockXPublish).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        userId: "user-1",
+        accountId: "acc-1",
+        itemIds: [u(1), u(2)],
+      }),
+    );
+    expect(mocks.preflightBulkEbayPublish).not.toHaveBeenCalled();
+  });
+
+  it("blocks StockX preflight over plan cap before marketplace work", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "nope@example.com" });
+    const res = await POST(
+      req({ itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)], marketplace: "stockx" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mocks.preflightBulkStockXPublish).not.toHaveBeenCalled();
   });
 });

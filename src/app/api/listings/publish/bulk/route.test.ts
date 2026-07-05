@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   executeBulkEbayPublish: vi.fn(),
+  executeBulkStockXPublish: vi.fn(),
   getActiveAccount: vi.fn(),
 }));
 
@@ -14,6 +15,7 @@ vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
 vi.mock("@/lib/marketplace/bulk-publish", () => ({
   executeBulkEbayPublish: mocks.executeBulkEbayPublish,
+  executeBulkStockXPublish: mocks.executeBulkStockXPublish,
 }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
@@ -36,6 +38,15 @@ describe("bulk publish execution route", () => {
     mocks.getPrisma.mockReturnValue({});
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.executeBulkEbayPublish.mockResolvedValue({
+      bulkRunId: u(999),
+      total: 1,
+      publishedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      needsDetailsCount: 0,
+      items: [],
+    });
+    mocks.executeBulkStockXPublish.mockResolvedValue({
       bulkRunId: u(999),
       total: 1,
       publishedCount: 1,
@@ -154,5 +165,43 @@ describe("bulk publish execution route", () => {
     );
     expect(res.status).toBe(400);
     expect(mocks.executeBulkEbayPublish).not.toHaveBeenCalled();
+  });
+
+  it("executes StockX bulk publish for authenticated sellers without the eBay alpha gate", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "nope@example.com" });
+    const res = await POST(
+      req({
+        itemIds: [u(1), u(2)],
+        marketplace: "stockx",
+        confirmLivePublish: true,
+        bulkRunId: u(999),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.executeBulkStockXPublish).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        userId: "user-1",
+        accountId: "acc-1",
+        itemIds: [u(1), u(2)],
+        bulkRunId: u(999),
+      }),
+    );
+    expect(mocks.executeBulkEbayPublish).not.toHaveBeenCalled();
+  });
+
+  it("blocks StockX execution over plan cap before marketplace work", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "nope@example.com" });
+    const res = await POST(
+      req({
+        itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)],
+        marketplace: "stockx",
+        confirmLivePublish: true,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mocks.executeBulkStockXPublish).not.toHaveBeenCalled();
   });
 });
