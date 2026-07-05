@@ -53,7 +53,9 @@ describe("StockX catalog client", () => {
     );
 
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(String(url)).toBe("https://api.stockx.com/v2/catalog/search?q=dunk+panda&size=10");
+    expect(String(url)).toBe(
+      "https://api.stockx.com/v2/catalog/search?query=dunk+panda&pageNumber=1&pageSize=5",
+    );
     const headers = init?.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer access-token");
     expect(headers["x-api-key"]).toBe("api-key");
@@ -66,6 +68,85 @@ describe("StockX catalog client", () => {
       size: "10",
       url: "https://stockx.com/nike-dunk-low-panda",
     });
+  });
+
+  it("enriches product-only catalog search results with product variant details", async () => {
+    const fetchImpl = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            products: [
+              {
+                productId: "p1",
+                title: "Nike Dunk Low Panda",
+                brand: "Nike",
+                urlKey: "nike-dunk-low-panda",
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            variants: [
+              { variantId: "v9", traits: { size: "9" } },
+              { variantId: "v10", traits: { size: "10" } },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const results = await searchStockXCatalog(
+      config,
+      "access-token",
+      { query: "dunk panda", size: "10" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(String(fetchImpl.mock.calls[1][0])).toBe(
+      "https://api.stockx.com/v2/catalog/products/p1/variants",
+    );
+    expect(results).toEqual([
+      expect.objectContaining({
+        productId: "p1",
+        variantId: "v10",
+        title: "Nike Dunk Low Panda",
+        size: "10",
+      }),
+    ]);
+  });
+
+  it("applies size filtering before truncating enriched variant results", async () => {
+    const variants = Array.from({ length: 20 }, (_, index) => ({
+      variantId: `v${index + 1}`,
+      traits: { size: index === 18 ? "10" : `early-${index + 1}` },
+    }));
+    const fetchImpl = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            products: [{ productId: "p1", title: "Nike Dunk Low Panda", brand: "Nike" }],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ variants }), { status: 200 }));
+
+    const results = await searchStockXCatalog(
+      config,
+      "access-token",
+      { query: "dunk panda", size: "10" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ variantId: "v19", size: "10" });
   });
 
   it("retries only idempotent GET failures and never leaks raw upstream payloads", async () => {

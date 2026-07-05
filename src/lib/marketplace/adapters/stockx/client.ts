@@ -38,15 +38,21 @@ export async function searchStockXCatalog(
   const json = await stockxApiRequest(config, "/catalog/search", fetchImpl, {
     accessToken,
     query: {
-      q: input.query,
-      brand: input.brand,
-      category: input.category,
-      size: input.size,
+      query: input.query,
+      pageNumber: "1",
+      pageSize: "5",
     },
     failureCode: stockxErrorCodes.catalogSearchFailed,
   });
 
-  return normalizeCatalogCandidates(json);
+  const candidates = normalizeCatalogCandidates(json);
+  const hasVariantMatches = candidates.some((candidate) => candidate.variantId);
+  const enriched =
+    hasVariantMatches || candidates.length === 0
+      ? candidates
+      : await enrichCatalogCandidatesWithVariants(config, accessToken, candidates, fetchImpl);
+
+  return filterCatalogCandidates(enriched, input);
 }
 
 export async function fetchStockXMarketData(
@@ -193,13 +199,13 @@ async function stockxApiRequest(
 }
 
 function normalizeCatalogCandidates(json: unknown): StockXCatalogCandidate[] {
-  const roots = extractArray(json, ["products", "results", "data", "items"]);
+  const roots = catalogProductRoots(json);
   const candidates: StockXCatalogCandidate[] = [];
 
   for (const root of roots) {
     const product = asRecord(root);
     if (!product) continue;
-    const productId = firstString(product, ["id", "productId", "uuid", "stockxId"]);
+    const productId = firstString(product, ["productId", "id", "uuid", "stockxId"]);
     const title = firstString(product, ["title", "name", "productName"]);
     if (!productId || !title) continue;
 
@@ -216,7 +222,103 @@ function normalizeCatalogCandidates(json: unknown): StockXCatalogCandidate[] {
     }
   }
 
-  return dedupeCandidates(candidates).slice(0, 12);
+  return dedupeCandidates(candidates);
+}
+
+async function enrichCatalogCandidatesWithVariants(
+  config: StockXConfig,
+  accessToken: string,
+  candidates: StockXCatalogCandidate[],
+  fetchImpl: typeof fetch,
+): Promise<StockXCatalogCandidate[]> {
+  const enriched: StockXCatalogCandidate[] = [];
+  for (const candidate of candidates.slice(0, 5)) {
+    const json = await stockxApiRequest(
+      config,
+      `/catalog/products/${encodeURIComponent(candidate.productId)}/variants`,
+      fetchImpl,
+      {
+        accessToken,
+        failureCode: stockxErrorCodes.catalogSearchFailed,
+      },
+    );
+    enriched.push(...candidatesFromVariantResponse(candidate, json));
+  }
+  return enriched.length > 0 ? dedupeCandidates(enriched) : candidates;
+}
+
+function candidatesFromVariantResponse(
+  candidate: StockXCatalogCandidate,
+  json: unknown,
+): StockXCatalogCandidate[] {
+  const variants = catalogVariantRoots(json);
+  return variants
+    .map((rawVariant) => asRecord(rawVariant))
+    .filter((variant): variant is Record<string, unknown> => Boolean(variant))
+    .map((variant) =>
+      candidateFrom(
+        {
+          productId: candidate.productId,
+          title: candidate.title,
+          brand: candidate.brand,
+          model: candidate.model,
+          style: candidate.style,
+          colorway: candidate.colorway,
+          color: candidate.color,
+          image: candidate.image,
+          category: candidate.category,
+          url: candidate.url,
+        },
+        variant,
+        candidate.productId,
+        candidate.title,
+      ),
+    );
+}
+
+function filterCatalogCandidates(
+  candidates: StockXCatalogCandidate[],
+  input: CatalogSearchInput,
+): StockXCatalogCandidate[] {
+  const filtered = candidates.filter((candidate) => {
+    if (input.brand && candidate.brand) {
+      if (candidate.brand.toLowerCase() !== input.brand.toLowerCase()) return false;
+    }
+    if (input.category && candidate.category) {
+      if (!candidate.category.toLowerCase().includes(input.category.toLowerCase())) return false;
+    }
+    if (input.size && candidate.size) {
+      if (candidate.size.toLowerCase() !== input.size.toLowerCase()) return false;
+    }
+    return true;
+  });
+  return (filtered.length > 0 ? filtered : candidates).slice(0, 12);
+}
+
+function catalogProductRoots(json: unknown): unknown[] {
+  const roots = extractArray(json, ["products", "results", "items"]);
+  if (roots.length > 0) return roots;
+
+  const root = asRecord(json);
+  if (!root) return [];
+  const product = asRecord(root.product);
+  if (product) return [product];
+
+  const data = asRecord(root.data);
+  if (!data) return looksLikeCatalogProduct(root) ? [root] : [];
+  const dataProduct = asRecord(data.product);
+  if (dataProduct) return [dataProduct];
+  return looksLikeCatalogProduct(data) ? [data] : [];
+}
+
+function catalogVariantRoots(json: unknown): unknown[] {
+  const variants = extractArray(json, ["variants", "results", "items"]);
+  if (variants.length > 0) return variants;
+  const root = asRecord(json);
+  if (!root) return [];
+  const data = asRecord(root.data);
+  if (!data) return Array.isArray(root.data) ? root.data : [];
+  return extractArray(data, ["variants", "results", "items"]);
 }
 
 function candidateFrom(
@@ -227,17 +329,22 @@ function candidateFrom(
 ): StockXCatalogCandidate {
   return {
     productId,
-    variantId: variant ? firstString(variant, ["id", "variantId", "uuid", "stockxId"]) : null,
+    variantId: variant ? firstString(variant, ["variantId", "id", "uuid", "stockxId"]) : null,
     title,
     brand: firstString(product, ["brand", "brandName"]),
     model: firstString(product, ["model"]),
     style: firstString(product, ["style", "styleId", "styleCode", "sku"]),
-    colorway: firstString(product, ["colorway"]),
+    colorway:
+      firstString(product, ["colorway"]) ??
+      firstString(asRecord(product.productAttributes) ?? {}, ["colorway"]),
     color:
       firstString(variant ?? {}, ["color", "colorway"]) ??
-      firstString(product, ["color", "primaryColor"]),
+      firstString(product, ["color", "primaryColor"]) ??
+      firstString(asRecord(product.productAttributes) ?? {}, ["color"]),
     size: variant
-      ? firstString(variant, ["size", "sizeLabel", "displaySize", "shoeSize"])
+      ? (firstString(variant, ["size", "sizeLabel", "displaySize", "shoeSize", "variantValue"]) ??
+        firstString(asRecord(variant.traits) ?? {}, ["size"]) ??
+        firstString(asRecord(variant.variantTraits) ?? {}, ["size"]))
       : firstString(product, ["size"]),
     image: imageOf(product),
     category: firstString(product, ["category", "productCategory", "primaryCategory"]),
@@ -370,6 +477,13 @@ function firstString(record: Record<string, unknown>, keys: string[]): string | 
   return null;
 }
 
+function looksLikeCatalogProduct(record: Record<string, unknown>): boolean {
+  return Boolean(
+    firstString(record, ["productId", "id", "uuid", "stockxId"]) &&
+      firstString(record, ["title", "name", "productName"]),
+  );
+}
+
 function imageOf(record: Record<string, unknown>): string | null {
   const direct = firstString(record, ["image", "imageUrl", "thumbnail", "thumbUrl"]);
   if (direct) return direct;
@@ -389,7 +503,7 @@ function imageOf(record: Record<string, unknown>): string | null {
 function urlOf(record: Record<string, unknown>): string | null {
   const direct = firstString(record, ["url", "permalink"]);
   if (direct) return direct;
-  const slug = firstString(record, ["slug"]);
+  const slug = firstString(record, ["slug", "urlKey"]);
   return slug ? `https://stockx.com/${slug}` : null;
 }
 
