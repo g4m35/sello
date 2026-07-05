@@ -19,6 +19,7 @@ type RequestOptions = {
     | typeof stockxErrorCodes.catalogSearchFailed
     | typeof stockxErrorCodes.marketDataFailed
     | typeof stockxErrorCodes.listingFailed
+    | typeof stockxErrorCodes.delistFailed
     | typeof stockxErrorCodes.apiFailed;
 };
 
@@ -125,7 +126,28 @@ export async function deactivateStockXListing(
     {
       method: "PUT",
       accessToken,
-      failureCode: stockxErrorCodes.listingFailed,
+      failureCode: stockxErrorCodes.delistFailed,
+    },
+  );
+
+  return normalizeListingResult(json, listingId);
+}
+
+export async function deleteStockXListing(
+  config: StockXConfig,
+  accessToken: string,
+  listingId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StockXDeactivateListingResult> {
+  const encodedListingId = encodeURIComponent(listingId);
+  const json = await stockxApiRequest(
+    config,
+    `/selling/listings/${encodedListingId}`,
+    fetchImpl,
+    {
+      method: "DELETE",
+      accessToken,
+      failureCode: stockxErrorCodes.delistFailed,
     },
   );
 

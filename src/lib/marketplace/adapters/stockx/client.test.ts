@@ -4,6 +4,7 @@ import {
   activateStockXListing,
   createStockXListing,
   deactivateStockXListing,
+  deleteStockXListing,
   fetchStockXListingStatus,
   fetchStockXMarketData,
   searchStockXCatalog,
@@ -337,6 +338,27 @@ describe("StockX listing client", () => {
       listingId: "listing-1",
       operationId: "operation-2",
       operationStatus: "PENDING",
+    });
+  });
+
+  it("deletes a listing through the official delete endpoint", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async () => new Response("", { status: 200 }),
+    );
+
+    const result = await deleteStockXListing(
+      config,
+      "access-token",
+      "listing-1",
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://api.stockx.com/v2/selling/listings/listing-1");
+    expect(init?.method).toBe("DELETE");
+    expect(result).toMatchObject({
+      listingId: "listing-1",
+      status: null,
     });
   });
 
