@@ -4,7 +4,10 @@ import { featureAccessForUser } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
 import { AppError, safeErrorResponse } from "@/lib/errors";
-import { preflightBulkEbayPublish } from "@/lib/marketplace/bulk-publish";
+import {
+  preflightBulkEbayPublish,
+  preflightBulkStockXPublish,
+} from "@/lib/marketplace/bulk-publish";
 import {
   BulkPublishPreflightRequestSchema,
   loadBulkPublishConfig,
@@ -14,14 +17,13 @@ import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// Read-only dry run. Available to every authenticated seller — non-allowlisted
-// users still see exactly which of their selected items are ready, blocked, or
-// already listed; they just get livePublishAllowed:false plus alpha copy and no
-// outbound eBay write happens here.
+// Read-only dry run. Available to every authenticated seller. eBay keeps its
+// alpha live-action copy; StockX uses strict exact-match/account checks and
+// never makes provider mutation calls during preflight.
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const { itemIds } = BulkPublishPreflightRequestSchema.parse(await request.json());
+    const { itemIds, marketplace } = BulkPublishPreflightRequestSchema.parse(await request.json());
 
     const config = loadBulkPublishConfig();
     if (itemIds.length > config.maxItemsPerRequest) {
@@ -32,16 +34,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const livePublishAllowed = featureAccessForUser(user).liveEbayPublish;
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
     assertBulkBatchSize(account, itemIds.length);
-    const result = await preflightBulkEbayPublish(prisma, {
-      userId: user.id,
-      accountId: account.id,
-      itemIds,
-      livePublishAllowed,
-    });
+    const result =
+      marketplace === "stockx"
+        ? await preflightBulkStockXPublish(prisma as never, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+          })
+        : await preflightBulkEbayPublish(prisma, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+            livePublishAllowed: featureAccessForUser(user).liveEbayPublish,
+          });
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {

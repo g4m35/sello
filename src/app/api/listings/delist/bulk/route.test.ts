@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(() => ({})),
   requireSupabaseUser: vi.fn(),
   executeBulkEbayDelist: vi.fn(),
+  executeBulkStockXDelist: vi.fn(),
   getActiveAccount: vi.fn(),
 }));
 
@@ -14,7 +15,11 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/marketplace/bulk-delist", async (orig) => {
   const actual = await orig<typeof import("@/lib/marketplace/bulk-delist")>();
-  return { ...actual, executeBulkEbayDelist: mocks.executeBulkEbayDelist };
+  return {
+    ...actual,
+    executeBulkEbayDelist: mocks.executeBulkEbayDelist,
+    executeBulkStockXDelist: mocks.executeBulkStockXDelist,
+  };
 });
 
 import { POST } from "./route";
@@ -37,6 +42,14 @@ describe("bulk delist execute route", () => {
     vi.stubEnv("EBAY_DELIST_EMAILS", "owner@example.com");
     mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "owner@example.com" });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" });
+    mocks.executeBulkStockXDelist.mockResolvedValue({
+      bulkRunId: "run-1",
+      total: 1,
+      endedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      items: [],
+    });
   });
 
   afterEach(() => vi.unstubAllEnvs());
@@ -107,5 +120,42 @@ describe("bulk delist execute route", () => {
         bulkRunId: u(999),
       }),
     );
+  });
+
+  it("runs StockX bulk delist for authenticated sellers without the eBay delist entitlement", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "nope@example.com" });
+
+    const response = await POST(
+      req({
+        itemIds: [ITEM],
+        marketplace: "stockx",
+        confirmLiveDelist: true,
+        bulkRunId: u(999),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.executeBulkStockXDelist).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        userId: "u1",
+        accountId: "acc-1",
+        itemIds: [ITEM],
+        bulkRunId: u(999),
+      }),
+    );
+    expect(mocks.executeBulkEbayDelist).not.toHaveBeenCalled();
+  });
+
+  it("blocks StockX bulk delist above the account plan cap before marketplace work", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "nope@example.com" });
+    const itemIds = Array.from({ length: 6 }, (_, i) => u(i + 1));
+
+    const response = await POST(
+      req({ itemIds, marketplace: "stockx", confirmLiveDelist: true }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.executeBulkStockXDelist).not.toHaveBeenCalled();
   });
 });

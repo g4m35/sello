@@ -4,7 +4,9 @@ vi.mock("server-only", () => ({}));
 
 import {
   executeBulkEbayPublish,
+  executeBulkStockXPublish,
   preflightBulkEbayPublish,
+  preflightBulkStockXPublish,
   type BulkItemResult,
   type BulkPublishDeps,
   type ItemPreflightOutcome,
@@ -192,5 +194,76 @@ describe("executeBulkEbayPublish", () => {
     const failed = res.items.find((i) => i.itemId === u(2));
     expect(failed?.status).toBe("failed");
     expect(JSON.stringify(res)).not.toContain("secret-xyz");
+  });
+});
+
+describe("preflightBulkStockXPublish", () => {
+  it("preflights every selected id and returns StockX-ready counts", async () => {
+    const map: Record<string, ItemPreflightOutcome> = {
+      [u(1)]: { status: "ready" },
+      [u(2)]: { status: "needs_details", missing: ["Exact StockX size/variant"] },
+      [u(3)]: { status: "skipped", missing: ["Existing StockX listing"] },
+    };
+    const preflightItem = vi.fn(async ({ itemId }) => map[itemId]);
+
+    const res = await preflightBulkStockXPublish(
+      {} as never,
+      { userId: "seller-1", accountId: "acc-1", itemIds: [u(1), u(2), u(3)] },
+      deps({ preflightItem }),
+    );
+
+    expect(res.livePublishAllowed).toBe(true);
+    expect(res.readyCount).toBe(1);
+    expect(res.needsDetailsCount).toBe(1);
+    expect(res.skippedCount).toBe(1);
+    expect(preflightItem).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "seller-1", accountId: "acc-1", itemId: u(1) }),
+    );
+  });
+});
+
+describe("executeBulkStockXPublish", () => {
+  it("blocks the whole batch when server-side preflight finds any blocked item", async () => {
+    const executeItem = vi.fn();
+    const map: Record<string, ItemPreflightOutcome> = {
+      [u(1)]: { status: "ready" },
+      [u(2)]: { status: "needs_details", missing: ["Exact StockX product"] },
+    };
+
+    await expect(
+      executeBulkStockXPublish(
+        {} as never,
+        { userId: "seller-1", accountId: "acc-1", itemIds: [u(1), u(2)], bulkRunId: u(999) },
+        deps({
+          preflightItem: vi.fn(async ({ itemId }) => map[itemId]),
+          executeItem,
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 400, code: "BULK_STOCKX_PREFLIGHT_BLOCKED" });
+
+    expect(executeItem).not.toHaveBeenCalled();
+  });
+
+  it("re-runs preflight, then executes ready StockX items with one shared bulkRunId", async () => {
+    const preflightItem = vi.fn(async (): Promise<ItemPreflightOutcome> => ({ status: "ready" }));
+    const executeItem = vi.fn(async ({ itemId }): Promise<BulkItemResult> => ({
+      itemId,
+      status: "published",
+      message: "Submitted to StockX. Sello is checking status.",
+      externalListingId: `sx-${itemId.slice(-4)}`,
+    }));
+
+    const res = await executeBulkStockXPublish(
+      {} as never,
+      { userId: "seller-1", accountId: "acc-1", itemIds: [u(1), u(2)], bulkRunId: u(999) },
+      deps({ preflightItem, executeItem }),
+    );
+
+    expect(preflightItem).toHaveBeenCalledTimes(2);
+    expect(executeItem).toHaveBeenCalledTimes(2);
+    expect(executeItem).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "acc-1", bulkRunId: u(999), itemId: u(1) }),
+    );
+    expect(res.publishedCount).toBe(2);
   });
 });
