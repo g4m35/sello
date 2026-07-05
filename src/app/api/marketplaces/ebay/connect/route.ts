@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     // (reconnecting eBay is always allowed).
     const account = await getActiveAccount(user.id);
     await assertCanManageMarketplaceConnections(account, user.id);
-    await assertCanConnectMarketplace(account, "ebay");
+    await assertCanConnectMarketplace(account, "ebay", undefined, user);
 
     const config = getEbayConfig();
     const state = createRandomEbayOAuthState();

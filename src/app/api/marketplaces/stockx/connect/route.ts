@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
     const account = await getActiveAccount(user.id);
     await assertCanManageMarketplaceConnections(account, user.id);
-    await assertCanConnectMarketplace(account, "stockx");
+    await assertCanConnectMarketplace(account, "stockx", undefined, user);
 
     const config = getStockXOAuthConfig();
     const state = createRandomStockXOAuthState();

@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     // (reconnecting Etsy is always allowed).
     const account = await getActiveAccount(user.id);
     await assertCanManageMarketplaceConnections(account, user.id);
-    await assertCanConnectMarketplace(account, "etsy");
+    await assertCanConnectMarketplace(account, "etsy", undefined, user);
 
     const config = getEtsyConfig();
     const state = createRandomEtsyOAuthState();
