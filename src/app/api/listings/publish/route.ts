@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { logUnexpectedError, safeErrorResponse } from "@/lib/errors";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { getPrisma } from "@/lib/prisma";
 import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
@@ -44,7 +45,11 @@ export async function POST(request: Request) {
     // Monthly autopublish quota, enforced before the publish attempt.
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    await assertWithinQuota(account, "autopublish", new Date());
+    await assertWithinQuota(
+      accountWithEffectivePlan(account, user),
+      "autopublish",
+      new Date(),
+    );
 
     const result = await executePublish(prisma, {
       userId: user.id,

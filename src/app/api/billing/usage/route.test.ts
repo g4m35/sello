@@ -72,4 +72,17 @@ describe("GET /api/billing/usage", () => {
     expect(body.limits.aiListingsPerMonth).toBe(10);
     expect(body.status).toBe("active");
   });
+
+  it("shows effective kingpin limits for admin users on a free account", async () => {
+    vi.stubEnv("ADMIN_EMAILS", "s@e.com");
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    mocks.subscriptionFind.mockResolvedValue(null);
+
+    const body = await (await GET(new Request("http://localhost/api/billing/usage"))).json();
+
+    expect(body.plan).toBe("kingpin");
+    expect(body.limits.compRefreshesPerMonth).toBe(750);
+    expect(body.limits.bulkBatchSize).toBe(250);
+    expect(body.status).toBe("active");
+  });
 });

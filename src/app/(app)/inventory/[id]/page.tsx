@@ -650,7 +650,36 @@ export default function ListingDetailPage() {
       ),
   );
   const shortId = item.id.slice(0, 8);
-  const canLivePublish = item.channels.some((channel) => channel.publishImplemented);
+  const selectedMarketplaceSet = new Set(edits.selectedMarketplaces);
+  const selectedChannels = item.channels.filter((channel) =>
+    selectedMarketplaceSet.has(channel.marketplace),
+  );
+  const ebayChannel = item.channels.find((c) => c.marketplace === "ebay") ?? null;
+  const stockxChannel = item.channels.find((c) => c.marketplace === "stockx") ?? null;
+  const hasEbayArtifact = Boolean(
+    ebayChannel && (ebayChannel.externalListingId || ebayChannel.externalOfferId),
+  );
+  const hasStockXArtifact = Boolean(stockxChannel?.externalListingId);
+  const ebaySelected = selectedMarketplaceSet.has("ebay");
+  const stockxSelected = selectedMarketplaceSet.has("stockx");
+  const showEbayPanels = ebaySelected || hasEbayArtifact;
+  const showStockXPanel = stockxSelected || hasStockXArtifact;
+  const selectedPublishableChannels = selectedChannels.filter(
+    (channel) => channel.publishImplemented,
+  );
+  const canLivePublish = selectedPublishableChannels.length > 0;
+  const primaryPublishLabel =
+    selectedPublishableChannels.length === 1
+      ? `Publish to ${selectedPublishableChannels[0].name}`
+      : "Publish selected";
+  const operationChannels = item.channels.filter((channel) =>
+    selectedMarketplaceSet.has(channel.marketplace) ||
+    channel.externalListingId ||
+    channel.externalOfferId,
+  );
+  const selectedExportMarketplaces = ExportMarketplaceSchema.options.filter((mp) =>
+    selectedMarketplaceSet.has(mp),
+  );
   // Primary-action state: a saved draft should always have an obvious next step.
   const readyToPublish = item.readiness.ready;
   const firstMissingCheck = item.readiness.checks.find(
@@ -660,7 +689,6 @@ export default function ListingDetailPage() {
     ? READINESS_ANCHORS[firstMissingCheck.id] ?? "readiness-card"
     : "readiness-card";
   const canMarkSold = item.lifecycleState === "ready" || item.lifecycleState === "active";
-  const ebayChannel = item.channels.find((c) => c.marketplace === "ebay") ?? null;
   const liveUrl = ebayChannelUrl(ebayChannel);
   const removeAction = resolveRemoveAction(item);
   const { head, tail } = splitTitle(item.title);
@@ -841,9 +869,18 @@ export default function ListingDetailPage() {
                 disabled={approving}
                 onClick={requestPublish}
               >
-                Publish to eBay
+                {primaryPublishLabel}
               </Btn>
-            ) : (
+            ) : stockxSelected ? (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="search"
+                onClick={() => scrollToAnchor("stockx-match")}
+              >
+                Review StockX match
+              </Btn>
+            ) : ebaySelected ? (
               <Btn
                 variant="accent"
                 size="sm"
@@ -852,15 +889,24 @@ export default function ListingDetailPage() {
               >
                 Preview eBay publish
               </Btn>
+            ) : (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="store"
+                onClick={() => scrollToAnchor("field-channels")}
+              >
+                Review marketplaces
+              </Btn>
             )}
           </div>
         </div>
 
-        {readyToPublish && !canLivePublish && (
+        {readyToPublish && ebaySelected && !ebayChannel?.publishImplemented && (
           <Banner
             variant="info"
-            title="eBay ready · production publishing is disabled"
-            desc="Production eBay publishing is not enabled yet. You can preview the eBay payload below and copy or export the marketplace drafts to list manually."
+            title="eBay preview ready"
+            desc="Review the eBay payload below, or copy the selected marketplace drafts when you want to list manually."
           />
         )}
 
@@ -1384,7 +1430,7 @@ export default function ListingDetailPage() {
                     disabled={!item.readiness.ready || approving}
                     onClick={requestPublish}
                   >
-                    {approving ? "Preparing..." : "Publish"}
+                    {approving ? "Preparing..." : primaryPublishLabel}
                   </Btn>
                 )}
               </div>
@@ -1461,83 +1507,91 @@ export default function ListingDetailPage() {
               </div>
             </section>
 
-            <StockXMatchCard
-              accessToken={token}
-              draftId={draftId}
-              match={item.stockxMatch}
-              item={{
-                title: item.title,
-                brand: item.brand,
-                category: item.category,
-                size: item.size,
-              }}
-              onSaved={(nextItem) => {
-                setItem((prev) => (prev ? mergeSavedItemState(prev, nextItem) : nextItem));
-              }}
-            />
-
-            <div id="ebay-readiness">
-              <EbayPreflightCard
-                itemId={id}
-                token={token}
-                savedCategoryId={edits.ebayCategoryId}
-                savedQuantity={edits.ebayQuantity}
-                refreshSignal={readinessSignal}
-                showAdvanced={showAdvanced}
-                onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
-                onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
-                onSaveAspect={(name, value) =>
-                  patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
-                }
-              />
-            </div>
-
-            <section className="card">
-              <div className="card__head">
-                <span className="card__title">Copy listing text</span>
+            {showStockXPanel && (
+              <div id="stockx-match">
+                <StockXMatchCard
+                  accessToken={token}
+                  draftId={draftId}
+                  match={item.stockxMatch}
+                  item={{
+                    title: item.title,
+                    brand: item.brand,
+                    category: item.category,
+                    size: item.size,
+                  }}
+                  onSaved={(nextItem) => {
+                    setItem((prev) => (prev ? mergeSavedItemState(prev, nextItem) : nextItem));
+                  }}
+                />
               </div>
-              <div className="card__body stack-4">
-                <div className="t-small muted">
-                  Copies paste-ready listing text to your clipboard for manual
-                  posting. Nothing is published automatically.
+            )}
+
+            {showEbayPanels && (
+              <div id="ebay-readiness">
+                <EbayPreflightCard
+                  itemId={id}
+                  token={token}
+                  savedCategoryId={edits.ebayCategoryId}
+                  savedQuantity={edits.ebayQuantity}
+                  refreshSignal={readinessSignal}
+                  showAdvanced={showAdvanced}
+                  onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
+                  onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
+                  onSaveAspect={(name, value) =>
+                    patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
+                  }
+                />
+              </div>
+            )}
+
+            {selectedExportMarketplaces.length > 0 && (
+              <section className="card">
+                <div className="card__head">
+                  <span className="card__title">Copy listing text</span>
                 </div>
-                {ExportMarketplaceSchema.options.map((mp) => (
-                  <div key={mp} className="row" style={{ gap: 12 }}>
-                    <MpLogo id={mp} size={28} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="mp-row__name">{marketplaceName(mp)}</div>
-                    </div>
-                    <Btn
-                      variant="secondary"
-                      size="sm"
-                      icon="copy"
-                      disabled={exportBusy != null}
-                      onClick={() => void copyExport(mp)}
-                    >
-                      {exportBusy === mp ? "Copying…" : `Copy for ${marketplaceName(mp)}`}
-                    </Btn>
+                <div className="card__body stack-4">
+                  <div className="t-small muted">
+                    Copies paste-ready listing text to your clipboard for selected
+                    manual marketplaces. Nothing is published automatically.
                   </div>
-                ))}
-                {exportError && <div className="field__error">{exportError}</div>}
-                {exportResult && exportResult.warnings.length === 0 && (
-                  <Banner
-                    variant="info"
-                    title={`Copied ${marketplaceName(exportResult.marketplace)} listing text`}
-                    desc={`Paste it into the ${marketplaceName(exportResult.marketplace)} listing form.`}
-                  />
-                )}
-                {exportResult && exportResult.warnings.length > 0 && (
-                  <Banner
-                    variant="warn"
-                    title={`Copied ${marketplaceName(exportResult.marketplace)} listing text with gaps`}
-                    desc={exportResult.warnings.join(" · ")}
-                  />
-                )}
-              </div>
-            </section>
+                  {selectedExportMarketplaces.map((mp) => (
+                    <div key={mp} className="row" style={{ gap: 12 }}>
+                      <MpLogo id={mp} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="mp-row__name">{marketplaceName(mp)}</div>
+                      </div>
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        icon="copy"
+                        disabled={exportBusy != null}
+                        onClick={() => void copyExport(mp)}
+                      >
+                        {exportBusy === mp ? "Copying…" : `Copy for ${marketplaceName(mp)}`}
+                      </Btn>
+                    </div>
+                  ))}
+                  {exportError && <div className="field__error">{exportError}</div>}
+                  {exportResult && exportResult.warnings.length === 0 && (
+                    <Banner
+                      variant="info"
+                      title={`Copied ${marketplaceName(exportResult.marketplace)} listing text`}
+                      desc={`Paste it into the ${marketplaceName(exportResult.marketplace)} listing form.`}
+                    />
+                  )}
+                  {exportResult && exportResult.warnings.length > 0 && (
+                    <Banner
+                      variant="warn"
+                      title={`Copied ${marketplaceName(exportResult.marketplace)} listing text with gaps`}
+                      desc={exportResult.warnings.join(" · ")}
+                    />
+                  )}
+                </div>
+              </section>
+            )}
 
             <MarketplaceOperationsPanel
-              channels={item.channels}
+              channels={operationChannels}
               attempts={item.attempts}
               delisting={delistingEbay}
               delistingStockX={delistingStockX}

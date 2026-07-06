@@ -98,4 +98,23 @@ describe("GET /api/capabilities", () => {
     expect(serialized).not.toContain("emails");
     expect(Object.keys(payload)).toEqual(["access", "copy", "plan", "limits"]);
   });
+
+  it("returns kingpin limits for an admin even when the stored account is free", async () => {
+    vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "owner@example.com",
+    });
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-1",
+      ownerUserId: "user-1",
+      plan: "free",
+    });
+
+    const payload = await (await GET(request())).json();
+
+    expect(payload.plan).toBe("kingpin");
+    expect(payload.limits.compRefreshesPerMonth).toBe(750);
+    expect(payload.limits.bulkBatchSize).toBe(250);
+  });
 });

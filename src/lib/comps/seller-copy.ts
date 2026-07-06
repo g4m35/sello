@@ -104,10 +104,12 @@ export function buildPricingNotes(input: PricingNotesInput): string[] {
     if (!notes.includes(note)) notes.push(note);
   };
 
-  if (!input.autoDiscoveryEnabled) {
-    add(`Fresh sold comps are currently disabled. ${MANUAL_STILL_WORKS}`);
-  } else if (input.paidProvidersEnabled === false) {
+  if (input.paidProvidersEnabled === false) {
     add(`Fresh sold comps are disabled right now. ${MANUAL_STILL_WORKS}`);
+  } else if (!input.autoDiscoveryEnabled) {
+    add(
+      "Automatic background pricing is off. Use Refresh comps to search fresh sold comps for this listing.",
+    );
   }
 
   if (input.status === "skipped_weak_identity") {

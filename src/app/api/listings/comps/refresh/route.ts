@@ -8,6 +8,7 @@ import {
 import { isAdminUser } from "@/lib/auth/admin";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { accountScope } from "@/lib/billing/scope";
 import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { runCompFetch } from "@/lib/comps/fetch";
@@ -49,7 +50,11 @@ export async function POST(request: Request) {
 
     // Monthly paid-refresh quota. Checked before the cooldown so an out-of-quota
     // seller gets a clear 402 upgrade signal rather than a retry timer.
-    await assertWithinQuota(account, "comp_refresh", new Date());
+    await assertWithinQuota(
+      accountWithEffectivePlan(account, user),
+      "comp_refresh",
+      new Date(),
+    );
 
     // Cooldown: spam-clicking Refresh must not fire repeated paid provider calls.
     // Only count the last run that actually queried a provider — a disabled,

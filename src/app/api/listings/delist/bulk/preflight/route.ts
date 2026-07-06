@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import {
   preflightBulkEbayDelist,
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
 
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    assertBulkBatchSize(account, itemIds.length);
+    assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length);
     const result =
       marketplace === "stockx"
         ? await preflightBulkStockXDelist(prisma as never, {

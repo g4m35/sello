@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
 import { getActiveAccount } from "@/lib/billing/account";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
 import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
@@ -83,7 +84,11 @@ export async function POST(request: Request) {
     // inventory item exists), so an over-quota request fails fast with 402 and
     // leaves nothing behind.
     const account = await getActiveAccount(user.id);
-    await assertWithinQuota(account, "ai_listing", new Date());
+    await assertWithinQuota(
+      accountWithEffectivePlan(account, user),
+      "ai_listing",
+      new Date(),
+    );
 
     const formData = await request.formData();
     const files = extractListingPhotos(formData);

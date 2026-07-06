@@ -18,20 +18,28 @@ export function getAutoCompStatusCopy(
   discovery: AutoCompDiscoveryStatus,
   summary: AutoCompSummaryStatus,
 ) {
-  if (!discovery.autoDiscoveryEnabled) {
-    return {
-      variant: "info" as const,
-      title: "Fresh sold comps are disabled",
-      desc:
-        "Manual comps still work. Fresh sold comps are off until a safe source is enabled.",
-    };
-  }
   if (discovery.paidProvidersEnabled === false && summary.validComps === 0) {
     return {
       variant: "info" as const,
       title: "Fresh sold comps are disabled",
       desc:
         "Manual comps still work. Fresh sold comps are turned off right now, so add a manual comp to price this item.",
+    };
+  }
+  if (!discovery.autoDiscoveryEnabled) {
+    if (discovery.enabledSources.length > 0) {
+      return {
+        variant: "info" as const,
+        title: "Manual sold-comp refresh is available",
+        desc:
+          "Automatic background pricing is off. Use Refresh comps to search fresh sold comps for this listing.",
+      };
+    }
+    return {
+      variant: "info" as const,
+      title: "Fresh sold comps are disabled",
+      desc:
+        "Manual comps still work. Fresh sold comps are off until a safe source is enabled.",
     };
   }
   if (discovery.enabledSources.length === 0) {

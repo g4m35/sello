@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getActiveAccount } from "@/lib/billing/account";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { logUnexpectedError, safeErrorResponse } from "@/lib/errors";
 import {
@@ -31,7 +32,11 @@ export async function POST(request: Request) {
     const body = StockXPublishRequestSchema.parse(await request.json());
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    await assertWithinQuota(account, "autopublish", new Date());
+    await assertWithinQuota(
+      accountWithEffectivePlan(account, user),
+      "autopublish",
+      new Date(),
+    );
 
     const result = await executePublish(prisma, {
       userId: user.id,
