@@ -62,20 +62,67 @@ export async function fetchStockXMarketData(
   args: { productId: string; variantId?: string | null; currencyCode?: string | null },
   fetchImpl: typeof fetch = fetch,
 ): Promise<StockXMarketDataPoint[]> {
-  const productId = encodeURIComponent(args.productId);
-  const variantId = args.variantId ? encodeURIComponent(args.variantId) : null;
+  // StockX product/variant ids are UUIDs — keep them raw in the path (same as
+  // catalog search). Over-encoding has caused partner APIs to 400.
+  const productId = args.productId.trim();
+  const variantId = args.variantId?.trim() || null;
   const currencyCode = (args.currencyCode ?? "USD").trim().toUpperCase() || "USD";
-  const path = variantId
-    ? `/catalog/products/${productId}/variants/${variantId}/market-data`
-    : `/catalog/products/${productId}/market-data`;
-  const json = await stockxApiRequest(config, path, fetchImpl, {
-    accessToken,
-    // StockX requires currencyCode on market-data; omitting it returns 4xx.
-    query: { currencyCode },
-    failureCode: stockxErrorCodes.marketDataFailed,
-  });
+  const query = { currencyCode };
 
-  return normalizeMarketData(json, { ...args, currencyCode });
+  // Prefer variant market-data when we have a size match; fall back to the
+  // product-level endpoint (all variants) if StockX rejects the variant call.
+  const paths = variantId
+    ? [
+        `/catalog/products/${productId}/variants/${variantId}/market-data`,
+        `/catalog/products/${productId}/market-data`,
+      ]
+    : [`/catalog/products/${productId}/market-data`];
+
+  let lastError: unknown;
+  for (const path of paths) {
+    try {
+      const json = await stockxApiRequest(config, path, fetchImpl, {
+        accessToken,
+        query,
+        failureCode: stockxErrorCodes.marketDataFailed,
+      });
+      const points = normalizeMarketData(json, { ...args, currencyCode });
+      if (points.length > 0 || path === paths[paths.length - 1]) {
+        return filterMarketDataForVariant(points, variantId);
+      }
+    } catch (error) {
+      lastError = error;
+      const status =
+        error instanceof StockXIntegrationError &&
+        typeof error.details?.status === "number"
+          ? error.details.status
+          : null;
+      // Only fall through on client errors; auth/server failures should surface.
+      if (status == null || status < 400 || status >= 500) throw error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new StockXIntegrationError(
+        stockxErrorCodes.marketDataFailed,
+        "StockX API request failed.",
+        502,
+      );
+}
+
+function filterMarketDataForVariant(
+  points: StockXMarketDataPoint[],
+  variantId?: string | null,
+): StockXMarketDataPoint[] {
+  if (!variantId) return points;
+  const matched = points.filter((point) => {
+    const raw = asRecord(point.rawJson);
+    if (!raw) return true;
+    const rowVariant = firstString(raw, ["variantId", "variant_id"]);
+    return !rowVariant || rowVariant === variantId;
+  });
+  return matched.length > 0 ? matched : points;
 }
 
 export async function createStockXListing(
@@ -208,6 +255,14 @@ async function stockxApiRequest(
     const retryable = response.status === 429 || response.status >= 500;
     if (attempt + 1 < attempts && retryable) continue;
 
+    // Log a short scrubbed body server-side only — never attach raw upstream
+    // bodies to StockXIntegrationError (those payloads can reach API clients).
+    const bodySnippet = await safeErrorBodySnippet(response);
+    if (bodySnippet) {
+      console.error(
+        `[stockx_api] ${options.failureCode ?? stockxErrorCodes.apiFailed} status=${response.status} path=${path} body=${bodySnippet}`,
+      );
+    }
     throw new StockXIntegrationError(
       options.failureCode ?? stockxErrorCodes.apiFailed,
       "StockX API request failed.",
@@ -221,6 +276,38 @@ async function stockxApiRequest(
     "StockX API request failed.",
     502,
   );
+}
+
+async function safeErrorBodySnippet(response: Response): Promise<string | null> {
+  try {
+    const text = (await response.text()).trim();
+    if (!text) return null;
+    // Prefer structured StockX error codes/messages when present.
+    try {
+      const json = JSON.parse(text) as Record<string, unknown>;
+      const code = typeof json.code === "string" ? json.code : null;
+      const message =
+        typeof json.message === "string"
+          ? json.message
+          : typeof json.error === "string"
+            ? json.error
+            : null;
+      const parts = [code, message].filter(Boolean);
+      if (parts.length > 0) return parts.join(": ").slice(0, 240);
+    } catch {
+      // not JSON
+    }
+    const scrubbed = text
+      .replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, "[redacted]")
+      .replace(
+        /["']?(?:access_token|refresh_token|api[_-]?key|secret)["']?\s*[:=]\s*["'][^"']+["']/gi,
+        "[redacted]",
+      )
+      .replace(/\bsecret\b/gi, "[redacted]");
+    return scrubbed.slice(0, 240);
+  } catch {
+    return null;
+  }
 }
 
 function normalizeCatalogCandidates(json: unknown): StockXCatalogCandidate[] {
