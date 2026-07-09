@@ -6,6 +6,7 @@ export const PublishRequestSchema = z
   .object({
     inventoryItemId: z.uuid(),
     marketplace: MarketplaceSchema,
+    confirmLivePublish: z.literal(true).optional(),
   })
   .strict();
 

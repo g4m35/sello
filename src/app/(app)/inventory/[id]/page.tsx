@@ -14,6 +14,7 @@ import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
 import { AutoPricing } from "@/components/app/auto-pricing";
+import { StockXMatchCard } from "@/components/app/stockx-match-card";
 import {
   EbayPreflightCard,
   ebayCategorySelectionPatch,
@@ -21,6 +22,7 @@ import {
 import {
   confirmEbayDelist,
   confirmEbayOrphanCleanup,
+  confirmStockXDelist,
   MarketplaceOperationsPanel,
 } from "@/components/app/marketplace-operations-panel";
 import {
@@ -217,6 +219,7 @@ export default function ListingDetailPage() {
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [delistingEbay, setDelistingEbay] = useState(false);
+  const [delistingStockX, setDelistingStockX] = useState(false);
   const [scanningEbayOrphans, setScanningEbayOrphans] = useState(false);
   const [cleaningEbayOrphans, setCleaningEbayOrphans] = useState(false);
   const [ebayOrphanScan, setEbayOrphanScan] =
@@ -428,10 +431,10 @@ export default function ListingDetailPage() {
     }
   }, [token, draftId, router]);
 
-  // Save the current edits and move the draft to the approved/ready lifecycle
-  // state. Shared by "Mark ready" and the publish flow so a complete listing
-  // can always advance, even when production eBay publishing is disabled.
-  const saveAndApprove = useCallback(async () => {
+  // Persist the current edits. Readiness is computed from these fields, so a
+  // complete listing is publishable immediately — there is no separate
+  // "mark ready"/approve step.
+  const saveEdits = useCallback(async () => {
     if (!draftId || !edits) return;
     await api.updateDraft(token, draftId, {
       title: edits.title,
@@ -448,53 +451,28 @@ export default function ListingDetailPage() {
       },
       measurements: savableMeasurements(edits.measurements),
       flaws: savableFlaws(edits.flaws),
-      approve: true,
     });
   }, [token, draftId, edits]);
 
-  // Mark the listing ready without opening the publish modal. The main way to
-  // leave "needs attention"/draft when production publishing is off.
-  const markReady = useCallback(async () => {
-    if (!draftId || !edits) return;
-    setApproving(true);
-    setNotice(null);
-    setPhotoError(null);
-    try {
-      await saveAndApprove();
-      reload();
-      setNotice("Marked ready to publish.");
-    } catch (e) {
-      setSaveState("error");
-      setPhotoError((e as { error?: string })?.error ?? "Could not mark this listing ready.");
-    } finally {
-      setApproving(false);
-    }
-  }, [draftId, edits, saveAndApprove, reload]);
-
-  // Approve the draft (move it to the ready lifecycle state) before opening the
-  // publish modal, so publishing is not rejected with a 409 "not ready" error.
+  // Save the latest edits, then open the publish modal. No approve step: the
+  // publish flow computes readiness server-side and returns exact missing fields.
   const requestPublish = useCallback(async () => {
-    if (
-      !draftId ||
-      !edits ||
-      item?.lifecycleState === "ready" ||
-      item?.lifecycleState === "active"
-    ) {
+    if (!draftId || !edits) {
       setPublishOpen(true);
       return;
     }
     setApproving(true);
     try {
-      await saveAndApprove();
+      await saveEdits();
       reload();
       setPublishOpen(true);
     } catch (e) {
       setSaveState("error");
-      setPhotoError((e as { error?: string })?.error ?? "Could not mark the item ready to publish.");
+      setPhotoError((e as { error?: string })?.error ?? "Could not prepare the item to publish.");
     } finally {
       setApproving(false);
     }
-  }, [draftId, edits, item, saveAndApprove, reload]);
+  }, [draftId, edits, saveEdits, reload]);
 
   const deleteListing = useCallback(async () => {
     if (!window.confirm("Delete this draft? This cannot be undone.")) return;
@@ -571,6 +549,24 @@ export default function ListingDetailPage() {
       setNotice((e as { error?: string })?.error ?? "Could not end the eBay listing.");
     } finally {
       setDelistingEbay(false);
+    }
+  }, [token, id, reload]);
+
+  const runStockXDelist = useCallback(async () => {
+    if (!confirmStockXDelist()) return;
+    setDelistingStockX(true);
+    setNotice(null);
+    try {
+      await api.delistStockX(token, {
+        inventoryItemId: id,
+        marketplace: "stockx",
+        confirmLiveDelist: true,
+      });
+      reload();
+    } catch (e) {
+      setNotice((e as { error?: string })?.error ?? "Could not end the StockX listing.");
+    } finally {
+      setDelistingStockX(false);
     }
   }, [token, id, reload]);
 
@@ -654,7 +650,36 @@ export default function ListingDetailPage() {
       ),
   );
   const shortId = item.id.slice(0, 8);
-  const canLivePublish = item.channels.some((channel) => channel.publishImplemented);
+  const selectedMarketplaceSet = new Set(edits.selectedMarketplaces);
+  const selectedChannels = item.channels.filter((channel) =>
+    selectedMarketplaceSet.has(channel.marketplace),
+  );
+  const ebayChannel = item.channels.find((c) => c.marketplace === "ebay") ?? null;
+  const stockxChannel = item.channels.find((c) => c.marketplace === "stockx") ?? null;
+  const hasEbayArtifact = Boolean(
+    ebayChannel && (ebayChannel.externalListingId || ebayChannel.externalOfferId),
+  );
+  const hasStockXArtifact = Boolean(stockxChannel?.externalListingId);
+  const ebaySelected = selectedMarketplaceSet.has("ebay");
+  const stockxSelected = selectedMarketplaceSet.has("stockx");
+  const showEbayPanels = ebaySelected || hasEbayArtifact;
+  const showStockXPanel = stockxSelected || hasStockXArtifact;
+  const selectedPublishableChannels = selectedChannels.filter(
+    (channel) => channel.publishImplemented,
+  );
+  const canLivePublish = selectedPublishableChannels.length > 0;
+  const primaryPublishLabel =
+    selectedPublishableChannels.length === 1
+      ? `Publish to ${selectedPublishableChannels[0].name}`
+      : "Publish selected";
+  const operationChannels = item.channels.filter((channel) =>
+    selectedMarketplaceSet.has(channel.marketplace) ||
+    channel.externalListingId ||
+    channel.externalOfferId,
+  );
+  const selectedExportMarketplaces = ExportMarketplaceSchema.options.filter((mp) =>
+    selectedMarketplaceSet.has(mp),
+  );
   // Primary-action state: a saved draft should always have an obvious next step.
   const readyToPublish = item.readiness.ready;
   const firstMissingCheck = item.readiness.checks.find(
@@ -664,7 +689,6 @@ export default function ListingDetailPage() {
     ? READINESS_ANCHORS[firstMissingCheck.id] ?? "readiness-card"
     : "readiness-card";
   const canMarkSold = item.lifecycleState === "ready" || item.lifecycleState === "active";
-  const ebayChannel = item.channels.find((c) => c.marketplace === "ebay") ?? null;
   const liveUrl = ebayChannelUrl(ebayChannel);
   const removeAction = resolveRemoveAction(item);
   const { head, tail } = splitTitle(item.title);
@@ -836,16 +860,6 @@ export default function ListingDetailPage() {
               >
                 Fix required fields
               </Btn>
-            ) : item.lifecycleState === "draft" ? (
-              <Btn
-                variant="accent"
-                size="sm"
-                icon="check"
-                disabled={approving}
-                onClick={markReady}
-              >
-                {approving ? "Marking…" : "Mark ready"}
-              </Btn>
             ) : canLivePublish ? (
               <Btn
                 variant="accent"
@@ -855,9 +869,18 @@ export default function ListingDetailPage() {
                 disabled={approving}
                 onClick={requestPublish}
               >
-                Publish to eBay
+                {primaryPublishLabel}
               </Btn>
-            ) : (
+            ) : stockxSelected ? (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="search"
+                onClick={() => scrollToAnchor("stockx-match")}
+              >
+                Review StockX match
+              </Btn>
+            ) : ebaySelected ? (
               <Btn
                 variant="accent"
                 size="sm"
@@ -866,15 +889,24 @@ export default function ListingDetailPage() {
               >
                 Preview eBay publish
               </Btn>
+            ) : (
+              <Btn
+                variant="accent"
+                size="sm"
+                icon="store"
+                onClick={() => scrollToAnchor("field-channels")}
+              >
+                Review marketplaces
+              </Btn>
             )}
           </div>
         </div>
 
-        {readyToPublish && !canLivePublish && (
+        {readyToPublish && ebaySelected && !ebayChannel?.publishImplemented && (
           <Banner
             variant="info"
-            title="eBay ready · production publishing is disabled"
-            desc="Production eBay publishing is not enabled yet. You can preview the eBay payload below and copy or export the marketplace drafts to list manually."
+            title="eBay preview ready"
+            desc="Review the eBay payload below, or copy the selected marketplace drafts when you want to list manually."
           />
         )}
 
@@ -903,7 +935,7 @@ export default function ListingDetailPage() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={photo.url} alt={`Photo ${idx + 1}`} />
                     ) : (
-                      <Thumb seed={photo.id} size={120} />
+                      <Thumb size={120} />
                     )}
                     {editable && (
                       <button
@@ -1398,7 +1430,7 @@ export default function ListingDetailPage() {
                     disabled={!item.readiness.ready || approving}
                     onClick={requestPublish}
                   >
-                    {approving ? "Preparing..." : "Publish"}
+                    {approving ? "Preparing..." : primaryPublishLabel}
                   </Btn>
                 )}
               </div>
@@ -1475,70 +1507,94 @@ export default function ListingDetailPage() {
               </div>
             </section>
 
-            <div id="ebay-readiness">
-              <EbayPreflightCard
-                itemId={id}
-                token={token}
-                savedCategoryId={edits.ebayCategoryId}
-                savedQuantity={edits.ebayQuantity}
-                refreshSignal={readinessSignal}
-                showAdvanced={showAdvanced}
-                onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
-                onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
-                onSaveAspect={(name, value) =>
-                  patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
-                }
-              />
-            </div>
+            {showStockXPanel && (
+              <div id="stockx-match">
+                <StockXMatchCard
+                  accessToken={token}
+                  draftId={draftId}
+                  match={item.stockxMatch}
+                  item={{
+                    title: item.title,
+                    brand: item.brand,
+                    category: item.category,
+                    size: item.size,
+                  }}
+                  onSaved={(nextItem) => {
+                    setItem((prev) => (prev ? mergeSavedItemState(prev, nextItem) : nextItem));
+                  }}
+                />
+              </div>
+            )}
 
-            <section className="card">
-              <div className="card__head">
-                <span className="card__title">Copy listing text</span>
+            {showEbayPanels && (
+              <div id="ebay-readiness">
+                <EbayPreflightCard
+                  itemId={id}
+                  token={token}
+                  savedCategoryId={edits.ebayCategoryId}
+                  savedQuantity={edits.ebayQuantity}
+                  refreshSignal={readinessSignal}
+                  showAdvanced={showAdvanced}
+                  onSelectCategory={(categoryId) => patch(ebayCategorySelectionPatch(categoryId))}
+                  onSaveQuantity={(quantity) => patch({ ebayQuantity: quantity })}
+                  onSaveAspect={(name, value) =>
+                    patch({ ebayAspects: { ...edits.ebayAspects, [name]: value } })
+                  }
+                />
               </div>
-              <div className="card__body stack-4">
-                <div className="t-small muted">
-                  Copies paste-ready listing text to your clipboard for manual
-                  posting. Nothing is published automatically.
+            )}
+
+            {selectedExportMarketplaces.length > 0 && (
+              <section className="card">
+                <div className="card__head">
+                  <span className="card__title">Copy listing text</span>
                 </div>
-                {ExportMarketplaceSchema.options.map((mp) => (
-                  <div key={mp} className="row" style={{ gap: 12 }}>
-                    <MpLogo id={mp} size={28} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="mp-row__name">{marketplaceName(mp)}</div>
-                    </div>
-                    <Btn
-                      variant="secondary"
-                      size="sm"
-                      icon="copy"
-                      disabled={exportBusy != null}
-                      onClick={() => void copyExport(mp)}
-                    >
-                      {exportBusy === mp ? "Copying…" : `Copy for ${marketplaceName(mp)}`}
-                    </Btn>
+                <div className="card__body stack-4">
+                  <div className="t-small muted">
+                    Copies paste-ready listing text to your clipboard for selected
+                    manual marketplaces. Nothing is published automatically.
                   </div>
-                ))}
-                {exportError && <div className="field__error">{exportError}</div>}
-                {exportResult && exportResult.warnings.length === 0 && (
-                  <Banner
-                    variant="info"
-                    title={`Copied ${marketplaceName(exportResult.marketplace)} listing text`}
-                    desc={`Paste it into the ${marketplaceName(exportResult.marketplace)} listing form.`}
-                  />
-                )}
-                {exportResult && exportResult.warnings.length > 0 && (
-                  <Banner
-                    variant="warn"
-                    title={`Copied ${marketplaceName(exportResult.marketplace)} listing text with gaps`}
-                    desc={exportResult.warnings.join(" · ")}
-                  />
-                )}
-              </div>
-            </section>
+                  {selectedExportMarketplaces.map((mp) => (
+                    <div key={mp} className="row" style={{ gap: 12 }}>
+                      <MpLogo id={mp} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="mp-row__name">{marketplaceName(mp)}</div>
+                      </div>
+                      <Btn
+                        variant="secondary"
+                        size="sm"
+                        icon="copy"
+                        disabled={exportBusy != null}
+                        onClick={() => void copyExport(mp)}
+                      >
+                        {exportBusy === mp ? "Copying…" : `Copy for ${marketplaceName(mp)}`}
+                      </Btn>
+                    </div>
+                  ))}
+                  {exportError && <div className="field__error">{exportError}</div>}
+                  {exportResult && exportResult.warnings.length === 0 && (
+                    <Banner
+                      variant="info"
+                      title={`Copied ${marketplaceName(exportResult.marketplace)} listing text`}
+                      desc={`Paste it into the ${marketplaceName(exportResult.marketplace)} listing form.`}
+                    />
+                  )}
+                  {exportResult && exportResult.warnings.length > 0 && (
+                    <Banner
+                      variant="warn"
+                      title={`Copied ${marketplaceName(exportResult.marketplace)} listing text with gaps`}
+                      desc={exportResult.warnings.join(" · ")}
+                    />
+                  )}
+                </div>
+              </section>
+            )}
 
             <MarketplaceOperationsPanel
-              channels={item.channels}
+              channels={operationChannels}
               attempts={item.attempts}
               delisting={delistingEbay}
+              delistingStockX={delistingStockX}
               orphanScan={ebayOrphanScan}
               scanningOrphans={scanningEbayOrphans}
               cleaningOrphans={cleaningEbayOrphans}
@@ -1546,6 +1602,7 @@ export default function ListingDetailPage() {
               featureAccess={access}
               delistAlphaCopy={copy.ebayDelist}
               onDelistEbay={() => void runEbayDelist()}
+              onDelistStockX={() => void runStockXDelist()}
               onScanEbayOrphans={() => void runEbayOrphanScan()}
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}
             />

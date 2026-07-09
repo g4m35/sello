@@ -111,6 +111,65 @@ describe("PublishModal", () => {
     expect(html).toContain("Record publish attempt");
   });
 
+  it("uses explicit StockX listing confirmation when StockX publish is enabled", () => {
+    const html = renderToStaticMarkup(
+      <PublishModal
+        open
+        onClose={() => undefined}
+        item={item({
+          channels: [
+            {
+              marketplace: "stockx",
+              name: "StockX",
+              status: "ready",
+              publishImplemented: true,
+              environment: "production",
+              sku: null,
+              externalOfferId: null,
+              externalListingId: null,
+              lastError: null,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(html).toContain("Final StockX listing review");
+    expect(html).toContain("Review the live StockX listing");
+    expect(html).toContain("Create live StockX listing");
+    expect(html).toContain("I understand this creates a live StockX listing operation");
+  });
+
+  it("keeps mixed live eBay and StockX publish copy grouped", () => {
+    const html = renderToStaticMarkup(
+      <PublishModal
+        open
+        onClose={() => undefined}
+        item={item({
+          channels: [
+            item().channels[0],
+            {
+              marketplace: "stockx",
+              name: "StockX",
+              status: "ready",
+              publishImplemented: true,
+              environment: "production",
+              sku: null,
+              externalOfferId: null,
+              externalListingId: null,
+              lastError: null,
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(html).toContain("Final live publish review");
+    expect(html).toContain("Review the live eBay listing");
+    expect(html).toContain("Review the live StockX listing");
+    expect(html).toContain("Create live listings");
+  });
+
   it("promotes preview with alpha copy and no live action for non-allowlisted sellers", () => {
     featureMock.access.liveEbayPublish = false;
     try {

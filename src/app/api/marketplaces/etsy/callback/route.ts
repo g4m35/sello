@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { getPrisma } from "@/lib/prisma";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertCanManageMarketplaceConnections } from "@/lib/billing/connections";
 import { getEtsyConfig, getEtsyOAuthStateSecret } from "@/lib/marketplace/adapters/etsy/config";
 import {
   EtsyIntegrationError,
@@ -69,16 +71,21 @@ export async function GET(request: Request) {
     const accessTokenExpiresAt = new Date(now + token.expires_in * 1000);
     const externalUserId = etsyUserIdFromAccessToken(token.access_token);
 
-    await getPrisma().marketplaceConnection.upsert({
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    await assertCanManageMarketplaceConnections(account, user.id, prisma);
+
+    await prisma.marketplaceConnection.upsert({
       where: {
-        userId_marketplace_environment: {
-          userId: oauthState.userId,
+        accountId_marketplace_environment: {
+          accountId: account.id,
           marketplace: "etsy",
           environment: ETSY_ENVIRONMENT,
         },
       },
       create: {
         userId: oauthState.userId,
+        accountId: account.id,
         marketplace: "etsy",
         environment: ETSY_ENVIRONMENT,
         externalUserId,

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -23,8 +24,17 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://sello.wtf"),
   title: "Sello — Resale crosslisting",
   description: "AI-assisted resale cross-listing for streetwear, sneakers, and hype-fashion sellers.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/sello-mark.svg",
+  },
+  openGraph: {
+    images: ["/sello-mark.svg"],
+  },
 };
 
 export default function RootLayout({
@@ -50,6 +60,7 @@ export default function RootLayout({
         />
         {children}
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

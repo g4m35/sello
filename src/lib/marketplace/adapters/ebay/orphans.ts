@@ -31,6 +31,7 @@ type ConnectionRow = {
 
 type ItemRow = {
   id: string;
+  accountId?: string | null;
   sellerId: string;
   brand: string | null;
   condition: ItemCondition;
@@ -51,7 +52,7 @@ type MarketplaceListingRow = {
 export type EbayOrphanPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       include?: unknown;
       select?: unknown;
     }): Promise<ItemRow | null>;
@@ -63,8 +64,13 @@ export type EbayOrphanPrismaLike = {
   marketplaceConnection: {
     findUnique(args: {
       where: {
-        userId_marketplace_environment: {
+        userId_marketplace_environment?: {
           userId: string;
+          marketplace: "ebay";
+          environment: EbayEnvironment;
+        };
+        accountId_marketplace_environment?: {
+          accountId: string;
           marketplace: "ebay";
           environment: EbayEnvironment;
         };
@@ -173,6 +179,7 @@ export type EbayOrphanScanResult = {
 
 export type EbayOrphanInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
 };
 
@@ -357,20 +364,30 @@ async function loadOrphanContext(
 ) {
   const environment = getEbayEnvironment(deps.env);
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     include: { listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } },
   });
   if (!item) {
     throw new AppError("Inventory item not found.", 404);
   }
   const connection = await prisma.marketplaceConnection.findUnique({
-    where: {
-      userId_marketplace_environment: {
-        userId: input.userId,
-        marketplace: "ebay",
-        environment,
-      },
-    },
+    where: input.accountId
+      ? {
+          accountId_marketplace_environment: {
+            accountId: input.accountId,
+            marketplace: "ebay",
+            environment,
+          },
+        }
+      : {
+          userId_marketplace_environment: {
+            userId: input.userId,
+            marketplace: "ebay",
+            environment,
+          },
+        },
   });
   if (!connection) {
     throw new EbayIntegrationError(

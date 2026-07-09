@@ -12,6 +12,20 @@ describe("getAutoCompStatusCopy", () => {
     expect(copy.desc).toContain("Manual comps still work");
   });
 
+  it("does not call manual refresh disabled when only background discovery is off", () => {
+    const copy = getAutoCompStatusCopy(
+      {
+        status: "disabled",
+        autoDiscoveryEnabled: false,
+        paidProvidersEnabled: true,
+        enabledSources: ["apify-ebay-sold"],
+      },
+      { validComps: 0, confidence: "none" },
+    );
+    expect(copy.title).toBe("Manual sold-comp refresh is available");
+    expect(copy.desc).toContain("Refresh comps");
+  });
+
   it("explains when paid sold comps are off but discovery is on", () => {
     const copy = getAutoCompStatusCopy(
       {

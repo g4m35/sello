@@ -3,12 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import type { InventoryStatus, PublishAttemptStatus } from "@/generated/prisma/client";
 
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
-import { executeEbayDelist, type DelistPrismaLike } from "./delist-handler";
+import { StockXIntegrationError, stockxErrorCodes } from "./adapters/stockx/errors";
+import {
+  executeEbayDelist,
+  executeStockXDelist,
+  type DelistPrismaLike,
+} from "./delist-handler";
 
 type FakeListing = {
   id: string;
   inventoryItemId: string;
-  marketplace: "ebay";
+  marketplace: "ebay" | "stockx";
   environment: string;
   status: string;
   sku: string | null;
@@ -21,6 +26,7 @@ type FakeListing = {
 type FakeState = {
   listing: FakeListing | null;
   otherMarketplaceStatuses: string[];
+  itemLookups: Array<Record<string, unknown>>;
   attempts: Array<{
     id: string;
     status: PublishAttemptStatus;
@@ -57,6 +63,7 @@ function createPrisma(opts: {
             ...opts.listing,
           },
     otherMarketplaceStatuses: opts.otherMarketplaceStatuses ?? [],
+    itemLookups: [],
     attempts: [],
     events: [],
     updates: [],
@@ -67,7 +74,10 @@ function createPrisma(opts: {
     _state: state,
     inventoryItem: {
       async findFirst({ where }) {
-        if (where.id !== "item-1" || where.sellerId !== "user-1") return null;
+        state.itemLookups.push(where);
+        if (where.id !== "item-1") return null;
+        if (where.accountId && where.accountId !== "acc-1") return null;
+        if (!where.accountId && where.sellerId !== "user-1") return null;
         return { id: "item-1", status: opts.itemStatus ?? "LISTED" };
       },
       async update({ where, data }) {
@@ -80,7 +90,7 @@ function createPrisma(opts: {
         if (
           state.listing &&
           where.inventoryItemId === state.listing.inventoryItemId &&
-          where.marketplace === "ebay" &&
+          where.marketplace === state.listing.marketplace &&
           where.environment === state.listing.environment
         ) {
           return state.listing;
@@ -202,6 +212,34 @@ describe("executeEbayDelist", () => {
         userId: "user-1",
         inventoryItemId: "item-1",
         offerId: "offer-1",
+      }),
+    );
+  });
+
+  it("uses account scope for item lookup and passes it to the eBay adapter", async () => {
+    const prisma = createPrisma({});
+    const delist = vi.fn().mockResolvedValue({
+      status: "delisted",
+      code: "EBAY_DELIST_SUCCEEDED",
+      marketplace: "ebay",
+      environment: "sandbox",
+      offerId: "offer-1",
+      listingId: "ebay-listing-1",
+    });
+
+    await executeEbayDelist(
+      prisma,
+      { ...input, accountId: "acc-1" },
+      delist,
+    );
+
+    expect(prisma._state.itemLookups[0]).toEqual({ id: "item-1", accountId: "acc-1" });
+    expect(delist).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "user-1",
+        accountId: "acc-1",
+        inventoryItemId: "item-1",
       }),
     );
   });
@@ -343,6 +381,150 @@ describe("executeEbayDelist", () => {
     const delist = vi.fn();
 
     await expect(executeEbayDelist(prisma, input, delist)).rejects.toMatchObject({
+      status: 409,
+    });
+
+    expect(delist).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeStockXDelist", () => {
+  const input = {
+    userId: "user-1",
+    inventoryItemId: "item-1",
+    confirmLiveDelist: true,
+  };
+
+  const stockxListing: Partial<FakeListing> = {
+    marketplace: "stockx",
+    environment: "production",
+    status: "LISTED",
+    externalOfferId: null,
+    externalListingId: "stockx-listing-1",
+  };
+
+  it("requires explicit live StockX delist confirmation", async () => {
+    const prisma = createPrisma({ listing: stockxListing });
+    const delist = vi.fn();
+
+    await expect(
+      executeStockXDelist(
+        prisma,
+        { ...input, confirmLiveDelist: false },
+        delist,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+
+    expect(delist).not.toHaveBeenCalled();
+    expect(prisma._state.attempts).toHaveLength(0);
+  });
+
+  it("creates a running delist attempt before the outbound StockX call", async () => {
+    const prisma = createPrisma({ listing: stockxListing });
+    const delist = vi.fn().mockImplementation(async () => {
+      expect(prisma._state.attempts[0]).toMatchObject({
+        status: "RUNNING",
+        code: stockxErrorCodes.delistStarted,
+        idempotencyKey: "item-1:stockx:production:delist",
+      });
+      return {
+        status: "delisted",
+        code: stockxErrorCodes.delistSucceeded,
+        marketplace: "stockx",
+        environment: "production",
+        listingId: "stockx-listing-1",
+        operationId: "op-1",
+        operationStatus: "PENDING",
+        operationUrl: null,
+      };
+    });
+
+    await executeStockXDelist(prisma, input, delist);
+
+    expect(delist).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "user-1",
+        inventoryItemId: "item-1",
+        listingId: "stockx-listing-1",
+      }),
+    );
+  });
+
+  it("marks StockX listing DELISTED only after StockX confirms deactivate", async () => {
+    const prisma = createPrisma({ listing: stockxListing });
+
+    const result = await executeStockXDelist(
+      prisma,
+      input,
+      vi.fn().mockResolvedValue({
+        status: "delisted",
+        code: stockxErrorCodes.delistSucceeded,
+        marketplace: "stockx",
+        environment: "production",
+        listingId: "stockx-listing-1",
+        operationId: "op-1",
+        operationStatus: "PENDING",
+        operationUrl: null,
+      }),
+    );
+
+    expect(result.status).toBe("delisted");
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "SUCCEEDED",
+      code: stockxErrorCodes.delistSucceeded,
+    });
+    expect(prisma._state.updates.at(-1)?.data).toMatchObject({
+      status: "DELISTED",
+      lastError: null,
+    });
+    expect(prisma._state.inventoryUpdates).toEqual([
+      { where: { id: "item-1" }, data: { status: "DELISTED" } },
+    ]);
+    expect(prisma._state.events.map((e) => e.kind)).toEqual(
+      expect.arrayContaining(["delist_started", "stockx_listing_deactivated"]),
+    );
+  });
+
+  it("persists failure and leaves the StockX listing published when deactivate fails", async () => {
+    const prisma = createPrisma({ listing: stockxListing });
+
+    await expect(
+      executeStockXDelist(
+        prisma,
+        input,
+        vi.fn().mockRejectedValue(
+          new StockXIntegrationError(
+            stockxErrorCodes.delistFailed,
+            "StockX could not end this listing.",
+            502,
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: stockxErrorCodes.delistFailed });
+
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "FAILED",
+      code: stockxErrorCodes.delistFailed,
+      reason: "StockX could not end this listing.",
+    });
+    expect(prisma._state.listing?.status).toBe("LISTED");
+    expect(prisma._state.listing?.lastError).toBe("StockX could not end this listing.");
+    expect(prisma._state.events.some((e) => e.kind === "delist_failed")).toBe(true);
+  });
+
+  it("blocks duplicate StockX delist while a delist attempt is running", async () => {
+    const prisma = createPrisma({
+      listing: {
+        ...stockxListing,
+        publishAttempts: [
+          { status: "RUNNING", code: stockxErrorCodes.delistStarted },
+        ],
+      },
+    });
+    const delist = vi.fn();
+
+    await expect(executeStockXDelist(prisma, input, delist)).rejects.toMatchObject({
       status: 409,
     });
 

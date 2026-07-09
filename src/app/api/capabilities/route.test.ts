@@ -2,11 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
+}));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: mocks.getActiveAccount,
+}));
+vi.mock("@/lib/prisma", () => ({
+  getPrisma: vi.fn(() => ({ prisma: true })),
 }));
 
 import { AppError } from "@/lib/errors";
@@ -19,6 +26,11 @@ describe("GET /api/capabilities", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-1",
+      ownerUserId: "user-1",
+      plan: "pro",
+    });
   });
 
   it("requires authentication", async () => {
@@ -69,12 +81,40 @@ describe("GET /api/capabilities", () => {
         etsyOrders:
           "Etsy order sync is currently enabled for selected alpha accounts.",
       },
+      plan: "pro",
+      limits: {
+        aiListingsPerMonth: 125,
+        autopublishesPerMonth: 125,
+        compRefreshesPerMonth: 100,
+        marketplaceConnections: 3,
+        bulkBatchSize: 25,
+        teamSeats: 1,
+      },
     });
 
     const serialized = JSON.stringify(payload).toLowerCase();
     expect(serialized).not.toContain("owner@example.com");
     expect(serialized).not.toContain("beta@example.com");
     expect(serialized).not.toContain("emails");
-    expect(Object.keys(payload)).toEqual(["access", "copy"]);
+    expect(Object.keys(payload)).toEqual(["access", "copy", "plan", "limits"]);
+  });
+
+  it("returns kingpin limits for an admin even when the stored account is free", async () => {
+    vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "owner@example.com",
+    });
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-1",
+      ownerUserId: "user-1",
+      plan: "free",
+    });
+
+    const payload = await (await GET(request())).json();
+
+    expect(payload.plan).toBe("kingpin");
+    expect(payload.limits.compRefreshesPerMonth).toBe(750);
+    expect(payload.limits.bulkBatchSize).toBe(250);
   });
 });

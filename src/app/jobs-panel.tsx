@@ -17,7 +17,12 @@ type JobRow = {
 type AdapterRow = {
   marketplace: string;
   displayName: string;
-  capabilities: { draftPreview: boolean; publish: boolean; inventorySync: boolean };
+  capabilities: {
+    draftPreview: boolean;
+    publish: boolean;
+    inventorySync: boolean;
+    delist?: boolean;
+  };
 };
 
 type JobsResponse = {
@@ -160,9 +165,11 @@ export default function JobsPanel({ accessToken }: { accessToken: string }) {
               <p className="font-medium">{adapter.displayName}</p>
               <p className="mt-1 text-xs text-neutral-600">
                 Draft preview: yes · Publish:{" "}
-                {adapter.capabilities.publish ? "yes" : "not implemented"} ·
+                {adapter.capabilities.publish ? "yes" : "not currently available"} ·
                 Inventory sync:{" "}
-                {adapter.capabilities.inventorySync ? "yes" : "not implemented"}
+                {adapter.capabilities.inventorySync ? "yes" : "not currently available"} ·
+                Delist:{" "}
+                {adapter.capabilities.delist ? "yes" : "not currently available"}
               </p>
             </div>
           ))}

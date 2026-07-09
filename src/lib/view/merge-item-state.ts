@@ -21,5 +21,6 @@ export function mergeSavedItemState(
     lifecycleState: saved.lifecycleState,
     channels: saved.channels,
     priceCents: saved.priceCents,
+    stockxMatch: saved.stockxMatch,
   };
 }

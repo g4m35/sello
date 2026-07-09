@@ -2,14 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
+  getActiveAccount: vi.fn(),
   requireSupabaseUser: vi.fn(),
   executeEbayDelist: vi.fn(),
+  executeStockXDelist: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
+}));
+
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: mocks.getActiveAccount,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -20,7 +26,11 @@ vi.mock("@/lib/marketplace/delist-handler", async (importOriginal) => {
   const actual = await importOriginal<
     typeof import("@/lib/marketplace/delist-handler")
   >();
-  return { ...actual, executeEbayDelist: mocks.executeEbayDelist };
+  return {
+    ...actual,
+    executeEbayDelist: mocks.executeEbayDelist,
+    executeStockXDelist: mocks.executeStockXDelist,
+  };
 });
 
 import { POST } from "./route";
@@ -29,6 +39,11 @@ describe("delist API auth boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("EBAY_DELIST_EMAILS", "allowed@example.com");
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-1",
+      ownerUserId: "user-1",
+      plan: "free",
+    });
   });
 
   afterEach(() => {
@@ -54,6 +69,7 @@ describe("delist API auth boundaries", () => {
         method: "POST",
         body: JSON.stringify({
           inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
           confirmLiveDelist: true,
         }),
       }),
@@ -69,6 +85,7 @@ describe("delist API auth boundaries", () => {
       },
     });
     expect(mocks.executeEbayDelist).not.toHaveBeenCalled();
+    expect(mocks.executeStockXDelist).not.toHaveBeenCalled();
     expect(mocks.getPrisma).not.toHaveBeenCalled();
     expect(prismaWrite).not.toHaveBeenCalled();
     expect(outboundAdapter).not.toHaveBeenCalled();
@@ -103,5 +120,46 @@ describe("delist API auth boundaries", () => {
     expect(body).not.toContain("tok_live_secret");
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain("tok_live_secret");
     consoleError.mockRestore();
+  });
+
+  it("routes StockX delist without the eBay alpha allowlist", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "not-allowed@example.com",
+    });
+    mocks.getPrisma.mockReturnValue({});
+    mocks.executeStockXDelist.mockResolvedValue({
+      ok: true,
+      httpStatus: 200,
+      status: "delisted",
+      code: "STOCKX_DELIST_SUCCEEDED",
+      marketplace: "stockx",
+      environment: "production",
+      listingId: "stockx-listing-1",
+      marketplaceListingId: "listing-1",
+      publishAttemptId: "attempt-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/delist", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "stockx",
+          confirmLiveDelist: true,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.executeEbayDelist).not.toHaveBeenCalled();
+    expect(mocks.executeStockXDelist).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "user-1",
+        inventoryItemId: "11111111-1111-4111-8111-111111111111",
+        confirmLiveDelist: true,
+      }),
+    );
   });
 });

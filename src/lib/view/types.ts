@@ -27,6 +27,7 @@ export type ChannelStateView = {
   sku: string | null;
   externalOfferId: string | null;
   externalListingId: string | null;
+  externalUrl?: string | null;
   lastError: string | null;
 };
 
@@ -56,6 +57,7 @@ export type ItemView = {
   /** Number of blocking readiness checks still missing (0 when ready). */
   missingCount: number;
   photoCount: number;
+  coverImage?: string | null;
   updatedAt: string;
   draftId: string | null;
   channels: ChannelStateView[];
@@ -109,6 +111,25 @@ export type ReadinessView = {
   checks: ReadinessCheckView[];
 };
 
+export type StockXMatchView = {
+  status: "not_matched" | "matched" | "needs_variant" | "market_data_unavailable";
+  productId: string | null;
+  variantId: string | null;
+  title: string | null;
+  brand: string | null;
+  model: string | null;
+  style: string | null;
+  colorway: string | null;
+  color: string | null;
+  size: string | null;
+  image: string | null;
+  category: string | null;
+  url: string | null;
+  matchSource: string | null;
+  matchConfidence: number | null;
+  marketDataCheckedAt: string | null;
+};
+
 export type ItemDetailView = ItemView & {
   sku: string | null;
   description: string;
@@ -122,6 +143,7 @@ export type ItemDetailView = ItemView & {
   ebayQuantity: number;
   /** Seller-saved eBay item specifics (marketplaceDrafts.ebay.aspects). */
   ebayAspects: Record<string, string>;
+  stockxMatch: StockXMatchView;
   selectedMarketplaces: string[];
   readiness: ReadinessView;
   attempts: AttemptView[];
@@ -131,7 +153,12 @@ export type ItemDetailView = ItemView & {
 export type ChannelView = {
   marketplace: string;
   name: string;
-  capabilities: { draftPreview: boolean; publish: boolean; inventorySync: boolean };
+  capabilities: {
+    draftPreview: boolean;
+    publish: boolean;
+    inventorySync: boolean;
+    delist?: boolean;
+  };
   listedCount: number;
 };
 

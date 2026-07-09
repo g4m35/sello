@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import { isAdminUser } from "@/lib/auth/admin";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import {
   compsRefreshCooldownMs,
   evaluateRefreshCooldown,
@@ -30,16 +32,17 @@ export async function GET(request: Request) {
     const paidProvidersEnabled =
       isCompsPaidProvidersEnabled() && featureAccessForUser(user).paidComps;
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const requestedItemId = new URL(request.url).searchParams.get("inventoryItemId");
 
     const inventoryItem = requestedItemId
       ? await prisma.inventoryItem.findFirst({
-          where: { id: requestedItemId, sellerId: user.id },
+          where: { id: requestedItemId, ...accountScope(account) },
           select: { id: true },
         })
       : await prisma.inventoryItem.findFirst({
-          where: { sellerId: user.id },
+          where: accountScope(account),
           orderBy: { updatedAt: "desc" },
           select: { id: true },
         });
@@ -131,9 +134,10 @@ export async function POST(request: Request) {
       await request.json(),
     );
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const inventoryItem = await prisma.inventoryItem.findFirst({
-      where: { id: inventoryItemId, sellerId: user.id },
+      where: { id: inventoryItemId, ...accountScope(account) },
       select: { id: true },
     });
 

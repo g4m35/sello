@@ -31,7 +31,7 @@ export const ListingDraftUpdateSchema = z
       })
       .strict()
       .optional(),
-    selectedMarketplaces: z.array(MarketplaceSchema).max(5),
+    selectedMarketplaces: z.array(MarketplaceSchema).max(8),
     // Optional so pre-existing clients that do not send them keep working;
     // when omitted the stored values are left untouched.
     measurements: z.array(MeasurementSchema).max(12).optional(),

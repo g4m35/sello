@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
 import { getPrisma } from "@/lib/prisma";
 import { resolveEtsyCapabilities } from "@/lib/marketplace/adapters/etsy/capabilities";
 import { isEtsyApiEnabled } from "@/lib/marketplace/adapters/etsy/config";
@@ -19,10 +20,12 @@ export async function GET(request: Request) {
 
     let connected = false;
     if (isEtsyApiEnabled()) {
-      const connection = await getPrisma().marketplaceConnection.findUnique({
+      const prisma = getPrisma();
+      const account = await getActiveAccount(user.id, prisma);
+      const connection = await prisma.marketplaceConnection.findUnique({
         where: {
-          userId_marketplace_environment: {
-            userId: user.id,
+          accountId_marketplace_environment: {
+            accountId: account.id,
             marketplace: "etsy",
             environment: ETSY_ENVIRONMENT,
           },

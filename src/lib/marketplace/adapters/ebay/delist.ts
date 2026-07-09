@@ -18,15 +18,20 @@ type ConnectionRow = {
 export type EbayDelistPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       select?: { id: true };
     }): Promise<{ id: string } | null>;
   };
   marketplaceConnection: {
     findUnique(args: {
       where: {
-        userId_marketplace_environment: {
+        userId_marketplace_environment?: {
           userId: string;
+          marketplace: "ebay";
+          environment: EbayEnvironment;
+        };
+        accountId_marketplace_environment?: {
+          accountId: string;
           marketplace: "ebay";
           environment: EbayEnvironment;
         };
@@ -59,6 +64,7 @@ export type EbayDelistDeps = {
 
 export type EbayDelistInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
   offerId: string;
   listingId: string | null;
@@ -88,7 +94,9 @@ export async function delistEbayListing(
 ): Promise<EbayDelistResult> {
   const environment = getEbayEnvironment(deps.env);
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     select: { id: true },
   });
 
@@ -97,13 +105,21 @@ export async function delistEbayListing(
   }
 
   const connection = await prisma.marketplaceConnection.findUnique({
-    where: {
-      userId_marketplace_environment: {
-        userId: input.userId,
-        marketplace: "ebay",
-        environment,
-      },
-    },
+    where: input.accountId
+      ? {
+          accountId_marketplace_environment: {
+            accountId: input.accountId,
+            marketplace: "ebay",
+            environment,
+          },
+        }
+      : {
+          userId_marketplace_environment: {
+            userId: input.userId,
+            marketplace: "ebay",
+            environment,
+          },
+        },
   });
 
   if (!connection) {

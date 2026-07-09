@@ -3,7 +3,7 @@ import { z } from "zod";
 export const DelistRequestSchema = z
   .object({
     inventoryItemId: z.uuid(),
-    marketplace: z.literal("ebay"),
+    marketplace: z.enum(["ebay", "stockx"]),
     confirmLiveDelist: z.literal(true),
   })
   .strict();

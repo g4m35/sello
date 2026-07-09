@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
 import { GeminiListingDraftSchema } from "@/lib/ai/listing-draft";
+import { getActiveAccount } from "@/lib/billing/account";
+import { inventoryChildScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { ListingDraftUpdateSchema } from "@/lib/listing-draft-update";
 import { evaluateDraftReadiness } from "@/lib/listing/draft-readiness";
@@ -21,13 +23,12 @@ export async function PATCH(
     const { draftId } = await context.params;
     const update = ListingDraftUpdateSchema.parse(await request.json());
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const existingDraft = await prisma.listingDraft.findFirst({
       where: {
         id: draftId,
-        inventoryItem: {
-          sellerId: user.id,
-        },
+        ...inventoryChildScope(account),
       },
       select: {
         id: true,
@@ -124,7 +125,7 @@ export async function PATCH(
     // best-effort: if it fails the client just refreshes on its next load.
     let item = null;
     try {
-      item = await loadItemDetailState(existingDraft.inventoryItemId, user.id);
+      item = await loadItemDetailState(existingDraft.inventoryItemId, account);
     } catch {
       item = null;
     }
@@ -180,6 +181,7 @@ export async function POST(
     const body = (await request.json()) as { action?: unknown };
     const action = body.action;
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     if (action !== "reset" && action !== "duplicate" && action !== "approve") {
       throw new AppError("Unsupported draft action.", 400);
@@ -188,9 +190,7 @@ export async function POST(
     const existingDraft = await prisma.listingDraft.findFirst({
       where: {
         id: draftId,
-        inventoryItem: {
-          sellerId: user.id,
-        },
+        ...inventoryChildScope(account),
       },
       include: {
         inventoryItem: {

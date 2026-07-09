@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   serverGetUser: vi.fn(),
   bearerGetUser: vi.fn(),
+  acceptInvite: vi.fn(),
   cookieStore: { getAll: vi.fn(() => []), set: vi.fn() },
 }));
 
@@ -21,9 +22,12 @@ vi.mock("@supabase/supabase-js", () => ({
     auth: { getUser: mocks.bearerGetUser },
   })),
 }));
+vi.mock("@/lib/billing/membership", () => ({
+  acceptInvite: mocks.acceptInvite,
+}));
 
 import { AppError } from "../errors";
-import { requireSupabaseUserFromRequestOrCookies } from "./server";
+import { requireSupabaseUser, requireSupabaseUserFromRequestOrCookies } from "./server";
 
 const noSession = { data: { user: null }, error: { message: "no session" } };
 
@@ -33,6 +37,7 @@ describe("requireSupabaseUserFromRequestOrCookies", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key";
     mocks.cookieStore.getAll.mockReturnValue([]);
+    mocks.acceptInvite.mockResolvedValue(null);
   });
 
   it("resolves the user from the cookie session", async () => {
@@ -106,6 +111,23 @@ describe("requireSupabaseUserFromRequestOrCookies", () => {
 
     expect(user.id).toBe("bearer-user");
     expect(mocks.bearerGetUser).toHaveBeenCalledWith("abc.def");
+  });
+
+  it("accepts a pending invite after bearer login when the verified user has an email", async () => {
+    mocks.serverGetUser.mockResolvedValue(noSession);
+    mocks.bearerGetUser.mockResolvedValue({
+      data: { user: { id: "invitee-1", email: "Invitee@Example.com" } },
+      error: null,
+    });
+
+    const user = await requireSupabaseUser(
+      new Request("http://localhost/api/listings", {
+        headers: { authorization: "Bearer invite-token" },
+      }),
+    );
+
+    expect(user.id).toBe("invitee-1");
+    expect(mocks.acceptInvite).toHaveBeenCalledWith("invitee-1", "Invitee@Example.com");
   });
 
   it("rejects with 401 when neither cookie nor bearer auth is present", async () => {

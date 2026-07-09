@@ -11,6 +11,13 @@ vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUserFromRequestOrCookies:
     mocks.requireSupabaseUserFromRequestOrCookies,
 }));
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
+}));
+vi.mock("@/lib/billing/connections", () => ({
+  assertCanManageMarketplaceConnections: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({ marketplaceConnection: { deleteMany: mocks.deleteMany } }),
 }));
@@ -23,14 +30,14 @@ describe("Etsy disconnect route", () => {
     mocks.deleteMany.mockResolvedValue({ count: 1 });
   });
 
-  it("deletes only the signed-in seller's Etsy connection", async () => {
+  it("deletes only the active account's Etsy connection", async () => {
     mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({ id: "u1" });
     const response = await POST(
       new Request("http://localhost/api/marketplaces/etsy/disconnect", { method: "POST" }),
     );
     expect(response.status).toBe(200);
     expect(mocks.deleteMany).toHaveBeenCalledWith({
-      where: { userId: "u1", marketplace: "etsy", environment: "production" },
+      where: { accountId: "acc-1", marketplace: "etsy", environment: "production" },
     });
   });
 

@@ -6,15 +6,24 @@ import {
 } from "./adapter";
 
 describe("marketplace adapters (scaffolding only)", () => {
-  it("registers exactly the five supported marketplaces", () => {
+  it("registers exactly the supported marketplaces", () => {
     const marketplaces = listMarketplaceAdapters()
       .map((adapter) => adapter.marketplace)
       .sort();
 
-    expect(marketplaces).toEqual(["depop", "ebay", "etsy", "grailed", "poshmark"]);
+    expect(marketplaces).toEqual([
+      "depop",
+      "ebay",
+      "etsy",
+      "grailed",
+      "poshmark",
+      "stockx",
+      "tiktok_shop",
+      "vinted",
+    ]);
   });
 
-  it("advertises draft preview but not publish or sync yet", () => {
+  it("the generic adapter advertises draft preview but never fakes publish or sync", () => {
     for (const adapter of listMarketplaceAdapters()) {
       expect(adapter.capabilities.draftPreview).toBe(true);
       expect(adapter.capabilities.publish).toBe(false);

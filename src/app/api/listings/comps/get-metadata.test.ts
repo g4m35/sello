@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" }),
+}));
 
 import { GET } from "./route";
 
@@ -54,7 +57,7 @@ describe("comps GET metadata", () => {
     // A run that just happened is within the default cooldown window.
     expect(payload.discovery.cooldownSecondsRemaining).toBeGreaterThan(0);
     expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
-      where: { id: "item-1", sellerId: "user-1" },
+      where: { id: "item-1", accountId: "acc-1" },
       select: { id: true },
     });
   });

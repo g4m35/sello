@@ -15,6 +15,7 @@ export type BulkPublishModalProps = {
   open: boolean;
   onClose: () => void;
   selectionCount: number;
+  batchLimit: number;
   livePublishAllowed: boolean;
   alphaCopy: string;
   phase: BulkPublishPhase;
@@ -26,9 +27,29 @@ export type BulkPublishModalProps = {
   onRetry?: (itemIds: string[]) => void;
   error?: string | null;
   itemTitles?: Record<string, string>;
+  marketplace?: "ebay" | "stockx";
 };
 
-const LIVE_CONFIRM_TEXT = "I understand this will create live eBay listings.";
+const MARKETPLACE_COPY = {
+  ebay: {
+    name: "eBay",
+    confirm: "I understand this will create live eBay listings.",
+    titleLive: "Publish selected to eBay",
+    titlePreview: "Preview selected for eBay",
+    alreadyListed: "Already listed on eBay",
+    readyMeta: "Ready to publish",
+    liveButton: (count: number) => `Publish ${count} to eBay`,
+  },
+  stockx: {
+    name: "StockX",
+    confirm: "I understand this will create live StockX listings.",
+    titleLive: "Publish selected to StockX",
+    titlePreview: "Preview selected for StockX",
+    alreadyListed: "Already has a StockX listing",
+    readyMeta: "Exact product and size ready",
+    liveButton: (count: number) => `Publish ${count} to StockX`,
+  },
+} as const;
 
 const PREFLIGHT_LABEL: Record<BulkPreflightItem["status"], string> = {
   ready: "Ready",
@@ -37,10 +58,14 @@ const PREFLIGHT_LABEL: Record<BulkPreflightItem["status"], string> = {
   rejected: "Unavailable",
 };
 
-const PREFLIGHT_META: Record<BulkPreflightItem["status"], string> = {
-  ready: "Ready to publish",
+function preflightMeta(status: BulkPreflightItem["status"], marketplace: "ebay" | "stockx") {
+  if (status === "ready") return MARKETPLACE_COPY[marketplace].readyMeta;
+  if (status === "skipped") return MARKETPLACE_COPY[marketplace].alreadyListed;
+  return PREFLIGHT_META[status];
+}
+
+const PREFLIGHT_META: Record<Exclude<BulkPreflightItem["status"], "ready" | "skipped">, string> = {
   needs_details: "Missing required details",
-  skipped: "Already listed on eBay",
   rejected: "Not available",
 };
 
@@ -67,6 +92,7 @@ export function BulkPublishModal({
   open,
   onClose,
   selectionCount,
+  batchLimit,
   livePublishAllowed,
   alphaCopy,
   phase,
@@ -78,7 +104,9 @@ export function BulkPublishModal({
   onRetry,
   error,
   itemTitles,
+  marketplace = "ebay",
 }: BulkPublishModalProps) {
+  const copy = MARKETPLACE_COPY[marketplace];
   const title = (id: string) => itemTitles?.[id] ?? "Selected item";
   const closeAllowed = phase !== "running";
   const readyCount = preflight?.readyCount ?? 0;
@@ -88,7 +116,7 @@ export function BulkPublishModal({
       <div className="modal__head">
         <div>
           <div className="modal__title">
-            {livePublishAllowed ? "Publish selected to eBay" : "Preview selected for eBay"}
+            {livePublishAllowed ? copy.titleLive : copy.titlePreview}
           </div>
           <div className="modal__sub">
             {selectionCount} selected item{selectionCount === 1 ? "" : "s"}
@@ -134,7 +162,7 @@ export function BulkPublishModal({
                     <div className="mp-row__meta">
                       {row.status === "needs_details" && row.missing?.length
                         ? `Needs: ${row.missing.join(", ")}`
-                        : PREFLIGHT_META[row.status]}
+                        : preflightMeta(row.status, marketplace)}
                     </div>
                   </div>
                   <Badge outline label={PREFLIGHT_LABEL[row.status]} />
@@ -147,7 +175,7 @@ export function BulkPublishModal({
                 style={{ gap: 8, alignItems: "center", cursor: "pointer" }}
               >
                 <Check checked={confirmLive} onChange={() => onConfirmChange(!confirmLive)} />
-                <span className="t-small">{LIVE_CONFIRM_TEXT}</span>
+                <span className="t-small">{copy.confirm}</span>
               </label>
             )}
           </>
@@ -187,7 +215,7 @@ export function BulkPublishModal({
         <div className="t-small">
           {phase === "result"
             ? "Results stay here until you close."
-            : `${selectionCount} selected`}
+            : `${selectionCount} selected · Plan limit ${batchLimit}`}
         </div>
         <div className="row">
           <Btn variant="ghost" onClick={onClose} disabled={!closeAllowed}>
@@ -199,7 +227,7 @@ export function BulkPublishModal({
               disabled={!confirmLive || readyCount === 0}
               onClick={onExecute}
             >
-              Publish {readyCount} to eBay
+              {copy.liveButton(readyCount)}
             </Btn>
           )}
         </div>

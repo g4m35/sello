@@ -3,15 +3,33 @@ import IORedis from "ioredis";
 import { z } from "zod";
 
 import { MarketplaceSchema } from "@/lib/ai/listing-draft";
+import { isPublishQueueEligible } from "@/lib/marketplace/registry";
 import { getRequiredEnv } from "@/lib/errors";
+
+// Fail closed at the enqueue boundary: the background queue accepts only
+// channels whose required approval state is represented in the job payload.
+const PublishableMarketplaceSchema = MarketplaceSchema.refine(
+  isPublishQueueEligible,
+  { message: "Marketplace is not eligible for autonomous publishing" },
+);
 
 export const PublishListingJobSchema = z
   .object({
     inventoryItemId: z.string().uuid(),
     listingDraftId: z.string().uuid(),
-    marketplaces: z.array(MarketplaceSchema).min(1).max(5),
+    marketplaces: z.array(PublishableMarketplaceSchema).min(1).max(6),
+    confirmLivePublish: z.literal(true).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) =>
+      !payload.marketplaces.includes("stockx") ||
+      payload.confirmLivePublish === true,
+    {
+      message: "StockX publish jobs require explicit live publish confirmation",
+      path: ["confirmLivePublish"],
+    },
+  );
 
 export const InventorySyncJobSchema = z
   .object({

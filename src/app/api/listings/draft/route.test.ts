@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   runCompFetch: vi.fn(),
   uploadListingPhotos: vi.fn(),
+  getActiveAccount: vi.fn(),
+  assertWithinQuota: vi.fn(),
+  incrementUsage: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,6 +21,11 @@ vi.mock("@/lib/ai/gemini", () => ({
 }));
 vi.mock("@/lib/comps/fetch", () => ({ runCompFetch: mocks.runCompFetch }));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/billing/usage", () => ({
+  assertWithinQuota: mocks.assertWithinQuota,
+  incrementUsage: mocks.incrementUsage,
+}));
 vi.mock("@/lib/storage/listing-photos", () => ({
   prepareListingPhotos: mocks.prepareListingPhotos,
   uploadListingPhotos: mocks.uploadListingPhotos,
@@ -95,6 +103,9 @@ describe("listing draft API auth boundaries", () => {
     async (email, paidProvidersAllowed) => {
       vi.stubEnv("PAID_COMPS_EMAILS", "allowed@example.com");
       mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email });
+      mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+      mocks.assertWithinQuota.mockResolvedValue(undefined);
+      mocks.incrementUsage.mockResolvedValue(undefined);
       mocks.prepareListingPhotos.mockResolvedValue([]);
       mocks.uploadListingPhotos.mockResolvedValue([]);
       mocks.generateListingDraftWithGemini.mockResolvedValue({
@@ -157,6 +168,9 @@ describe("listing draft API auth boundaries", () => {
 
   it("defaults quantity to 1 and infers a high-confidence eBay category on the new draft", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    mocks.assertWithinQuota.mockResolvedValue(undefined);
+    mocks.incrementUsage.mockResolvedValue(undefined);
     mocks.prepareListingPhotos.mockResolvedValue([]);
     mocks.uploadListingPhotos.mockResolvedValue([]);
     mocks.generateListingDraftWithGemini.mockResolvedValue({
@@ -211,5 +225,34 @@ describe("listing draft API auth boundaries", () => {
     const data = listingDraftCreate.mock.calls[0][0].data;
     expect(data.marketplaceDrafts.ebay.quantity).toBe(1);
     expect(data.marketplaceDrafts.ebay.categoryId).toBe("15709");
+  });
+});
+
+describe("listing draft AI quota enforcement", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+  });
+
+  it("returns 402 and does not call Gemini when over the monthly AI-listing quota", async () => {
+    mocks.assertWithinQuota.mockRejectedValue(
+      new AppError(
+        "You have used all of your AI listings for this billing period. Upgrade your plan for more.",
+        402,
+        "QUOTA_EXCEEDED_AI_LISTING",
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/draft", {
+        method: "POST",
+        body: new FormData(),
+      }),
+    );
+
+    expect(response.status).toBe(402);
+    expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
+    expect(mocks.incrementUsage).not.toHaveBeenCalled();
   });
 });

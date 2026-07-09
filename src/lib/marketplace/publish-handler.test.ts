@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { InventoryStatus } from "@/generated/prisma/client";
 
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
+import { stockxErrorCodes } from "./adapters/stockx/errors";
 import {
   executePublish,
   publishingMigrationMissingCode,
@@ -153,20 +154,19 @@ describe("executePublish", () => {
     );
   });
 
-  it("blocks an unapproved item with a 409 typed error and writes nothing", async () => {
+  it("publishes a complete draft without requiring an approved/ready status", async () => {
     const prisma = createFakePrisma({ itemStatus: "DRAFT_READY" });
 
-    await expect(
-      executePublish(prisma, {
-        userId: "user-1",
-        inventoryItemId: "item-1",
-        marketplace: "ebay",
-      }),
-    ).rejects.toMatchObject({ status: 409 });
+    // No "mark ready" step: a DRAFT_READY item proceeds straight to the publish
+    // flow (readiness is enforced by the adapter, not a status gate).
+    const result = await executePublish(prisma, {
+      userId: "user-1",
+      inventoryItemId: "item-1",
+      marketplace: "ebay",
+    });
 
-    expect(prisma._state.listings.size).toBe(0);
-    expect(prisma._state.attempts).toHaveLength(0);
-    expect(prisma._state.events).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    expect(prisma._state.listings.size).toBe(1);
   });
 
   it("blocks a sold item with a 409 typed error", async () => {
@@ -273,6 +273,13 @@ type EbayFakeState = {
   updates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   inventoryUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   listings: Map<string, EbayFakeListing>;
+  syncJobs: Array<{
+    id: string;
+    type: string;
+    idempotencyKey: string;
+    payload: unknown;
+    runAfter: Date;
+  }>;
 };
 
 function createEbayFakePrisma(opts?: {
@@ -287,6 +294,7 @@ function createEbayFakePrisma(opts?: {
     updates: [],
     inventoryUpdates: [],
     listings: new Map(),
+    syncJobs: [],
   };
 
   const prisma = {
@@ -448,6 +456,34 @@ function createEbayFakePrisma(opts?: {
       }) {
         state.events.push({ kind: data.kind, data: data.data });
         return { id: `event-${state.events.length}` };
+      },
+    },
+    syncJob: {
+      async upsert({
+        where,
+        create,
+      }: {
+        where: { idempotencyKey: string };
+        create: {
+          type: string;
+          idempotencyKey: string;
+          payload: unknown;
+          runAfter: Date;
+        };
+      }) {
+        const existing = state.syncJobs.find(
+          (job) => job.idempotencyKey === where.idempotencyKey,
+        );
+        if (existing) return { id: existing.id };
+        const job = {
+          id: `sync-${state.syncJobs.length + 1}`,
+          type: create.type,
+          idempotencyKey: create.idempotencyKey,
+          payload: create.payload,
+          runAfter: create.runAfter,
+        };
+        state.syncJobs.push(job);
+        return { id: job.id };
       },
     },
   };
@@ -984,5 +1020,113 @@ describe("executePublish — eBay dispatch", () => {
         "ebay_publish_step_failed",
       ]),
     );
+  });
+});
+
+describe("executePublish — StockX dispatch", () => {
+  const input = {
+    userId: "user-1",
+    inventoryItemId: "item-1",
+    marketplace: "stockx" as const,
+    confirmLivePublish: true,
+  };
+
+  it("creates a running StockX attempt, submits the listing, and stores the StockX listing id", async () => {
+    const prisma = createEbayFakePrisma();
+    const stockxPublish = vi.fn().mockResolvedValue({
+      status: "submitted",
+      code: stockxErrorCodes.listingSubmitted,
+      marketplace: "stockx",
+      environment: "production",
+      listingId: "stockx-listing-1",
+      operationId: "operation-1",
+      operationStatus: "PENDING",
+      operationUrl:
+        "https://api.stockx.com/v2/selling/listings/stockx-listing-1/operations/operation-1",
+    });
+
+    const result = await executePublish(
+      prisma,
+      input,
+      undefined,
+      undefined,
+      stockxPublish,
+    );
+
+    expect(result.httpStatus).toBe(202);
+    expect(result.outcome.status).toBe("submitted");
+    expect(result.listingId).toBe("stockx-listing-1");
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "RUNNING",
+      code: stockxErrorCodes.listingSubmitted,
+      idempotencyKey: "item-1:stockx:production",
+    });
+    expect(prisma._state.updates[0].data).toMatchObject({
+      status: "LISTING",
+      externalListingId: "stockx-listing-1",
+    });
+    expect(prisma._state.events.map((event) => event.kind)).toEqual(
+      expect.arrayContaining(["publish_started", "stockx_listing_submitted"]),
+    );
+    expect(prisma._state.syncJobs).toHaveLength(1);
+    expect(prisma._state.syncJobs[0]).toMatchObject({
+      type: "detect_status",
+      idempotencyKey:
+        "item-1:stockx:production:detect_status:operation-1",
+    });
+    expect(prisma._state.syncJobs[0].payload).toMatchObject({
+      marketplace: "stockx",
+      listingId: "stockx-listing-1",
+      operationId: "operation-1",
+      operationStatus: "PENDING",
+    });
+  });
+
+  it("records StockX listing disabled without making the listing live", async () => {
+    const prisma = createEbayFakePrisma();
+    const stockxPublish = vi.fn().mockResolvedValue({
+      status: "not_enabled",
+      code: stockxErrorCodes.listingNotEnabled,
+      marketplace: "stockx",
+      environment: "production",
+      message: "StockX listing creation is disabled.",
+    });
+
+    const result = await executePublish(
+      prisma,
+      input,
+      undefined,
+      undefined,
+      stockxPublish,
+    );
+
+    expect(result.httpStatus).toBe(503);
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "NOT_IMPLEMENTED",
+      code: stockxErrorCodes.listingNotEnabled,
+    });
+    expect(prisma._state.updates).toHaveLength(0);
+  });
+
+  it("blocks duplicate StockX publish when a listing id already exists", async () => {
+    const prisma = createEbayFakePrisma({
+      existingListing: {
+        id: "listing-1",
+        status: "LISTING",
+        externalListingId: "stockx-listing-1",
+        externalOfferId: null,
+        sku: null,
+      },
+    });
+    const stockxPublish = vi.fn();
+
+    await expect(
+      executePublish(prisma, input, undefined, undefined, stockxPublish),
+    ).rejects.toMatchObject({
+      code: stockxErrorCodes.alreadyPublished,
+      status: 409,
+    });
+
+    expect(stockxPublish).not.toHaveBeenCalled();
   });
 });

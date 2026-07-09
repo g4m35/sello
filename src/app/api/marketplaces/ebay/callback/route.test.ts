@@ -15,6 +15,17 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
 }));
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({
+    id: "acc-1",
+    ownerUserId: "11111111-1111-4111-8111-111111111111",
+    plan: "free",
+  }),
+}));
+vi.mock("@/lib/billing/connections", () => ({
+  assertCanManageMarketplaceConnections: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUserFromRequestOrCookies:
@@ -176,8 +187,11 @@ describe("eBay callback route", () => {
     );
     expect(JSON.stringify(upsert.mock.calls)).not.toContain("raw-access-token");
     expect(JSON.stringify(upsert.mock.calls)).not.toContain("raw-refresh-token");
-    const data = upsert.mock.calls[0][0].create;
+    const args = upsert.mock.calls[0][0];
+    expect(args.where.accountId_marketplace_environment.accountId).toBe("acc-1");
+    const data = args.create;
     expect(data.userId).toBe(userId);
+    expect(data.accountId).toBe("acc-1");
     expect(decryptEbayToken(data.accessTokenEnc, key)).toBe("raw-access-token");
     expect(decryptEbayToken(data.refreshTokenEnc, key)).toBe("raw-refresh-token");
   });

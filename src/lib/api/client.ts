@@ -1,5 +1,6 @@
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
+import type { PlanId, PlanLimits } from "@/lib/billing/plans";
 import type {
   BulkExecutionResult,
   BulkPreflightResult,
@@ -9,6 +10,7 @@ import type {
   BulkDelistPreflightResult,
 } from "@/lib/marketplace/bulk-delist";
 import type { EbayPreflightResult } from "@/lib/marketplace/adapters/ebay/preflight";
+import type { StockXCatalogCandidate } from "@/lib/marketplace/adapters/stockx/types";
 import type { ExportMarketplace } from "@/lib/marketplace/export-formatters";
 import type {
   AttemptView,
@@ -23,6 +25,8 @@ export type ApiError = { error: string; status: number };
 export type FeatureAccessResponse = {
   access: FeatureAccess;
   copy: Record<keyof FeatureAccess, string>;
+  plan: PlanId;
+  limits: PlanLimits;
 };
 
 export type PriceCompRow = {
@@ -438,7 +442,12 @@ export const api = {
       adapters: {
         marketplace: string;
         displayName: string;
-        capabilities: { draftPreview: boolean; publish: boolean; inventorySync: boolean };
+        capabilities: {
+          draftPreview: boolean;
+          publish: boolean;
+          inventorySync: boolean;
+          delist?: boolean;
+        };
       }[];
     }>("/api/jobs", token);
     return res.adapters.map((a) => ({
@@ -526,6 +535,43 @@ export const api = {
       },
     ),
 
+  searchStockXCatalog: (
+    token: string,
+    params: {
+      query: string;
+      brand?: string | null;
+      category?: string | null;
+      size?: string | null;
+    },
+  ) => {
+    const query = new URLSearchParams({ query: params.query });
+    if (params.brand) query.set("brand", params.brand);
+    if (params.category) query.set("category", params.category);
+    if (params.size) query.set("size", params.size);
+    return request<{ candidates: StockXCatalogCandidate[] }>(
+      `/api/marketplaces/stockx/catalog/search?${query.toString()}`,
+      token,
+      { timeoutMs: READ_REQUEST_TIMEOUT_MS },
+    );
+  },
+
+  saveStockXMatch: (
+    token: string,
+    body: StockXCatalogCandidate & {
+      draftId: string;
+      matchSource?: "catalog_search" | "manual";
+      matchConfidence?: number | null;
+    },
+  ) =>
+    request<{ ok: true; item: ItemDetailView | null }>(
+      "/api/marketplaces/stockx/match",
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+
   importRows: (
     token: string,
     rows: {
@@ -581,19 +627,42 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  delistStockX: (
+    token: string,
+    body: {
+      inventoryItemId: string;
+      marketplace: "stockx";
+      confirmLiveDelist: true;
+    },
+  ) =>
+    request<{
+      ok: true;
+      status: "delisted";
+      code: string;
+      marketplace: "stockx";
+      environment: string;
+      listingId: string;
+      marketplaceListingId: string;
+      publishAttemptId: string;
+    }>("/api/listings/delist", token, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   // Read-only bulk publish dry run. Available to every seller; returns
   // livePublishAllowed:false plus alpha copy for non-allowlisted accounts.
   // Large selections are chunked internally and merged in selected order.
   preflightBulkPublish: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkPreflightResult> => {
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
     const parts = await Promise.all(
       chunks.map((ids) =>
         request<BulkPreflightResult>("/api/listings/publish/bulk/preflight", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids }),
+          body: JSON.stringify({ itemIds: ids, marketplace }),
         }),
       ),
     );
@@ -606,6 +675,7 @@ export const api = {
   executeBulkPublish: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkExecutionResult> => {
     const bulkRunId = globalThis.crypto.randomUUID();
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
@@ -614,7 +684,7 @@ export const api = {
       parts.push(
         await request<BulkExecutionResult>("/api/listings/publish/bulk", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLivePublish: true }),
+          body: JSON.stringify({ itemIds: ids, marketplace, bulkRunId, confirmLivePublish: true }),
         }),
       );
     }
@@ -626,13 +696,14 @@ export const api = {
   preflightBulkDelist: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkDelistPreflightResult> => {
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
     const parts = await Promise.all(
       chunks.map((ids) =>
         request<BulkDelistPreflightResult>("/api/listings/delist/bulk/preflight", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids }),
+          body: JSON.stringify({ itemIds: ids, marketplace }),
         }),
       ),
     );
@@ -645,6 +716,7 @@ export const api = {
   executeBulkDelist: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkDelistExecutionResult> => {
     const bulkRunId = globalThis.crypto.randomUUID();
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
@@ -653,7 +725,7 @@ export const api = {
       parts.push(
         await request<BulkDelistExecutionResult>("/api/listings/delist/bulk", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLiveDelist: true }),
+          body: JSON.stringify({ itemIds: ids, marketplace, bulkRunId, confirmLiveDelist: true }),
         }),
       );
     }
@@ -709,15 +781,21 @@ export const api = {
       { method: "POST" },
     ),
 
-  // Honest publish: the server returns 501 NOT_IMPLEMENTED. We surface the
-  // outcome rather than treating it as an error toast.
+  // Honest publish: draft-only marketplaces can return 501 NOT_IMPLEMENTED,
+  // while live channels return submitted/published outcomes. Surface expected
+  // typed outcomes as data instead of generic toasts.
   publish: async (
     token: string,
-    body: { inventoryItemId: string; marketplace: string },
+    body: {
+      inventoryItemId: string;
+      marketplace: string;
+      confirmLivePublish?: true;
+    },
   ): Promise<{
     status: string;
     code: string;
     marketplace: string;
+    listingId?: string;
     reason?: string;
     message?: string;
   }> => {

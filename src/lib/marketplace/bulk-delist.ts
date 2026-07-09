@@ -3,13 +3,19 @@ import { safePersistedFailureReason } from "@/lib/errors";
 
 import { getEbayEnvironment } from "./adapters/ebay/config";
 import { EbayIntegrationError } from "./adapters/ebay/errors";
+import { StockXIntegrationError } from "./adapters/stockx/errors";
+import { STOCKX_ENVIRONMENT } from "./adapters/stockx/types";
 import {
   loadBulkPublishConfig,
   processInChunks,
   uniqueItemIds,
   type BulkPublishConfig,
 } from "./bulk-publish-request";
-import { executeEbayDelist, type DelistPrismaLike } from "./delist-handler";
+import {
+  executeEbayDelist,
+  executeStockXDelist,
+  type DelistPrismaLike,
+} from "./delist-handler";
 
 // Bulk eBay end/delist, built entirely on the canonical single-item delist
 // service. Preflight is a read-only classification of each selected item;
@@ -26,6 +32,7 @@ export type DelistPreflightStatus =
   | "rejected";
 
 export type BulkDelistPreflightItem = { itemId: string; status: DelistPreflightStatus };
+export type BulkDelistMarketplace = "ebay" | "stockx";
 
 export type BulkDelistPreflightResult = {
   liveDelistAllowed: boolean;
@@ -59,10 +66,12 @@ export type BulkDelistDeps = {
   config: BulkPublishConfig;
   preflightItem(input: {
     userId: string;
+    accountId?: string;
     itemId: string;
   }): Promise<{ status: DelistPreflightStatus }>;
   executeItem(input: {
     userId: string;
+    accountId?: string;
     itemId: string;
     bulkRunId: string;
   }): Promise<BulkDelistItemResult>;
@@ -71,13 +80,13 @@ export type BulkDelistDeps = {
 export type BulkDelistPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       select: { id: true };
     }): Promise<{ id: string } | null>;
   };
   marketplaceListing: {
     findFirst(args: {
-      where: { inventoryItemId: string; marketplace: "ebay"; environment: string };
+      where: { inventoryItemId: string; marketplace: BulkDelistMarketplace; environment: string };
       select: {
         status: true;
         externalOfferId: true;
@@ -95,6 +104,23 @@ export type BulkDelistPrismaLike = {
       publishAttempts: Array<{ status: string; code: string }>;
     } | null>;
   };
+  marketplaceConnection?: {
+    findUnique(args: {
+      where: {
+        accountId_marketplace_environment?: {
+          accountId: string;
+          marketplace: "stockx";
+          environment: typeof STOCKX_ENVIRONMENT;
+        };
+        userId_marketplace_environment?: {
+          userId: string;
+          marketplace: "stockx";
+          environment: typeof STOCKX_ENVIRONMENT;
+        };
+      };
+      select?: unknown;
+    }): Promise<{ id: string } | null>;
+  };
 };
 
 export function defaultBulkDelistDeps(
@@ -106,9 +132,9 @@ export function defaultBulkDelistDeps(
 
   return {
     config,
-    async preflightItem({ userId, itemId }) {
+    async preflightItem({ userId, accountId, itemId }) {
       const owned = await prisma.inventoryItem.findFirst({
-        where: { id: itemId, sellerId: userId },
+        where: accountId ? { id: itemId, accountId } : { id: itemId, sellerId: userId },
         select: { id: true },
       });
       if (!owned) return { status: "rejected" };
@@ -145,10 +171,11 @@ export function defaultBulkDelistDeps(
       }
       return { status: "not_listed" };
     },
-    async executeItem({ userId, itemId }) {
+    async executeItem({ userId, accountId, itemId }) {
       try {
         await executeEbayDelist(prisma as unknown as DelistPrismaLike, {
           userId,
+          accountId,
           inventoryItemId: itemId,
           confirmLiveDelist: true,
         });
@@ -182,14 +209,113 @@ export function defaultBulkDelistDeps(
   };
 }
 
+export function defaultBulkStockXDelistDeps(
+  prisma: BulkDelistPrismaLike,
+  env: Record<string, string | undefined> = process.env,
+): BulkDelistDeps {
+  const config = loadBulkPublishConfig(env);
+
+  return {
+    config,
+    async preflightItem({ userId, accountId, itemId }) {
+      const owned = await prisma.inventoryItem.findFirst({
+        where: accountId ? { id: itemId, accountId } : { id: itemId, sellerId: userId },
+        select: { id: true },
+      });
+      if (!owned) return { status: "rejected" };
+
+      const connection = await prisma.marketplaceConnection?.findUnique({
+        where: accountId
+          ? {
+              accountId_marketplace_environment: {
+                accountId,
+                marketplace: "stockx",
+                environment: STOCKX_ENVIRONMENT,
+              },
+            }
+          : {
+              userId_marketplace_environment: {
+                userId,
+                marketplace: "stockx",
+                environment: STOCKX_ENVIRONMENT,
+              },
+            },
+        select: { id: true },
+      });
+      if (!connection) return { status: "rejected" };
+
+      const listing = await prisma.marketplaceListing.findFirst({
+        where: { inventoryItemId: itemId, marketplace: "stockx", environment: STOCKX_ENVIRONMENT },
+        select: {
+          status: true,
+          externalOfferId: true,
+          externalListingId: true,
+          publishAttempts: {
+            select: { status: true, code: true },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          },
+        },
+      });
+      if (!listing) return { status: "not_listed" };
+      if (["DELISTED", "ENDED"].includes(listing.status)) {
+        return { status: "already_ended" };
+      }
+
+      const inFlight = listing.publishAttempts.some(
+        (attempt) =>
+          attempt.code.startsWith("STOCKX_DELIST") &&
+          ["QUEUED", "RUNNING"].includes(attempt.status),
+      );
+      if (inFlight) return { status: "in_flight" };
+
+      if (["LISTING", "LISTED"].includes(listing.status) && listing.externalListingId) {
+        return { status: "eligible" };
+      }
+      return { status: "not_listed" };
+    },
+    async executeItem({ userId, accountId, itemId }) {
+      try {
+        await executeStockXDelist(prisma as unknown as DelistPrismaLike, {
+          userId,
+          accountId,
+          inventoryItemId: itemId,
+          confirmLiveDelist: true,
+        });
+        return { itemId, status: "ended", message: "Delisted from StockX." };
+      } catch (error) {
+        if (error instanceof StockXIntegrationError && error.status === 409) {
+          return {
+            itemId,
+            status: "skipped",
+            message: safePersistedFailureReason(
+              error,
+              "This StockX listing is already ended or not live.",
+            ),
+          };
+        }
+        return {
+          itemId,
+          status: "failed",
+          message: safePersistedFailureReason(
+            error,
+            "StockX could not end this listing.",
+          ),
+          retrySafe: true,
+        };
+      }
+    },
+  };
+}
+
 export async function preflightBulkEbayDelist(
   prisma: BulkDelistPrismaLike,
-  input: { userId: string; itemIds: string[]; liveDelistAllowed: boolean },
+  input: { userId: string; accountId?: string; itemIds: string[]; liveDelistAllowed: boolean },
   deps: BulkDelistDeps = defaultBulkDelistDeps(prisma),
 ): Promise<BulkDelistPreflightResult> {
   const itemIds = uniqueItemIds(input.itemIds);
   const items = await processInChunks(itemIds, deps.config, async (itemId) => {
-    const { status } = await deps.preflightItem({ userId: input.userId, itemId });
+    const { status } = await deps.preflightItem({ userId: input.userId, accountId: input.accountId, itemId });
     return { itemId, status };
   });
   const count = (status: DelistPreflightStatus) =>
@@ -210,18 +336,83 @@ export async function preflightBulkEbayDelist(
 
 export async function executeBulkEbayDelist(
   prisma: BulkDelistPrismaLike,
-  input: { userId: string; itemIds: string[]; bulkRunId: string },
+  input: { userId: string; accountId?: string; itemIds: string[]; bulkRunId: string },
   deps: BulkDelistDeps = defaultBulkDelistDeps(prisma),
 ): Promise<BulkDelistExecutionResult> {
   const itemIds = uniqueItemIds(input.itemIds);
   const items = await processInChunks(itemIds, deps.config, async (itemId) => {
     try {
-      return await deps.executeItem({ userId: input.userId, itemId, bulkRunId: input.bulkRunId });
+      return await deps.executeItem({ userId: input.userId, accountId: input.accountId, itemId, bulkRunId: input.bulkRunId });
     } catch {
       return {
         itemId,
         status: "failed" as const,
         message: "Something went wrong ending this listing. You can try it again.",
+        retrySafe: true,
+      };
+    }
+  });
+  const count = (status: BulkDelistItemResult["status"]) =>
+    items.filter((item) => item.status === status).length;
+
+  return {
+    bulkRunId: input.bulkRunId,
+    total: items.length,
+    endedCount: count("ended"),
+    skippedCount: count("skipped"),
+    failedCount: count("failed"),
+    items,
+  };
+}
+
+export async function preflightBulkStockXDelist(
+  prisma: BulkDelistPrismaLike,
+  input: { userId: string; accountId?: string; itemIds: string[] },
+  deps: BulkDelistDeps = defaultBulkStockXDelistDeps(prisma),
+): Promise<BulkDelistPreflightResult> {
+  const itemIds = uniqueItemIds(input.itemIds);
+  const items = await processInChunks(itemIds, deps.config, async (itemId) => {
+    const { status } = await deps.preflightItem({
+      userId: input.userId,
+      accountId: input.accountId,
+      itemId,
+    });
+    return { itemId, status };
+  });
+  const count = (status: DelistPreflightStatus) =>
+    items.filter((item) => item.status === status).length;
+
+  return {
+    liveDelistAllowed: true,
+    total: items.length,
+    eligibleCount: count("eligible"),
+    notListedCount: count("not_listed"),
+    alreadyEndedCount: count("already_ended"),
+    inFlightCount: count("in_flight"),
+    rejectedCount: count("rejected"),
+    items,
+  };
+}
+
+export async function executeBulkStockXDelist(
+  prisma: BulkDelistPrismaLike,
+  input: { userId: string; accountId?: string; itemIds: string[]; bulkRunId: string },
+  deps: BulkDelistDeps = defaultBulkStockXDelistDeps(prisma),
+): Promise<BulkDelistExecutionResult> {
+  const itemIds = uniqueItemIds(input.itemIds);
+  const items = await processInChunks(itemIds, deps.config, async (itemId) => {
+    try {
+      return await deps.executeItem({
+        userId: input.userId,
+        accountId: input.accountId,
+        itemId,
+        bulkRunId: input.bulkRunId,
+      });
+    } catch {
+      return {
+        itemId,
+        status: "failed" as const,
+        message: "Something went wrong ending this StockX listing. You can try it again.",
         retrySafe: true,
       };
     }

@@ -5,6 +5,7 @@ import { AppError } from "@/lib/errors";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  getActiveAccount: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -12,12 +13,14 @@ vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUser: mocks.requireSupabaseUser,
 }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { GET, POST } from "./route";
 
 describe("price comps API auth boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.requireSupabaseUser.mockRejectedValue(
       new AppError("Sign in before creating a listing draft.", 401),
     );
@@ -113,6 +116,10 @@ describe("price comps API auth boundaries", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
+      where: { id: inventoryItemId, accountId: "acc-1" },
+      select: { id: true },
+    });
     expect(prisma.priceComp.create).toHaveBeenCalledTimes(1);
     expect(prisma.compSearchRun.findFirst).not.toHaveBeenCalled();
     expect(prisma.providerCallLedger.create).not.toHaveBeenCalled();
@@ -183,6 +190,10 @@ describe("price comps API auth boundaries", () => {
     const serialized = JSON.stringify(payload);
 
     expect(response.status).toBe(200);
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
+      where: { id: inventoryItemId, accountId: "acc-1" },
+      select: { id: true },
+    });
     expect(payload.comps.map((comp: { source: string }) => comp.source)).toEqual([
       "Seller research",
       "Fresh sold comps",
@@ -268,6 +279,10 @@ describe("price comps API auth boundaries", () => {
     const serialized = JSON.stringify(payload);
 
     expect(response.status).toBe(200);
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
+      where: { id: "item-1", accountId: "acc-1" },
+      select: { id: true },
+    });
     expect(payload.discovery.paidProvidersEnabled).toBe(false);
     expect(serialized).not.toMatch(/apify-ebay-sold|global_budget_exceeded/);
   });

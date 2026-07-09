@@ -29,6 +29,8 @@ describe("landing page", () => {
     expect(source).toContain('href="/dashboard"');
     expect(source).toContain("Start creating listings");
     expect(source).toContain('href="#how-it-works"');
+    expect(source).toContain('href="/pricing"');
+    expect(source).toContain("View pricing");
   });
 
   it("eBay FYI: no developer account, seller policies needed for auto-publish", () => {

@@ -7,6 +7,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { api } from "@/lib/api/client";
 import { useSession } from "@/components/providers/session-provider";
 import { ThemeToggle } from "@/components/app/theme-toggle";
+import { prefetchBillingUsage } from "@/components/billing/usage-snapshot";
 
 type NavItem = { href: string; label: string; icon: IconName; count?: number };
 
@@ -39,15 +40,19 @@ export function Sidebar() {
       "/history",
       "/channels",
       "/settings",
+      "/settings/billing",
       "/feedback",
     ]) {
       router.prefetch?.(href);
     }
-  }, [router]);
+    prefetchBillingUsage(token);
+  }, [router, token]);
 
   const isActive = (href: string) =>
     href === "/inventory"
       ? pathname.startsWith("/inventory")
+      : href === "/settings"
+        ? pathname === "/settings"
       : pathname === href || pathname.startsWith(href + "/");
 
   const primary: NavItem[] = [
@@ -57,6 +62,7 @@ export function Sidebar() {
   const config: NavItem[] = [
     { href: "/history", label: "Publish history", icon: "history" },
     { href: "/channels", label: "Marketplaces", icon: "store", count: counts.channels },
+    { href: "/settings/billing", label: "Billing", icon: "tag" },
     { href: "/settings", label: "Settings", icon: "settings" },
     { href: "/feedback", label: "Send feedback", icon: "send" },
   ];
@@ -64,7 +70,13 @@ export function Sidebar() {
   const email = session.user.email ?? "you";
   const initials = (name || email).slice(0, 2).toUpperCase();
 
+  function warm(href: string) {
+    router.prefetch?.(href);
+    if (href === "/settings/billing") prefetchBillingUsage(token);
+  }
+
   function go(href: string) {
+    warm(href);
     router.push(href);
   }
 
@@ -109,6 +121,8 @@ export function Sidebar() {
           <button
             key={it.href}
             className={`nav-item ${isActive(it.href) ? "nav-item--active" : ""}`}
+            onFocus={() => warm(it.href)}
+            onPointerEnter={() => warm(it.href)}
             onClick={() => go(it.href)}
           >
             <Icon className="nav-item__icon" name={it.icon} size={15} />
@@ -124,6 +138,8 @@ export function Sidebar() {
           <button
             key={it.href}
             className={`nav-item ${isActive(it.href) ? "nav-item--active" : ""}`}
+            onFocus={() => warm(it.href)}
+            onPointerEnter={() => warm(it.href)}
             onClick={() => go(it.href)}
           >
             <Icon className="nav-item__icon" name={it.icon} size={15} />

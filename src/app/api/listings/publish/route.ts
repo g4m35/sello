@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { safeErrorResponse } from "@/lib/errors";
+import { logUnexpectedError, safeErrorResponse } from "@/lib/errors";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
+import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
 import { getPrisma } from "@/lib/prisma";
 import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
+import {
+  StockXIntegrationError,
+  stockxErrorCodes,
+} from "@/lib/marketplace/adapters/stockx/errors";
 import {
   executePublish,
   PublishingMigrationMissingError,
@@ -21,18 +28,46 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const { inventoryItemId, marketplace } = PublishRequestSchema.parse(
+    const { inventoryItemId, marketplace, confirmLivePublish } = PublishRequestSchema.parse(
       await request.json(),
     );
     if (marketplace === "ebay" && getEbayEnvironment() === "production") {
       requireFeatureAccess(user, "liveEbayPublish");
     }
+    if (marketplace === "stockx" && confirmLivePublish !== true) {
+      throw new StockXIntegrationError(
+        stockxErrorCodes.confirmationRequired,
+        "Confirm before creating a live StockX listing.",
+        400,
+      );
+    }
 
-    const result = await executePublish(getPrisma(), {
+    // Monthly autopublish quota, enforced before the publish attempt.
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    await assertWithinQuota(
+      accountWithEffectivePlan(account, user),
+      "autopublish",
+      new Date(),
+    );
+
+    const result = await executePublish(prisma, {
       userId: user.id,
+      accountId: account.id,
       inventoryItemId,
       marketplace,
+      confirmLivePublish,
     });
+
+    // Count only a real, successful publish (2xx). Draft-only NOT_IMPLEMENTED
+    // (501) and failures never burn quota. Best-effort, logged on failure.
+    if (result.httpStatus >= 200 && result.httpStatus < 300) {
+      try {
+        await incrementUsage(account.id, "autopublish", new Date());
+      } catch (usageError) {
+        logUnexpectedError("autopublish_usage_increment", usageError);
+      }
+    }
 
     return NextResponse.json(
       {
@@ -48,6 +83,10 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof EbayIntegrationError) {
+      return NextResponse.json({ error: error.toPayload() }, { status: error.status });
+    }
+
+    if (error instanceof StockXIntegrationError) {
       return NextResponse.json({ error: error.toPayload() }, { status: error.status });
     }
 

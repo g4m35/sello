@@ -8,7 +8,9 @@ import { durationLabel, relativeTime } from "@/lib/view/format";
 import {
   ebayChannelUrl,
   isLiveEbayChannel,
+  isLiveStockXChannel,
   resolveDelistAction,
+  stockxChannelUrl,
 } from "@/lib/view/inventory-actions";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
@@ -137,6 +139,14 @@ export function confirmEbayDelist(
   );
 }
 
+export function confirmStockXDelist(
+  confirmFn: (message: string) => boolean = window.confirm,
+): boolean {
+  return confirmFn(
+    "This ends the live StockX listing operation. The item will no longer be available on StockX after StockX confirms the request.",
+  );
+}
+
 export function confirmEbayOrphanCleanup(
   confirmFn: (message: string) => boolean = window.confirm,
 ): boolean {
@@ -149,6 +159,7 @@ export function MarketplaceOperationsPanel({
   channels,
   attempts,
   delisting,
+  delistingStockX = false,
   orphanScan,
   scanningOrphans,
   cleaningOrphans,
@@ -156,12 +167,14 @@ export function MarketplaceOperationsPanel({
   featureAccess = DENIED_FEATURE_ACCESS,
   delistAlphaCopy = DEFAULT_DELIST_ALPHA_COPY,
   onDelistEbay,
+  onDelistStockX,
   onScanEbayOrphans,
   onCleanupEbayOrphans,
 }: {
   channels: ChannelStateView[];
   attempts: AttemptView[];
   delisting: boolean;
+  delistingStockX?: boolean;
   orphanScan: EbayOrphanArtifactView | null;
   scanningOrphans: boolean;
   cleaningOrphans: boolean;
@@ -175,16 +188,20 @@ export function MarketplaceOperationsPanel({
   /** Alpha copy shown when a live listing exists but delist is not entitled. */
   delistAlphaCopy?: string;
   onDelistEbay: () => void;
+  onDelistStockX?: () => void;
   onScanEbayOrphans: () => void;
   onCleanupEbayOrphans: () => void;
 }) {
   const latestAttempt = attempts[0] ?? null;
   const latestAttemptDisplay = latestAttempt ? attemptDisplay(latestAttempt) : null;
   const ebay = channels.find((channel) => channel.marketplace === "ebay") ?? null;
+  const stockx = channels.find((channel) => channel.marketplace === "stockx") ?? null;
   const status = sellerPublishStatus(ebay);
   const liveListing = isLiveEbayChannel(ebay);
   const delistAction = resolveDelistAction(ebay, featureAccess);
   const liveUrl = ebayChannelUrl(ebay);
+  const stockxLive = isLiveStockXChannel(stockx);
+  const stockxLiveUrl = stockxChannelUrl(stockx);
   const lastError =
     latestAttempt?.reason || latestAttempt?.listingLastError || ebay?.lastError || null;
 
@@ -245,6 +262,51 @@ export function MarketplaceOperationsPanel({
             title="Ending eBay listings is in alpha"
             desc={delistAlphaCopy}
           />
+        )}
+
+        {stockx && stockx.status !== "draft" && (
+          <div className="stack-3" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+            <div className="row" style={{ gap: 12 }}>
+              <MpLogo id="stockx" size={28} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="mp-row__name">StockX</div>
+                <div className="mp-row__meta">
+                  {titleCase(stockx.environment)} · {titleCase(stockx.status)}
+                </div>
+              </div>
+              <Badge status={stockx.status} />
+            </div>
+            <div className="t-small">
+              {stockxLive
+                ? "This item has a StockX listing operation managed by Sello."
+                : "This StockX listing is not currently active."}
+            </div>
+            {(stockxLiveUrl || (stockxLive && onDelistStockX)) && (
+              <div className="row" style={{ justifyContent: "flex-end", gap: 8 }}>
+                {stockxLiveUrl && (
+                  <a
+                    className="btn btn--secondary btn--sm"
+                    href={stockxLiveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Icon name="external" size={13} /> View StockX
+                  </a>
+                )}
+                {stockxLive && onDelistStockX && (
+                  <Btn
+                    variant="secondary"
+                    size="sm"
+                    icon="x-c"
+                    disabled={delistingStockX}
+                    onClick={onDelistStockX}
+                  >
+                    {delistingStockX ? "Ending..." : "End StockX listing"}
+                  </Btn>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {showAdvanced && (

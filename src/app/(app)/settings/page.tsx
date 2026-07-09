@@ -135,6 +135,33 @@ export default function SettingsPage() {
 
           <section className="card">
             <div className="card__head">
+              <span className="card__title">Billing</span>
+            </div>
+            <div className="card__body">
+              <div
+                className="row"
+                style={{ gap: 12, alignItems: "center", justifyContent: "space-between" }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 500 }}>Plan and usage</div>
+                  <div className="t-small muted" style={{ marginTop: 4 }}>
+                    Manage subscription, usage limits, and available plans.
+                  </div>
+                </div>
+                <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <Link href="/pricing" className="btn btn--ghost btn--sm">
+                    View pricing
+                  </Link>
+                  <Link href="/settings/billing" className="btn btn--secondary btn--sm">
+                    Manage billing
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="card">
+            <div className="card__head">
               <span className="card__title">Legal</span>
             </div>
             <div className="card__body">
