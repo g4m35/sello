@@ -19,8 +19,11 @@ import { logUnexpectedError } from "@/lib/errors";
 import { enabledCompSources } from "@/lib/comps/registry";
 import { scoreCompMatch } from "@/lib/comps/scoring";
 import type { CompSource, NormalizedComp } from "@/lib/comps/source";
+import { StockXCompsNotConnectedError } from "@/lib/comps/sources/stockx";
 import { summarizeComps } from "@/lib/pricing/summarize";
 import { getPrisma } from "@/lib/prisma";
+
+export const MARKETPLACE_NOT_CONNECTED_SKIP = "marketplace_not_connected";
 
 type Db = ReturnType<typeof getPrisma>;
 
@@ -69,7 +72,22 @@ async function fetchFromSource(
   try {
     const comps = await source.fetchComps(query);
     return { source, comps, error: null };
-  } catch {
+  } catch (error) {
+    if (error instanceof StockXCompsNotConnectedError) {
+      return { source, comps: [], error: MARKETPLACE_NOT_CONNECTED_SKIP };
+    }
+    // Always record the source id + error name/code (never tokens/bodies) so
+    // provider_error ledger rows are diagnosable without swallowing AppErrors.
+    const name = error instanceof Error ? error.name : typeof error;
+    const code =
+      error && typeof error === "object" && "code" in error &&
+      typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : undefined;
+    console.error(
+      `[comp_source_fetch:${source.id}] ${name}${code ? ` (${code})` : ""}`,
+    );
+    logUnexpectedError(`comp_source_fetch:${source.id}`, error);
     return { source, comps: [], error: sanitizeProviderError(source) };
   }
 }
@@ -406,10 +424,16 @@ export async function runCompFetch(
           comp.matchClassification === "strong" || comp.matchClassification === "possible",
       ).length;
       try {
+        const notConnected = result.error === MARKETPLACE_NOT_CONNECTED_SKIP;
         await completeProviderCall(ledgerPrisma, {
           reservationId,
-          status: result.error ? "failed" : "succeeded",
-          estimatedCostCents: paidConfig.estimatedCostCents,
+          status: notConnected ? "skipped" : result.error ? "failed" : "succeeded",
+          skippedReason: notConnected
+            ? "provider_not_configured"
+            : result.error
+              ? "provider_error"
+              : null,
+          estimatedCostCents: notConnected ? 0 : paidConfig.estimatedCostCents,
           fetchedCount: result.comps.length,
           acceptedCount: sourceAccepted,
           rejectedCount: sourceComps.length - sourceAccepted,

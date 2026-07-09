@@ -37,6 +37,7 @@ describe("StockX comp source", () => {
       externalUserId: "stockx|u1",
       accessTokenEnc: encryptStockXToken("access-token", key),
       refreshTokenEnc: encryptStockXToken("refresh-token", key),
+      accessTokenExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
     });
     mocks.update.mockResolvedValue({});
   });
@@ -120,6 +121,7 @@ describe("StockX comp source", () => {
         externalUserId: true,
         accessTokenEnc: true,
         refreshTokenEnc: true,
+        accessTokenExpiresAt: true,
       },
     });
     expect(comps[0]).toMatchObject({
@@ -132,5 +134,27 @@ describe("StockX comp source", () => {
       where: { id: "draft-1" },
       data: { stockxMarketDataCheckedAt: expect.any(Date) },
     });
+  });
+
+  it("throws a soft not-connected error when the account has no StockX OAuth row", async () => {
+    stubStockXEnv();
+    mocks.findUnique.mockResolvedValue(null);
+    const fetchImpl = vi.fn();
+    vi.stubGlobal("fetch", fetchImpl);
+
+    await expect(
+      stockxSource.fetchComps({
+        accountId: "acc-1",
+        draftId: "draft-1",
+        stockxProductId: "p1",
+        styleCode: null,
+        brand: "Nike",
+        title: "Nike Dunk Low Panda",
+        size: "10",
+        category: "sneakers",
+        keywords: "Nike Dunk Low Panda",
+      }),
+    ).rejects.toMatchObject({ code: "stockx_not_connected" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

@@ -58,8 +58,15 @@ function noteForSkip(message: string): string | null {
   if (m.includes("cooldown")) {
     return "Sold comps were just refreshed. Try again shortly.";
   }
-  if (m.includes("paid_providers_disabled") || m.includes("paid comp provider")) {
+  if (m.includes("marketplace_not_connected") || m.includes("connect stockx")) {
+    return "Connect StockX in Settings → Marketplaces to include StockX sold comps.";
+  }
+  if (m.includes("paid_providers_disabled")) {
     return `Fresh sold comps are disabled right now. ${MANUAL_STILL_WORKS}`;
+  }
+  // Generic paid-provider failure copy from sanitizeProviderError — not the kill switch.
+  if (m.includes("paid comp provider failed")) {
+    return "A pricing source was temporarily unavailable. Try again later.";
   }
   if (m.includes("fail") || m.includes("error") || m.includes("unavailable")) {
     return "A pricing source was temporarily unavailable. Try again later.";

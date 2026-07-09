@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Topbar } from "@/components/app/topbar";
@@ -505,36 +506,38 @@ export default function InventoryPage() {
         >
           {paged.map((item) => {
             const isSelected = selected.has(item.id);
+            const href = `/inventory/${item.id}`;
             return (
               <div
                 key={item.id}
                 className="card"
-                style={{ padding: 14, cursor: "pointer", position: "relative" }}
-                onClick={() => router.push(`/inventory/${item.id}`)}
+                style={{ padding: 14, position: "relative" }}
               >
                 <div
-                  style={{ position: "absolute", top: 10, left: 10 }}
+                  style={{ position: "absolute", top: 10, left: 10, zIndex: 1 }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Check checked={isSelected} onChange={() => toggleRow(item.id)} />
                 </div>
-                <Thumb image={item.coverImage ?? null} size={88} className="" />
-                <div className="table__product-title" style={{ marginTop: 10 }}>
-                  {item.title}
-                </div>
-                <div className="table__product-meta">
-                  {[item.brand, item.size].filter(Boolean).join(" · ")}
-                </div>
-                <div
-                  className="row"
-                  style={{ justifyContent: "space-between", marginTop: 10 }}
-                >
-                  <Badge status={item.status} label={item.statusLabel} />
-                  <span className="t-num">{formatMoneyCents(item.priceCents)}</span>
-                </div>
-                <div style={{ marginTop: 8 }}>
-                  <MpDots channels={item.channels} />
-                </div>
+                <Link href={href} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
+                  <Thumb image={item.coverImage ?? null} size={88} className="" />
+                  <div className="table__product-title" style={{ marginTop: 10 }}>
+                    {item.title}
+                  </div>
+                  <div className="table__product-meta">
+                    {[item.brand, item.size].filter(Boolean).join(" · ")}
+                  </div>
+                  <div
+                    className="row"
+                    style={{ justifyContent: "space-between", marginTop: 10 }}
+                  >
+                    <Badge status={item.status} label={item.statusLabel} />
+                    <span className="t-num">{formatMoneyCents(item.priceCents)}</span>
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    <MpDots channels={item.channels} />
+                  </div>
+                </Link>
               </div>
             );
           })}
@@ -561,21 +564,24 @@ export default function InventoryPage() {
           <tbody>
             {paged.map((item) => {
               const isSelected = selected.has(item.id);
+              const href = `/inventory/${item.id}`;
               return (
                 <tr
                   key={item.id}
                   className={isSelected ? "table__row--selected" : ""}
-                  onClick={() => router.push(`/inventory/${item.id}`)}
-                  style={{ cursor: "pointer" }}
                 >
-                  <td className="table__check" onClick={(e) => e.stopPropagation()}>
+                  <td className="table__check">
                     <Check
                       checked={isSelected}
                       onChange={() => toggleRow(item.id)}
                     />
                   </td>
                   <td>
-                    <div className="table__product">
+                    <Link
+                      href={href}
+                      className="table__product"
+                      style={{ display: "flex", color: "inherit", textDecoration: "none" }}
+                    >
                       <Thumb image={item.coverImage ?? null} />
                       <div className="table__product-text">
                         <div className="table__product-title">{item.title}</div>
@@ -589,20 +595,32 @@ export default function InventoryPage() {
                             .join(" · ")}
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   </td>
                   <td>
-                    <Badge status={item.status} label={item.statusLabel} />
+                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
+                      <Badge status={item.status} label={item.statusLabel} />
+                    </Link>
                   </td>
                   <td>
-                    <MpDots channels={item.channels} />
+                    <Link href={href} style={{ color: "inherit", textDecoration: "none", display: "inline-block" }}>
+                      <MpDots channels={item.channels} />
+                    </Link>
                   </td>
                   <td className="table__num">
-                    {formatMoneyCents(item.priceCents)}
+                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
+                      {formatMoneyCents(item.priceCents)}
+                    </Link>
                   </td>
-                  <td className="table__num">{item.photoCount}</td>
+                  <td className="table__num">
+                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
+                      {item.photoCount}
+                    </Link>
+                  </td>
                   <td>
-                    <span className="muted">{relativeTime(item.updatedAt)}</span>
+                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
+                      <span className="muted">{relativeTime(item.updatedAt)}</span>
+                    </Link>
                   </td>
                 </tr>
               );
