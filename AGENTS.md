@@ -117,3 +117,27 @@ Rules:
 - Never switch branches or delete a worktree with uncommitted work.
 - Never push `main` without approval; never auto-deploy.
 - Report the selected worktree/branch before coding.
+
+## Learned User Preferences
+
+- Scope deep audits and improvements to `resale-crosslister` only unless asked otherwise; go deep and change whatever is needed.
+- For large reviews (security, efficiency, bugs) and structural cleanup, research and plan before implementing; keep the repo organized, clean, and well-made.
+- Apply recommended fixes directly rather than only proposing them.
+- Default bulk publish limit should be 10 listings.
+- Prefer TypeScript for frontend work.
+- When asked to open the app, open or preview it for the user; end conflicting local server processes before reloading.
+- Keep listing/feature surfaces always on for testing — do not toggle listing forms off; treat listing severity as low while the app has no real users.
+- Signed-in users should go straight into the Sello app, not the marketing landing; the landing page is for new/anonymous users only.
+- Landing should clearly explain what Sello solves; use modern SaaS references (Linear, Stripe, Brilliant); prefer a clean in-page demo flow over clunky gimmicks.
+- Abandoned the SVG morph-loader landing experiment after repeated outline/morph quality issues; do not revive it unless explicitly asked.
+
+## Learned Workspace Facts
+
+- Canonical app repo: `~/dev/resale-crosslister-clean` (git). Under the Cursor workspace `perc 30`, `resale-crosslister` is a symlink to that path.
+- Do not develop in `resale-crosslister-ARCHIVED-NO-GIT` (old iCloud/Desktop checkout with no `.git`).
+- Product brand/name is Sello (production host `sello.wtf`).
+- Stack: Supabase Auth, Prisma, marketplace OAuth (eBay/Etsy/StockX), Stripe billing.
+- Clerk auth/billing was researched and deferred — stay on Supabase Auth + Stripe for now (`docs/CLERK_AUTH_BILLING_RESEARCH.md`).
+- Session handoff lives in `HANDOFF.md` / `AGENTS.md`; read at session start and update before finishing.
+- Merge flow: `feature/*` → `develop` → `main` → production. Never push `main` or deploy without explicit owner approval.
+- Always-on testing policy: admins get feature entitlements for comps/publish testing (`docs/ALWAYS_ON_TESTING_POLICY.md`); global kill-switches (e.g. `COMPS_PAID_PROVIDERS_ENABLED`, `EBAY_PRODUCTION_PUBLISH_ENABLED`) still apply.
