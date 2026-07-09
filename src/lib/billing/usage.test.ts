@@ -62,25 +62,39 @@ describe("assertWithinQuota", () => {
   it("passes below the plan limit", async () => {
     const { prisma } = prismaWith({ count: 9 });
     await expect(
-      assertWithinQuota({ id: "acc-1", plan: "free" }, "ai_listing", now, prisma),
+      assertWithinQuota({ id: "acc-1", plan: "free" }, "ai_listing", now, { prisma }),
     ).resolves.toBeUndefined();
   });
 
   it("throws QUOTA_EXCEEDED at the plan limit", async () => {
     const { prisma } = prismaWith({ count: 10 });
     await expect(
-      assertWithinQuota({ id: "acc-1", plan: "free" }, "ai_listing", now, prisma),
+      assertWithinQuota({ id: "acc-1", plan: "free" }, "ai_listing", now, { prisma }),
     ).rejects.toMatchObject({ code: "QUOTA_EXCEEDED_AI_LISTING" });
   });
 
   it("uses the plan's higher limit for pro but still blocks free at 100", async () => {
     const { prisma } = prismaWith({ count: 100 });
     await expect(
-      assertWithinQuota({ id: "acc-1", plan: "pro" }, "ai_listing", now, prisma),
+      assertWithinQuota({ id: "acc-1", plan: "pro" }, "ai_listing", now, { prisma }),
     ).resolves.toBeUndefined();
     await expect(
-      assertWithinQuota({ id: "acc-1", plan: "free" }, "ai_listing", now, prisma),
+      assertWithinQuota({ id: "acc-1", plan: "free" }, "ai_listing", now, { prisma }),
     ).rejects.toBeInstanceOf(AppError);
+  });
+
+  it("never quotas allow-listed admins even when over the plan limit", async () => {
+    const { prisma } = prismaWith({ count: 10_000 });
+    vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
+    await expect(
+      assertWithinQuota(
+        { id: "acc-1", plan: "free" },
+        "ai_listing",
+        now,
+        { prisma, user: { email: "owner@example.com" } },
+      ),
+    ).resolves.toBeUndefined();
+    vi.unstubAllEnvs();
   });
 });
 

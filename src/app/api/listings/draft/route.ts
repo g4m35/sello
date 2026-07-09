@@ -7,6 +7,7 @@ import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/
 import { getActiveAccount } from "@/lib/billing/account";
 import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
+import { isAdminUser } from "@/lib/auth/admin";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
 import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
 import { asStringRecord } from "@/lib/listing/ebay-draft-fields";
@@ -88,6 +89,7 @@ export async function POST(request: Request) {
       accountWithEffectivePlan(account, user),
       "ai_listing",
       new Date(),
+      { user },
     );
 
     const formData = await request.formData();
@@ -204,6 +206,7 @@ export async function POST(request: Request) {
     // No-op (and fast) when no comp source is configured; never blocks the draft.
     await runCompFetch(prisma, createdInventoryItemId, user.id, {
       paidProvidersAllowed: featureAccessForUser(user).paidComps,
+      adminOverride: isAdminUser(user),
     }).catch(() => undefined);
 
     return NextResponse.json({

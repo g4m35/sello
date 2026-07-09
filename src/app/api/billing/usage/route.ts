@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { getActiveAccount } from "@/lib/billing/account";
-import { effectivePlanForUser } from "@/lib/billing/effective-plan";
-import { entitlementsForPlan } from "@/lib/billing/entitlements";
+import {
+  effectiveFeaturesForUser,
+  effectiveLimitsForUser,
+  effectivePlanForUser,
+} from "@/lib/billing/effective-plan";
 import { billingPeriodStart } from "@/lib/billing/usage";
 import { safeErrorResponse } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
@@ -22,7 +25,8 @@ export async function GET(request: Request) {
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
     const plan = effectivePlanForUser(account, user);
-    const entitlements = entitlementsForPlan(plan);
+    const limits = effectiveLimitsForUser(account, user);
+    const features = effectiveFeaturesForUser(account, user);
     const now = new Date();
     const subscription = await prisma.subscription.findUnique({
       where: { accountId: account.id },
@@ -56,8 +60,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       plan,
-      limits: entitlements.limits,
-      features: entitlements.features,
+      limits,
+      features,
       usage,
       periodStart,
       periodEnd,
