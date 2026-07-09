@@ -16,7 +16,8 @@ import type { CompQuery, NormalizedComp, SoldCompSource } from "@/lib/comps/sour
 type Env = Record<string, string | undefined>;
 
 const SOURCE_ID = "apify-ebay-sold";
-const DEFAULT_TIMEOUT_MS = 12_000;
+// Apify run-sync sold scrapes often exceed 12s; stay under typical Vercel limits.
+const DEFAULT_TIMEOUT_MS = 55_000;
 
 export type ApifyEbaySoldDeps = {
   env?: Env;
@@ -27,8 +28,9 @@ export type ApifyEbaySoldDeps = {
 function actorEndpoint(actor: string): string {
   // run-sync-get-dataset-items runs the actor and returns its dataset items in
   // one synchronous call. The token is supplied via the Authorization header so
-  // it never appears in the URL.
-  return `https://api.apify.com/v2/acts/${encodeURIComponent(actor)}/run-sync-get-dataset-items?clean=true&format=json`;
+  // it never appears in the URL. Preserve `~` in Apify actor slugs (user~name).
+  const encoded = encodeURIComponent(actor).replace(/%7E/gi, "~");
+  return `https://api.apify.com/v2/acts/${encoded}/run-sync-get-dataset-items?clean=true&format=json`;
 }
 
 function firstString(...values: unknown[]): string | null {
