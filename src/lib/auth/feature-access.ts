@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isAdminUser } from "@/lib/auth/admin";
 import { AppError } from "@/lib/errors";
 
 export type FeatureEntitlement =
@@ -63,6 +64,12 @@ function normalizedEmails(value: string | undefined): string[] {
   ];
 }
 
+function allEntitlementsGranted(): FeatureAccess {
+  return Object.fromEntries(
+    FEATURE_ENTITLEMENTS.map((entitlement) => [entitlement, true]),
+  ) as FeatureAccess;
+}
+
 export function configuredFeatureEmails(
   env: Record<string, string | undefined> = process.env,
 ): Record<FeatureEntitlement, string[]> {
@@ -74,10 +81,17 @@ export function configuredFeatureEmails(
   ) as Record<FeatureEntitlement, string[]>;
 }
 
+// Admins get every entitlement so owner testing is not blocked by separate
+// alpha allowlists. Global kill-switches (e.g. COMPS_PAID_PROVIDERS_ENABLED,
+// EBAY_PRODUCTION_PUBLISH_ENABLED) still apply.
 export function featureAccessForUser(
-  user: { email?: string | null },
+  user: { id?: string | null; email?: string | null },
   env: Record<string, string | undefined> = process.env,
 ): FeatureAccess {
+  if (isAdminUser(user, env)) {
+    return allEntitlementsGranted();
+  }
+
   const email = user.email?.trim().toLowerCase();
   const configured = configuredFeatureEmails(env);
   return Object.fromEntries(
@@ -89,7 +103,7 @@ export function featureAccessForUser(
 }
 
 export function requireFeatureAccess(
-  user: { email?: string | null },
+  user: { id?: string | null; email?: string | null },
   entitlement: FeatureEntitlement,
   env: Record<string, string | undefined> = process.env,
 ): void {

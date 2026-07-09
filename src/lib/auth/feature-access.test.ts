@@ -60,21 +60,43 @@ describe("configuredFeatureEmails", () => {
 });
 
 describe("featureAccessForUser", () => {
-  it("grants each feature independently without falling back to ADMIN_EMAILS", () => {
+  it("grants each feature independently for non-admins", () => {
     expect(
       featureAccessForUser(
-        { email: "owner@example.com" },
+        { email: "seller@example.com" },
         {
           ADMIN_EMAILS: "owner@example.com",
           LIVE_EBAY_PUBLISH_EMAILS: "",
-          EBAY_DELIST_EMAILS: "owner@example.com",
-          PAID_COMPS_EMAILS: "beta@example.com, OWNER@example.com",
+          EBAY_DELIST_EMAILS: "seller@example.com",
+          PAID_COMPS_EMAILS: "beta@example.com, SELLER@example.com",
         },
       ),
     ).toMatchObject({
       liveEbayPublish: false,
       ebayDelist: true,
       paidComps: true,
+    });
+  });
+
+  it("grants every entitlement to ADMIN_EMAILS users for owner testing", () => {
+    expect(
+      featureAccessForUser(
+        { email: "owner@example.com" },
+        {
+          ADMIN_EMAILS: "owner@example.com",
+          LIVE_EBAY_PUBLISH_EMAILS: "",
+          EBAY_DELIST_EMAILS: "",
+          PAID_COMPS_EMAILS: "",
+        },
+      ),
+    ).toMatchObject({
+      liveEbayPublish: true,
+      ebayDelist: true,
+      paidComps: true,
+      etsyConnect: true,
+      etsyPublish: true,
+      etsyDelist: true,
+      etsyOrders: true,
     });
   });
 
@@ -116,10 +138,10 @@ describe("featureAccessForUser", () => {
     },
   );
 
-  it("does not grant any feature from ADMIN_EMAILS alone", () => {
+  it("still fails closed for non-admins when only ADMIN_EMAILS is set", () => {
     expect(
       featureAccessForUser(
-        { email: "owner@example.com" },
+        { email: "seller@example.com" },
         { ADMIN_EMAILS: "owner@example.com" },
       ),
     ).toMatchObject({
