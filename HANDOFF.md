@@ -12,6 +12,8 @@ bumps, admin hide-surface test fixes, Clerk research (stay on Supabase+Stripe).
 Branch: `chore/repo-hygiene-2026-07-09`.
 
 ## Recent work
+- Admin users now receive all feature entitlements (paidComps/publish/etsy) so owner testing is not blocked by separate allowlists. Global kill-switches still apply.
+- Added always-on testing policy + full public runthrough notes.
 - Neutralized orphan Desktop checkout (`resale-crosslister-ARCHIVED-NO-GIT`).
 - Documented Clerk auth/billing research; deferred migration.
 - Updated WORKTREES.md / LOCAL_DEVELOPMENT_RULES.md to match real paths.
