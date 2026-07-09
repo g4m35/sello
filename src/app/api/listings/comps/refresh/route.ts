@@ -54,39 +54,44 @@ export async function POST(request: Request) {
       accountWithEffectivePlan(account, user),
       "comp_refresh",
       new Date(),
+      { user },
     );
 
     // Cooldown: spam-clicking Refresh must not fire repeated paid provider calls.
     // Only count the last run that actually queried a provider — a disabled,
     // weak-identity, no-source, or failed run never poisons the cooldown, so the
-    // seller can retry immediately after one of those.
-    const lastRun = await prisma.compSearchRun.findFirst({
-      where: {
-        inventoryItemId,
-        status: { in: [...COOLDOWN_ELIGIBLE_RUN_STATUSES] },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    });
-    const cooldown = evaluateRefreshCooldown({
-      lastRunAt: lastRun?.createdAt ?? null,
-      now: new Date(),
-      cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: isAdminUser(user) }),
-    });
-    if (!cooldown.allowed) {
-      return NextResponse.json(
-        {
-          error: `Comps were just refreshed. Try again in ${cooldown.retryAfterSeconds}s.`,
-          retryAfterSeconds: cooldown.retryAfterSeconds,
+    // seller can retry immediately after one of those. Admins skip cooldown.
+    const isOwner = isAdminUser(user);
+    if (!isOwner) {
+      const lastRun = await prisma.compSearchRun.findFirst({
+        where: {
+          inventoryItemId,
+          status: { in: [...COOLDOWN_ELIGIBLE_RUN_STATUSES] },
         },
-        { status: 429, headers: { "Retry-After": String(cooldown.retryAfterSeconds) } },
-      );
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
+      const cooldown = evaluateRefreshCooldown({
+        lastRunAt: lastRun?.createdAt ?? null,
+        now: new Date(),
+        cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: false }),
+      });
+      if (!cooldown.allowed) {
+        return NextResponse.json(
+          {
+            error: `Comps were just refreshed. Try again in ${cooldown.retryAfterSeconds}s.`,
+            retryAfterSeconds: cooldown.retryAfterSeconds,
+          },
+          { status: 429, headers: { "Retry-After": String(cooldown.retryAfterSeconds) } },
+        );
+      }
     }
 
     const result = await runCompFetch(prisma, inventoryItemId, user.id, {
       force: true,
       paidProvidersAllowed: true,
       accountId: account.id,
+      adminOverride: isOwner,
     });
 
     // Count the refresh against the monthly quota on success only; a failed
