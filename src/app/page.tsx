@@ -13,12 +13,23 @@ export const metadata: Metadata = {
   },
 };
 
-const PANEL: React.CSSProperties = {
-  border: "1px solid #1f1f24",
-  borderRadius: 14,
-  background: "#0e0e11",
-  padding: 20,
-};
+function PublicNav() {
+  return (
+    <nav className="public-nav" aria-label="Main">
+      <Link href="/" className="public-brand">
+        Sello<em>.</em>
+      </Link>
+      <div className="public-nav__links">
+        <Link href="/pricing" className="btn btn--ghost btn--sm">
+          Pricing
+        </Link>
+        <Link href="/dashboard" className="btn btn--secondary btn--sm">
+          Sign in
+        </Link>
+      </div>
+    </nav>
+  );
+}
 
 function Section({
   id,
@@ -30,225 +41,181 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} style={{ maxWidth: 1040, margin: "0 auto", padding: "48px 20px" }}>
-      {title && (
-        <h2 style={{ fontSize: 26, margin: "0 0 20px", letterSpacing: -0.4 }}>{title}</h2>
-      )}
+    <section id={id} className="public-section">
+      {title && <h2 className="t-h1 public-section__title">{title}</h2>}
       {children}
     </section>
   );
 }
 
+function InfoCard({
+  title,
+  children,
+  meta,
+}: {
+  title: string;
+  children: React.ReactNode;
+  meta?: string;
+}) {
+  return (
+    <div className="card public-card">
+      <div className="card__body">
+        {meta && <div className="t-micro public-card__meta">{meta}</div>}
+        <h3 className="t-h2 public-card__title">{title}</h3>
+        <div className="t-small public-card__copy">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Landing() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#08080a",
-        color: "#ededf2",
-        fontFamily: "var(--font-sans, system-ui, sans-serif)",
-      }}
-    >
-      {/* Hero */}
-      <header style={{ maxWidth: 1040, margin: "0 auto", padding: "72px 20px 24px" }}>
-        <div
-          style={{
-            display: "inline-block",
-            fontSize: 12,
-            color: "#9aa",
-            border: "1px solid #23232a",
-            borderRadius: 999,
-            padding: "4px 12px",
-            marginBottom: 22,
-          }}
-        >
-          Early access · private alpha
-        </div>
-        <h1 style={{ fontSize: 48, lineHeight: 1.05, letterSpacing: -1, margin: "0 0 16px" }}>
+    <main className="public-page">
+      <header className="public-hero">
+        <PublicNav />
+        <div className="badge badge--outline">Early access · private alpha</div>
+        <h1 className="t-display public-hero__title">
           Turn clothing photos into resale listings.
         </h1>
-        <p style={{ fontSize: 19, color: "#b6b6c0", maxWidth: 640, margin: "0 0 28px" }}>
+        <p className="public-hero__copy">
           Sello writes clean listings, prepares marketplace-ready drafts, and helps
           price items with sold-comp intelligence. Automated where supported.
           Assisted where required.
         </p>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <Link
-            href="/dashboard"
-            style={{
-              background: "#ededf2",
-              color: "#08080a",
-              padding: "12px 20px",
-              borderRadius: 10,
-              fontWeight: 600,
-              textDecoration: "none",
-            }}
-          >
+        <div className="public-actions">
+          <Link href="/dashboard" className="btn btn--primary btn--lg">
             Start creating listings
           </Link>
-          <Link
-            href="#how-it-works"
-            style={{
-              border: "1px solid #2a2a32",
-              color: "#ededf2",
-              padding: "12px 20px",
-              borderRadius: 10,
-              textDecoration: "none",
-            }}
-          >
+          <Link href="#how-it-works" className="btn btn--secondary btn--lg">
             See how it works
+          </Link>
+          <Link href="/pricing" className="btn btn--secondary btn--lg">
+            View pricing
           </Link>
         </div>
       </header>
 
-      {/* Workflow */}
       <Section id="how-it-works" title="From photo to marketplace-ready">
-        <ol
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 14,
-            listStyle: "none",
-            padding: 0,
-            margin: 0,
-          }}
-        >
+        <ol className="public-grid public-grid--steps">
           {[
             ["1", "Upload photos", "Drop in raw item photos."],
-            ["2", "Sello writes the listing", "Title, description, item specifics, measurements, and flaws."],
+            [
+              "2",
+              "Sello writes the listing",
+              "Title, description, item specifics, measurements, and flaws.",
+            ],
             ["3", "Review price & comps", "Sold-comp guidance with a confidence score."],
-            ["4", "Publish or export", "Publish on eBay; export marketplace-ready packages elsewhere."],
+            [
+              "4",
+              "Publish or export",
+              "Publish on eBay; export marketplace-ready packages elsewhere.",
+            ],
             ["5", "Track inventory", "Status tracking across your channels."],
-          ].map(([n, h, d]) => (
-            <li key={n} style={PANEL}>
-              <div style={{ color: "#8a8a96", fontSize: 13, marginBottom: 6 }}>Step {n}</div>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>{h}</div>
-              <div style={{ color: "#9a9aa6", fontSize: 14 }}>{d}</div>
+          ].map(([n, title, copy]) => (
+            <li key={n} className="card public-card">
+              <div className="card__body">
+                <div className="t-micro">Step {n}</div>
+                <h3 className="t-h2 public-card__title">{title}</h3>
+                <p className="t-small public-card__copy">{copy}</p>
+              </div>
             </li>
           ))}
         </ol>
-        <p style={{ color: "#9a9aa6", marginTop: 16 }}>
+        <p className="public-note">
           Sello removes the repetitive work: titles, descriptions, item specifics,
           measurements, flaws, marketplace formatting, pricing, and status tracking.
         </p>
       </Section>
 
-      {/* Marketplaces */}
       <Section title="Marketplace support, honestly">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: 14,
-          }}
-        >
-          <div style={PANEL}>
-            <h3 style={{ margin: "0 0 8px" }}>eBay</h3>
-            <p style={{ color: "#9a9aa6", margin: 0 }}>
-              The deepest automation path, through eBay&apos;s official APIs.
-            </p>
-          </div>
-          <div style={PANEL}>
-            <h3 style={{ margin: "0 0 8px" }}>Grailed, Poshmark, Depop</h3>
-            <p style={{ color: "#9a9aa6", margin: 0 }}>
-              Marketplace-ready assisted listing packages and copy flows. You stay
-              in control and post where direct publishing is not supported.
-            </p>
-          </div>
-          <div style={PANEL}>
-            <h3 style={{ margin: "0 0 8px" }}>Everywhere else</h3>
-            <p style={{ color: "#9a9aa6", margin: 0 }}>
-              Supported through export and copy workflows first.
-            </p>
-          </div>
+        <div className="public-grid">
+          <InfoCard title="eBay">
+            The deepest automation path, through eBay&apos;s official APIs.
+          </InfoCard>
+          <InfoCard title="Grailed, Poshmark, Depop">
+            Marketplace-ready assisted listing packages and copy flows. You stay
+            in control and post where direct publishing is not supported.
+          </InfoCard>
+          <InfoCard title="Everywhere else">
+            Supported through export and copy workflows first.
+          </InfoCard>
         </div>
-        <p style={{ color: "#cfcfd6", marginTop: 18, fontWeight: 600 }}>
+        <p className="public-note public-note--strong">
           Automated where supported. Assisted where required.
         </p>
       </Section>
 
-      {/* Auto-pricing */}
       <Section title="Sold-comp pricing intelligence">
-        <div style={PANEL}>
-          <p style={{ color: "#b6b6c0", marginTop: 0 }}>
-            Sello uses sold-comp discovery and confidence scoring to back every
-            price with real evidence.
-          </p>
-          <p style={{ color: "#9a9aa6", margin: 0 }}>
-            Create listings for free and preview pricing. Paid plans unlock full
-            automatic sold-comp discovery, confidence scoring, and refreshes. Full
-            auto-pricing uses paid provider calls, so it is credit-limited and
-            included with paid plans.
-          </p>
+        <div className="card public-card">
+          <div className="card__body public-card__body-lg">
+            <p className="public-note public-note--flush">
+              Sello uses sold-comp discovery and confidence scoring to back every
+              price with real evidence.
+            </p>
+            <p className="t-small public-card__copy">
+              Create listings for free and preview pricing. Paid plans unlock full
+              automatic sold-comp discovery, confidence scoring, and refreshes. Full
+              auto-pricing uses paid provider calls, so it is credit-limited and
+              included with paid plans.
+            </p>
+          </div>
         </div>
       </Section>
 
-      {/* eBay setup FYI */}
       <Section title="Connecting eBay">
-        <div style={PANEL}>
-          <p style={{ color: "#b6b6c0", marginTop: 0 }}>
-            You do not need an eBay developer account. Sello connects to your normal
-            eBay seller account.
-          </p>
-          <p style={{ color: "#9a9aa6", margin: 0 }}>
-            To auto-publish, eBay requires standard seller policies like payment,
-            shipping, and returns. Sello checks this during onboarding.
-          </p>
-        </div>
+        <InfoCard title="No developer account needed">
+          You do not need an eBay developer account. Sello connects to your normal
+          eBay seller account. To auto-publish, eBay requires standard seller
+          policies like payment, shipping, and returns. Sello checks this during
+          onboarding.
+        </InfoCard>
       </Section>
 
-      {/* Grailed assisted */}
       <Section title="Grailed-ready, assisted">
-        <div style={PANEL}>
-          <p style={{ color: "#9a9aa6", margin: 0 }}>
-            For Grailed, Sello prepares a complete listing package: title, designer,
-            category, size, description, measurements, price, photo order, and
-            copy-ready fields. You stay in control when direct publishing is not
-            supported.
-          </p>
-        </div>
+        <InfoCard title="Complete listing packages">
+          For Grailed, Sello prepares title, designer, category, size, description,
+          measurements, price, photo order, and copy-ready fields. You stay in
+          control when direct publishing is not supported.
+        </InfoCard>
       </Section>
 
-      {/* Pricing preview */}
       <Section title="Early access pricing">
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 14,
-          }}
-        >
+        <div className="public-grid">
           {[
             ["Free / Trial", ["Create listings", "Basic pricing preview", "Limited auto-comp credits"]],
             ["Starter", ["Full auto-pricing", "Sold comps", "Confidence scores", "Refresh limits"]],
-            ["Seller / Pro", ["More listings", "More comp credits", "Bulk tools (later)"]],
+            ["Seller / Pro", ["More listings", "More comp credits", "Bulk tools"]],
           ].map(([name, feats]) => (
-            <div key={name as string} style={PANEL}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{name as string}</div>
-              <div style={{ color: "#8a8a96", fontSize: 12, marginBottom: 10 }}>Coming soon</div>
-              <ul style={{ color: "#9a9aa6", paddingLeft: 18, margin: 0 }}>
-                {(feats as string[]).map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
+            <div key={name as string} className="card public-card">
+              <div className="card__body">
+                <div className="t-h2 public-card__title">{name as string}</div>
+                <div className="badge badge--outline public-card__badge">Early access</div>
+                <ul className="public-list">
+                  {(feats as string[]).map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
           ))}
         </div>
-        <p style={{ color: "#9a9aa6", marginTop: 14 }}>
+        <p className="public-note">
           Free users can create listings and preview pricing. Paid plans unlock
           automatic sold-comp discovery, confidence scoring, and evidence-backed
           price recommendations.
         </p>
+        <Link href="/pricing" className="btn btn--secondary">
+          Compare current plans
+        </Link>
       </Section>
 
-      {/* FAQ */}
       <Section title="FAQ">
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="public-stack">
           {[
             ["Do I need an eBay developer account?", "No. Sello connects to your normal eBay seller account."],
             [
               "Can Sello publish directly to every marketplace?",
-              "No — only where official support exists. eBay has the deepest path; others use assisted listing packages and exports.",
+              "No. Only where official support exists. eBay has the deepest path; others use assisted listing packages and exports.",
             ],
             [
               "Does Sello support Grailed?",
@@ -260,31 +227,23 @@ export default function Landing() {
             ],
             [
               "Can I use Sello without eBay?",
-              "Yes — for listing generation and assisted marketplace exports.",
+              "Yes. Sello still supports listing generation and assisted marketplace exports.",
             ],
             ["Is Sello in early access?", "Yes. Feedback directly shapes what gets built next."],
           ].map(([q, a]) => (
-            <div key={q} style={PANEL}>
-              <div style={{ fontWeight: 600, marginBottom: 6 }}>{q}</div>
-              <div style={{ color: "#9a9aa6" }}>{a}</div>
-            </div>
+            <InfoCard key={q} title={q}>
+              {a}
+            </InfoCard>
           ))}
         </div>
       </Section>
 
-      <footer
-        style={{
-          maxWidth: 1040,
-          margin: "0 auto",
-          padding: "24px 20px 64px",
-          color: "#6a6a76",
-          fontSize: 13,
-        }}
-      >
-        <Link href="/dashboard" style={{ color: "#cfcfd6" }}>
-          Start creating listings
-        </Link>{" "}
-        · Sello is in early access.
+      <footer className="public-footer">
+        <Link href="/pricing">Pricing</Link>
+        <span>·</span>
+        <Link href="/dashboard">Start creating listings</Link>
+        <span>·</span>
+        <span>Sello is in early access.</span>
       </footer>
     </main>
   );

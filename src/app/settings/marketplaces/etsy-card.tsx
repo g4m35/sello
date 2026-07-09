@@ -97,10 +97,7 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
     <section className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span
-            className="grid h-9 w-9 place-items-center rounded font-mono text-sm font-semibold text-white"
-            style={{ background: "#F1641E" }}
-          >
+          <span className="grid h-9 w-9 place-items-center rounded bg-zinc-950 font-mono text-sm font-semibold text-zinc-100 ring-1 ring-white/10">
             Et
           </span>
           <div>
@@ -116,9 +113,7 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
 
       {state === "ready" && status && !canConnect(status) && (
         <p className="mt-3 text-sm text-zinc-400">
-          Live Etsy automation is not available for this account yet. You can still
-          build an Etsy <span className="text-zinc-200">copy-ready draft</span> from the
-          listing editor.
+          Etsy drafts are available from the listing editor.
         </p>
       )}
       {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
@@ -171,12 +166,12 @@ function canConnect(status: EtsyStatus): boolean {
 function describe(state: CardState, status: EtsyStatus | null): string {
   if (state === "loading") return "Checking Etsy status…";
   if (state === "error" || !status) return "Etsy status unavailable.";
-  if (!status.apiEnabled) return "Copy-ready draft · live API not enabled yet";
+  if (!status.apiEnabled) return "Drafts";
   if (status.connected) {
     return status.capabilities.publish
-      ? "Connected · live publishing enabled"
-      : "Connected · live publishing pending access";
+      ? "Connected · live"
+      : "Connected · drafts";
   }
-  if (!status.capabilities.connect) return "Copy-ready draft · live access limited to alpha";
-  return "Not connected · copy-ready draft available";
+  if (!status.capabilities.connect) return "Drafts";
+  return "Not connected";
 }

@@ -12,6 +12,15 @@ vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUserFromRequestOrCookies:
     mocks.requireSupabaseUserFromRequestOrCookies,
 }));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi
+    .fn()
+    .mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" }),
+}));
+vi.mock("@/lib/billing/connections", () => ({
+  assertCanConnectMarketplace: vi.fn().mockResolvedValue(undefined),
+  assertCanManageMarketplaceConnections: vi.fn().mockResolvedValue(undefined),
+}));
 
 import { GET } from "./route";
 

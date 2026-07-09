@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
+}));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({
     inventoryItem: { findFirst: mocks.itemFindFirst },
@@ -70,6 +73,10 @@ describe("Etsy sync route", () => {
     expect(mocks.listingUpdate).toHaveBeenCalledWith({
       where: { id: "ml" },
       data: { status: "SOLD", lastSyncAt: expect.any(Date), lastError: null },
+    });
+    expect(mocks.getEtsyAuthorizedSession).toHaveBeenCalledWith({
+      userId: "u1",
+      accountId: "acc-1",
     });
   });
 });

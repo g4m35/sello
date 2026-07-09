@@ -14,6 +14,7 @@ import {
   getEbayEnvironment,
   isEbayProductionPublishEnabled,
 } from "@/lib/marketplace/adapters/ebay/config";
+import { isStockXListingCreationAvailable } from "@/lib/marketplace/adapters/stockx/capabilities";
 import { listMarketplaceAdapters } from "@/lib/marketplace/adapter";
 import { marketplaceName } from "@/lib/view/marketplaces";
 import { buildReadinessView } from "@/lib/view/readiness-view";
@@ -33,12 +34,22 @@ const ADAPTER_PUBLISH = new Map(
   listMarketplaceAdapters().map((a) => [a.marketplace as string, a.capabilities.publish]),
 );
 
-function publishImplementedForView(marketplace: string): boolean {
+function publishImplementedForView(
+  marketplace: string,
+  draft: ListingDraft | null = null,
+): boolean {
   if (marketplace === "ebay") {
     if (getEbayEnvironment() === "production") {
       return isEbayProductionPublishEnabled();
     }
     return ADAPTER_PUBLISH.get(marketplace) ?? false;
+  }
+  if (marketplace === "stockx") {
+    return (
+      isStockXListingCreationAvailable() &&
+      hasText(draft?.stockxProductId) &&
+      hasText(draft?.stockxVariantId)
+    );
   }
   return ADAPTER_PUBLISH.get(marketplace) ?? false;
 }
@@ -84,17 +95,21 @@ function channelsOf(item: ItemWithRelations, draft: ListingDraft | null): Channe
       marketplace: mp,
       name: adapter.displayName,
       status,
-      publishImplemented: publishImplementedForView(mp),
+      publishImplemented: publishImplementedForView(mp, draft),
       environment: listing?.environment ?? null,
       sku: listing?.sku ?? null,
       externalOfferId: listing?.externalOfferId ?? null,
       externalListingId: listing?.externalListingId ?? null,
+      externalUrl: listing?.externalUrl ?? null,
       lastError: safeRenderFailure(listing?.lastError),
     };
   });
 }
 
-export function mapItem(item: ItemWithRelations): ItemView {
+export function mapItem(
+  item: ItemWithRelations,
+  photoUrls: Map<string, string | null> = new Map(),
+): ItemView {
   const draft = latestDraft(item);
   const lifecycleState = toLifecycleState(item.status);
   const priceCents = draft?.recommendedPriceCents ?? item.recommendedPriceCents ?? null;
@@ -137,6 +152,11 @@ export function mapItem(item: ItemWithRelations): ItemView {
     ready: readiness.ready,
     missingCount,
     photoCount: photoCountOf(item),
+    coverImage:
+      [...(item.photos ?? [])].sort((a, b) => a.position - b.position)
+        .map((photo) => photoUrls.get(photo.id) ?? null)
+        .find((url): url is string => typeof url === "string" && url.length > 0) ??
+      null,
     updatedAt: item.updatedAt.toISOString(),
     draftId: draft?.id ?? null,
     channels: channelsOf(item, draft),
@@ -148,7 +168,7 @@ export function mapItemDetail(
   attempts: AttemptView[],
   photoUrls: Map<string, string | null> = new Map(),
 ): ItemDetailView {
-  const base = mapItem(item);
+  const base = mapItem(item, photoUrls);
   const draft = latestDraft(item);
   const photos = [...item.photos]
     .sort((a, b) => a.position - b.position)
@@ -184,11 +204,64 @@ export function mapItemDetail(
     ebayCategoryId: ebayCategoryIdOf(draft?.marketplaceDrafts),
     ebayQuantity: ebayQuantityOf(draft?.marketplaceDrafts),
     ebayAspects: ebayAspectsOf(draft?.marketplaceDrafts),
+    stockxMatch: stockxMatchOf(draft),
     selectedMarketplaces: (draft?.selectedMarketplaces ?? []) as string[],
     readiness,
     attempts,
     photos,
   };
+}
+
+function stockxMatchOf(draft: ListingDraft | null): ItemDetailView["stockxMatch"] {
+  const json = stockxDraftOf(draft?.marketplaceDrafts);
+  const productId = draft?.stockxProductId ?? stringOf(json.productId);
+  const variantId = draft?.stockxVariantId ?? stringOf(json.variantId);
+  const size = stringOf(json.size);
+  const marketDataStatus = stringOf(json.marketDataStatus);
+  const status =
+    !productId
+      ? "not_matched"
+      : !variantId || !size
+        ? "needs_variant"
+        : marketDataStatus === "unavailable"
+          ? "market_data_unavailable"
+          : "matched";
+
+  return {
+    status,
+    productId,
+    variantId,
+    title: stringOf(json.title),
+    brand: stringOf(json.brand),
+    model: stringOf(json.model),
+    style: stringOf(json.style),
+    colorway: stringOf(json.colorway),
+    color: stringOf(json.color),
+    size,
+    image: stringOf(json.image),
+    category: stringOf(json.category),
+    url: stringOf(json.url),
+    matchSource: draft?.stockxMatchSource ?? stringOf(json.matchSource),
+    matchConfidence:
+      draft?.stockxMatchConfidence ??
+      (typeof json.matchConfidence === "number" ? json.matchConfidence : null),
+    marketDataCheckedAt: draft?.stockxMarketDataCheckedAt?.toISOString() ?? null,
+  };
+}
+
+function stockxDraftOf(marketplaceDrafts: unknown): Record<string, unknown> {
+  if (!marketplaceDrafts || typeof marketplaceDrafts !== "object") return {};
+  const stockx = (marketplaceDrafts as Record<string, unknown>).stockx;
+  if (!stockx || typeof stockx !== "object" || Array.isArray(stockx)) return {};
+  return stockx as Record<string, unknown>;
+}
+
+function stringOf(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function hasText(value: string | null | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function ebayAspectsOf(marketplaceDrafts: unknown): Record<string, string> {

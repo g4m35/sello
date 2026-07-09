@@ -30,6 +30,14 @@ const LISTING_TO_DESIGN: Record<MarketplaceListingStatus, DesignStatus> = {
   DELISTING: "publishing",
   DELISTED: "delisted",
   FAILED: "failed",
+  // Cross-marketplace safety / audit statuses (additive). ENDED mirrors a
+  // delisted channel; in-flight/unknown audit states read as publishing; states
+  // that need seller attention surface as failed so the UI never hides them.
+  ENDED: "delisted",
+  UNKNOWN: "publishing",
+  NEEDS_REVIEW: "failed",
+  SUBMITTED_FOR_AUDIT: "publishing",
+  REJECTED: "failed",
 };
 
 export function designStatusFromListing(status: MarketplaceListingStatus): DesignStatus {

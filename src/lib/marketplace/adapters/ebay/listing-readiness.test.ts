@@ -36,12 +36,12 @@ describe("validateEbayListingReadiness", () => {
     expect(result.missing).toEqual([]);
   });
 
-  it("rejects an item owned by another user", () => {
+  it("does not compare creator id to acting user after account-scoped load", () => {
     const input = baseInput();
     input.item.sellerId = "someone-else";
     const result = validateEbayListingReadiness(input);
-    expect(result.ready).toBe(false);
-    expect(result.missing).toContain("item_ownership");
+    expect(result.ready).toBe(true);
+    expect(result.missing).not.toContain("item_ownership");
   });
 
   it("flags a missing title", () => {

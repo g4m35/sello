@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertCanManageMarketplaceConnections } from "@/lib/billing/connections";
 import { getPrisma } from "@/lib/prisma";
 import { getEbayEnvironment } from "@/lib/marketplace/adapters/ebay/config";
 import { toEbayErrorPayload } from "@/lib/marketplace/adapters/ebay/errors";
@@ -11,9 +13,13 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
-    await getPrisma().marketplaceConnection.deleteMany({
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    await assertCanManageMarketplaceConnections(account, user.id, prisma);
+
+    await prisma.marketplaceConnection.deleteMany({
       where: {
-        userId: user.id,
+        accountId: account.id,
         marketplace: "ebay",
         environment: getEbayEnvironment(),
       },

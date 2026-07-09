@@ -483,4 +483,45 @@ describe("runCompFetch", () => {
     expect(prisma.priceComp.createMany).not.toHaveBeenCalled();
     expect(prisma.compSearchRun.create).not.toHaveBeenCalled();
   });
+
+  it("scopes item lookup by accountId when the caller provides account scope", async () => {
+    const source: CompSource = {
+      id: "test-source",
+      displayName: "Test source",
+      sold: true,
+      resultKind: "sold_comps",
+      isEnabled: () => true,
+      fetchComps: vi.fn(async () => []),
+    };
+    const prisma = {
+      inventoryItem: {
+        findFirst: vi.fn(async () => ({
+          id: "item-1",
+          productName: "The North Face Black Nuptse Puffer Jacket",
+          brand: "The North Face",
+          styleCode: null,
+          size: "Large",
+          category: "streetwear",
+          colorway: "Black",
+          condition: "used_good",
+          confidence: 0.9,
+          recommendedPriceCents: null,
+          listingDrafts: [],
+        })),
+      },
+      priceComp: { deleteMany: vi.fn(), createMany: vi.fn(), findMany: vi.fn(async () => []) },
+      compSearchRun: { create: vi.fn(async () => ({ id: "run-1" })) },
+    };
+
+    await runCompFetch(prisma as never, "item-1", "member-1", {
+      accountId: "acc-1",
+      sources: [source],
+    });
+
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "item-1", accountId: "acc-1" },
+      }),
+    );
+  });
 });

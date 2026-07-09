@@ -75,15 +75,20 @@ type ItemRow = {
 export type EbayPreflightPrismaLike = EbayMediaPrismaLike & {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       include?: unknown;
     }): Promise<ItemRow | null>;
   };
   marketplaceConnection: {
     findUnique(args: {
       where: {
-        userId_marketplace_environment: {
+        userId_marketplace_environment?: {
           userId: string;
+          marketplace: "ebay";
+          environment: EbayEnvironment;
+        };
+        accountId_marketplace_environment?: {
+          accountId: string;
           marketplace: "ebay";
           environment: EbayEnvironment;
         };
@@ -92,7 +97,7 @@ export type EbayPreflightPrismaLike = EbayMediaPrismaLike & {
   };
   ebaySellerConfig: {
     findFirst(args: {
-      where: { userId: string; marketplaceConnectionId: string };
+      where: { userId?: string; accountId?: string; marketplaceConnectionId: string };
     }): Promise<{
       marketplaceId: string;
       paymentPolicyId: string | null;
@@ -138,6 +143,7 @@ export type EbayPreflightResult = {
 
 export type EbayPreflightInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
 };
 
@@ -201,7 +207,9 @@ export async function preflightEbayListing(
       : isEbaySandboxPublishEnabled(env);
 
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     include: {
       listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 },
       photos: { orderBy: { position: "asc" } },
@@ -213,18 +221,28 @@ export async function preflightEbayListing(
   }
 
   const connection = await prisma.marketplaceConnection.findUnique({
-    where: {
-      userId_marketplace_environment: {
-        userId: input.userId,
-        marketplace: "ebay",
-        environment,
-      },
-    },
+    where: input.accountId
+      ? {
+          accountId_marketplace_environment: {
+            accountId: input.accountId,
+            marketplace: "ebay",
+            environment,
+          },
+        }
+      : {
+          userId_marketplace_environment: {
+            userId: input.userId,
+            marketplace: "ebay",
+            environment,
+          },
+        },
   });
 
   const sellerConfig = connection
     ? await prisma.ebaySellerConfig.findFirst({
-        where: { userId: input.userId, marketplaceConnectionId: connection.id },
+        where: input.accountId
+          ? { accountId: input.accountId, marketplaceConnectionId: connection.id }
+          : { userId: input.userId, marketplaceConnectionId: connection.id },
       })
     : null;
 

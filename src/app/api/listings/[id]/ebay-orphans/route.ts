@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NextResponse } from "next/server";
 
 import { AppError, safeClientMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
 import {
   cleanupEbayOrphanArtifacts,
@@ -26,19 +27,23 @@ export async function POST(
     const user = await requireSupabaseUser(request);
     const { id } = await params;
     const parsed = OrphanActionSchema.parse(await request.json());
-    const prisma = getPrisma() as unknown as EbayOrphanPrismaLike;
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    const orphanPrisma = prisma as unknown as EbayOrphanPrismaLike;
 
     if (parsed.action === "cleanup") {
-      const result = await cleanupEbayOrphanArtifacts(prisma, {
+      const result = await cleanupEbayOrphanArtifacts(orphanPrisma, {
         userId: user.id,
+        accountId: account.id,
         inventoryItemId: id,
         confirmCleanup: parsed.confirmCleanup,
       });
       return NextResponse.json(result);
     }
 
-    const scan = await scanEbayOrphanArtifacts(prisma, {
+    const scan = await scanEbayOrphanArtifacts(orphanPrisma, {
       userId: user.id,
+      accountId: account.id,
       inventoryItemId: id,
     });
     return NextResponse.json({ ok: true, scan });

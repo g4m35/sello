@@ -42,7 +42,11 @@ export function toPriceCompCreate(inventoryItemId: string, c: NormalizedComp) {
     inventoryItemId,
     source: `auto:${c.source}`,
     sourceType: "api" as const,
-    platform: c.source.includes("ebay") ? "ebay" : null,
+    platform: c.source.includes("stockx")
+      ? "stockx"
+      : c.source.includes("ebay")
+        ? "ebay"
+        : null,
     status: (c.sold ? "sold" : "active") as "sold" | "active",
     title: c.title.slice(0, 200),
     brand: c.brand?.slice(0, 80) ?? null,

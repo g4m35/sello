@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertCanManageMarketplaceConnections } from "@/lib/billing/connections";
 import { getPrisma } from "@/lib/prisma";
 import { toEtsyErrorPayload } from "@/lib/marketplace/adapters/etsy/errors";
 import { ETSY_ENVIRONMENT } from "@/lib/marketplace/adapters/etsy/types";
@@ -11,11 +13,15 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    await assertCanManageMarketplaceConnections(account, user.id, prisma);
+
     // Removing the connection revokes Sello's stored token access for this seller.
-    // Scoped to the signed-in user, so no one can disconnect another seller's shop.
-    await getPrisma().marketplaceConnection.deleteMany({
+    // Scoped to the active account, so members cannot disconnect other accounts.
+    await prisma.marketplaceConnection.deleteMany({
       where: {
-        userId: user.id,
+        accountId: account.id,
         marketplace: "etsy",
         environment: ETSY_ENVIRONMENT,
       },

@@ -5,8 +5,12 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
+}));
+vi.mock("@/lib/billing/account", () => ({
+  getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" }),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({

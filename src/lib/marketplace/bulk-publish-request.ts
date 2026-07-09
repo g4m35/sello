@@ -20,10 +20,12 @@ export function uniqueItemIds(ids: string[]): string[] {
 }
 
 const itemIds = z.array(z.uuid()).min(1).transform(uniqueItemIds);
+const marketplace = z.enum(["ebay", "stockx"]).default("ebay");
 
 export const BulkPublishPreflightRequestSchema = z
   .object({
     itemIds,
+    marketplace,
     bulkRunId: z.uuid().optional(),
   })
   .strict();
@@ -31,6 +33,7 @@ export const BulkPublishPreflightRequestSchema = z
 export const BulkPublishExecuteRequestSchema = z
   .object({
     itemIds,
+    marketplace,
     bulkRunId: z.uuid().optional(),
     confirmLivePublish: z.literal(true),
   })

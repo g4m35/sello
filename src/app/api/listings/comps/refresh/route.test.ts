@@ -4,6 +4,9 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   runCompFetch: vi.fn(),
+  getActiveAccount: vi.fn(),
+  assertWithinQuota: vi.fn(),
+  incrementUsage: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -20,6 +23,14 @@ vi.mock("@/lib/comps/fetch", () => ({
   runCompFetch: mocks.runCompFetch,
 }));
 
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/billing/usage", () => ({
+  assertWithinQuota: mocks.assertWithinQuota,
+  incrementUsage: mocks.incrementUsage,
+}));
+
+import { AppError } from "@/lib/errors";
+
 import { POST } from "./route";
 
 describe("explicit comp refresh route", () => {
@@ -31,10 +42,40 @@ describe("explicit comp refresh route", () => {
       id: "user-1",
       email: "allowed@example.com",
     });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    mocks.assertWithinQuota.mockResolvedValue(undefined);
+    mocks.incrementUsage.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("returns 402 and does not fetch when the monthly comp-refresh quota is exhausted", async () => {
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      compSearchRun: { findFirst: vi.fn().mockResolvedValue(null) },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.assertWithinQuota.mockRejectedValue(
+      new AppError(
+        "You have used all of your comp refreshes for this billing period. Upgrade your plan for more.",
+        402,
+        "QUOTA_EXCEEDED_COMP_REFRESH",
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(402);
+    expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_COMP_REFRESH");
+    expect(mocks.runCompFetch).not.toHaveBeenCalled();
+    expect(mocks.incrementUsage).not.toHaveBeenCalled();
   });
 
   it("returns 403 before database reads or provider work for a nonallowlisted seller", async () => {
@@ -82,7 +123,7 @@ describe("explicit comp refresh route", () => {
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
   });
 
-  it("runs provider fetch only for an explicit seller-scoped refresh", async () => {
+  it("runs provider fetch only for an explicit account-scoped refresh", async () => {
     const prisma = {
       inventoryItem: {
         findFirst: vi.fn().mockResolvedValue({ id: "item-1" }),
@@ -103,14 +144,14 @@ describe("explicit comp refresh route", () => {
 
     expect(response.status).toBe(200);
     expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
-      where: { id: "item-1", sellerId: "user-1" },
+      where: { id: "item-1", accountId: "acc-1" },
       select: { id: true },
     });
     expect(mocks.runCompFetch).toHaveBeenCalledWith(
       prisma,
       "item-1",
       "user-1",
-      { force: true, paidProvidersAllowed: true },
+      { force: true, paidProvidersAllowed: true, accountId: "acc-1" },
     );
   });
 
@@ -258,6 +299,39 @@ describe("explicit comp refresh route", () => {
 
     expect(response.status).toBe(429);
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
+  });
+
+  it("only counts a real provider run for the cooldown so a disabled/failed/skipped run never poisons it", async () => {
+    // No prior *real* run -> the refresh is allowed even if a disabled/failed
+    // auto run wrote a CompSearchRun moments ago.
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const prisma = {
+      inventoryItem: { findFirst: vi.fn().mockResolvedValue({ id: "item-1" }) },
+      compSearchRun: { findFirst },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.runCompFetch.mockResolvedValue({ status: "found_comps" });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/comps/refresh", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: "item-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.runCompFetch).toHaveBeenCalledOnce();
+    // The cooldown query is restricted to statuses that actually queried a
+    // provider; blocked/failed runs are excluded and can never lock out a retry.
+    const where = findFirst.mock.calls[0][0].where;
+    expect(where.inventoryItemId).toBe("item-1");
+    expect(where.status.in).toEqual(
+      expect.arrayContaining(["found_comps", "auto_priced", "no_comps_found", "needs_review"]),
+    );
+    expect(where.status.in).not.toContain("disabled");
+    expect(where.status.in).not.toContain("error");
+    expect(where.status.in).not.toContain("skipped_weak_identity");
+    expect(where.status.in).not.toContain("source_unavailable");
   });
 
   it("does not run provider fetch for another seller's item", async () => {

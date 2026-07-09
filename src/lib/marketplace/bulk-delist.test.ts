@@ -4,7 +4,9 @@ vi.mock("server-only", () => ({}));
 
 import {
   executeBulkEbayDelist,
+  executeBulkStockXDelist,
   preflightBulkEbayDelist,
+  preflightBulkStockXDelist,
   type BulkDelistDeps,
   type BulkDelistItemResult,
   type DelistPreflightStatus,
@@ -111,5 +113,39 @@ describe("executeBulkEbayDelist", () => {
     expect(result.endedCount).toBe(1);
     expect(result.failedCount).toBe(1);
     expect(result.items.find((i) => i.itemId === "boom")?.retrySafe).toBe(true);
+  });
+});
+
+describe("preflightBulkStockXDelist", () => {
+  it("classifies StockX delist eligibility without marketplace mutation", async () => {
+    const result = await preflightBulkStockXDelist(
+      prisma,
+      { userId: "u1", accountId: "acc-1", itemIds: ["a", "b", "c"] },
+      preflightDeps({
+        a: "eligible",
+        b: "already_ended",
+        c: "not_listed",
+      }),
+    );
+
+    expect(result.liveDelistAllowed).toBe(true);
+    expect(result.eligibleCount).toBe(1);
+    expect(result.alreadyEndedCount).toBe(1);
+    expect(result.notListedCount).toBe(1);
+  });
+});
+
+describe("executeBulkStockXDelist", () => {
+  it("aggregates StockX ended/skipped/failed results under one bulk run", async () => {
+    const result = await executeBulkStockXDelist(
+      prisma,
+      { userId: "u1", accountId: "acc-1", itemIds: ["a", "b", "c"], bulkRunId: "run-stockx" },
+      executeDeps({ a: "ended", b: "skipped", c: "failed" }),
+    );
+
+    expect(result.bulkRunId).toBe("run-stockx");
+    expect(result.endedCount).toBe(1);
+    expect(result.skippedCount).toBe(1);
+    expect(result.failedCount).toBe(1);
   });
 });

@@ -9,7 +9,7 @@ import {
   safeFailureText,
   safePersistedFailureReason,
 } from "@/lib/errors";
-import { canPublish, toLifecycleState } from "@/lib/lifecycle/item-status";
+import { TERMINAL_PUBLISH_STATUSES } from "@/lib/lifecycle/item-status";
 import { syncMasterStatusAfterMarketplacePublish } from "@/lib/marketplace/lifecycle-sync";
 
 import { getMarketplaceAdapter, type PublishOutcome } from "./adapter";
@@ -22,6 +22,14 @@ import {
   type EbayPublishResult,
   type EbayPublishStepRecord,
 } from "./adapters/ebay/publish";
+import { STOCKX_ENVIRONMENT } from "./adapters/stockx/types";
+import { StockXIntegrationError, stockxErrorCodes } from "./adapters/stockx/errors";
+import {
+  defaultStockXPublishDeps,
+  publishStockXListing,
+  type StockXPublishPrismaLike,
+  type StockXPublishResult,
+} from "./adapters/stockx/publish";
 
 const publishingPersistenceTables = ["PublishAttempt", "MarketplaceEvent"] as const;
 
@@ -55,7 +63,7 @@ export class PublishingMigrationMissingError extends AppError {
 export type PublishPrismaLike = {
   inventoryItem: {
     findFirst(args: {
-      where: { id: string; sellerId: string };
+      where: { id: string; accountId?: string; sellerId?: string };
       select?: { id: true; status: true };
     }): Promise<{ id: string; status: InventoryStatus } | null>;
     update?(args: {
@@ -190,19 +198,38 @@ export type PublishPrismaLike = {
       };
     }): Promise<{ id: string }>;
   };
+  syncJob?: {
+    upsert(args: {
+      where: { idempotencyKey: string };
+      update: Record<string, never>;
+      create: {
+        userId: string;
+        type: "detect_status";
+        status: "queued";
+        inventoryItemId: string;
+        marketplaceListingId: string;
+        idempotencyKey: string;
+        payload: Prisma.InputJsonValue;
+        runAfter: Date;
+      };
+      select: { id: true };
+    }): Promise<{ id: string }>;
+  };
 };
 
 export type ExecutePublishInput = {
   userId: string;
+  accountId?: string;
   inventoryItemId: string;
   marketplace: Marketplace;
   bulkRunId?: string;
+  confirmLivePublish?: boolean;
 };
 
 export type ExecutePublishResult = {
   ok: true;
   httpStatus: number;
-  outcome: PublishOutcome | EbayPublishResult;
+  outcome: PublishOutcome | EbayPublishResult | StockXPublishResult;
   marketplaceListingId: string;
   publishAttemptId: string;
   sku?: string;
@@ -216,11 +243,24 @@ type AdapterResolver = (marketplace: Marketplace) => {
 
 export type EbayPublishFn = (
   prisma: EbayPublishPrismaLike,
-  input: { userId: string; inventoryItemId: string },
+  input: { userId: string; accountId?: string; inventoryItemId: string },
 ) => Promise<EbayPublishResult>;
 
 const defaultEbayPublish: EbayPublishFn = (prisma, input) =>
   publishEbayListing(prisma, input, defaultEbayPublishDeps);
+
+export type StockXPublishFn = (
+  prisma: StockXPublishPrismaLike,
+  input: {
+    userId: string;
+    accountId?: string;
+    inventoryItemId: string;
+    confirmLivePublish?: boolean;
+  },
+) => Promise<StockXPublishResult>;
+
+const defaultStockXPublish: StockXPublishFn = (prisma, input) =>
+  publishStockXListing(prisma, input, defaultStockXPublishDeps);
 
 // Persists a single publish attempt for an approved item. For non-eBay
 // marketplaces it returns the honest NOT_IMPLEMENTED outcome. For eBay it runs
@@ -232,9 +272,12 @@ export async function executePublish(
   input: ExecutePublishInput,
   resolveAdapter: AdapterResolver = getMarketplaceAdapter,
   ebayPublish: EbayPublishFn = defaultEbayPublish,
+  stockxPublish: StockXPublishFn = defaultStockXPublish,
 ): Promise<ExecutePublishResult> {
   const item = await prisma.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: input.userId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: input.userId },
     select: { id: true, status: true },
   });
 
@@ -242,17 +285,22 @@ export async function executePublish(
     throw new AppError("Inventory item not found.", 404);
   }
 
-  if (!canPublish(toLifecycleState(item.status))) {
-    throw new AppError(
-      "Publishing is blocked until the item reaches the ready state.",
-      409,
-    );
+  // Readiness is computed from the listing fields, not a manual "ready"/approved
+  // status: the eBay adapter re-checks content + account readiness and returns the
+  // exact missing fields, so there is no separate "mark ready" step. Only a
+  // genuinely terminal item (already sold or archived) is blocked here.
+  if (TERMINAL_PUBLISH_STATUSES.includes(item.status)) {
+    throw new AppError("This item can no longer be published.", 409);
   }
 
   assertPublishingPersistenceDelegates(prisma);
 
   const environment =
-    input.marketplace === "ebay" ? getEbayEnvironment() : "manual";
+    input.marketplace === "ebay"
+      ? getEbayEnvironment()
+      : input.marketplace === "stockx"
+        ? STOCKX_ENVIRONMENT
+        : "manual";
   const listing = await getOrCreateMarketplaceListing(
     prisma,
     item.id,
@@ -262,6 +310,10 @@ export async function executePublish(
 
   if (input.marketplace === "ebay") {
     return executeEbayPublish(prisma, input, listing, environment, ebayPublish);
+  }
+
+  if (input.marketplace === "stockx") {
+    return executeStockXPublish(prisma, input, listing, stockxPublish);
   }
 
   const outcome = await resolveAdapter(input.marketplace).publishDraft({
@@ -430,6 +482,7 @@ async function executeEbayPublish(
   try {
     result = await ebayPublish(prisma as unknown as EbayPublishPrismaLike, {
       userId: input.userId,
+      accountId: input.accountId,
       inventoryItemId: input.inventoryItemId,
     });
   } catch (error) {
@@ -574,6 +627,190 @@ async function executeEbayPublish(
   });
 }
 
+async function executeStockXPublish(
+  prisma: PublishPrismaLike,
+  input: ExecutePublishInput,
+  listing: {
+    id: string;
+    status?: string;
+    externalListingId?: string | null;
+    publishAttempts?: Array<{ status: PublishAttemptStatus | string; code?: string }>;
+  },
+  stockxPublish: StockXPublishFn,
+): Promise<ExecutePublishResult> {
+  assertStockXPublishNotDuplicate(listing);
+
+  const idempotencyKey = `${input.inventoryItemId}:stockx:${STOCKX_ENVIRONMENT}`;
+  const startedAt = new Date();
+  let attempt: { id: string };
+  try {
+    attempt = await withMigrationDetection(async () => {
+      const created = await prisma.publishAttempt.create({
+        data: {
+          marketplaceListingId: listing.id,
+          status: "RUNNING",
+          idempotencyKey,
+          code: stockxErrorCodes.listingStarted,
+          reason: null,
+          adapterResult: (input.bulkRunId === undefined
+            ? null
+            : { bulkRunId: input.bulkRunId }) as unknown as Prisma.InputJsonValue,
+          requestedBy: input.userId,
+          completedAt: null,
+        },
+      });
+      await prisma.marketplaceEvent.create({
+        data: {
+          marketplaceListingId: listing.id,
+          kind: "publish_started",
+          data: {
+            attemptId: created.id,
+            marketplace: "stockx",
+            environment: STOCKX_ENVIRONMENT,
+            idempotencyKey,
+            startedAt: startedAt.toISOString(),
+            ...bulkRunMetadata(input.bulkRunId),
+          },
+        },
+      });
+      return created;
+    });
+  } catch (error) {
+    if (isUniqueConstraintViolation(error)) {
+      throw new StockXIntegrationError(
+        stockxErrorCodes.alreadyPublished,
+        "This item already has an in-flight or completed StockX publish attempt. Refusing to create a duplicate listing.",
+        409,
+        { marketplaceListingId: listing.id, idempotencyKey },
+      );
+    }
+    throw error;
+  }
+
+  let result: StockXPublishResult;
+  try {
+    result = await stockxPublish(prisma as unknown as StockXPublishPrismaLike, {
+      userId: input.userId,
+      accountId: input.accountId,
+      inventoryItemId: input.inventoryItemId,
+      confirmLivePublish: input.confirmLivePublish,
+    });
+  } catch (error) {
+    await recordStockXFailure(prisma, listing.id, attempt.id, error, input.bulkRunId);
+    throw error;
+  }
+
+  if (result.status === "not_enabled") {
+    return withMigrationDetection(async () => {
+      await updatePublishAttempt(prisma, attempt.id, {
+        status: "NOT_IMPLEMENTED",
+        code: result.code,
+        reason: result.message,
+        adapterResult: {
+          ...result,
+          ...bulkRunMetadata(input.bulkRunId),
+        } as unknown as Prisma.InputJsonValue,
+        completedAt: new Date(),
+      });
+
+      await prisma.marketplaceEvent.create({
+        data: {
+          marketplaceListingId: listing.id,
+          kind: "publish_blocked",
+          data: {
+            code: result.code,
+            attemptId: attempt.id,
+            marketplace: "stockx",
+            environment: STOCKX_ENVIRONMENT,
+            ...bulkRunMetadata(input.bulkRunId),
+          },
+        },
+      });
+
+      return {
+        ok: true,
+        httpStatus: 503,
+        outcome: result,
+        marketplaceListingId: listing.id,
+        publishAttemptId: attempt.id,
+      };
+    });
+  }
+
+  const listed = result.status === "published";
+  return withMigrationDetection(async () => {
+    await updatePublishAttempt(prisma, attempt.id, {
+      status: listed ? "SUCCEEDED" : "RUNNING",
+      code: result.code,
+      reason: listed ? null : "StockX accepted the listing operation and is still processing it.",
+      adapterResult: {
+        ...result,
+        ...bulkRunMetadata(input.bulkRunId),
+      } as unknown as Prisma.InputJsonValue,
+      completedAt: listed ? new Date() : null,
+    });
+
+    await prisma.marketplaceEvent.create({
+      data: {
+        marketplaceListingId: listing.id,
+        kind: listed ? "stockx_listing_published" : "stockx_listing_submitted",
+        data: {
+          code: result.code,
+          attemptId: attempt.id,
+          marketplace: "stockx",
+          environment: STOCKX_ENVIRONMENT,
+          listingId: result.listingId,
+          operationId: result.operationId,
+          operationStatus: result.operationStatus,
+          ...bulkRunMetadata(input.bulkRunId),
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    if (prisma.marketplaceListing.update) {
+      await prisma.marketplaceListing.update({
+        where: { id: listing.id },
+        data: {
+          status: listed ? "LISTED" : "LISTING",
+          externalListingId: result.listingId,
+          externalUrl: result.listingUrl,
+          metadata: {
+            operationId: result.operationId,
+            operationStatus: result.operationStatus,
+            operationUrl: result.operationUrl,
+          },
+          lastSyncAt: new Date(),
+          lastError: null,
+        },
+      });
+    }
+
+    if (listed && prisma.inventoryItem.update) {
+      await syncMasterStatusAfterMarketplacePublish(
+        {
+          inventoryItem: {
+            update: prisma.inventoryItem.update.bind(prisma.inventoryItem),
+          },
+        },
+        input.inventoryItemId,
+      );
+    }
+
+    if (!listed) {
+      await enqueueStockXStatusSyncJob(prisma, input, listing.id, result);
+    }
+
+    return {
+      ok: true,
+      httpStatus: listed ? 200 : 202,
+      outcome: result,
+      marketplaceListingId: listing.id,
+      publishAttemptId: attempt.id,
+      listingId: result.listingId,
+    };
+  });
+}
+
 function assertEbayPublishNotDuplicate(listing: {
   id: string;
   status?: string;
@@ -621,6 +858,100 @@ function assertEbayPublishNotDuplicate(listing: {
       hasSku: Boolean(listing.sku),
     },
   );
+}
+
+function assertStockXPublishNotDuplicate(listing: {
+  id: string;
+  status?: string;
+  externalListingId?: string | null;
+  publishAttempts?: Array<{ status: PublishAttemptStatus | string; code?: string }>;
+}) {
+  const blockedAttempt = listing.publishAttempts?.find(
+    (attempt) =>
+      typeof attempt.code === "string" &&
+      attempt.code.startsWith("STOCKX_LISTING") &&
+      ["QUEUED", "RUNNING", "SUCCEEDED"].includes(attempt.status),
+  );
+  if (blockedAttempt) {
+    throw new StockXIntegrationError(
+      stockxErrorCodes.alreadyPublished,
+      `This item already has a StockX publish attempt with status ${blockedAttempt.status}. Refusing to create a duplicate listing.`,
+      409,
+      {
+        marketplaceListingId: listing.id,
+        blockingAttemptStatus: blockedAttempt.status,
+      },
+    );
+  }
+
+  if (
+    !listing.externalListingId &&
+    listing.status !== "LISTED" &&
+    listing.status !== "LISTING"
+  ) {
+    return;
+  }
+
+  throw new StockXIntegrationError(
+    stockxErrorCodes.alreadyPublished,
+    "This item already has a StockX listing or listing operation. Refusing to create a duplicate listing.",
+    409,
+    {
+      marketplaceListingId: listing.id,
+      hasExternalListingId: Boolean(listing.externalListingId),
+      listingStatus: listing.status,
+    },
+  );
+}
+
+async function recordStockXFailure(
+  prisma: PublishPrismaLike,
+  marketplaceListingId: string,
+  publishAttemptId: string,
+  error: unknown,
+  bulkRunId?: string,
+): Promise<void> {
+  const code =
+    error instanceof StockXIntegrationError
+      ? error.code
+      : stockxErrorCodes.listingFailed;
+  const missing =
+    error instanceof StockXIntegrationError &&
+    Array.isArray(error.details?.missing)
+      ? error.details.missing.filter((id): id is string => typeof id === "string")
+      : [];
+  const reason = safePersistedFailureReason(error, "StockX listing failed.");
+
+  await withMigrationDetection(async () => {
+    await updatePublishAttempt(prisma, publishAttemptId, {
+      status: "FAILED",
+      code,
+      reason,
+      adapterResult: {
+        code,
+        missing,
+        ...bulkRunMetadata(bulkRunId),
+      } as unknown as Prisma.InputJsonValue,
+      completedAt: new Date(),
+    });
+
+    await prisma.marketplaceEvent.create({
+      data: {
+        marketplaceListingId,
+        kind: "publish_failed",
+        data: {
+          code,
+          missing,
+          attemptId: publishAttemptId,
+          marketplace: "stockx",
+          environment: STOCKX_ENVIRONMENT,
+          ...bulkRunMetadata(bulkRunId),
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    return { id: publishAttemptId };
+  });
 }
 
 async function recordEbayFailure(
@@ -769,6 +1100,41 @@ async function updatePublishAttempt(
     return prisma.publishAttempt.update({ where: { id }, data });
   }
   return { id };
+}
+
+async function enqueueStockXStatusSyncJob(
+  prisma: PublishPrismaLike,
+  input: ExecutePublishInput,
+  marketplaceListingId: string,
+  result: StockXPublishResult,
+) {
+  if (result.status !== "submitted" || !prisma.syncJob?.upsert) return;
+  const syncKey = result.operationId ?? result.listingId;
+  await prisma.syncJob.upsert({
+    where: {
+      idempotencyKey: `${input.inventoryItemId}:stockx:${STOCKX_ENVIRONMENT}:detect_status:${syncKey}`,
+    },
+    update: {},
+    create: {
+      userId: input.userId,
+      type: "detect_status",
+      status: "queued",
+      inventoryItemId: input.inventoryItemId,
+      marketplaceListingId,
+      idempotencyKey: `${input.inventoryItemId}:stockx:${STOCKX_ENVIRONMENT}:detect_status:${syncKey}`,
+      payload: {
+        inventoryItemId: input.inventoryItemId,
+        marketplaceListingId,
+        marketplace: "stockx",
+        accountId: input.accountId ?? null,
+        listingId: result.listingId,
+        operationId: result.operationId,
+        operationStatus: result.operationStatus,
+      } as Prisma.InputJsonValue,
+      runAfter: new Date(Date.now() + 2 * 60_000),
+    },
+    select: { id: true },
+  });
 }
 
 async function withMigrationDetection<T>(fn: () => Promise<T>): Promise<T> {

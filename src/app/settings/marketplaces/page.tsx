@@ -22,6 +22,7 @@ import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/type
 
 import { ebayMarketplaceLabels } from "./labels";
 import { EtsyConnectionCard } from "./etsy-card";
+import { StockXConnectionCard } from "./stockx-card";
 import {
   ebayReadinessHelp,
   ebayReadinessItems,
@@ -286,6 +287,7 @@ export default function MarketplaceSettingsPage() {
           <h1 className="text-3xl font-semibold">{labels.heading}</h1>
         </header>
 
+        <StockXConnectionCard accessToken={session?.access_token ?? null} />
         <EtsyConnectionCard accessToken={session?.access_token ?? null} />
 
         <section className="rounded-lg border border-zinc-800 bg-zinc-900/70">

@@ -22,7 +22,7 @@ type Stage = "review" | "running" | "result";
 type Outcome = {
   marketplace: string;
   name: string;
-  status: "pending" | "running" | "published" | "not_implemented" | "failed";
+  status: "pending" | "running" | "submitted" | "published" | "not_implemented" | "failed";
   reason?: string;
 };
 
@@ -48,6 +48,7 @@ export function PublishModal({
   const [preflight, setPreflight] = useState<EbayPreflightResult | null>(null);
   const [preflightError, setPreflightError] = useState<string | null>(null);
   const [confirmLive, setConfirmLive] = useState(false);
+  const [confirmStockX, setConfirmStockX] = useState(false);
 
   // Reset the modal each time it opens for an item (render-phase derived state).
   const openKey = open && item ? item.id : null;
@@ -67,6 +68,7 @@ export function PublishModal({
       setPreflight(null);
       setPreflightError(null);
       setConfirmLive(false);
+      setConfirmStockX(false);
     }
   }
 
@@ -79,6 +81,13 @@ export function PublishModal({
       (c) =>
         c.marketplace === "ebay" &&
         c.publishImplemented &&
+        selected.has(c.marketplace),
+    ),
+  );
+  const selectedLiveStockX = Boolean(
+    item?.channels.some(
+      (c) =>
+        c.marketplace === "stockx" &&
         selected.has(c.marketplace),
     ),
   );
@@ -134,11 +143,17 @@ export function PublishModal({
         const res = await api.publish(token, {
           inventoryItemId: item.id,
           marketplace: c.marketplace,
+          ...(c.marketplace === "stockx" ? { confirmLivePublish: true as const } : {}),
         });
         const outcome: Outcome = {
           marketplace: c.marketplace,
           name: c.name,
-          status: res.status === "published" ? "published" : "not_implemented",
+          status:
+            res.status === "published"
+              ? "published"
+              : res.status === "submitted"
+                ? "submitted"
+                : "not_implemented",
           reason: res.reason ?? res.message,
         };
         results.push(outcome);
@@ -168,6 +183,34 @@ export function PublishModal({
     reviewReady,
     confirmed: confirmLive,
   });
+  const stockxSubmitReady = !selectedLiveStockX || confirmStockX;
+  const liveSubmitReadyForSelection =
+    (selectedLiveEbay ? liveSubmitReady : true) && stockxSubmitReady;
+  const livePublishCount = Number(selectedLiveEbay) + Number(selectedLiveStockX);
+  const livePublishTitle =
+    livePublishCount > 1
+      ? "Final live publish review"
+      : selectedLiveEbay
+        ? "Final eBay publish review"
+        : selectedLiveStockX
+          ? "Final StockX listing review"
+          : "Publishing isn't enabled yet";
+  const livePublishDescription =
+    livePublishCount > 1
+      ? "Confirming creates live listing operations for each selected marketplace. Sello checks each channel's readiness before sending anything out."
+      : selectedLiveEbay
+        ? "Confirming creates a live eBay listing. Sello will run the readiness preflight again before sending anything to eBay."
+        : selectedLiveStockX
+          ? "Confirming creates a live StockX listing operation for the matched product and size."
+          : "Listings stay draft-only. Running publish records a real, audited attempt per channel and returns each marketplace's not-implemented status; nothing is sent to any marketplace.";
+  const livePublishAction =
+    livePublishCount > 1
+      ? "Create live listings"
+      : selectedLiveEbay
+        ? "Create live eBay listing"
+        : selectedLiveStockX
+          ? "Create live StockX listing"
+          : `Record publish attempt (${selectedCount})`;
 
   return (
     <Modal open={open} onClose={stage === "running" ? undefined : onClose} wide>
@@ -192,16 +235,8 @@ export function PublishModal({
             ) : (
               <Banner
                 variant="warn"
-                title={
-                  selectedLiveEbay
-                    ? "Final eBay publish review"
-                    : "Publishing isn't enabled yet"
-                }
-                desc={
-                  selectedLiveEbay
-                    ? "Confirming creates a live eBay listing. Sello will run the readiness preflight again before sending anything to eBay."
-                    : "Listings stay draft-only. Running publish records a real, audited attempt per channel and returns each marketplace's not-implemented status; nothing is sent to any marketplace."
-                }
+                title={livePublishTitle}
+                desc={livePublishDescription}
               />
             )}
             {selectedLiveEbay && (
@@ -263,6 +298,31 @@ export function PublishModal({
                 )}
               </div>
             )}
+            {selectedLiveStockX && (
+              <div className="card" style={{ padding: 12 }}>
+                <div className="t-small" style={{ fontWeight: 600, marginBottom: 8 }}>
+                  Review the live StockX listing
+                </div>
+                <div className="stack-2">
+                  <ReviewRow label="Marketplace" value="StockX" />
+                  <ReviewRow label="Title" value={item.title} />
+                  <ReviewRow label="Price" value={formatMoneyCents(item.priceCents)} />
+                  <ReviewRow label="Quantity" value="1" />
+                  <label
+                    className="row"
+                    style={{ gap: 8, alignItems: "center", cursor: "pointer", marginTop: 4 }}
+                  >
+                    <Check
+                      checked={confirmStockX}
+                      onChange={() => setConfirmStockX((v) => !v)}
+                    />
+                    <span className="t-small">
+                      I understand this creates a live StockX listing operation for the saved product match.
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
             <div className="mp-select">
               {item.channels.map((c) => {
                 const on = selected.has(c.marketplace);
@@ -295,12 +355,14 @@ export function PublishModal({
               {selectedLiveEbay && !liveEbayEntitled ? null : (
                 <Btn
                   variant="accent"
-                  disabled={selectedLiveEbay ? !liveSubmitReady : selectedCount === 0}
+                  disabled={
+                    selectedLiveEbay || selectedLiveStockX
+                      ? !liveSubmitReadyForSelection
+                      : selectedCount === 0
+                  }
                   onClick={run}
                 >
-                  {selectedLiveEbay
-                    ? "Create live eBay listing"
-                    : `Record publish attempt (${selectedCount})`}
+                  {livePublishAction}
                 </Btn>
               )}
             </div>
@@ -341,6 +403,7 @@ export function PublishModal({
                   <div className="mp-row__meta">
                     {o.status === "pending" && "Queued"}
                     {o.status === "running" && "Sending…"}
+                    {o.status === "submitted" && "StockX listing submitted"}
                     {o.status === "published" && "Live listing created"}
                     {o.status === "not_implemented" && (o.reason ?? "Not implemented; draft saved")}
                     {o.status === "failed" && (o.reason ?? "Failed")}

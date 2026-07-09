@@ -15,6 +15,7 @@ export type BulkDelistModalProps = {
   open: boolean;
   onClose: () => void;
   selectionCount: number;
+  batchLimit: number;
   liveDelistAllowed: boolean;
   alphaCopy: string;
   phase: BulkDelistPhase;
@@ -26,9 +27,29 @@ export type BulkDelistModalProps = {
   onRetry?: (itemIds: string[]) => void;
   error?: string | null;
   itemTitles?: Record<string, string>;
+  marketplace?: "ebay" | "stockx";
 };
 
-const LIVE_CONFIRM_TEXT = "I understand this ends these live eBay listings.";
+const MARKETPLACE_COPY = {
+  ebay: {
+    titleLive: "End selected on eBay",
+    titlePreview: "Review selected for ending",
+    confirm: "I understand this ends these live eBay listings.",
+    eligibleMeta: "Live on eBay — can be ended",
+    notListedMeta: "No live eBay listing",
+    alreadyEndedMeta: "Already ended on eBay",
+    liveButton: (count: number) => `End ${count} on eBay`,
+  },
+  stockx: {
+    titleLive: "Delist selected from StockX",
+    titlePreview: "Review selected for StockX delist",
+    confirm: "I understand this will delist these items from StockX.",
+    eligibleMeta: "Live or submitted on StockX — can be delisted",
+    notListedMeta: "No active StockX listing",
+    alreadyEndedMeta: "Already delisted from StockX",
+    liveButton: (count: number) => `Delist ${count} from StockX`,
+  },
+} as const;
 
 const PREFLIGHT_LABEL: Record<BulkDelistPreflightItem["status"], string> = {
   eligible: "Can end",
@@ -38,10 +59,15 @@ const PREFLIGHT_LABEL: Record<BulkDelistPreflightItem["status"], string> = {
   rejected: "Unavailable",
 };
 
-const PREFLIGHT_META: Record<BulkDelistPreflightItem["status"], string> = {
-  eligible: "Live on eBay — can be ended",
-  not_listed: "No live eBay listing",
-  already_ended: "Already ended on eBay",
+function preflightMeta(status: BulkDelistPreflightItem["status"], marketplace: "ebay" | "stockx") {
+  const copy = MARKETPLACE_COPY[marketplace];
+  if (status === "eligible") return copy.eligibleMeta;
+  if (status === "not_listed") return copy.notListedMeta;
+  if (status === "already_ended") return copy.alreadyEndedMeta;
+  return PREFLIGHT_META[status];
+}
+
+const PREFLIGHT_META: Record<Exclude<BulkDelistPreflightItem["status"], "eligible" | "not_listed" | "already_ended">, string> = {
   in_flight: "An end is already in progress",
   rejected: "Not available",
 };
@@ -68,6 +94,7 @@ export function BulkDelistModal({
   open,
   onClose,
   selectionCount,
+  batchLimit,
   liveDelistAllowed,
   alphaCopy,
   phase,
@@ -79,7 +106,9 @@ export function BulkDelistModal({
   onRetry,
   error,
   itemTitles,
+  marketplace = "ebay",
 }: BulkDelistModalProps) {
+  const copy = MARKETPLACE_COPY[marketplace];
   const title = (id: string) => itemTitles?.[id] ?? "Selected item";
   const closeAllowed = phase !== "running";
   const eligibleCount = preflight?.eligibleCount ?? 0;
@@ -89,7 +118,7 @@ export function BulkDelistModal({
       <div className="modal__head">
         <div>
           <div className="modal__title">
-            {liveDelistAllowed ? "End selected on eBay" : "Review selected for ending"}
+            {liveDelistAllowed ? copy.titleLive : copy.titlePreview}
           </div>
           <div className="modal__sub">
             {selectionCount} selected item{selectionCount === 1 ? "" : "s"}
@@ -133,7 +162,7 @@ export function BulkDelistModal({
                 >
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div className="mp-row__name">{title(row.itemId)}</div>
-                    <div className="mp-row__meta">{PREFLIGHT_META[row.status]}</div>
+                    <div className="mp-row__meta">{preflightMeta(row.status, marketplace)}</div>
                   </div>
                   <Badge outline label={PREFLIGHT_LABEL[row.status]} />
                 </div>
@@ -145,7 +174,7 @@ export function BulkDelistModal({
                 style={{ gap: 8, alignItems: "center", cursor: "pointer" }}
               >
                 <Check checked={confirmLive} onChange={() => onConfirmChange(!confirmLive)} />
-                <span className="t-small">{LIVE_CONFIRM_TEXT}</span>
+                <span className="t-small">{copy.confirm}</span>
               </label>
             )}
           </>
@@ -184,7 +213,7 @@ export function BulkDelistModal({
         <div className="t-small">
           {phase === "result"
             ? "Results stay here until you close."
-            : `${selectionCount} selected`}
+            : `${selectionCount} selected · Plan limit ${batchLimit}`}
         </div>
         <div className="row">
           <Btn variant="ghost" onClick={onClose} disabled={!closeAllowed}>
@@ -196,7 +225,7 @@ export function BulkDelistModal({
               disabled={!confirmLive || eligibleCount === 0}
               onClick={onExecute}
             >
-              End {eligibleCount} on eBay
+              {copy.liveButton(eligibleCount)}
             </Btn>
           )}
         </div>

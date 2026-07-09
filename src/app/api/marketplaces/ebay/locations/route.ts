@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { AppError, getErrorMessage } from "@/lib/errors";
+import { getActiveAccount } from "@/lib/billing/account";
 import { getPrisma } from "@/lib/prisma";
 import { getEbayConfig } from "@/lib/marketplace/adapters/ebay/config";
 import {
@@ -53,8 +54,13 @@ export async function POST(request: Request) {
       marketplaceConnection: EbayTokenPrismaLike["marketplaceConnection"] & {
         findUnique(args: {
           where: {
-            userId_marketplace_environment: {
+            userId_marketplace_environment?: {
               userId: string;
+              marketplace: "ebay";
+              environment: string;
+            };
+            accountId_marketplace_environment?: {
+              accountId: string;
               marketplace: "ebay";
               environment: string;
             };
@@ -67,11 +73,13 @@ export async function POST(request: Request) {
         } | null>;
       };
     };
-    const prisma = getPrisma() as unknown as LocationsPrisma;
+    const rawPrisma = getPrisma();
+    const account = await getActiveAccount(user.id, rawPrisma);
+    const prisma = rawPrisma as unknown as LocationsPrisma;
     const connection = await prisma.marketplaceConnection.findUnique({
       where: {
-        userId_marketplace_environment: {
-          userId: user.id,
+        accountId_marketplace_environment: {
+          accountId: account.id,
           marketplace: "ebay",
           environment: config.environment,
         },

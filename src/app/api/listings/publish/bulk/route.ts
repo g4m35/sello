@@ -3,8 +3,14 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { assertBulkBatchSize } from "@/lib/billing/batch";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { AppError, safeErrorResponse } from "@/lib/errors";
-import { executeBulkEbayPublish } from "@/lib/marketplace/bulk-publish";
+import {
+  executeBulkEbayPublish,
+  executeBulkStockXPublish,
+} from "@/lib/marketplace/bulk-publish";
 import {
   BulkPublishExecuteRequestSchema,
   loadBulkPublishConfig,
@@ -14,19 +20,20 @@ import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// Live bulk publish. Gated to the live-eBay alpha allowlist AND an explicit
-// confirmLivePublish:true. Every item is routed through executePublish (inside
-// the service) so ownership, ready state, eBay readiness, the global production
-// gate, and DB duplicate protection are each re-checked per item. One shared
-// bulkRunId ties the whole run together for audit/inventory sync.
+// Live bulk publish. eBay remains gated to the live-eBay alpha allowlist; every
+// marketplace requires confirmLivePublish:true. StockX execution re-runs strict
+// readiness before any live mutation and routes through the canonical single-
+// item publish handler. One shared bulkRunId ties the run together for audit.
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const { itemIds, bulkRunId } = BulkPublishExecuteRequestSchema.parse(
+    const { itemIds, marketplace, bulkRunId } = BulkPublishExecuteRequestSchema.parse(
       await request.json(),
     );
 
-    requireFeatureAccess(user, "liveEbayPublish");
+    if (marketplace === "ebay") {
+      requireFeatureAccess(user, "liveEbayPublish");
+    }
 
     const config = loadBulkPublishConfig();
     if (itemIds.length > config.maxItemsPerRequest) {
@@ -37,11 +44,25 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await executeBulkEbayPublish(getPrisma(), {
-      userId: user.id,
-      itemIds,
-      bulkRunId: bulkRunId ?? randomUUID(),
-    });
+    // Plan bulk-batch cap (stricter than the global per-request ceiling).
+    const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length);
+
+    const result =
+      marketplace === "stockx"
+        ? await executeBulkStockXPublish(prisma as never, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+            bulkRunId: bulkRunId ?? randomUUID(),
+          })
+        : await executeBulkEbayPublish(prisma, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+            bulkRunId: bulkRunId ?? randomUUID(),
+          });
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {

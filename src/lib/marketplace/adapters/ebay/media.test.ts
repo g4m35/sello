@@ -199,18 +199,19 @@ describe("prepareEbayVisibleImages", () => {
     expect(prisma.marketplaceImage.upsert).not.toHaveBeenCalled();
   });
 
-  it("scopes media preparation to the seller-owned item", async () => {
+  it("allows media preparation after the caller loads an account-scoped item", async () => {
     const { prisma, item } = createPrisma({ sellerId: "someone-else" });
 
-    await expect(
-      prepareEbayVisibleImages(prisma, {
-        userId: "user-1",
-        item,
-        environment: "production",
-        env,
-        storage: storage(),
-      }),
-    ).rejects.toMatchObject({ status: 404 });
+    const result = await prepareEbayVisibleImages(prisma, {
+      userId: "user-1",
+      item,
+      environment: "production",
+      env,
+      storage: storage(),
+    });
+
+    expect(result.photos).toHaveLength(1);
+    expect(result.missing).toEqual([]);
   });
 
   it("returns a typed preflight blocker when storage copy fails", async () => {

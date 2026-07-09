@@ -43,6 +43,18 @@ describe("buildPricingNotes", () => {
     expect(notes.some((n) => /manual comps/i.test(n))).toBe(true);
   });
 
+  it("points sellers to manual refresh when background discovery is off", () => {
+    const notes = buildPricingNotes({
+      autoDiscoveryEnabled: false,
+      paidProvidersEnabled: true,
+      status: "disabled",
+      sourceErrors: [],
+    });
+    expect(notes).toEqual([
+      "Automatic background pricing is off. Use Refresh comps to search fresh sold comps for this listing.",
+    ]);
+  });
+
   it("explains weak identity with what to improve", () => {
     const notes = buildPricingNotes({
       autoDiscoveryEnabled: true,
