@@ -86,8 +86,19 @@ async function fetchFromSource(
       typeof (error as { code?: unknown }).code === "string"
         ? (error as { code: string }).code
         : undefined;
+    const details =
+      error && typeof error === "object" && "details" in error &&
+      error.details &&
+      typeof error.details === "object"
+        ? (error.details as Record<string, unknown>)
+        : undefined;
+    const status =
+      typeof details?.status === "number" ? details.status : undefined;
+    const path = typeof details?.path === "string" ? details.path : undefined;
     console.error(
-      `[comp_source_fetch:${source.id}] ${name}${code ? ` (${code})` : ""}`,
+      `[comp_source_fetch:${source.id}] ${name}${code ? ` (${code})` : ""}${
+        status != null ? ` status=${status}` : ""
+      }${path ? ` path=${path}` : ""}`,
     );
     logUnexpectedError(`comp_source_fetch:${source.id}`, error);
     return { source, comps: [], error: sanitizeProviderError(source) };

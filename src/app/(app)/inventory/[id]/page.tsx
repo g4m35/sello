@@ -603,13 +603,7 @@ export default function ListingDetailPage() {
     }
   }, [token, id, reload]);
 
-  if (loading)
-    return (
-      <>
-        <Topbar crumbs={["Inventory"]} />
-        <PageSkeleton />
-      </>
-    );
+  if (loading) return <PageSkeleton />;
   if (error && !item)
     return (
       <>

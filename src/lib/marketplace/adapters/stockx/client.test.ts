@@ -175,7 +175,41 @@ describe("StockX catalog client", () => {
 });
 
 describe("StockX market data client", () => {
-  it("normalizes recent sale rows into market data points", async () => {
+  it("requests currencyCode and normalizes ask/bid market levels", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              productId: "p1",
+              variantId: "v1",
+              currencyCode: "USD",
+              lowestAskAmount: 120,
+              highestBidAmount: 95,
+              sellFasterAmount: 110,
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+
+    const rows = await fetchStockXMarketData(
+      config,
+      "access-token",
+      { productId: "p1", variantId: "v1" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain("currencyCode=USD");
+    expect(rows[0]).toMatchObject({
+      priceCents: 12000,
+      currency: "USD",
+      soldDate: null,
+    });
+    expect(rows.some((row) => row.priceCents === 9500)).toBe(true);
+  });
+
+  it("still normalizes legacy sale-history rows when present", async () => {
     const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
       async () =>
         new Response(

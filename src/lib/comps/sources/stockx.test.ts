@@ -76,23 +76,30 @@ describe("StockX comp source", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("is an active-market source (ask/bid levels, not completed sales)", () => {
+    stubStockXEnv();
+    expect(stockxSource.sold).toBe(false);
+    expect(stockxSource.resultKind).toBe("active_listings");
+  });
+
   it("fetches market data through the encrypted account connection", async () => {
     stubStockXEnv();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              data: {
-                title: "Nike Dunk Low Panda",
-                sales: [{ saleId: "s1", price: 120, soldAt: "2026-06-20T00:00:00.000Z" }],
-              },
-            }),
-            { status: 200 },
-          ),
-      ),
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              productId: "p1",
+              variantId: "v1",
+              currencyCode: "USD",
+              lowestAskAmount: 120,
+              highestBidAmount: 95,
+            },
+          }),
+          { status: 200 },
+        ),
     );
+    vi.stubGlobal("fetch", fetchImpl);
 
     const comps = await stockxSource.fetchComps({
       accountId: "acc-1",
@@ -124,11 +131,12 @@ describe("StockX comp source", () => {
         accessTokenExpiresAt: true,
       },
     });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain("currencyCode=USD");
     expect(comps[0]).toMatchObject({
       source: "stockx",
-      externalId: "s1",
       priceCents: 12000,
-      sold: true,
+      sold: false,
+      size: "10",
     });
     expect(mocks.update).toHaveBeenCalledWith({
       where: { id: "draft-1" },

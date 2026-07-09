@@ -173,13 +173,7 @@ export default function HistoryPage() {
     );
   }
 
-  if (attempts === null)
-    return (
-      <>
-        <Topbar crumbs={["Publish history"]} right={topbarRight} />
-        <PageSkeleton />
-      </>
-    );
+  if (attempts === null) return <PageSkeleton />;
 
   const total = attempts.length;
 

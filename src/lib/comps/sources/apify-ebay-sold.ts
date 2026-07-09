@@ -188,7 +188,14 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
             ebayDomain: "ebay.com",
           }),
         });
-        if (!response.ok) throw new Error("provider_error");
+        if (!response.ok) {
+          const err = new Error("provider_error");
+          (err as Error & { details?: Record<string, unknown> }).details = {
+            status: response.status,
+            path: "apify-ebay-sold",
+          };
+          throw err;
+        }
         const json = (await response.json()) as unknown;
         const items = Array.isArray(json)
           ? json
@@ -196,8 +203,20 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
             ? (json as { items: unknown[] }).items
             : [];
         return mapApifyEbaySoldItems(items, query, maxItems);
-      } catch {
-        throw new Error("provider_error");
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "provider_error" &&
+          "details" in error
+        ) {
+          throw error;
+        }
+        const err = new Error("provider_error");
+        (err as Error & { details?: Record<string, unknown> }).details = {
+          path: "apify-ebay-sold",
+          cause: error instanceof Error ? error.name : typeof error,
+        };
+        throw err;
       } finally {
         clearTimeout(timer);
       }

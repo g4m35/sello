@@ -67,13 +67,7 @@ export default function ChannelsPage() {
     );
   }
 
-  if (channels === null)
-    return (
-      <>
-        <Topbar crumbs={["Marketplaces"]} />
-        <PageSkeleton />
-      </>
-    );
+  if (channels === null) return <PageSkeleton />;
 
   return (
     <>

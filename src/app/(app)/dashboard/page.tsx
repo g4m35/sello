@@ -171,13 +171,7 @@ export default function DashboardPage() {
     setPublishOpen(true);
   };
 
-  if (loading)
-    return (
-      <>
-        <Topbar crumbs={["Dashboard"]} />
-        <PageSkeleton />
-      </>
-    );
+  if (loading) return <PageSkeleton />;
   if (error)
     return (
       <>
