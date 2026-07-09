@@ -1,19 +1,34 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import Landing, { metadata } from "@/app/page";
+vi.mock("@/lib/supabase/server", () => ({
+  getSupabaseUserFromCookies: vi.fn(async () => null),
+}));
 
-const source = readFileSync(join(process.cwd(), "src/app/page.tsx"), "utf8");
-// Whitespace-insensitive view so multi-word copy that wraps across lines in JSX
-// still matches.
-const flat = source.replace(/\s+/g, " ");
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((url: string) => {
+    throw new Error(`REDIRECT:${url}`);
+  }),
+}));
+
+import HomePage, { metadata } from "@/app/page";
+import { LandingPage } from "@/components/marketing/landing-page";
+import { getSupabaseUserFromCookies } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+
+const pageSource = readFileSync(join(process.cwd(), "src/app/page.tsx"), "utf8");
+const landingSource = readFileSync(
+  join(process.cwd(), "src/components/marketing/landing-page.tsx"),
+  "utf8",
+);
+const flat = landingSource.replace(/\s+/g, " ");
 
 describe("landing page", () => {
-  it("renders without auth (pure server component, no throw)", () => {
-    expect(typeof Landing).toBe("function");
-    expect(() => Landing()).not.toThrow();
+  it("renders without auth (pure marketing component, no throw)", () => {
+    expect(typeof LandingPage).toBe("function");
+    expect(() => LandingPage()).not.toThrow();
   });
 
   it("has page metadata title + description", () => {
@@ -26,11 +41,11 @@ describe("landing page", () => {
   });
 
   it("has working primary/secondary CTAs", () => {
-    expect(source).toContain('href="/dashboard"');
-    expect(source).toContain("Start creating listings");
-    expect(source).toContain('href="#how-it-works"');
-    expect(source).toContain('href="/pricing"');
-    expect(source).toContain("View pricing");
+    expect(landingSource).toContain('href="/dashboard"');
+    expect(landingSource).toContain("Start creating listings");
+    expect(landingSource).toContain('href="#how-it-works"');
+    expect(landingSource).toContain('href="/pricing"');
+    expect(landingSource).toContain("View pricing");
   });
 
   it("eBay FYI: no developer account, seller policies needed for auto-publish", () => {
@@ -40,14 +55,35 @@ describe("landing page", () => {
 
   it("positions full auto-pricing / sold comps as paid/limited", () => {
     expect(flat).toMatch(/Paid plans unlock/i);
-    expect(source).toMatch(/credit-limited/i);
+    expect(landingSource).toMatch(/credit-limited/i);
   });
 
   it("describes Grailed as assisted, not direct automation", () => {
-    expect(source).toMatch(/assisted/i);
-    expect(source.toLowerCase()).not.toContain("auto-post");
-    expect(source.toLowerCase()).not.toContain("auto-submit");
-    expect(source.toLowerCase()).not.toContain("scrape");
-    expect(source.toLowerCase()).not.toMatch(/directly publish to grailed/);
+    expect(landingSource).toMatch(/assisted/i);
+    expect(landingSource.toLowerCase()).not.toContain("auto-post");
+    expect(landingSource.toLowerCase()).not.toContain("auto-submit");
+    expect(landingSource.toLowerCase()).not.toContain("scrape");
+    expect(landingSource.toLowerCase()).not.toMatch(/directly publish to grailed/);
+  });
+
+  it("redirects signed-in users from / to /dashboard", async () => {
+    expect(pageSource).toContain("getSupabaseUserFromCookies");
+    expect(pageSource).toContain('redirect("/dashboard")');
+
+    vi.mocked(redirect).mockClear();
+    vi.mocked(getSupabaseUserFromCookies).mockResolvedValueOnce({
+      id: "user-1",
+    } as Awaited<ReturnType<typeof getSupabaseUserFromCookies>>);
+
+    await expect(HomePage()).rejects.toThrow("REDIRECT:/dashboard");
+    expect(redirect).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("shows the landing for signed-out visitors", async () => {
+    vi.mocked(redirect).mockClear();
+    vi.mocked(getSupabaseUserFromCookies).mockResolvedValueOnce(null);
+    const result = await HomePage();
+    expect(result).toBeTruthy();
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

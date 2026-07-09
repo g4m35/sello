@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 
+import { BrandLoader } from "@/components/ui/brand-loader";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 
 const SESSION_BOOTSTRAP_TIMEOUT_MS = 10_000;
@@ -176,7 +177,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   if (!ready) {
     return (
       <div className="auth-gate">
-        <div className="skel" style={{ width: 220, height: 14 }} />
+        <BrandLoader label="Checking your session" size={64} />
       </div>
     );
   }
