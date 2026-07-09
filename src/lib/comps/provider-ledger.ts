@@ -226,18 +226,26 @@ export async function completeProviderCall(
   prisma: ProviderLedgerPrismaLike,
   args: {
     reservationId: string;
-    status: "succeeded" | "failed";
+    status: "succeeded" | "failed" | "skipped";
+    skippedReason?: PaidProviderSkipReason | null;
     estimatedCostCents: number;
     fetchedCount: number;
     acceptedCount: number;
     rejectedCount: number;
   },
 ): Promise<void> {
+  const skippedReason =
+    args.skippedReason !== undefined
+      ? args.skippedReason
+      : args.status === "failed"
+        ? "provider_error"
+        : null;
+
   await prisma.providerCallLedger.update({
     where: { id: args.reservationId },
     data: {
       status: args.status,
-      skippedReason: args.status === "failed" ? "provider_error" : null,
+      skippedReason,
       estimatedCostCents: args.estimatedCostCents,
       fetchedCount: args.fetchedCount,
       acceptedCount: args.acceptedCount,
