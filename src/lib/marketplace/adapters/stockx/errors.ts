@@ -12,6 +12,8 @@ export const stockxErrorCodes = {
   catalogSearchFailed: "STOCKX_CATALOG_SEARCH_FAILED",
   marketDataFailed: "STOCKX_MARKET_DATA_FAILED",
   marketDataNotEnabled: "STOCKX_MARKET_DATA_NOT_ENABLED",
+  /** Connected OAuth, but StockX requires billing/shipping on the seller account. */
+  sellerProfileIncomplete: "STOCKX_SELLER_PROFILE_INCOMPLETE",
   alreadyPublished: "STOCKX_ALREADY_PUBLISHED",
   confirmationRequired: "STOCKX_CONFIRMATION_REQUIRED",
   listingFailed: "STOCKX_LISTING_FAILED",

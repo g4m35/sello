@@ -209,6 +209,31 @@ describe("StockX market data client", () => {
     expect(rows.some((row) => row.priceCents === 9500)).toBe(true);
   });
 
+  it("maps StockX billing/shipping setup errors to sellerProfileIncomplete", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            statusCode: 400,
+            errorMessage:
+              "Please setup valid billing and shipping information on www.stockx.com",
+          }),
+          { status: 400 },
+        ),
+    );
+
+    await expect(
+      fetchStockXMarketData(
+        config,
+        "access-token",
+        { productId: "p1", variantId: "v1" },
+        fetchImpl as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({
+      code: "STOCKX_SELLER_PROFILE_INCOMPLETE",
+    });
+  });
+
   it("falls back to product market-data when the variant endpoint returns 400", async () => {
     const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
       async (input) => {

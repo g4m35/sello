@@ -15,7 +15,8 @@ export function friendlySourceLabel(id: string): string {
   const lower = id.toLowerCase();
   if (lower.includes("lens") || lower.includes("visual")) return VISUAL_SOURCE_LABEL;
   if (lower.includes("active") || lower.includes("browse")) return ACTIVE_SOURCE_LABEL;
-  if (lower.includes("sold") || lower.includes("insights") || lower.includes("stockx")) {
+  if (lower.includes("stockx")) return ACTIVE_SOURCE_LABEL;
+  if (lower.includes("sold") || lower.includes("insights")) {
     return SOLD_SOURCE_LABEL;
   }
   return GENERIC_SOURCE_LABEL;
@@ -59,7 +60,13 @@ function noteForSkip(message: string): string | null {
     return "Sold comps were just refreshed. Try again shortly.";
   }
   if (m.includes("marketplace_not_connected") || m.includes("connect stockx")) {
-    return "Connect StockX in Settings → Marketplaces to include StockX sold comps.";
+    return "Connect StockX in Settings → Marketplaces to include StockX market comps.";
+  }
+  if (
+    m.includes("stockx_seller_profile_incomplete") ||
+    (m.includes("billing") && m.includes("shipping") && m.includes("stockx"))
+  ) {
+    return "Finish billing and shipping setup on StockX (stockx.com), then refresh comps.";
   }
   if (m.includes("paid_providers_disabled")) {
     return `Fresh sold comps are disabled right now. ${MANUAL_STILL_WORKS}`;
