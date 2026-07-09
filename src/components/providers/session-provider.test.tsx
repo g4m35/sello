@@ -46,6 +46,7 @@ vi.mock("@/lib/supabase/browser", () => ({
       onAuthStateChange: mocks.onAuthStateChange,
     },
   }),
+  consumeSupabaseImplicitSessionFromUrl: vi.fn(async () => null),
 }));
 
 import { SessionProvider } from "./session-provider";
