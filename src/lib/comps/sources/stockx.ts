@@ -18,10 +18,25 @@ export class StockXCompsNotConnectedError extends Error {
   readonly code = "stockx_not_connected";
 
   constructor() {
-    super("Connect StockX to include StockX sold comps.");
+    super("Connect StockX to include StockX market comps.");
     this.name = "StockXCompsNotConnectedError";
   }
 }
+
+// Soft skip: OAuth is connected, but StockX blocks market-data until the
+// seller finishes billing + shipping setup on stockx.com.
+export class StockXCompsSellerProfileIncompleteError extends Error {
+  readonly code = "stockx_seller_profile_incomplete";
+
+  constructor() {
+    super(
+      "Finish billing and shipping setup on StockX (stockx.com) to include StockX market comps.",
+    );
+    this.name = "StockXCompsSellerProfileIncompleteError";
+  }
+}
+
+export const STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP = "stockx_seller_profile_incomplete";
 
 // StockX API = sneaker/streetwear market data. It is a paid/partner provider,
 // so the shared provider budget ledger gates calls before fetchComps runs.
@@ -54,11 +69,22 @@ export const stockxSource: CompSource = {
       throw error;
     }
 
-    const rows = await fetchStockXMarketData(config, session.accessToken, {
-      productId: query.stockxProductId,
-      variantId: query.stockxVariantId,
-      currencyCode: "USD",
-    });
+    let rows;
+    try {
+      rows = await fetchStockXMarketData(config, session.accessToken, {
+        productId: query.stockxProductId,
+        variantId: query.stockxVariantId,
+        currencyCode: "USD",
+      });
+    } catch (error) {
+      if (
+        error instanceof StockXIntegrationError &&
+        error.code === stockxErrorCodes.sellerProfileIncomplete
+      ) {
+        throw new StockXCompsSellerProfileIncompleteError();
+      }
+      throw error;
+    }
 
     if (query.draftId) {
       await prisma.listingDraft.update({
