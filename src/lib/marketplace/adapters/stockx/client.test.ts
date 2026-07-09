@@ -209,6 +209,47 @@ describe("StockX market data client", () => {
     expect(rows.some((row) => row.priceCents === 9500)).toBe(true);
   });
 
+  it("falls back to product market-data when the variant endpoint returns 400", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async (input) => {
+        const url = String(input);
+        if (url.includes("/variants/")) {
+          return new Response(JSON.stringify({ message: "bad variant" }), { status: 400 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                productId: "p1",
+                variantId: "v1",
+                currencyCode: "USD",
+                lowestAskAmount: "140",
+              },
+              {
+                productId: "p1",
+                variantId: "v2",
+                currencyCode: "USD",
+                lowestAskAmount: "99",
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      },
+    );
+
+    const rows = await fetchStockXMarketData(
+      config,
+      "access-token",
+      { productId: "p1", variantId: "v1" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ priceCents: 14000 });
+  });
+
   it("still normalizes legacy sale-history rows when present", async () => {
     const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
       async () =>
