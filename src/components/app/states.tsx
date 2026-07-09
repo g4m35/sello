@@ -66,8 +66,9 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
 }
 
 export function PageSkeleton({ label = "Loading" }: { label?: string }) {
+  // Full-viewport centered brand mark only — no skeleton rows/cards under it.
   return (
-    <main className="page page--loading">
+    <main className="page page--loading" aria-busy="true">
       <div className="page-loading">
         <BrandLoader label={label} size={72} />
       </div>
