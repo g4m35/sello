@@ -23,6 +23,10 @@ const landingSource = readFileSync(
   join(process.cwd(), "src/components/marketing/landing-page.tsx"),
   "utf8",
 );
+const demoSource = readFileSync(
+  join(process.cwd(), "src/components/marketing/landing-demo.tsx"),
+  "utf8",
+);
 const flat = landingSource.replace(/\s+/g, " ");
 
 describe("landing page", () => {
@@ -36,14 +40,26 @@ describe("landing page", () => {
     expect(String(metadata.description ?? "")).toMatch(/listing/i);
   });
 
-  it("uses the honest positioning phrase", () => {
+  it("leads with outcome headline and brand", () => {
+    expect(flat).toContain("Photos in. Marketplace-ready listings out.");
+    expect(landingSource).toContain("landing__brand-line");
     expect(flat).toContain("Automated where supported. Assisted where required.");
+  });
+
+  it("embeds a staged product demo flow", () => {
+    expect(landingSource).toContain("LandingDemo");
+    expect(demoSource).toContain("Upload");
+    expect(demoSource).toContain("Draft");
+    expect(demoSource).toContain("Price");
+    expect(demoSource).toContain("Publish");
+    expect(demoSource).toContain("role=\"tablist\"");
   });
 
   it("has working primary/secondary CTAs", () => {
     expect(landingSource).toContain('href="/dashboard"');
     expect(landingSource).toContain("Start creating listings");
-    expect(landingSource).toContain('href="#how-it-works"');
+    expect(landingSource).toContain('href="#demo"');
+    expect(landingSource).toContain("See how it works");
     expect(landingSource).toContain('href="/pricing"');
     expect(landingSource).toContain("View pricing");
   });
