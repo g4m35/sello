@@ -78,7 +78,8 @@ function textContent(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(textContent).join("");
   if (typeof node === "object" && "props" in node) {
-    return textContent((node as ReactElement<Record<string, unknown>>).props.children);
+    const children = (node as ReactElement<{ children?: ReactNode }>).props.children;
+    return textContent(children);
   }
   return "";
 }
@@ -110,7 +111,7 @@ describe("Sidebar brand", () => {
       tree,
       (el) =>
         typeof el.props.onClick === "function" &&
-        textContent(el.props.children).includes("Billing"),
+        textContent(el.props.children as ReactNode).includes("Billing"),
     );
 
     expect(billing).not.toBeNull();
