@@ -419,13 +419,7 @@ export default function InventoryPage() {
     );
   }
 
-  if (items === null)
-    return (
-      <>
-        <Topbar crumbs={["Inventory"]} />
-        <PageSkeleton />
-      </>
-    );
+  if (items === null) return <PageSkeleton />;
 
   const total = items.length;
   const selectionCount = selectedInView.length;

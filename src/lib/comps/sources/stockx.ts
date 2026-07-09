@@ -28,8 +28,9 @@ export class StockXCompsNotConnectedError extends Error {
 export const stockxSource: CompSource = {
   id: "stockx",
   displayName: "StockX",
-  sold: true,
-  resultKind: "sold_comps",
+  // Official StockX market-data is live ask/bid levels, not completed sales.
+  sold: false,
+  resultKind: "active_listings",
   paid: true,
   isEnabled() {
     return isStockXMarketDataConfigured();
@@ -56,6 +57,7 @@ export const stockxSource: CompSource = {
     const rows = await fetchStockXMarketData(config, session.accessToken, {
       productId: query.stockxProductId,
       variantId: query.stockxVariantId,
+      currencyCode: "USD",
     });
 
     if (query.draftId) {
@@ -65,23 +67,26 @@ export const stockxSource: CompSource = {
       }).catch(() => undefined);
     }
 
-    return rows.map((row): NormalizedComp => ({
-      source: "stockx",
-      externalId: row.externalId,
-      title: row.title,
-      priceCents: row.priceCents,
-      shippingCents: 0,
-      currency: row.currency,
-      soldDate: row.soldDate,
-      url: row.url,
-      imageUrl: row.imageUrl,
-      sold: true,
-      condition: "unknown",
-      brand: row.brand,
-      size: row.size,
-      category: row.category,
-      rawJson: row.rawJson,
-    }));
+    return rows.map((row): NormalizedComp => {
+      const isCompletedSale = Boolean(row.soldDate);
+      return {
+        source: "stockx",
+        externalId: row.externalId,
+        title: row.title,
+        priceCents: row.priceCents,
+        shippingCents: 0,
+        currency: row.currency,
+        soldDate: row.soldDate,
+        url: row.url,
+        imageUrl: row.imageUrl,
+        sold: isCompletedSale,
+        condition: "unknown",
+        brand: row.brand,
+        size: row.size ?? query.size,
+        category: row.category ?? query.category,
+        rawJson: row.rawJson,
+      };
+    });
   },
 };
 

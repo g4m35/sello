@@ -59,20 +59,23 @@ export async function searchStockXCatalog(
 export async function fetchStockXMarketData(
   config: StockXConfig,
   accessToken: string,
-  args: { productId: string; variantId?: string | null },
+  args: { productId: string; variantId?: string | null; currencyCode?: string | null },
   fetchImpl: typeof fetch = fetch,
 ): Promise<StockXMarketDataPoint[]> {
   const productId = encodeURIComponent(args.productId);
   const variantId = args.variantId ? encodeURIComponent(args.variantId) : null;
+  const currencyCode = (args.currencyCode ?? "USD").trim().toUpperCase() || "USD";
   const path = variantId
     ? `/catalog/products/${productId}/variants/${variantId}/market-data`
     : `/catalog/products/${productId}/market-data`;
   const json = await stockxApiRequest(config, path, fetchImpl, {
     accessToken,
+    // StockX requires currencyCode on market-data; omitting it returns 4xx.
+    query: { currencyCode },
     failureCode: stockxErrorCodes.marketDataFailed,
   });
 
-  return normalizeMarketData(json, args);
+  return normalizeMarketData(json, { ...args, currencyCode });
 }
 
 export async function createStockXListing(
@@ -209,7 +212,7 @@ async function stockxApiRequest(
       options.failureCode ?? stockxErrorCodes.apiFailed,
       "StockX API request failed.",
       response.status === 401 || response.status === 403 ? 503 : 502,
-      { status: response.status },
+      { status: response.status, path },
     );
   }
 
@@ -376,44 +379,174 @@ function candidateFrom(
 
 function normalizeMarketData(
   json: unknown,
-  args: { productId: string; variantId?: string | null },
+  args: { productId: string; variantId?: string | null; currencyCode?: string | null },
 ): StockXMarketDataPoint[] {
   const root = asRecord(json) ?? {};
-  const data = asRecord(root.data) ?? root;
-  const rows = [
-    ...extractArray(data, ["sales", "recentSales", "lastSales", "transactions"]),
-    ...[data.lastSale, data.lastSold, data.latestSale].filter(Boolean),
-  ];
+  // Official StockX market-data is ask/bid levels (not a sales history).
+  // Variant endpoint → one object; product endpoint → array of variant rows.
+  // Also accept legacy sale-history shapes if StockX ever returns them.
+  const payload = root.data !== undefined ? root.data : json;
+  const rows: unknown[] = Array.isArray(payload)
+    ? payload
+    : asRecord(payload)
+      ? [payload]
+      : [];
 
   const points: StockXMarketDataPoint[] = [];
   for (const row of rows) {
     const record = asRecord(row);
     if (!record) continue;
-    const priceCents = priceCentsOf(record);
-    if (!priceCents) continue;
+
+    const marketPoints = marketDataPointsFromRecord(record, args);
+    points.push(...marketPoints);
+
+    // Legacy sale-history fallback (tests + older response shapes).
+    const sales = [
+      ...extractArray(record, ["sales", "recentSales", "lastSales", "transactions"]),
+      ...[record.lastSale, record.lastSold, record.latestSale].filter(Boolean),
+    ];
+    for (const sale of sales) {
+      const saleRecord = asRecord(sale);
+      if (!saleRecord) continue;
+      const priceCents = priceCentsOf(saleRecord);
+      if (!priceCents) continue;
+      points.push({
+        externalId:
+          firstString(saleRecord, ["id", "saleId", "transactionId"]) ??
+          `${args.productId}:${args.variantId ?? "product"}:sale:${priceCents}`,
+        title:
+          firstString(saleRecord, ["title", "productName", "name"]) ??
+          firstString(record, ["title", "productName", "name"]) ??
+          "StockX market data",
+        priceCents,
+        currency:
+          firstString(saleRecord, ["currency", "currencyCode"]) ??
+          firstString(record, ["currency", "currencyCode"]) ??
+          args.currencyCode ??
+          "USD",
+        soldDate: firstString(saleRecord, ["soldAt", "soldDate", "date", "createdAt"]),
+        url: firstString(saleRecord, ["url", "permalink"]) ?? urlOf(record),
+        imageUrl: imageOf(saleRecord) ?? imageOf(record),
+        brand:
+          firstString(saleRecord, ["brand", "brandName"]) ??
+          firstString(record, ["brand"]),
+        size:
+          firstString(saleRecord, ["size", "sizeLabel"]) ??
+          firstString(record, ["size", "sizeLabel", "variantValue", "variantName"]),
+        category:
+          firstString(saleRecord, ["category", "productCategory"]) ??
+          firstString(record, ["category", "productCategory"]),
+        rawJson: sale,
+      });
+    }
+  }
+
+  return dedupeMarketDataPoints(points).slice(0, 12);
+}
+
+function marketDataPointsFromRecord(
+  record: Record<string, unknown>,
+  args: { productId: string; variantId?: string | null; currencyCode?: string | null },
+): StockXMarketDataPoint[] {
+  const currency =
+    firstString(record, ["currencyCode", "currency"]) ?? args.currencyCode ?? "USD";
+  const variantId =
+    firstString(record, ["variantId", "variant_id"]) ?? args.variantId ?? null;
+  const productId =
+    firstString(record, ["productId", "product_id"]) ?? args.productId;
+  const size = firstString(record, [
+    "size",
+    "sizeLabel",
+    "variantValue",
+    "variantName",
+    "variant_value",
+    "variant_name",
+  ]);
+  const title =
+    firstString(record, ["title", "productName", "name"]) ?? "StockX market data";
+
+  // Prefer tradeable ask levels; include bid as a secondary market signal.
+  const levels: Array<{ key: string; amountKeys: string[] }> = [
+    {
+      key: "lowest_ask",
+      amountKeys: [
+        "lowestAskAmount",
+        "lowest_ask_amount",
+        "lowestAsk",
+        "flexLowestAskAmount",
+        "flex_lowest_ask_amount",
+      ],
+    },
+    {
+      key: "sell_faster",
+      amountKeys: ["sellFasterAmount", "sell_faster_amount"],
+    },
+    {
+      key: "earn_more",
+      amountKeys: ["earnMoreAmount", "earn_more_amount"],
+    },
+    {
+      key: "highest_bid",
+      amountKeys: ["highestBidAmount", "highest_bid_amount", "highestBid"],
+    },
+  ];
+
+  const points: StockXMarketDataPoint[] = [];
+  for (const level of levels) {
+    const dollars = numberOf(record, level.amountKeys);
+    if (dollars == null || dollars <= 0) continue;
+    const priceCents = Math.round(dollars * 100);
     points.push({
-      externalId:
-        firstString(record, ["id", "saleId", "transactionId"]) ??
-        `${args.productId}:${args.variantId ?? "product"}:${priceCents}`,
-      title:
-        firstString(record, ["title", "productName", "name"]) ??
-        firstString(data, ["title", "productName", "name"]) ??
-        "StockX market data",
+      externalId: `${productId}:${variantId ?? "product"}:${level.key}:${priceCents}`,
+      title,
       priceCents,
-      currency: firstString(record, ["currency", "currencyCode"]) ?? "USD",
-      soldDate: firstString(record, ["soldAt", "soldDate", "date", "createdAt"]),
-      url: firstString(record, ["url", "permalink"]) ?? urlOf(data),
-      imageUrl: imageOf(record) ?? imageOf(data),
-      brand: firstString(record, ["brand", "brandName"]) ?? firstString(data, ["brand"]),
-      size: firstString(record, ["size", "sizeLabel"]) ?? firstString(data, ["size"]),
-      category:
-        firstString(record, ["category", "productCategory"]) ??
-        firstString(data, ["category", "productCategory"]),
-      rawJson: row,
+      currency,
+      soldDate: null,
+      url: urlOf(record),
+      imageUrl: imageOf(record),
+      brand: firstString(record, ["brand", "brandName"]),
+      size,
+      category: firstString(record, ["category", "productCategory"]),
+      rawJson: record,
     });
   }
 
-  return points.slice(0, 12);
+  // Nested amount objects (e.g. { lowestAsk: { amount: 120 } }).
+  if (points.length === 0) {
+    for (const nestedKey of ["lowestAsk", "highestBid", "lastSale"]) {
+      const nested = asRecord(record[nestedKey]);
+      if (!nested) continue;
+      const priceCents = priceCentsOf(nested) ?? priceCentsOf({ amount: nested.amount });
+      if (!priceCents) continue;
+      points.push({
+        externalId: `${productId}:${variantId ?? "product"}:${nestedKey}:${priceCents}`,
+        title,
+        priceCents,
+        currency: firstString(nested, ["currency", "currencyCode"]) ?? currency,
+        soldDate: firstString(nested, ["soldAt", "soldDate", "date", "createdAt"]),
+        url: urlOf(record),
+        imageUrl: imageOf(record),
+        brand: firstString(record, ["brand", "brandName"]),
+        size,
+        category: firstString(record, ["category", "productCategory"]),
+        rawJson: record,
+      });
+    }
+  }
+
+  return points;
+}
+
+function dedupeMarketDataPoints(points: StockXMarketDataPoint[]): StockXMarketDataPoint[] {
+  const seen = new Set<string>();
+  const out: StockXMarketDataPoint[] = [];
+  for (const point of points) {
+    const key = point.externalId ?? `${point.priceCents}:${point.size ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(point);
+  }
+  return out;
 }
 
 function normalizeListingResult(
