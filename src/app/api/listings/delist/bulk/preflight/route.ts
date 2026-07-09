@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length);
+    assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length, user);
     const result =
       marketplace === "stockx"
         ? await preflightBulkStockXDelist(prisma as never, {
