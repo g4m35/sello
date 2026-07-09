@@ -5,10 +5,23 @@ import {
   isStockXApiEnabled,
   isStockXMarketDataEnabled,
 } from "@/lib/marketplace/adapters/stockx/config";
+import { StockXIntegrationError, stockxErrorCodes } from "@/lib/marketplace/adapters/stockx/errors";
 import { loadStockXConnectionSession } from "@/lib/marketplace/adapters/stockx/session";
 import { getPrisma } from "@/lib/prisma";
 
 type Env = Record<string, string | undefined>;
+
+// Soft skip: account has a StockX product match but no OAuth connection yet.
+// Thrown so the comps pipeline can mark the ledger as not-configured instead of
+// a hard provider_error (and so seller copy can say "connect StockX").
+export class StockXCompsNotConnectedError extends Error {
+  readonly code = "stockx_not_connected";
+
+  constructor() {
+    super("Connect StockX to include StockX sold comps.");
+    this.name = "StockXCompsNotConnectedError";
+  }
+}
 
 // StockX API = sneaker/streetwear market data. It is a paid/partner provider,
 // so the shared provider budget ledger gates calls before fetchComps runs.
@@ -26,7 +39,20 @@ export const stockxSource: CompSource = {
 
     const prisma = getPrisma();
     const config = getStockXMarketDataConfig();
-    const session = await loadStockXConnectionSession(prisma, query.accountId, config);
+    let session;
+    try {
+      session = await loadStockXConnectionSession(prisma, query.accountId, config);
+    } catch (error) {
+      if (
+        error instanceof StockXIntegrationError &&
+        (error.code === stockxErrorCodes.notConnected ||
+          error.code === stockxErrorCodes.reconnectRequired)
+      ) {
+        throw new StockXCompsNotConnectedError();
+      }
+      throw error;
+    }
+
     const rows = await fetchStockXMarketData(config, session.accessToken, {
       productId: query.stockxProductId,
       variantId: query.stockxVariantId,

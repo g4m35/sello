@@ -76,10 +76,13 @@ describe("buildPricingNotes", () => {
         { source: "apify-ebay-sold", message: "Paid comp providers skipped: global_budget_exceeded" },
         { source: "apify-ebay-sold", message: "Paid comp providers skipped: user_daily_quota_exceeded" },
         { source: "apify-ebay-sold", message: "Paid comp provider failed. Try again later." },
+        { source: "stockx", message: "marketplace_not_connected" },
       ],
     });
     const joined = notes.join(" | ");
-    expect(joined).not.toMatch(/apify|global_budget_exceeded|user_daily_quota_exceeded/i);
+    expect(joined).not.toMatch(/apify|global_budget_exceeded|user_daily_quota_exceeded|marketplace_not_connected/i);
+    expect(joined).toMatch(/Connect StockX/i);
+    expect(joined).toMatch(/temporarily unavailable/i);
     expect(notes.length).toBeGreaterThan(0);
   });
 
@@ -91,6 +94,7 @@ describe("buildPricingNotes", () => {
       sourceErrors: [{ source: "apify-ebay-sold", message: "paid_providers_disabled" }],
     });
     expect(notes.join(" ")).not.toMatch(/apify-ebay-sold|paid_providers_disabled/);
+    expect(notes.join(" ")).toMatch(/disabled right now/i);
     expect(notes.length).toBeGreaterThan(0);
   });
 });
