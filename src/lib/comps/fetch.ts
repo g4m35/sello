@@ -53,6 +53,8 @@ export type RunCompFetchOptions = {
   force?: boolean;
   paidProvidersAllowed?: boolean;
   accountId?: string;
+  /** When true (admin identity), bypass paid-provider budget/quota/cooldown. */
+  adminOverride?: boolean;
 };
 
 export function isAutoDiscoveryEnabled(): boolean {
@@ -185,7 +187,13 @@ export async function runCompFetch(
   const ledgerPrisma = prisma as unknown as ProviderLedgerPrismaLike;
   const draftId = draft?.id ?? null;
   const queryHash = hashQueries(queries);
-  const paidConfig = paidSources.length > 0 ? loadPaidGateConfig() : null;
+  const paidConfig =
+    paidSources.length > 0
+      ? {
+          ...loadPaidGateConfig(),
+          ...(options.adminOverride === true ? { adminOverride: true } : {}),
+        }
+      : null;
   const now = new Date();
 
   if (!autoDiscoveryEnabled && !options.sources && !options.force) {

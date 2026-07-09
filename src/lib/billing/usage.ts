@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isAdminUser } from "@/lib/auth/admin";
 import { getPrisma } from "@/lib/prisma";
 
 import { quotaExceeded, type UsageMetricKey } from "./errors";
@@ -12,6 +13,8 @@ const METRIC_LIMIT_FIELD: Record<UsageMetricKey, keyof PlanLimits> = {
   autopublish: "autopublishesPerMonth",
   comp_refresh: "compRefreshesPerMonth",
 };
+
+type QuotaUser = { id?: string | null; email?: string | null };
 
 // Start of the current usage period (UTC midnight), used as the counter key.
 // Tracks the subscription billing cycle when there is one, otherwise the
@@ -49,13 +52,16 @@ export async function getUsage(
 }
 
 // Throws QUOTA_EXCEEDED_* when the account has reached its plan's monthly limit
-// for the metric. Call BEFORE doing the metered work.
+// for the metric. Call BEFORE doing the metered work. Admins are never quota-
+// gated (owner testing); pass `user` so the identity check can run.
 export async function assertWithinQuota(
   account: { id: string; plan: PlanId },
   metric: UsageMetricKey,
   now: Date,
-  prisma: Db = getPrisma(),
+  opts?: { prisma?: Db; user?: QuotaUser },
 ): Promise<void> {
+  if (opts?.user && isAdminUser(opts.user)) return;
+  const prisma = opts?.prisma ?? getPrisma();
   const limit = limitsFor(account.plan)[METRIC_LIMIT_FIELD[metric]];
   const used = await getUsage(account.id, metric, now, prisma);
   if (used >= limit) throw quotaExceeded(metric);

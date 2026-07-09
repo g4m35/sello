@@ -36,6 +36,7 @@ export async function POST(request: Request) {
       accountWithEffectivePlan(account, user),
       "autopublish",
       new Date(),
+      { user },
     );
 
     const result = await executePublish(prisma, {

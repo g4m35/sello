@@ -5,8 +5,11 @@ import {
   featureAccessForUser,
 } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
-import { effectivePlanForUser } from "@/lib/billing/effective-plan";
-import { entitlementsForPlan } from "@/lib/billing/entitlements";
+import {
+  effectiveFeaturesForUser,
+  effectiveLimitsForUser,
+  effectivePlanForUser,
+} from "@/lib/billing/effective-plan";
 import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -19,12 +22,12 @@ export async function GET(request: Request) {
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
     const plan = effectivePlanForUser(account, user);
-    const entitlements = entitlementsForPlan(plan);
     return NextResponse.json({
       access: featureAccessForUser(user),
       copy: FEATURE_ACCESS_COPY,
       plan,
-      limits: entitlements.limits,
+      limits: effectiveLimitsForUser(account, user),
+      features: effectiveFeaturesForUser(account, user),
     });
   } catch (error) {
     if (error instanceof AppError) {

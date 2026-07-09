@@ -70,10 +70,6 @@ export function PageSkeleton({ label = "Loading" }: { label?: string }) {
     <main className="page page--loading">
       <div className="page-loading">
         <BrandLoader label={label} size={72} />
-        <div className="page-loading__skel" aria-hidden="true">
-          <div className="skel" style={{ width: 280, height: 36, marginBottom: 24 }} />
-          <TableSkeleton rows={4} />
-        </div>
       </div>
     </main>
   );

@@ -850,18 +850,15 @@ img { display: block; max-width: 100%; }
   0%, 100% { opacity: 0.72; }
   50% { opacity: 1; }
 }
-.page--loading { position: relative; }
+.page--loading {
+  position: relative;
+  min-height: calc(100dvh - 120px);
+  display: grid;
+  place-items: center;
+}
 .page-loading {
   display: grid;
-  gap: var(--s-8);
   justify-items: center;
-}
-.page-loading > .brand-loader { margin-top: var(--s-6); }
-.page-loading__skel {
-  width: 100%;
-  max-width: 920px;
-  opacity: 0.55;
-  pointer-events: none;
 }
 
 /* ============================================================

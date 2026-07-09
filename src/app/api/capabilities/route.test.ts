@@ -90,16 +90,34 @@ describe("GET /api/capabilities", () => {
         bulkBatchSize: 25,
         teamSeats: 1,
       },
+      features: {
+        basicAnalytics: true,
+        profitTracking: "simple",
+        templates: true,
+        assistedSoldDelist: true,
+        fullInventorySync: false,
+        autoDelist: false,
+        soldDetection: false,
+        advancedComps: false,
+        advancedAnalytics: false,
+        repricing: false,
+        deadStock: false,
+        performanceAnalytics: false,
+        priorityQueue: false,
+        prioritySupport: false,
+      },
     });
 
     const serialized = JSON.stringify(payload).toLowerCase();
     expect(serialized).not.toContain("owner@example.com");
     expect(serialized).not.toContain("beta@example.com");
     expect(serialized).not.toContain("emails");
-    expect(Object.keys(payload)).toEqual(["access", "copy", "plan", "limits"]);
+    expect(Object.keys(payload).sort()).toEqual(
+      ["access", "copy", "features", "limits", "plan"].sort(),
+    );
   });
 
-  it("returns kingpin limits for an admin even when the stored account is free", async () => {
+  it("returns unlimited limits for an admin even when the stored account is free", async () => {
     vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
     mocks.requireSupabaseUser.mockResolvedValue({
       id: "user-1",
@@ -114,7 +132,8 @@ describe("GET /api/capabilities", () => {
     const payload = await (await GET(request())).json();
 
     expect(payload.plan).toBe("kingpin");
-    expect(payload.limits.compRefreshesPerMonth).toBe(750);
-    expect(payload.limits.bulkBatchSize).toBe(250);
+    expect(payload.limits.compRefreshesPerMonth).toBe(1_000_000_000);
+    expect(payload.limits.bulkBatchSize).toBe(1_000_000_000);
+    expect(payload.limits.marketplaceConnections).toBe(1_000_000_000);
   });
 });
