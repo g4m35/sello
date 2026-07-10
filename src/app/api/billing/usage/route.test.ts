@@ -18,6 +18,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { GET } from "./route";
+import { ADMIN_UNLIMITED_LIMIT } from "@/lib/billing/effective-plan";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -81,8 +82,8 @@ describe("GET /api/billing/usage", () => {
     const body = await (await GET(new Request("http://localhost/api/billing/usage"))).json();
 
     expect(body.plan).toBe("kingpin");
-    expect(body.limits.compRefreshesPerMonth).toBe(750);
-    expect(body.limits.bulkBatchSize).toBe(250);
+    expect(body.limits.compRefreshesPerMonth).toBe(ADMIN_UNLIMITED_LIMIT);
+    expect(body.limits.bulkBatchSize).toBe(ADMIN_UNLIMITED_LIMIT);
     expect(body.status).toBe("active");
   });
 });

@@ -6,12 +6,13 @@ Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`.
 Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 
 ## Last updated
-2026-07-09 — Cursor. Landing autonomy rewrite + modern SaaS app shell polish.
-Branch: `feature/app-ui-redesign-landing` (uncommitted / not PR'd yet).
+2026-07-10 — Codex. Restored the full validation gate and audited the paid-beta plan.
+Branch: `main`; changes validated locally; not pushed or deployed.
 
 ## Recent work
+- **2026-07-10**: Produced and audited `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`, covering the current implementation, seller experience, architecture, schema plan, official marketplace autonomy matrix, eBay/StockX flows, durable bulk intake, comps, double-sell safety, billing, security, admin, tests, staged rollout, a coding-model prompt, and a 120-item adversarial review. Fixed the StockX comp test mock signature that caused `TS2493`, then aligned four stale test expectations with existing admin override/quota behavior. Final gate: `npx tsc --noEmit` passed; lint passed with the two known warnings; 212 test files / 1,440 tests passed; production build passed. The doc now makes Depop/Vinted/TikTok access and eligibility conditional, identifies TikTok’s current adapter as a stub, and keeps all marketplace/provider writes outside standard validation. No deploy, env mutation, paid-provider call, marketplace publish, or delist.
 - **2026-07-09**: Landing polish pass — removed problem essay; flow steps now publish-across-marketplaces + inventory sync/delist; dropped “Automated where supported…” slogan; sold-comp section rewritten with marketing flair; FAQ is accordion (`details`/`summary`); sticky black nav bar with larger brand/links. Landing tests 13/13 green.
-- **2026-07-09**: Landing restored to outcome-led hero + staged `LandingDemo` (demo CSS recovered from `2a479c9`). Headline: "Photos in. Listings that sell themselves." Inventory sync featured; no "marketplace-ready". Honest eBay/assisted/pricing copy kept. Landing tests green.
+- **2026-07-09**: Landing restored to outcome-led hero + staged `LandingDemo` (demo CSS recovered from `2a479c9`). Headline: "Photos in. Listings that sell themselves." Inventory sync featured; weak draft-oriented language removed. Honest eBay/assisted/pricing copy kept. Landing tests green.
 - **2026-07-09**: App shell livelier SaaS polish — wider sidebar with soft accent wash, richer active nav + New listing CTA, dual radial wash on `.main`, frosted topbar, staggered KPI enter, channel-card accents, toolbar tint, fixed truncated `prefers-reduced-motion` block.
 - **2026-07-09**: Marketplace settings cards (eBay, Etsy, StockX) restyled to Sello token system — `card`/`card__head`, `.btn` variants, `.banner--warn`, `.input`, `.field`, `t-small`/`muted`/`danger`, `marketplace-logo`, `var(--positive)` for ok status, `var(--surface-sunk)` tiles for readiness checklist. All zinc-950/emerald-400 Tailwind colors removed. `globals.css` enhanced: subtle accent radial on `.main`, richer `.card:hover` border, `.readiness { order: -1 }` on mobile, responsive `.readiness-grid` breakpoints. All 11 marketplace tests green; pre-existing TS/lint issues unchanged.
 - **2026-07-09**: `/settings/marketplaces` moved into `(app)` layout group — URL unchanged (OAuth callbacks still work), page now has sidebar/topbar; page chrome uses design tokens instead of raw zinc/emerald.
@@ -26,6 +27,7 @@ Branch: `feature/app-ui-redesign-landing` (uncommitted / not PR'd yet).
 - Full gate green: lint 0 errors, tsc 0, 1415 tests, build 0.
 
 ## Current state
+- Paid-beta implementation contract: `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`. The baseline is green. Stage 1 now begins with capability-truth corrections, then effective entitlements, atomic usage reservations, durable 10-item bulk intake, worker retry/lease semantics, and eBay order/sold reconciliation.
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
   `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY` from local commit `10de26a`, aliased to
@@ -440,6 +442,7 @@ Branch: `feature/app-ui-redesign-landing` (uncommitted / not PR'd yet).
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
+Nothing in this section authorizes a live action during validation. Production env changes, paid-provider calls, marketplace publishes/delists, paid checkout, and live smoke require fresh explicit owner approval in the active task, even if an older entry records historical approval.
 - **Production StockX account eligibility:** Runtime config is enabled, but the
   signed-in StockX connect route returns `403`: `Your plan allows 1 connected
   marketplace. Upgrade to connect more.` Current eBay connection consumes the
@@ -494,6 +497,14 @@ Branch: `feature/app-ui-redesign-landing` (uncommitted / not PR'd yet).
   hardening.
 
 ## Next up (priority order)
+1. Start Stage 1 P0 work in a dedicated `feature/*` worktree: correct TikTok/Depop capability truth and queue eligibility while preserving the green gate.
+2. Implement one server-side effective-capability resolver and atomic account-scoped usage reservations.
+3. Build the durable 10-item bulk intake/review domain before expanding bulk execution scale.
+4. Fix worker retry/lease semantics and add eBay order/sold reconciliation with fixture-only validation.
+5. Add the minimum seller task and operator job/batch surfaces. Standard validation remains zero-write and zero-paid-provider.
+
+## Historical next up (superseded — do not execute without a new scoped request)
+The older items below are retained as context only. They do not override the current priority list or authorize deploys, environment changes, paid-provider calls, marketplace publishes, or delists.
 1. Add a hard daily/weekly Apify budget or per-seller auto-run quota before any
    larger intake flow; current per-paid-run cost is still too high for Bulk
    Intake scale.
@@ -522,11 +533,10 @@ Branch: `feature/app-ui-redesign-landing` (uncommitted / not PR'd yet).
 9. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
-1. `cd "/Users/jheller/dev/resale-crosslister-safety"` (current Sello checkout).
-2. `git fetch && git merge origin/develop` (stay current); `npm install`; `npx prisma generate`.
-3. Gate: `npm run lint && npx tsc --noEmit && npm test && npm run build`.
-4. Flow: `feature/* → develop → production via Vercel`. Commit + push to
-   `develop`; deploy production only when the owner has explicitly requested it.
+1. `cd "/Users/jheller/dev/resale-crosslister-clean"` and read `AGENTS.md` + this file.
+2. Verify branch, worktrees, remotes, and dirty state before creating a dedicated `feature/*` worktree for P0 implementation.
+3. Gate in stop-on-first-failure order: `npx tsc --noEmit`, `npm run lint`, `npm test`, `npm run build`.
+4. Flow: `feature/* → develop → main → production`. Push, merge, environment changes, paid-provider calls, marketplace writes, and deployment require the authority specified by the active task; production deployment always requires explicit owner approval.
 
 ## Key gotchas
 - **Next.js 16**: read `node_modules/next/dist/docs/` before writing Next code; `params`/`searchParams` are async; use `next/font`.
@@ -540,4 +550,3 @@ Branch: `feature/app-ui-redesign-landing` (uncommitted / not PR'd yet).
 
 Pre-paid-customer marketplace safety layer, Part 1 (core). Built in an isolated
 worktree off develop; additive only; existing eBay/Etsy/export behavior unchanged.
-

@@ -135,6 +135,7 @@ describe("StockX publish route", () => {
       expect.objectContaining({ id: "acc-1" }),
       "autopublish",
       expect.any(Date),
+      { user: { id: "user-1" } },
     );
     expect(mocks.incrementUsage).toHaveBeenCalledWith(
       "acc-1",
