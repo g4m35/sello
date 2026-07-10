@@ -49,6 +49,10 @@ vi.mock("@/lib/api/client", () => ({
 
 vi.mock("@/components/app/theme-toggle", () => ({ ThemeToggle: () => null }));
 
+vi.mock("@/components/providers/mobile-nav-provider", () => ({
+  useMobileNav: () => ({ open: false, toggle: vi.fn(), close: vi.fn() }),
+}));
+
 import { Sidebar } from "./sidebar";
 
 function findElement(

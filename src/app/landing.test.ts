@@ -36,8 +36,20 @@ describe("landing page", () => {
     expect(String(metadata.description ?? "")).toMatch(/listing/i);
   });
 
-  it("uses the honest positioning phrase", () => {
-    expect(flat).toContain("Automated where supported. Assisted where required.");
+  it("does not use marketplace-ready phrasing in metadata", () => {
+    expect(String(metadata.title ?? "").toLowerCase()).not.toContain("marketplace-ready");
+    expect(String(metadata.description ?? "").toLowerCase()).not.toContain("marketplace-ready");
+  });
+
+  it("does not use the old assisted-where-required slogan", () => {
+    expect(flat.toLowerCase()).not.toContain("automated where supported");
+    expect(flat.toLowerCase()).not.toContain("assisted where required");
+  });
+
+  it("mentions supported inventory sync and delist", () => {
+    expect(flat.toLowerCase()).toMatch(/inventory sync/i);
+    expect(flat.toLowerCase()).toMatch(/delist/i);
+    expect(flat.toLowerCase()).toMatch(/supported connected|where supported/i);
   });
 
   it("has working primary/secondary CTAs", () => {
@@ -49,21 +61,35 @@ describe("landing page", () => {
   });
 
   it("eBay FYI: no developer account, seller policies needed for auto-publish", () => {
-    expect(flat).toMatch(/do not need an eBay developer account/i);
+    expect(flat).toMatch(/no developer account|Connect your normal eBay seller account/i);
     expect(flat).toMatch(/payment, shipping, and returns/i);
   });
 
-  it("positions full auto-pricing / sold comps as paid/limited", () => {
-    expect(flat).toMatch(/Paid plans unlock/i);
-    expect(landingSource).toMatch(/credit-limited/i);
+  it("positions full auto-pricing / sold comps as paid", () => {
+    expect(flat).toMatch(/paid plans unlock/i);
+    expect(flat.toLowerCase()).toMatch(/sold comps?/);
   });
 
-  it("describes Grailed as assisted, not direct automation", () => {
-    expect(landingSource).toMatch(/assisted/i);
+  it("describes Grailed as packages/assisted, not direct automation", () => {
+    expect(landingSource.toLowerCase()).toMatch(/grailed/);
+    expect(landingSource.toLowerCase()).toMatch(/listing packages|packages/);
     expect(landingSource.toLowerCase()).not.toContain("auto-post");
     expect(landingSource.toLowerCase()).not.toContain("auto-submit");
     expect(landingSource.toLowerCase()).not.toContain("scrape");
     expect(landingSource.toLowerCase()).not.toMatch(/directly publish to grailed/);
+  });
+
+  it("uses FAQ accordion details/summary", () => {
+    expect(landingSource).toContain("<details");
+    expect(landingSource).toContain("<summary");
+  });
+
+  it("keeps the streamlined flow without overstating marketplace support", () => {
+    expect(flat).toMatch(/One streamlined flow/i);
+    expect(flat.toLowerCase()).not.toContain("watch the demo");
+    expect(flat.toLowerCase()).not.toContain("jump in");
+    expect(flat).toMatch(/Publish or export listings/i);
+    expect(flat.toLowerCase()).not.toContain("publish across marketplaces");
   });
 
   it("redirects signed-in users from / to /dashboard", async () => {

@@ -188,19 +188,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Topbar
-        crumbs={["Dashboard"]}
-        right={
-          <Btn
-            variant="accent"
-            size="sm"
-            icon="plus"
-            onClick={() => router.push("/inventory/new")}
-          >
-            New listing
-          </Btn>
-        }
-      />
+      <Topbar crumbs={["Dashboard"]} />
 
       <main className="page">
         <div className="page__head">
@@ -211,24 +199,6 @@ export default function DashboardPage() {
             <div className="page__title-meta">
               {readyItems.length} ready · {attention.length} need attention
             </div>
-          </div>
-          <div className="page__actions">
-            <Btn
-              variant="ghost"
-              size="sm"
-              icon="history"
-              onClick={() => router.push("/history")}
-            >
-              History
-            </Btn>
-            <Btn
-              variant="secondary"
-              size="sm"
-              icon="box"
-              onClick={() => router.push("/inventory")}
-            >
-              Inventory
-            </Btn>
           </div>
         </div>
 

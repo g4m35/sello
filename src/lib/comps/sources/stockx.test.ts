@@ -84,7 +84,7 @@ describe("StockX comp source", () => {
 
   it("fetches market data through the encrypted account connection", async () => {
     stubStockXEnv();
-    const fetchImpl = vi.fn(
+    const fetchImpl = vi.fn<typeof fetch>(
       async () =>
         new Response(
           JSON.stringify({

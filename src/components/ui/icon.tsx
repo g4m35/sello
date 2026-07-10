@@ -11,7 +11,7 @@ export type IconName =
   | "tag" | "image" | "send" | "refresh" | "play" | "pause" | "link" | "copy"
   | "bell" | "user" | "help" | "tags" | "lock" | "dot" | "arrow-up"
   | "arrow-dn" | "arrow-r" | "spark" | "csv" | "doc" | "flame" | "logout"
-  | "sun" | "moon";
+  | "sun" | "moon" | "menu";
 
 type IconProps = {
   name: IconName;
@@ -89,6 +89,7 @@ export function Icon({ name, size = 16, strokeWidth = 1.6, className = "", style
     case "flame": return <svg {...common}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 17c1.5 0 3-1.5 3-3 0-3-3-4-3-7 0-1.5-1.5-3-3-3-1.5 0-3 1-3 3 0 3 3 4 3 7 0 0 0 0 0 0z" /><path d="M16 8c0 3 3 4 3 7a4 4 0 0 1-4 4" /></svg>;
     case "sun": return <svg {...common}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>;
     case "moon": return <svg {...common}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>;
+    case "menu": return <svg {...common}><path d="M4 6h16M4 12h16M4 18h16" /></svg>;
     default: return null;
   }
 }

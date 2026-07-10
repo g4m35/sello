@@ -432,12 +432,6 @@ export default function InventoryPage() {
     if (bulkIds.includes(it.id) || delistIds.includes(it.id)) bulkTitles[it.id] = it.title;
   }
 
-  const topbarRight = (
-    <Btn variant="accent" icon="plus" onClick={() => router.push("/inventory/new")}>
-      New listing
-    </Btn>
-  );
-
   const renderBody = () => {
     if (total === 0) {
       return (
@@ -627,7 +621,7 @@ export default function InventoryPage() {
 
   return (
     <>
-      <Topbar crumbs={["Inventory"]} right={topbarRight} />
+      <Topbar crumbs={["Inventory"]} />
       <main className="page">
         <div className="page__head">
           <div>

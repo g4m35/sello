@@ -820,23 +820,6 @@ export default function ListingDetailPage() {
           </div>
           <div className="page__actions">
             <Btn
-              variant="ghost"
-              size="sm"
-              icon="trash"
-              disabled={lifecycleBusy}
-              onClick={() => void deleteListing()}
-            >
-              Discard
-            </Btn>
-            <Btn
-              variant="ghost"
-              size="sm"
-              icon="box"
-              onClick={() => router.push("/inventory")}
-            >
-              View in inventory
-            </Btn>
-            <Btn
               variant="secondary"
               size="sm"
               icon="check"
@@ -847,7 +830,7 @@ export default function ListingDetailPage() {
             </Btn>
             {!readyToPublish ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="warn"
                 onClick={() => scrollToAnchor(firstMissingAnchor)}
@@ -856,7 +839,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : canLivePublish ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="send"
                 kbd="⌘↵"
@@ -867,7 +850,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : stockxSelected ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="search"
                 onClick={() => scrollToAnchor("stockx-match")}
@@ -876,7 +859,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : ebaySelected ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="doc"
                 onClick={() => scrollToAnchor("ebay-readiness")}
@@ -885,7 +868,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="store"
                 onClick={() => scrollToAnchor("field-channels")}

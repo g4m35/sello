@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 const STEPS = [
   {
@@ -24,8 +24,8 @@ const STEPS = [
   {
     id: "publish",
     label: "Publish",
-    title: "Ship to marketplaces",
-    blurb: "Publish on eBay; export assisted packages elsewhere.",
+    title: "Ship to channels",
+    blurb: "Publish where supported; export assisted listings elsewhere.",
   },
 ] as const;
 
@@ -33,24 +33,32 @@ type StepId = (typeof STEPS)[number]["id"];
 
 const AUTO_MS = 4800;
 
+function getReduceMotionSnapshot() {
+  return typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+function subscribeReduceMotion(cb: () => void) {
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+
 export function LandingDemo() {
   const [step, setStep] = useState(0);
   const [paused, setPaused] = useState(false);
-  const reduceMotion = useRef(false);
+  const reduceMotion = useSyncExternalStore(
+    subscribeReduceMotion,
+    getReduceMotionSnapshot,
+    () => false,
+  );
 
   useEffect(() => {
-    reduceMotion.current = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-  }, []);
-
-  useEffect(() => {
-    if (paused || reduceMotion.current) return;
+    if (paused || reduceMotion) return;
     const id = window.setInterval(() => {
       setStep((s) => (s + 1) % STEPS.length);
     }, AUTO_MS);
     return () => window.clearInterval(id);
-  }, [paused]);
+  }, [paused, reduceMotion]);
 
   const current = STEPS[step]!;
   const activeId: StepId = current.id;
@@ -84,7 +92,7 @@ export function LandingDemo() {
           >
             <span className="landing-demo__tab-n">{String(i + 1).padStart(2, "0")}</span>
             {s.label}
-            {i === step && !paused && !reduceMotion.current ? (
+            {i === step && !paused && !reduceMotion ? (
               <span className="landing-demo__progress" aria-hidden="true" />
             ) : null}
           </button>
@@ -218,13 +226,13 @@ function ScenePublish() {
       <article className="demo-publish__card demo-publish__card--primary">
         <span className="demo-publish__badge">Automated</span>
         <h4>eBay</h4>
-        <p>Publish directly through official APIs.</p>
+        <p>Publish through official APIs when access and eligibility allow.</p>
         <span className="demo-publish__cta">Publish listing</span>
       </article>
       <article className="demo-publish__card">
         <span className="demo-publish__badge demo-publish__badge--soft">Assisted</span>
         <h4>Grailed · Poshmark · Depop</h4>
-        <p>Marketplace-ready packages you post yourself.</p>
+        <p>Channel-ready listing packages you post yourself.</p>
         <span className="demo-publish__cta demo-publish__cta--ghost">Export package</span>
       </article>
     </div>

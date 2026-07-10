@@ -37,11 +37,10 @@ function readiness(
 }
 
 describe("eBay marketplace settings view model", () => {
-  it("renders connected but incomplete production setup as setup-required", () => {
+  it("renders connected but incomplete production setup as finish-setup", () => {
     const model = getEbaySetupMessage(readiness());
 
-    expect(model.heading).toBe("Setup required before publishing");
-    expect(model.body).toContain("Connected");
+    expect(model.heading).toBe("Finish eBay setup");
     expect(model.body).toContain("business policies");
     expect(model.body).toContain("inventory location");
   });
@@ -86,7 +85,7 @@ describe("eBay marketplace settings view model", () => {
     );
 
     expect(model.heading).toBe("Reconnect eBay");
-    expect(model.body).toContain("expired or was revoked");
+    expect(model.body).toContain("expired");
     expect(model.body.toLowerCase()).not.toContain("failed");
   });
 

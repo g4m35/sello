@@ -161,7 +161,7 @@ describe("listing draft API auth boundaries", () => {
         prisma,
         expect.any(String),
         "user-1",
-        { paidProvidersAllowed },
+        { paidProvidersAllowed, adminOverride: false },
       );
     },
   );

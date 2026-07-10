@@ -1,11 +1,23 @@
+"use client";
+
 import { Fragment, type ReactNode } from "react";
 
 import { Icon } from "@/components/ui/icon";
-import { Btn } from "@/components/ui/primitives";
+import { useMobileNav } from "@/components/providers/mobile-nav-provider";
 
 export function Topbar({ crumbs = [], right }: { crumbs?: string[]; right?: ReactNode }) {
+  const { toggle } = useMobileNav();
+
   return (
     <header className="topbar">
+      <button
+        type="button"
+        className="topbar__hamburger btn btn--ghost btn--icon btn--sm"
+        aria-label="Toggle navigation"
+        onClick={toggle}
+      >
+        <Icon name="menu" size={17} />
+      </button>
       <div className="topbar__crumbs">
         {crumbs.map((c, i) => (
           <Fragment key={i}>
@@ -14,11 +26,7 @@ export function Topbar({ crumbs = [], right }: { crumbs?: string[]; right?: Reac
           </Fragment>
         ))}
       </div>
-      <div className="topbar__actions">
-        {right}
-        <Btn variant="ghost" size="sm" icon="help" title="Help" />
-        <Btn variant="ghost" size="sm" icon="bell" title="Notifications" />
-      </div>
+      <div className="topbar__actions">{right}</div>
     </header>
   );
 }

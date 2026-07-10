@@ -19,7 +19,11 @@ import { logUnexpectedError } from "@/lib/errors";
 import { enabledCompSources } from "@/lib/comps/registry";
 import { scoreCompMatch } from "@/lib/comps/scoring";
 import type { CompSource, NormalizedComp } from "@/lib/comps/source";
-import { StockXCompsNotConnectedError } from "@/lib/comps/sources/stockx";
+import {
+  STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP,
+  StockXCompsNotConnectedError,
+  StockXCompsSellerProfileIncompleteError,
+} from "@/lib/comps/sources/stockx";
 import { summarizeComps } from "@/lib/pricing/summarize";
 import { getPrisma } from "@/lib/prisma";
 
@@ -77,6 +81,9 @@ async function fetchFromSource(
   } catch (error) {
     if (error instanceof StockXCompsNotConnectedError) {
       return { source, comps: [], error: MARKETPLACE_NOT_CONNECTED_SKIP };
+    }
+    if (error instanceof StockXCompsSellerProfileIncompleteError) {
+      return { source, comps: [], error: STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP };
     }
     // Always record the source id + error name/code (never tokens/bodies) so
     // provider_error ledger rows are diagnosable without swallowing AppErrors.
@@ -443,16 +450,18 @@ export async function runCompFetch(
           comp.matchClassification === "strong" || comp.matchClassification === "possible",
       ).length;
       try {
-        const notConnected = result.error === MARKETPLACE_NOT_CONNECTED_SKIP;
+        const softSkip =
+          result.error === MARKETPLACE_NOT_CONNECTED_SKIP ||
+          result.error === STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP;
         await completeProviderCall(ledgerPrisma, {
           reservationId,
-          status: notConnected ? "skipped" : result.error ? "failed" : "succeeded",
-          skippedReason: notConnected
+          status: softSkip ? "skipped" : result.error ? "failed" : "succeeded",
+          skippedReason: softSkip
             ? "provider_not_configured"
             : result.error
               ? "provider_error"
               : null,
-          estimatedCostCents: notConnected ? 0 : paidConfig.estimatedCostCents,
+          estimatedCostCents: softSkip ? 0 : paidConfig.estimatedCostCents,
           fetchedCount: result.comps.length,
           acceptedCount: sourceAccepted,
           rejectedCount: sourceComps.length - sourceAccepted,

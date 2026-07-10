@@ -152,14 +152,9 @@ export default function HistoryPage() {
   }, []);
 
   const topbarRight = (
-    <>
-      <Btn variant="secondary" size="sm" icon="download" disabled title="Coming soon">
-        Export
-      </Btn>
-      <Btn variant="secondary" size="sm" icon="refresh" onClick={reload}>
-        Refresh
-      </Btn>
-    </>
+    <Btn variant="secondary" size="sm" icon="refresh" onClick={reload}>
+      Refresh
+    </Btn>
   );
 
   if (loadError) {

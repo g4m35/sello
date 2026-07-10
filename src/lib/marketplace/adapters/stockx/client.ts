@@ -263,6 +263,14 @@ async function stockxApiRequest(
         `[stockx_api] ${options.failureCode ?? stockxErrorCodes.apiFailed} status=${response.status} path=${path} body=${bodySnippet}`,
       );
     }
+    if (isStockXSellerProfileIncomplete(bodySnippet)) {
+      throw new StockXIntegrationError(
+        stockxErrorCodes.sellerProfileIncomplete,
+        "Finish billing and shipping setup on StockX before using market data.",
+        409,
+        { status: response.status, path },
+      );
+    }
     throw new StockXIntegrationError(
       options.failureCode ?? stockxErrorCodes.apiFailed,
       "StockX API request failed.",
@@ -278,6 +286,15 @@ async function stockxApiRequest(
   );
 }
 
+function isStockXSellerProfileIncomplete(bodySnippet: string | null): boolean {
+  if (!bodySnippet) return false;
+  const lower = bodySnippet.toLowerCase();
+  return (
+    lower.includes("billing") &&
+    (lower.includes("shipping") || lower.includes("setup valid"))
+  );
+}
+
 async function safeErrorBodySnippet(response: Response): Promise<string | null> {
   try {
     const text = (await response.text()).trim();
@@ -289,9 +306,11 @@ async function safeErrorBodySnippet(response: Response): Promise<string | null> 
       const message =
         typeof json.message === "string"
           ? json.message
-          : typeof json.error === "string"
-            ? json.error
-            : null;
+          : typeof json.errorMessage === "string"
+            ? json.errorMessage
+            : typeof json.error === "string"
+              ? json.error
+              : null;
       const parts = [code, message].filter(Boolean);
       if (parts.length > 0) return parts.join(": ").slice(0, 240);
     } catch {
