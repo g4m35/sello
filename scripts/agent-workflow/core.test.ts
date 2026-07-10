@@ -258,7 +258,7 @@ describe("agent:check policy", () => {
 
 describe("validation and evidence", () => {
   it("normalizes carriage-return progress output before writing evidence", () => {
-    expect(sanitizeOutput("step one\r\nstep two\rprogress")).toBe("step one\nstep twoprogress");
+    expect(sanitizeOutput("step one  \r\nstep two\rprogress  ")).toBe("step one\nstep twoprogress");
   });
 
   it("refuses concurrent mutating actions for the same task", () => {

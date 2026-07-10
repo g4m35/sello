@@ -618,6 +618,8 @@ function inspectChangedContent(repoRoot: string, files: string[]): CheckIssue[] 
 export function sanitizeOutput(value: string, limit = 1800): string {
   const redacted = value
     .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]+$/g, "")
     .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, "[REDACTED_GITHUB_TOKEN]")
     .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED_SLACK_TOKEN]")
     .replace(/\bsk_(?:live|test)_[A-Za-z0-9]{10,}\b/g, "[REDACTED_STRIPE_KEY]")
