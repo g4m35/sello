@@ -1,15 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { BarChart3, Loader2, Plug, Search, Shield, Unplug } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { ExternalLink, Loader2, Plug, RefreshCw, Unplug } from "lucide-react";
 
-import { getErrorMessage } from "@/lib/errors";
+import { AppError, getErrorMessage } from "@/lib/errors";
+import { readJsonResponse } from "@/lib/http";
+
+type StockXNextStep = {
+  code: string;
+  message: string;
+  externalUrl: string | null;
+};
 
 type StockXStatus = {
   apiEnabled: boolean;
   marketDataEnabled: boolean;
   listingEnabled: boolean;
   connected: boolean;
+  statusLabel: string;
+  setupState: string;
+  ready: boolean;
+  reconnectRequired: boolean;
+  sellerProfileIncomplete: boolean;
+  nextStep: StockXNextStep | null;
   capabilities: {
     connect: boolean;
     catalogSearch: boolean;
@@ -28,6 +42,7 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
   const [state, setState] = useState<CardState>("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const authHeaders = useCallback(
@@ -41,16 +56,21 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
     let active = true;
     async function loadStatus() {
       try {
-        const response = await fetch("/api/marketplaces/stockx/status", {
-          headers: authHeaders(),
-        });
+        const payload = await readJsonResponse<StockXStatus>(
+          await fetch("/api/marketplaces/stockx/status", {
+            headers: authHeaders(),
+          }),
+        );
         if (!active) return;
-        if (!response.ok) throw new Error("status_failed");
-        setStatus((await response.json()) as StockXStatus);
+        setStatus(payload);
         setState("ready");
         setError(null);
-      } catch {
-        if (active) setState("error");
+        setErrorCode(null);
+      } catch (e) {
+        if (active) {
+          setState("error");
+          setError(getErrorMessage(e));
+        }
       }
     }
     void loadStatus();
@@ -62,17 +82,17 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
   const connect = useCallback(async () => {
     setBusy(true);
     setError(null);
+    setErrorCode(null);
     try {
-      const response = await fetch("/api/marketplaces/stockx/connect", {
-        headers: { ...authHeaders(), accept: "application/json" },
-      });
-      const payload = (await response.json()) as { authorizationUrl?: string };
-      if (!response.ok || !payload.authorizationUrl) {
-        throw new Error("Could not start the StockX connection.");
-      }
+      const payload = await readJsonResponse<{ authorizationUrl: string }>(
+        await fetch("/api/marketplaces/stockx/connect", {
+          headers: { ...authHeaders(), accept: "application/json" },
+        }),
+      );
       window.location.assign(payload.authorizationUrl);
     } catch (e) {
       setError(getErrorMessage(e));
+      setErrorCode(e instanceof AppError ? e.code ?? null : null);
       setBusy(false);
     }
   }, [authHeaders]);
@@ -80,11 +100,14 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
   const disconnect = useCallback(async () => {
     setBusy(true);
     setError(null);
+    setErrorCode(null);
     try {
-      await fetch("/api/marketplaces/stockx/disconnect", {
-        method: "POST",
-        headers: authHeaders(),
-      });
+      await readJsonResponse(
+        await fetch("/api/marketplaces/stockx/disconnect", {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      );
       setReloadKey((key) => key + 1);
     } catch (e) {
       setError(getErrorMessage(e));
@@ -92,6 +115,25 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
       setBusy(false);
     }
   }, [authHeaders]);
+
+  const recheck = useCallback(() => {
+    setState("loading");
+    setReloadKey((key) => key + 1);
+  }, []);
+
+  const statusLine =
+    state === "loading"
+      ? "Checking StockX…"
+      : state === "error" || !status
+        ? "StockX status unavailable"
+        : status.statusLabel;
+
+  const showNextStep =
+    state === "ready" &&
+    status &&
+    status.connected &&
+    status.nextStep &&
+    !status.ready;
 
   return (
     <section className="card">
@@ -106,7 +148,7 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
           </span>
           <div>
             <div style={{ fontWeight: 500 }}>StockX</div>
-            <div className="t-small muted">{describe(state, status)}</div>
+            <div className="t-small muted">{statusLine}</div>
           </div>
         </div>
 
@@ -125,50 +167,63 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
               busy={busy}
               onConnect={connect}
               onDisconnect={disconnect}
+              onRecheck={recheck}
             />
           )}
         </div>
       </div>
 
-      {state === "ready" && status && (
-        <div
-          style={{
-            padding: "12px 20px 14px",
-            borderTop: "1px solid var(--line)",
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 8,
-          }}
-          className="t-small"
-        >
-          <CapabilityLine
-            icon={<Search size={13} aria-hidden="true" />}
-            label="Catalog matching"
-            enabled={status.capabilities.catalogSearch && status.connected}
-          />
-          <CapabilityLine
-            icon={<BarChart3 size={13} aria-hidden="true" />}
-            label="Market data"
-            enabled={status.capabilities.marketData && status.connected}
-          />
-          <CapabilityLine
-            icon={<Shield size={13} aria-hidden="true" />}
-            label="Listing creation"
-            enabled={status.capabilities.listingCreation && status.connected}
-          />
+      {showNextStep && status?.nextStep && (
+        <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line)" }}>
+          <div className="banner banner--warn">
+            <div style={{ minWidth: 0 }}>
+              <p className="banner__title" style={{ margin: 0 }}>
+                Finish StockX setup
+              </p>
+              <p className="banner__desc" style={{ margin: "4px 0 0" }}>
+                {status.nextStep.message}
+              </p>
+              <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {status.nextStep.externalUrl && (
+                  <a
+                    href={status.nextStep.externalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn--primary btn--sm"
+                  >
+                    <ExternalLink size={13} aria-hidden="true" />
+                    Open StockX
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  disabled={busy}
+                  onClick={recheck}
+                >
+                  <RefreshCw size={13} aria-hidden="true" />
+                  I’ve finished — Recheck
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {state === "ready" && status && !status.apiEnabled && (
-        <p className="t-small muted" style={{ padding: "0 20px 14px", margin: 0 }}>
-          StockX catalog matching is staged for connected accounts.
-        </p>
-      )}
-
       {error && (
-        <p className="t-small danger" style={{ padding: "0 20px 12px", margin: 0 }}>
-          {error}
-        </p>
+        <div
+          className="t-small danger"
+          style={{ padding: "10px 20px", borderTop: "1px solid var(--line)" }}
+        >
+          <p style={{ margin: 0 }}>{error}</p>
+          {errorCode === "CONNECTION_LIMIT_REACHED" && (
+            <p style={{ margin: "6px 0 0" }}>
+              <Link href="/settings/billing" style={{ textDecoration: "underline" }}>
+                Upgrade plan
+              </Link>
+            </p>
+          )}
+        </div>
       )}
     </section>
   );
@@ -179,24 +234,62 @@ function StockXAction({
   busy,
   onConnect,
   onDisconnect,
+  onRecheck,
 }: {
   status: StockXStatus;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onRecheck: () => void;
 }) {
-  if (status.connected) {
+  if (status.reconnectRequired) {
     return (
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onDisconnect}
-        className="btn btn--ghost btn--sm"
-      >
-        <Unplug size={13} aria-hidden="true" /> Disconnect
-      </button>
+      <>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onConnect}
+          className="btn btn--primary btn--sm"
+        >
+          <Plug size={13} aria-hidden="true" /> Reconnect
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onDisconnect}
+          className="btn btn--ghost btn--sm"
+        >
+          <Unplug size={13} aria-hidden="true" /> Disconnect
+        </button>
+      </>
     );
   }
+
+  if (status.connected) {
+    return (
+      <>
+        {!status.ready && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onRecheck}
+            className="btn btn--secondary btn--sm"
+          >
+            <RefreshCw size={13} aria-hidden="true" /> Recheck
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onDisconnect}
+          className="btn btn--ghost btn--sm"
+        >
+          <Unplug size={13} aria-hidden="true" /> Disconnect
+        </button>
+      </>
+    );
+  }
+
   if (status.apiEnabled && status.capabilities.connect) {
     return (
       <button
@@ -209,34 +302,6 @@ function StockXAction({
       </button>
     );
   }
+
   return null;
-}
-
-function CapabilityLine({
-  icon,
-  label,
-  enabled,
-}: {
-  icon: ReactNode;
-  label: string;
-  enabled: boolean;
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <span style={{ color: enabled ? "var(--positive)" : "var(--ink-4)", flexShrink: 0 }}>
-        {icon}
-      </span>
-      <span style={{ color: enabled ? "var(--ink)" : "var(--ink-4)" }}>{label}</span>
-    </div>
-  );
-}
-
-function describe(state: CardState, status: StockXStatus | null): string {
-  if (state === "loading") return "Checking StockX status…";
-  if (state === "error" || !status) return "StockX status unavailable.";
-  if (!status.apiEnabled) return "Staged · live API off";
-  if (status.connected && status.capabilities.listingCreation) return "Connected · listings enabled";
-  if (status.connected && status.capabilities.marketData) return "Connected · market data enabled";
-  if (status.connected) return "Connected · matching enabled";
-  return "Not connected · matching pending";
 }

@@ -100,8 +100,7 @@ export default function ChannelsPage() {
             </div>
             <p className="empty__title">No channels yet<em>.</em></p>
             <p className="empty__desc">
-              Connect eBay to publish listings directly. Other marketplaces use
-              assisted listing packages you post yourself.
+              Connect StockX, eBay, or Etsy to price and publish from one place.
             </p>
             <Link href="/settings/marketplaces" className="btn btn--primary btn--sm">
               Connect a marketplace
@@ -111,7 +110,10 @@ export default function ChannelsPage() {
           <div className="channels-grid" style={{ marginTop: 16 }}>
             {channels.map((c) => {
               const count = targetCounts[c.marketplace] ?? 0;
-              const isEbay = c.marketplace === "ebay";
+              const canConnect =
+                c.marketplace === "ebay" ||
+                c.marketplace === "stockx" ||
+                c.marketplace === "etsy";
               return (
                 <div
                   key={c.marketplace}
@@ -127,13 +129,13 @@ export default function ChannelsPage() {
                     {count > 0 && (
                       <span className="channel-card__count t-num">{count}</span>
                     )}
-                    {isEbay && (
+                    {canConnect && (
                       <Link
                         href="/settings/marketplaces"
                         className="btn btn--ghost btn--sm"
-                        title="Manage your eBay connection"
+                        title={`Manage ${c.name} connection`}
                       >
-                        Manage
+                        Connect
                       </Link>
                     )}
                     <Link

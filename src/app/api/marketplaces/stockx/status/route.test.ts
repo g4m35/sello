@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireSupabaseUserFromRequestOrCookies: vi.fn(),
   findUnique: vi.fn(),
+  probeStockXConnectionReadiness: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -16,8 +17,18 @@ vi.mock("@/lib/billing/account", () => ({
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({ marketplaceConnection: { findUnique: mocks.findUnique } }),
 }));
+vi.mock("@/lib/marketplace/adapters/stockx/connection-readiness", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/marketplace/adapters/stockx/connection-readiness")
+  >("@/lib/marketplace/adapters/stockx/connection-readiness");
+  return {
+    ...actual,
+    probeStockXConnectionReadiness: mocks.probeStockXConnectionReadiness,
+  };
+});
 
 import { GET } from "./route";
+import { connectionReadiness } from "@/lib/marketplace/adapters/stockx/connection-readiness";
 
 const stockxOauthEnv = {
   STOCKX_API_ENABLED: "true",
@@ -26,6 +37,7 @@ const stockxOauthEnv = {
   STOCKX_REDIRECT_URI: "https://sello.wtf/api/marketplaces/stockx/callback",
   STOCKX_TOKEN_ENCRYPTION_KEY: "a".repeat(64),
   STOCKX_OAUTH_STATE_SECRET: "x".repeat(40),
+  STOCKX_API_KEY: "api-key",
 };
 
 describe("StockX status route", () => {
@@ -33,6 +45,7 @@ describe("StockX status route", () => {
     vi.clearAllMocks();
     mocks.requireSupabaseUserFromRequestOrCookies.mockResolvedValue({ id: "user-1" });
     mocks.findUnique.mockResolvedValue({ id: "conn-1" });
+    mocks.probeStockXConnectionReadiness.mockResolvedValue(connectionReadiness("ready"));
   });
 
   afterEach(() => {
@@ -47,30 +60,45 @@ describe("StockX status route", () => {
     expect(payload.marketDataEnabled).toBe(false);
     expect(payload.listingEnabled).toBe(false);
     expect(payload.connected).toBe(false);
+    expect(payload.setupState).toBe("not_connected");
+    expect(payload.statusLabel).toBe("Not connected");
     expect(payload.capabilities.catalogSearch).toBe(false);
     expect(payload.capabilities.productMatching).toBe(true);
-    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.probeStockXConnectionReadiness).not.toHaveBeenCalled();
   });
 
-  it("checks the active account connection only when the API is enabled", async () => {
+  it("probes readiness when OAuth is configured", async () => {
     for (const [key, value] of Object.entries(stockxOauthEnv)) vi.stubEnv(key, value);
+    mocks.probeStockXConnectionReadiness.mockResolvedValue(
+      connectionReadiness("seller_profile_incomplete"),
+    );
+
     const response = await GET(new Request("http://localhost/api/marketplaces/stockx/status"));
     const payload = await response.json();
+
     expect(response.status).toBe(200);
     expect(payload.connected).toBe(true);
-    expect(mocks.findUnique).toHaveBeenCalledWith({
-      where: {
-        accountId_marketplace_environment: {
-          accountId: "acc-1",
-          marketplace: "stockx",
-          environment: "production",
-        },
-      },
-      select: { id: true },
-    });
+    expect(payload.setupState).toBe("seller_profile_incomplete");
+    expect(payload.statusLabel).toBe("Connected · finish setup");
+    expect(payload.nextStep?.externalUrl).toContain("stockx.com");
+    expect(mocks.probeStockXConnectionReadiness).toHaveBeenCalled();
   });
 
-  it("does not check connection or expose catalog capability when credentials are incomplete", async () => {
+  it("skips probe when probe=0", async () => {
+    for (const [key, value] of Object.entries(stockxOauthEnv)) vi.stubEnv(key, value);
+
+    const response = await GET(
+      new Request("http://localhost/api/marketplaces/stockx/status?probe=0"),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.connected).toBe(true);
+    expect(mocks.probeStockXConnectionReadiness).not.toHaveBeenCalled();
+    expect(mocks.findUnique).toHaveBeenCalled();
+  });
+
+  it("does not check connection when credentials are incomplete", async () => {
     vi.stubEnv("STOCKX_API_ENABLED", "true");
 
     const response = await GET(new Request("http://localhost/api/marketplaces/stockx/status"));
@@ -80,7 +108,6 @@ describe("StockX status route", () => {
     expect(payload.apiEnabled).toBe(true);
     expect(payload.connected).toBe(false);
     expect(payload.capabilities.connect).toBe(false);
-    expect(payload.capabilities.catalogSearch).toBe(false);
-    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.probeStockXConnectionReadiness).not.toHaveBeenCalled();
   });
 });

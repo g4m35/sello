@@ -5,7 +5,7 @@ import {
   assertCanConnectMarketplace,
   assertCanManageMarketplaceConnections,
 } from "@/lib/billing/connections";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import { getEtsyConfig, getEtsyOAuthStateSecret } from "@/lib/marketplace/adapters/etsy/config";
 import { requireEtsyCapability } from "@/lib/marketplace/adapters/etsy/capabilities";
 import { toEtsyErrorPayload } from "@/lib/marketplace/adapters/etsy/errors";
@@ -58,7 +58,8 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof AppError && !(error as { code?: string }).code?.startsWith("ETSY_")) {
-      return NextResponse.json({ error: getErrorMessage(error) }, { status: error.status });
+      const { status, body } = safeErrorResponse(error, { label: "etsy_connect" });
+      return NextResponse.json(body, { status });
     }
 
     const { payload, status } = toEtsyErrorPayload(error);
