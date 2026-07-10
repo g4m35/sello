@@ -3,8 +3,10 @@
 useDefault = true
 
 [allowlist]
-description = "Deterministic fake crypto fixtures in eBay unit tests"
+description = "Deterministic fake crypto/API fixtures in unit tests"
 paths = [
   '''src/lib/marketplace/adapters/ebay/.*\.test\.ts$''',
   '''src/app/api/marketplaces/ebay/.*\.test\.ts$''',
+  '''src/app/api/listings/\[id\]/ebay-preflight/route\.test\.ts$''',
+  '''src/app/api/listings/comps/refresh/route\.test\.ts$''',
 ]

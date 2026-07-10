@@ -18,9 +18,11 @@ non_goals:
   - No integration of another active agent's branch or uncommitted work.
 allowed_paths:
   - .agent/**
+  - .conductor/**
   - .cursor/**
   - .github/**
   - .gitleaks.toml
+  - .gitignore
   - AGENTS.md
   - CLAUDE.md
   - HANDOFF.md
@@ -33,6 +35,7 @@ allowed_paths:
   - package.json
   - package-lock.json
   - scripts/agent-workflow/**
+  - scripts/conductor/**
   - prisma/AGENTS.md
   - src/lib/auth/AGENTS.md
   - src/lib/billing/AGENTS.md
