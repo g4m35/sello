@@ -980,11 +980,23 @@ export function reviewTask(
   const containsSecretFinding = result.issues.some(
     (issue) => issue.code === "SECRET_FILE" || issue.code === "CREDENTIAL_PATTERN",
   );
+  const rawDiff = containsSecretFinding
+    ? "Full diff withheld because automated checks detected a possible secret. Review the Git diff in a secure local environment, remove the secret, rotate it if real, and rerun review.\n"
+    : runGit(repoRoot, [
+        "diff",
+        "--no-ext-diff",
+        `${result.merge_base}...HEAD`,
+        "--",
+        ".",
+        `:(exclude).agent/reviews/${task.id}.diff`,
+        `:(exclude).agent/reviews/${task.id}.md`,
+      ]).stdout;
   writeFileSync(
     diff,
-    containsSecretFinding
-      ? "Full diff withheld because automated checks detected a possible secret. Review the Git diff in a secure local environment, remove the secret, rotate it if real, and rerun review.\n"
-      : runGit(repoRoot, ["diff", "--no-ext-diff", `${result.merge_base}...HEAD`]).stdout,
+    rawDiff
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n"),
   );
   const report = join(reviewDirectory, `${task.id}.md`);
   writeFileSync(report, reviewMarkdown({ task, check: result, reviewedCommit, approved }));

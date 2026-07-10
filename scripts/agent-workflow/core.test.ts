@@ -314,6 +314,7 @@ describe("validation and evidence", () => {
     expect(existsSync(result.report)).toBe(true);
     expect(existsSync(result.diff)).toBe(true);
     expect(readFileSync(result.report, "utf8")).toContain("NOT MERGE READY");
+    expect(readFileSync(result.diff, "utf8").split("\n").some((line) => /[ \t]$/.test(line))).toBe(false);
   });
 
   it("emits parseable JSON through the CLI", () => {
