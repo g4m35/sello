@@ -2,6 +2,11 @@ import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
 import type { PlanId, PlanLimits } from "@/lib/billing/plans";
 import type {
+  BulkBatchSummaryView,
+  BulkBatchView,
+  BulkGenerationResult,
+} from "@/lib/bulk-intake/types";
+import type {
   BulkExecutionResult,
   BulkPreflightResult,
 } from "@/lib/marketplace/bulk-publish";
@@ -86,6 +91,22 @@ export type ProviderUsageRow = {
   draftId: string | null;
   inventoryItemId: string | null;
   createdAt: string;
+};
+
+export type AdminBulkBatchRow = {
+  id: string;
+  accountId: string;
+  createdByUserId: string;
+  status: string;
+  photoCount: number;
+  totalItems: number;
+  processedItems: number;
+  needsReviewItems: number;
+  listingReadyItems: number;
+  failedItems: number;
+  canceledItems: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type CompsSummary = {
@@ -437,6 +458,12 @@ export const api = {
       }[];
     }>("/api/admin/marketplace-operations", token),
 
+  getAdminBulkIntake: (token: string) =>
+    request<{
+      totals: { batches: number; active: number; ready: number; failed: number; items: number };
+      rows: AdminBulkBatchRow[];
+    }>("/api/admin/bulk-intake", token),
+
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{
       adapters: {
@@ -468,6 +495,70 @@ export const api = {
       { method: "POST", body: form },
     );
   },
+
+  listBulkBatches: (token: string) =>
+    request<{ batches: BulkBatchSummaryView[] }>("/api/bulk/batches", token),
+
+  createBulkBatch: (token: string, expectedItems?: number) =>
+    request<{ batch: BulkBatchView }>("/api/bulk/batches", token, {
+      method: "POST",
+      body: JSON.stringify({
+        idempotencyKey: globalThis.crypto.randomUUID(),
+        ...(expectedItems ? { expectedItems } : {}),
+      }),
+    }),
+
+  getBulkBatch: (token: string, batchId: string) =>
+    request<{ batch: BulkBatchView }>(`/api/bulk/batches/${batchId}`, token),
+
+  uploadBulkPhotos: (token: string, batchId: string, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append("photos", file);
+    return request<{ batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/photos`,
+      token,
+      { method: "POST", body: form },
+    );
+  },
+
+  groupBulkPhotos: (
+    token: string,
+    batchId: string,
+    groups: { photoIds: string[] }[],
+  ) =>
+    request<{ batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/grouping`,
+      token,
+      { method: "PUT", body: JSON.stringify({ groups }) },
+    ),
+
+  startBulkGeneration: (token: string, batchId: string) =>
+    request<{ itemIds: string[]; batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/generate`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  generateBulkItem: (token: string, batchId: string, itemId: string) =>
+    request<{ item: BulkGenerationResult }>(
+      `/api/bulk/batches/${batchId}/items/${itemId}/generate`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  convertBulkItem: (token: string, batchId: string, itemId: string) =>
+    request<{ item: BulkGenerationResult }>(
+      `/api/bulk/batches/${batchId}/items/${itemId}/convert`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  cancelBulkBatch: (token: string, batchId: string) =>
+    request<{ batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/cancel`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
 
   addPhotos: (token: string, itemId: string, files: File[]) => {
     const form = new FormData();

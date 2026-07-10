@@ -6,6 +6,7 @@ const ADMIN_TABS = [
   { href: "/admin/feedback", label: "Feedback" },
   { href: "/admin/provider-usage", label: "Provider usage" },
   { href: "/admin/marketplace-operations", label: "Marketplace ops" },
+  { href: "/admin/bulk-intake", label: "Bulk intake" },
 ] as const;
 
 export type AdminTab = (typeof ADMIN_TABS)[number]["href"];
