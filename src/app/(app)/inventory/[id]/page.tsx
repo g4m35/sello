@@ -820,23 +820,6 @@ export default function ListingDetailPage() {
           </div>
           <div className="page__actions">
             <Btn
-              variant="ghost"
-              size="sm"
-              icon="trash"
-              disabled={lifecycleBusy}
-              onClick={() => void deleteListing()}
-            >
-              Discard
-            </Btn>
-            <Btn
-              variant="ghost"
-              size="sm"
-              icon="box"
-              onClick={() => router.push("/inventory")}
-            >
-              View in inventory
-            </Btn>
-            <Btn
               variant="secondary"
               size="sm"
               icon="check"

@@ -11,6 +11,8 @@ import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { Icon } from "@/components/ui/icon";
 import type { ChannelView, ItemView } from "@/lib/view/types";
 
+const CHANNEL_ORDER = ["ebay", "stockx", "etsy"] as const;
+
 export default function ChannelsPage() {
   const { token } = useSession();
 
@@ -57,6 +59,16 @@ export default function ChannelsPage() {
     return counts;
   }, [items]);
 
+  const orderedChannels = useMemo(() => {
+    if (!channels) return [];
+    const rank = new Map(CHANNEL_ORDER.map((id, i) => [id, i]));
+    return [...channels].sort((a, b) => {
+      const ai = rank.get(a.marketplace as (typeof CHANNEL_ORDER)[number]) ?? 99;
+      const bi = rank.get(b.marketplace as (typeof CHANNEL_ORDER)[number]) ?? 99;
+      return ai - bi;
+    });
+  }, [channels]);
+
   if (error) {
     return (
       <>
@@ -75,10 +87,7 @@ export default function ChannelsPage() {
       <Topbar
         crumbs={["Marketplaces"]}
         right={
-          <Link
-            href="/settings/marketplaces"
-            className="btn btn--primary btn--sm"
-          >
+          <Link href="/settings/marketplaces" className="btn btn--primary btn--sm">
             Manage connections
           </Link>
         }
@@ -90,17 +99,20 @@ export default function ChannelsPage() {
             <h1 className="page__title">
               Marketplaces<em>.</em>
             </h1>
+            <div className="page__title-meta">
+              Status across channels. Connect and manage accounts in one place.
+            </div>
           </div>
         </div>
 
-        {channels.length === 0 ? (
+        {orderedChannels.length === 0 ? (
           <div className="empty" style={{ marginTop: 16 }}>
             <div className="empty__art">
               <Icon name="store" size={36} />
             </div>
             <p className="empty__title">No channels yet<em>.</em></p>
             <p className="empty__desc">
-              Connect StockX, eBay, or Etsy to price and publish from one place.
+              Connect eBay, StockX, or Etsy to price and publish from one place.
             </p>
             <Link href="/settings/marketplaces" className="btn btn--primary btn--sm">
               Connect a marketplace
@@ -108,44 +120,22 @@ export default function ChannelsPage() {
           </div>
         ) : (
           <div className="channels-grid" style={{ marginTop: 16 }}>
-            {channels.map((c) => {
+            {orderedChannels.map((c) => {
               const count = targetCounts[c.marketplace] ?? 0;
-              const canConnect =
-                c.marketplace === "ebay" ||
-                c.marketplace === "stockx" ||
-                c.marketplace === "etsy";
               return (
-                <div
-                  key={c.marketplace}
-                  className="card channel-card"
-                >
-                  <MpLogo id={c.marketplace} size={44} />
-
+                <div key={c.marketplace} className="card channel-card">
+                  <MpLogo id={c.marketplace} size={40} />
                   <div className="channel-card__main">
                     <div className="channel-card__name">{c.name}</div>
+                    <div className="t-small muted" style={{ marginTop: 2 }}>
+                      {count > 0
+                        ? `${count} listing${count === 1 ? "" : "s"} on this channel`
+                        : "No live listings yet"}
+                    </div>
                   </div>
-
-                  <div className="channel-card__actions">
-                    {count > 0 && (
-                      <span className="channel-card__count t-num">{count}</span>
-                    )}
-                    {canConnect && (
-                      <Link
-                        href="/settings/marketplaces"
-                        className="btn btn--ghost btn--sm"
-                        title={`Manage ${c.name} connection`}
-                      >
-                        Connect
-                      </Link>
-                    )}
-                    <Link
-                      href="/inventory"
-                      className="btn btn--secondary btn--sm"
-                      title="View inventory"
-                    >
-                      Inventory
-                    </Link>
-                  </div>
+                  {count > 0 && (
+                    <span className="channel-card__count t-num">{count}</span>
+                  )}
                 </div>
               );
             })}

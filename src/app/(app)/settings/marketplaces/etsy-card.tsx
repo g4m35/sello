@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Plug, Unplug } from "lucide-react";
 
+import { MpLogo } from "@/components/ui/marketplace";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
 
@@ -119,13 +120,7 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
     <section className="card">
       <div className="card__head">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span
-            className="marketplace-logo"
-            style={{ width: 36, height: 36, borderRadius: "var(--r-2)", flexShrink: 0 }}
-            aria-hidden="true"
-          >
-            Et
-          </span>
+          <MpLogo id="etsy" size={36} />
           <div>
             <div style={{ fontWeight: 500 }}>Etsy</div>
             <div className="t-small muted">{statusLine}</div>

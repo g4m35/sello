@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Loader2, Plug, RefreshCw, Unplug } from "lucide-react";
 
+import { MpLogo } from "@/components/ui/marketplace";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
 
@@ -139,13 +140,7 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
     <section className="card">
       <div className="card__head">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span
-            className="marketplace-logo"
-            style={{ width: 36, height: 36, borderRadius: "var(--r-2)", flexShrink: 0 }}
-            aria-hidden="true"
-          >
-            Sx
-          </span>
+          <MpLogo id="stockx" size={36} />
           <div>
             <div style={{ fontWeight: 500 }}>StockX</div>
             <div className="t-small muted">{statusLine}</div>
