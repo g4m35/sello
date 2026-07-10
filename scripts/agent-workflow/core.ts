@@ -1,8 +1,11 @@
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
+  closeSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -70,6 +73,66 @@ export function runGit(
 
 export function findRepoRoot(cwd = process.cwd()): string {
   return runGit(cwd, ["rev-parse", "--show-toplevel"]).stdout.trim();
+}
+
+function processIsAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+export function acquireTaskLock(repoRoot: string, taskId: string, action: string): () => void {
+  const commonDirRaw = runGit(repoRoot, ["rev-parse", "--git-common-dir"]).stdout.trim();
+  const commonDir = resolve(repoRoot, commonDirRaw);
+  const lockDirectory = join(commonDir, "agent-workflow-locks");
+  const lockPath = join(lockDirectory, `${taskId}.lock`);
+  mkdirSync(lockDirectory, { recursive: true });
+  const token = randomUUID();
+
+  const createLock = (): void => {
+    try {
+      const fd = openSync(lockPath, "wx", 0o600);
+      writeFileSync(
+        fd,
+        `${JSON.stringify({ task_id: taskId, action, pid: process.pid, token, created_at: new Date().toISOString() }, null, 2)}\n`,
+      );
+      closeSync(fd);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      let existing: { pid?: number; action?: string; created_at?: string } = {};
+      try {
+        existing = JSON.parse(readFileSync(lockPath, "utf8")) as typeof existing;
+      } catch {
+        // A malformed lock remains authoritative until it is old enough to be safely stale.
+      }
+      const ageMs = Date.now() - statSync(lockPath).mtimeMs;
+      const stale = existing.pid ? !processIsAlive(existing.pid) : ageMs > 60 * 60 * 1000;
+      if (stale) {
+        rmSync(lockPath, { force: true });
+        createLock();
+        return;
+      }
+      throw new WorkflowError(
+        `Task '${taskId}' is locked by ${existing.action ?? "another workflow action"} (pid ${existing.pid ?? "unknown"}). Wait for it to finish or investigate the live process.`,
+        "TASK_LOCKED",
+      );
+    }
+  };
+
+  createLock();
+  return () => {
+    if (!existsSync(lockPath)) return;
+    try {
+      const existing = JSON.parse(readFileSync(lockPath, "utf8")) as { token?: string };
+      if (existing.token === token) rmSync(lockPath, { force: true });
+    } catch {
+      // Never remove a lock that can no longer be proven to belong to this process.
+    }
+  };
 }
 
 export function currentBranch(cwd: string): string {
@@ -390,7 +453,10 @@ export function startTask(repoRoot: string, taskArg: string): StartResult {
     throw new WorkflowError(`Task '${task.id}' has status '${task.status}', not backlog or ready.`, "TASK_NOT_STARTABLE");
   }
 
-  runGit(repoRoot, ["fetch", "origin"]);
+  const releaseLock = acquireTaskLock(repoRoot, task.id, "start");
+  try {
+
+    runGit(repoRoot, ["fetch", "origin"]);
   const baseRef = resolveBaseRef(repoRoot, task.base_branch);
   const baseCommit = runGit(repoRoot, ["rev-parse", baseRef]).stdout.trim();
   const worktrees = listWorktrees(repoRoot);
@@ -455,22 +521,25 @@ export function startTask(repoRoot: string, taskArg: string): StartResult {
     status: "active",
   });
 
-  return {
-    task_id: task.id,
-    reused,
-    branch: task.working_branch,
-    worktree: task.worktree_path,
-    base_ref: baseRef,
-    base_commit: baseCommit,
-    task_file: activeFile,
-    state_file: state,
-    next_instructions: [
-      `cd ${quoteShell(task.worktree_path)}`,
-      `Read AGENTS.md and ${relative(task.worktree_path, activeFile)} before editing.`,
-      "Verify the branch and commit the task-start metadata before implementation.",
-      `Run npm run agent:check -- ${task.id} before claiming completion.`,
-    ],
-  };
+    return {
+      task_id: task.id,
+      reused,
+      branch: task.working_branch,
+      worktree: task.worktree_path,
+      base_ref: baseRef,
+      base_commit: baseCommit,
+      task_file: activeFile,
+      state_file: state,
+      next_instructions: [
+        `cd ${quoteShell(task.worktree_path)}`,
+        `Read AGENTS.md and ${relative(task.worktree_path, activeFile)} before editing.`,
+        "Verify the branch and commit the task-start metadata before implementation.",
+        `Run npm run agent:check -- ${task.id} before claiming completion.`,
+      ],
+    };
+  } finally {
+    releaseLock();
+  }
 }
 
 function quoteShell(value: string): string {
@@ -795,7 +864,12 @@ export function completionMarkdown(args: {
 
 export function finishTask(repoRoot: string, taskArg?: string): { report: string; result: CheckResult } {
   const { file, task } = resolveTask(repoRoot, taskArg);
-  const precheck = checkTask(repoRoot, task, { taskFile: file, requireClean: true });
+  if (task.status === "completed") {
+    throw new WorkflowError(`Task '${task.id}' is already completed.`, "TASK_ALREADY_COMPLETED");
+  }
+  const releaseLock = acquireTaskLock(repoRoot, task.id, "finish");
+  try {
+    const precheck = checkTask(repoRoot, task, { taskFile: file, requireClean: true });
   const validation = task.validation.map((command) => runValidationCommand(command, repoRoot));
   const status = precheck.ok && validation.every((result) => result.passed) ? "COMPLETED" : "BLOCKED";
   const issues = [...precheck.issues];
@@ -844,7 +918,10 @@ export function finishTask(repoRoot: string, taskArg?: string): { report: string
     final_commit: finalCommit,
     updated_at: now,
   });
-  return { report, result };
+    return { report, result };
+  } finally {
+    releaseLock();
+  }
 }
 
 export function reviewMarkdown(args: {
@@ -893,7 +970,9 @@ export function reviewTask(
   approved = false,
 ): { report: string; diff: string; result: CheckResult } {
   const { file, task } = resolveTask(repoRoot, taskArg);
-  const result = checkTask(repoRoot, task, { taskFile: file, runValidation: true, requireClean: true });
+  const releaseLock = acquireTaskLock(repoRoot, task.id, "review");
+  try {
+    const result = checkTask(repoRoot, task, { taskFile: file, runValidation: true, requireClean: true });
   const reviewedCommit = runGit(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
   const reviewDirectory = join(repoRoot, ".agent", "reviews");
   mkdirSync(reviewDirectory, { recursive: true });
@@ -909,7 +988,10 @@ export function reviewTask(
   );
   const report = join(reviewDirectory, `${task.id}.md`);
   writeFileSync(report, reviewMarkdown({ task, check: result, reviewedCommit, approved }));
-  return { report, diff, result };
+    return { report, diff, result };
+  } finally {
+    releaseLock();
+  }
 }
 
 export type StatusEntry = {
@@ -996,7 +1078,9 @@ export function cleanupTask(
   options: { dangerous?: boolean; deleteBranch?: boolean } = {},
 ): CleanupResult {
   const { task } = resolveTask(repoRoot, taskArg);
-  const record = listWorktrees(repoRoot).find((entry) => samePath(entry.worktree, task.worktree_path));
+  const releaseLock = acquireTaskLock(repoRoot, task.id, "cleanup");
+  try {
+    const record = listWorktrees(repoRoot).find((entry) => samePath(entry.worktree, task.worktree_path));
   if (!record) throw new WorkflowError(`Declared worktree is not registered: ${task.worktree_path}`, "WORKTREE_MISSING");
   if (record.branch !== task.working_branch) {
     throw new WorkflowError(`Worktree branch '${record.branch}' does not match '${task.working_branch}'.`, "WORKTREE_CONFLICT");
@@ -1034,15 +1118,18 @@ export function cleanupTask(
     runGit(repoRoot, ["branch", options.dangerous ? "-D" : "-d", task.working_branch]);
     deletedBranch = true;
   }
-  return {
-    task_id: task.id,
-    worktree: task.worktree_path,
-    branch: task.working_branch,
-    removed_worktree: true,
-    pruned: true,
-    deleted_branch: deletedBranch,
-    checks: { dirty, unpushed, merged, complete },
-  };
+    return {
+      task_id: task.id,
+      worktree: task.worktree_path,
+      branch: task.working_branch,
+      removed_worktree: true,
+      pruned: true,
+      deleted_branch: deletedBranch,
+      checks: { dirty, unpushed, merged, complete },
+    };
+  } finally {
+    releaseLock();
+  }
 }
 
 export function ciCheck(repoRoot: string, baseBranch?: string): { skipped: boolean; message: string; result?: CheckResult } {

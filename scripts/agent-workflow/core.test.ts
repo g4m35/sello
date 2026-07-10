@@ -8,6 +8,7 @@ import { stringify } from "yaml";
 
 import {
   WorkflowError,
+  acquireTaskLock,
   checkTask,
   cleanupTask,
   finishTask,
@@ -255,6 +256,17 @@ describe("agent:check policy", () => {
 });
 
 describe("validation and evidence", () => {
+  it("refuses concurrent mutating actions for the same task", () => {
+    const { root } = initializeRepo();
+    const active = createActiveBranch(root);
+    const release = acquireTaskLock(root, active.task.id, "test-holder");
+    try {
+      expect(() => finishTask(root, active.task.id)).toThrowError(/locked by test-holder/);
+    } finally {
+      release();
+    }
+  });
+
   it("executes validation commands and captures a successful exit code", () => {
     const { root } = initializeRepo();
     const result = runValidationCommand("node -e \"console.log('ok')\"", root);

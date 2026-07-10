@@ -33,7 +33,7 @@ From a safe repository worktree:
 npm run agent:start -- <task-id-or-file>
 ```
 
-The command fetches `origin`, verifies the base, checks existing branches/worktrees, safely reuses only an exact match, creates the branch/worktree when safe, moves the contract to active state in the task branch, records the base commit under `.agent/state/`, and prints the exact assigned path. Commit the start metadata before implementation.
+The command fetches `origin`, verifies the base, checks existing branches/worktrees, safely reuses only an exact match, creates the branch/worktree when safe, moves the contract to active state in the task branch, records the base commit under `.agent/state/`, and prints the exact assigned path. Mutating actions take a task-specific lock in Git's shared metadata so two worktrees cannot start, finish, review, or clean the same task concurrently. Commit the start metadata before implementation.
 
 ### 4. Assign the agent
 
