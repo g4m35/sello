@@ -1,0 +1,42 @@
+# Copy to .agent/tasks/backlog/<id>.yaml and replace every placeholder.
+# status: backlog | ready | active | blocked | in_review | completed | abandoned
+# risk: low | medium | high | critical
+# task_type: ui | frontend | backend | database | marketplace | billing | inventory | security | infrastructure | documentation
+# deployment_authorized and merge_authorized are booleans. false is the safe default.
+
+id: replace-with-task-id
+title: Replace with a concise task title
+status: backlog
+owner: unassigned
+reviewer: Codex
+risk: low
+task_type: documentation
+base_branch: develop
+working_branch: docs/replace-with-task-id
+worktree_path: /absolute/path/to/dedicated-worktree
+created_at: 2026-01-01T00:00:00.000Z
+goal: State one observable outcome.
+context: Summarize verified repository state and why this task exists.
+non_goals:
+  - State what this task deliberately will not change.
+allowed_paths:
+  - docs/**
+  - .agent/**
+protected_paths:
+  - prisma/**
+  - src/app/api/**
+required_reading:
+  - AGENTS.md
+  - docs/architecture/invariants.md
+acceptance:
+  - Define an objectively verifiable acceptance criterion.
+validation:
+  - npm run validate:scoped
+full_validation_required: false
+documentation:
+  - Name documentation that must be created or updated.
+review_requirements:
+  - State the independent review focus.
+deployment_authorized: false
+merge_authorized: false
+notes: Record assumptions, dependencies, overlap, or authorization limits.

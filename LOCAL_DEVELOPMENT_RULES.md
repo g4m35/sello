@@ -1,48 +1,23 @@
 # Local development rules
 
-## Use this repo only
+Use the canonical clone at `~/dev/resale-crosslister-clean` only to inspect/integrate repository state and to start isolated tasks. Never develop from the archived iCloud checkout.
 
-```text
-~/dev/resale-crosslister-clean
-```
-
-Under the Cursor workspace `perc 30`, `resale-crosslister` is a **symlink** to that path.
-
-## Do not develop from
-
-```text
-~/Desktop/perc 30/resale-crosslister-ARCHIVED-NO-GIT
-```
-
-That folder is the old iCloud Desktop checkout (no `.git`). Edits there cannot be pushed and only create drift.
-
-## Before starting work
+All implementation work must follow `AGENTS.md`, a machine-readable task contract, and the worktree workflow in `docs/operations/multi-agent-development.md`.
 
 ```bash
-cd ~/dev/resale-crosslister-clean
-git checkout develop
-git pull --ff-only origin develop
-git checkout -b <new-branch-name>
+npm ci
+npm run agent:start -- <task-id-or-file>
+npm run agent:status
 ```
 
-## Before committing / merging
+Do not switch the canonical checkout to start a task. `agent:start` fetches `origin`, validates the contract, and safely creates or reuses the declared task worktree.
+
+Before completion, use the contract-specific validation and evidence commands:
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm test
-npm run build
+npm run agent:check -- <task-id>
+npm run agent:finish -- <task-id>
+npm run agent:review -- <task-id>
 ```
 
-## Git identity
-
-Must use a GitHub-verified email:
-
-```bash
-git config user.email
-git config user.name
-```
-
-## Deploy
-
-Preview deploys are fine on request. Production (`vercel --prod` / promote `main`) only with explicit owner approval.
+GitHub CI is the final authority. Deployment remains a separate, explicitly authorized operation.

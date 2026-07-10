@@ -2,7 +2,7 @@
 
 AI-native resale operating system for fashion sellers.
 
-Sello helps sellers turn raw item photos into structured listings, pricing guidance, marketplace-ready drafts, and publishing workflows. The product is focused on fashion resale first: streetwear, sneakers, vintage, designer, and hype-driven inventory.
+Sello helps sellers turn raw item photos into structured listings, pricing guidance, channel-specific listing content, and publishing workflows. The product is focused on fashion resale first: streetwear, sneakers, vintage, designer, and hype-driven inventory.
 
 ## Current Status
 
@@ -31,7 +31,7 @@ Sello is not just a cross-lister. The long-term goal is to make individual fashi
 Core direction:
 
 - Convert photos into clean product data
-- Generate marketplace-ready listings
+- Generate channel-specific listings
 - Assist with pricing and comps
 - Let sellers choose where inventory should publish
 - Automate repetitive listing and sync work
@@ -197,6 +197,21 @@ Open:
 ```txt
 http://127.0.0.1:3000
 ```
+
+## Agent development workflow
+
+Repository changes use one machine-readable task contract, branch, and isolated worktree per implementation owner. `AGENTS.md` is canonical; `HANDOFF.md` is informational only.
+
+```bash
+npm run agent:start -- <task-id-or-file>
+npm run agent:status
+npm run agent:check -- <task-id-or-file>
+npm run agent:finish -- <task-id-or-file>
+npm run agent:review -- <task-id-or-file>
+npm run agent:cleanup -- <task-id-or-file>
+```
+
+Use `npm run validate:scoped` for the fast repository gate and `npm run validate:full` for integration. See `docs/operations/multi-agent-development.md` for task ownership, review, CI, conflict-resolution, and cleanup rules.
 
 ## Supabase Notes
 

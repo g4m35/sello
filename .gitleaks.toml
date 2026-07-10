@@ -1,0 +1,10 @@
+# Extend the default rules and narrowly allow deterministic eBay crypto fixtures.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deterministic fake crypto fixtures in eBay unit tests"
+paths = [
+  '''src/lib/marketplace/adapters/ebay/.*\.test\.ts$''',
+  '''src/app/api/marketplaces/ebay/.*\.test\.ts$''',
+]
