@@ -94,42 +94,65 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
   }, [authHeaders]);
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center rounded bg-zinc-950 font-mono text-sm font-semibold text-zinc-100 ring-1 ring-white/10">
+    <section className="card">
+      <div className="card__head">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span
+            className="marketplace-logo"
+            style={{ width: 36, height: 36, borderRadius: "var(--r-2)", flexShrink: 0 }}
+            aria-hidden="true"
+          >
             Sx
           </span>
           <div>
-            <div className="font-medium text-zinc-100">StockX</div>
-            <div className="text-sm text-zinc-400">{describe(state, status)}</div>
+            <div style={{ fontWeight: 500 }}>StockX</div>
+            <div className="t-small muted">{describe(state, status)}</div>
           </div>
         </div>
-        {state === "loading" && <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />}
-        {state === "ready" && status && (
-          <StockXAction
-            status={status}
-            busy={busy}
-            onConnect={connect}
-            onDisconnect={disconnect}
-          />
-        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {state === "loading" && (
+            <Loader2
+              size={14}
+              className="animate-spin"
+              style={{ color: "var(--ink-4)" }}
+              aria-hidden="true"
+            />
+          )}
+          {state === "ready" && status && (
+            <StockXAction
+              status={status}
+              busy={busy}
+              onConnect={connect}
+              onDisconnect={disconnect}
+            />
+          )}
+        </div>
       </div>
 
       {state === "ready" && status && (
-        <div className="mt-4 grid gap-2 text-sm text-zinc-400 sm:grid-cols-3">
+        <div
+          style={{
+            padding: "12px 20px 14px",
+            borderTop: "1px solid var(--line)",
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 8,
+          }}
+          className="t-small"
+        >
           <CapabilityLine
-            icon={<Search className="h-4 w-4" />}
+            icon={<Search size={13} aria-hidden="true" />}
             label="Catalog matching"
             enabled={status.capabilities.catalogSearch && status.connected}
           />
           <CapabilityLine
-            icon={<BarChart3 className="h-4 w-4" />}
+            icon={<BarChart3 size={13} aria-hidden="true" />}
             label="Market data"
             enabled={status.capabilities.marketData && status.connected}
           />
           <CapabilityLine
-            icon={<Shield className="h-4 w-4" />}
+            icon={<Shield size={13} aria-hidden="true" />}
             label="Listing creation"
             enabled={status.capabilities.listingCreation && status.connected}
           />
@@ -137,11 +160,16 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
       )}
 
       {state === "ready" && status && !status.apiEnabled && (
-        <p className="mt-3 text-sm text-zinc-400">
+        <p className="t-small muted" style={{ padding: "0 20px 14px", margin: 0 }}>
           StockX catalog matching is staged for connected accounts.
         </p>
       )}
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+
+      {error && (
+        <p className="t-small danger" style={{ padding: "0 20px 12px", margin: 0 }}>
+          {error}
+        </p>
+      )}
     </section>
   );
 }
@@ -163,9 +191,9 @@ function StockXAction({
         type="button"
         disabled={busy}
         onClick={onDisconnect}
-        className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+        className="btn btn--ghost btn--sm"
       >
-        <Unplug className="h-4 w-4" /> Disconnect
+        <Unplug size={13} aria-hidden="true" /> Disconnect
       </button>
     );
   }
@@ -175,9 +203,9 @@ function StockXAction({
         type="button"
         disabled={busy}
         onClick={onConnect}
-        className="inline-flex items-center gap-2 rounded-md bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 hover:bg-white disabled:opacity-50"
+        className="btn btn--primary btn--sm"
       >
-        <Plug className="h-4 w-4" /> Connect StockX
+        <Plug size={13} aria-hidden="true" /> Connect StockX
       </button>
     );
   }
@@ -194,9 +222,11 @@ function CapabilityLine({
   enabled: boolean;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className={enabled ? "text-emerald-300" : "text-zinc-600"}>{icon}</span>
-      <span className={enabled ? "text-zinc-200" : "text-zinc-500"}>{label}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ color: enabled ? "var(--positive)" : "var(--ink-4)", flexShrink: 0 }}>
+        {icon}
+      </span>
+      <span style={{ color: enabled ? "var(--ink)" : "var(--ink-4)" }}>{label}</span>
     </div>
   );
 }

@@ -847,7 +847,7 @@ export default function ListingDetailPage() {
             </Btn>
             {!readyToPublish ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="warn"
                 onClick={() => scrollToAnchor(firstMissingAnchor)}
@@ -856,7 +856,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : canLivePublish ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="send"
                 kbd="⌘↵"
@@ -867,7 +867,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : stockxSelected ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="search"
                 onClick={() => scrollToAnchor("stockx-match")}
@@ -876,7 +876,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : ebaySelected ? (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="doc"
                 onClick={() => scrollToAnchor("ebay-readiness")}
@@ -885,7 +885,7 @@ export default function ListingDetailPage() {
               </Btn>
             ) : (
               <Btn
-                variant="accent"
+                variant="secondary"
                 size="sm"
                 icon="store"
                 onClick={() => scrollToAnchor("field-channels")}

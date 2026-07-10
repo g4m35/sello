@@ -19,6 +19,7 @@ import {
   getBrowserSupabase,
 } from "@/lib/supabase/browser";
 import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
+import { Topbar } from "@/components/app/topbar";
 
 import { ebayMarketplaceLabels } from "./labels";
 import { EtsyConnectionCard } from "./etsy-card";
@@ -278,116 +279,140 @@ export default function MarketplaceSettingsPage() {
           : "Connected, ready for sandbox publish";
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-5 py-8">
-        <header className="flex flex-col gap-2 border-b border-zinc-800 pb-5">
-          <p className="text-sm font-medium uppercase tracking-wide text-emerald-300">
-            Marketplace Settings
-          </p>
-          <h1 className="text-3xl font-semibold">{labels.heading}</h1>
-        </header>
-
-        <StockXConnectionCard accessToken={session?.access_token ?? null} />
-        <EtsyConnectionCard accessToken={session?.access_token ?? null} />
-
-        <section className="rounded-lg border border-zinc-800 bg-zinc-900/70">
-          <div className="flex flex-col gap-4 border-b border-zinc-800 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-400/10 text-emerald-300">
-                <ShieldCheck size={22} aria-hidden="true" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold">{labels.account}</h2>
-                <p className="text-sm text-zinc-400">{statusLabel}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {actionModel.showPrimaryConnect && (
-                <button
-                  type="button"
-                  onClick={connectEbay}
-                  disabled={!session || actionState === "loading"}
-                  className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-400 px-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Plug size={16} aria-hidden="true" />
-                  {actionModel.primaryConnectLabel}
-                </button>
-              )}
-              {actionModel.showSecondaryReconnect && (
-                <button
-                  type="button"
-                  onClick={connectEbay}
-                  disabled={!session || actionState === "loading"}
-                  className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-semibold text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Plug size={16} aria-hidden="true" />
-                  {actionModel.secondaryReconnectLabel}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={refreshReadiness}
-                disabled={!connected || actionState === "loading"}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-semibold text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <RefreshCw size={16} aria-hidden="true" />
-                Refresh Readiness
-              </button>
-              <button
-                type="button"
-                onClick={disconnectEbay}
-                disabled={!connected || actionState === "loading"}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-zinc-700 px-3 text-sm font-semibold text-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Unplug size={16} aria-hidden="true" />
-                Disconnect
-              </button>
-            </div>
+    <>
+      <Topbar crumbs={["Settings", "Marketplaces"]} />
+      <main className="page">
+        <div className="page__head">
+          <div>
+            <h1 className="page__title">
+              Marketplaces<em>.</em>
+            </h1>
+            <p className="t-small muted" style={{ marginTop: 4 }}>
+              {labels.heading}
+            </p>
           </div>
+        </div>
 
-          {connected && !ready && (
-            <div className="border-b border-zinc-800 p-5">
-              <div className="rounded-md border border-amber-300/30 bg-amber-300/10 p-4">
-                <h3 className="text-sm font-semibold text-amber-100">
-                  {setupMessage.heading}
-                </h3>
-                <p className="mt-1 text-sm text-amber-50/80">{setupMessage.body}</p>
-                <div className="mt-3 flex flex-wrap gap-3 text-sm">
-                  <a
-                    href="https://www.ebay.com/sh/buspolicy"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-amber-100 underline underline-offset-4"
-                  >
-                    Open eBay business policies
-                  </a>
-                  <a
-                    href="https://www.ebay.com/sh/ovw"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-amber-100 underline underline-offset-4"
-                  >
-                    Open Seller Hub
-                  </a>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <StockXConnectionCard accessToken={session?.access_token ?? null} />
+          <EtsyConnectionCard accessToken={session?.access_token ?? null} />
+
+          {/* eBay */}
+          <section className="card">
+            {/* Header row */}
+            <div className="card__head" style={{ flexWrap: "wrap", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "var(--r-3)",
+                    background: connected ? "var(--status-ready-bg)" : "var(--surface-sunk)",
+                    color: connected ? "var(--status-ready-ink)" : "var(--ink-3)",
+                    display: "grid",
+                    placeItems: "center",
+                    flexShrink: 0,
+                    border: "1px solid var(--line)",
+                  }}
+                >
+                  <ShieldCheck size={22} aria-hidden="true" />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{labels.account}</h2>
+                  <p className="t-small muted" style={{ margin: 0 }}>{statusLabel}</p>
                 </div>
               </div>
-            </div>
-          )}
 
-          {offerLocationSetup && (
-            <div className="border-b border-zinc-800 p-5">
-              <div className="rounded-md border border-zinc-700 bg-zinc-950 p-4">
-                <h3 className="text-sm font-semibold">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, flexShrink: 0 }}>
+                {actionModel.showPrimaryConnect && (
+                  <button
+                    type="button"
+                    onClick={connectEbay}
+                    disabled={!session || actionState === "loading"}
+                    className="btn btn--primary"
+                  >
+                    <Plug size={14} aria-hidden="true" />
+                    {actionModel.primaryConnectLabel}
+                  </button>
+                )}
+                {actionModel.showSecondaryReconnect && (
+                  <button
+                    type="button"
+                    onClick={connectEbay}
+                    disabled={!session || actionState === "loading"}
+                    className="btn btn--secondary"
+                  >
+                    <Plug size={14} aria-hidden="true" />
+                    {actionModel.secondaryReconnectLabel}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={refreshReadiness}
+                  disabled={!connected || actionState === "loading"}
+                  className="btn btn--secondary"
+                >
+                  <RefreshCw size={14} aria-hidden="true" />
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={disconnectEbay}
+                  disabled={!connected || actionState === "loading"}
+                  className="btn btn--ghost"
+                >
+                  <Unplug size={14} aria-hidden="true" />
+                  Disconnect
+                </button>
+              </div>
+            </div>
+
+            {/* Setup incomplete banner */}
+            {connected && !ready && (
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
+                <div className="banner banner--warn">
+                  <div style={{ minWidth: 0 }}>
+                    <p className="banner__title" style={{ margin: 0 }}>
+                      {setupMessage.heading}
+                    </p>
+                    <p className="banner__desc" style={{ margin: "4px 0 0" }}>
+                      {setupMessage.body}
+                    </p>
+                    <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 12 }}>
+                      <a
+                        href="https://www.ebay.com/sh/buspolicy"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
+                      >
+                        Open eBay business policies
+                      </a>
+                      <a
+                        href="https://www.ebay.com/sh/ovw"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
+                      >
+                        Open Seller Hub
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Inventory location form */}
+            {offerLocationSetup && (
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
+                <h3 style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 500 }}>
                   Create your ship-from inventory location
                 </h3>
-                <p className="mt-1 text-sm text-zinc-400">
-                  eBay has no Seller Hub page for Inventory API locations, so
-                  Sello creates one for you. Enter the address your items ship
-                  from; it is sent only to eBay.
+                <p className="t-small muted" style={{ margin: "0 0 14px" }}>
+                  eBay has no Seller Hub page for Inventory API locations, so Sello creates one
+                  for you. Enter the address your items ship from; it is sent only to eBay.
                 </p>
                 <form
-                  className="mt-4 grid gap-3 sm:grid-cols-2"
+                  className="form-grid"
                   onSubmit={(e) => {
                     e.preventDefault();
                     void createInventoryLocation();
@@ -404,8 +429,8 @@ export default function MarketplaceSettingsPage() {
                       ["phone", "Phone (optional)", "415-555-0100", false],
                     ] as const
                   ).map(([field, label, placeholder, required]) => (
-                    <label key={field} className="flex flex-col gap-1 text-sm">
-                      <span className="text-zinc-400">{label}</span>
+                    <label key={field} className="field">
+                      <span className="field__label">{label}</span>
                       <input
                         type="text"
                         required={required}
@@ -417,78 +442,110 @@ export default function MarketplaceSettingsPage() {
                             [field]: e.target.value,
                           }))
                         }
-                        className="h-10 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-zinc-100 placeholder:text-zinc-600"
+                        className="input"
                       />
                     </label>
                   ))}
-                  <label className="flex flex-col gap-1 text-sm">
-                    <span className="text-zinc-400">Country</span>
+                  <label className="field">
+                    <span className="field__label">Country</span>
                     <input
                       type="text"
                       value="US"
                       disabled
-                      className="h-10 rounded-md border border-zinc-800 bg-zinc-900 px-3 text-zinc-500"
+                      className="input"
+                      style={{ opacity: 0.5 }}
                     />
                   </label>
-                  <div className="flex items-end">
+                  <div style={{ display: "flex", alignItems: "flex-end" }}>
                     <button
                       type="submit"
                       disabled={!locationFormValid || actionState === "loading"}
-                      className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-400 px-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="btn btn--primary"
                     >
                       Create inventory location
                     </button>
                   </div>
                 </form>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
-            {ebayReadinessItems.map((item) => {
-              const ok = item === "oauth_connection" ? connected : !missing.has(item);
-              const Icon = ok ? CheckCircle2 : XCircle;
+            {/* Readiness checklist */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                gap: 10,
+                padding: "16px 20px",
+              }}
+              className="readiness-grid"
+            >
+              {ebayReadinessItems.map((item) => {
+                const ok = item === "oauth_connection" ? connected : !missing.has(item);
+                const Icon = ok ? CheckCircle2 : XCircle;
 
-              return (
-                <div
-                  key={item}
-                  className="rounded-md border border-zinc-800 bg-zinc-950 p-4"
-                >
-                  <Icon
-                    size={20}
-                    className={ok ? "text-emerald-300" : "text-zinc-500"}
-                    aria-hidden="true"
-                  />
-                  <p className="mt-3 text-sm font-medium">
-                    {ebayReadinessLabels[item]}
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    {ok ? "Ready" : "Missing"}
-                  </p>
-                  {!ok && (
-                    <p className="mt-3 text-xs leading-5 text-zinc-400">
-                      {ebayReadinessHelp[item as EbayReadinessItem]}
+                return (
+                  <div
+                    key={item}
+                    style={{
+                      borderRadius: "var(--r-3)",
+                      border: "1px solid var(--line)",
+                      background: "var(--surface-sunk)",
+                      padding: "var(--s-4)",
+                    }}
+                  >
+                    <Icon
+                      size={18}
+                      style={{ color: ok ? "var(--positive)" : "var(--ink-4)" }}
+                      aria-hidden="true"
+                    />
+                    <p style={{ margin: "10px 0 2px", fontSize: 12.5, fontWeight: 500 }}>
+                      {ebayReadinessLabels[item]}
                     </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {(loadState === "loading" || actionState === "loading") && (
-            <div className="flex items-center gap-2 border-t border-zinc-800 px-5 py-3 text-sm text-zinc-400">
-              <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-              Syncing eBay state
+                    <p className="t-small muted" style={{ margin: 0 }}>
+                      {ok ? "Ready" : "Missing"}
+                    </p>
+                    {!ok && (
+                      <p
+                        className="t-small muted"
+                        style={{ margin: "8px 0 0", lineHeight: 1.5 }}
+                      >
+                        {ebayReadinessHelp[item as EbayReadinessItem]}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
 
-          {error && (
-            <div className="border-t border-red-900/60 px-5 py-3 text-sm text-red-300">
-              Error: {error}
-            </div>
-          )}
-        </section>
-      </div>
-    </main>
+            {/* Syncing indicator */}
+            {(loadState === "loading" || actionState === "loading") && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  borderTop: "1px solid var(--line)",
+                  padding: "10px 20px",
+                }}
+                className="t-small muted"
+              >
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                Syncing eBay state
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div
+                style={{ borderTop: "1px solid var(--line)", padding: "10px 20px" }}
+                className="t-small danger"
+              >
+                Error: {error}
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </>
   );
 }

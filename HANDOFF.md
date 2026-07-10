@@ -6,12 +6,17 @@ Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`.
 Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 
 ## Last updated
-2026-07-09 — Cursor. Repo hygiene: archived Desktop no-git checkout, symlinked
-`perc 30/resale-crosslister` → clean repo, TypeScript 7 dual setup, safe dep
-bumps, admin hide-surface test fixes, Clerk research (stay on Supabase+Stripe).
-Branch: `chore/repo-hygiene-2026-07-09`.
+2026-07-09 — Cursor. Landing autonomy rewrite + modern SaaS app shell polish.
+Branch: `feature/app-ui-redesign-landing` (uncommitted / not PR'd yet).
 
 ## Recent work
+- **2026-07-09**: Landing polish pass — removed problem essay; flow steps now publish-across-marketplaces + inventory sync/delist; dropped “Automated where supported…” slogan; sold-comp section rewritten with marketing flair; FAQ is accordion (`details`/`summary`); sticky black nav bar with larger brand/links. Landing tests 13/13 green.
+- **2026-07-09**: Landing restored to outcome-led hero + staged `LandingDemo` (demo CSS recovered from `2a479c9`). Headline: "Photos in. Listings that sell themselves." Inventory sync featured; no "marketplace-ready". Honest eBay/assisted/pricing copy kept. Landing tests green.
+- **2026-07-09**: App shell livelier SaaS polish — wider sidebar with soft accent wash, richer active nav + New listing CTA, dual radial wash on `.main`, frosted topbar, staggered KPI enter, channel-card accents, toolbar tint, fixed truncated `prefers-reduced-motion` block.
+- **2026-07-09**: Marketplace settings cards (eBay, Etsy, StockX) restyled to Sello token system — `card`/`card__head`, `.btn` variants, `.banner--warn`, `.input`, `.field`, `t-small`/`muted`/`danger`, `marketplace-logo`, `var(--positive)` for ok status, `var(--surface-sunk)` tiles for readiness checklist. All zinc-950/emerald-400 Tailwind colors removed. `globals.css` enhanced: subtle accent radial on `.main`, richer `.card:hover` border, `.readiness { order: -1 }` on mobile, responsive `.readiness-grid` breakpoints. All 11 marketplace tests green; pre-existing TS/lint issues unchanged.
+- **2026-07-09**: `/settings/marketplaces` moved into `(app)` layout group — URL unchanged (OAuth callbacks still work), page now has sidebar/topbar; page chrome uses design tokens instead of raw zinc/emerald.
+- **2026-07-09**: Mobile hamburger nav: `MobileNavProvider` context, `sidebar--open` CSS drawer, `drawer-overlay` backdrop, hamburger button in topbar (hidden on desktop). Help/Bell removed from topbar.
+- **2026-07-09**: Channels empty state + "Inventory" CTA. Listing detail topbar publish demoted to `secondary` (readiness card stays primary accent).
 - Admin users now receive all feature entitlements (paidComps/publish/etsy) so owner testing is not blocked by separate allowlists. Global kill-switches still apply.
 - Added always-on testing policy + full public runthrough notes.
 - Neutralized orphan Desktop checkout (`resale-crosslister-ARCHIVED-NO-GIT`).

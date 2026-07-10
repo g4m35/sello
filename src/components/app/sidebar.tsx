@@ -8,6 +8,7 @@ import { api } from "@/lib/api/client";
 import { useSession } from "@/components/providers/session-provider";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { prefetchBillingUsage } from "@/components/billing/usage-snapshot";
+import { useMobileNav } from "@/components/providers/mobile-nav-provider";
 
 type NavItem = { href: string; label: string; icon: IconName; count?: number };
 
@@ -15,6 +16,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { session, token, signOut, name, requestNameEdit } = useSession();
+  const { open: drawerOpen, close: closeDrawer } = useMobileNav();
   const [search, setSearch] = useState("");
   const [counts, setCounts] = useState<{ items?: number; channels?: number }>({});
 
@@ -77,11 +79,12 @@ export function Sidebar() {
 
   function go(href: string) {
     warm(href);
+    closeDrawer();
     router.push(href);
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${drawerOpen ? " sidebar--open" : ""}`}>
       <div className="sidebar__brand">
         <button
           type="button"
