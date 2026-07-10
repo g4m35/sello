@@ -1,0 +1,87 @@
+id: multi-agent-development-system
+title: Establish the production-grade multi-agent development system
+status: completed
+owner: Codex
+reviewer: Codex integrator plus GitHub CI
+risk: medium
+task_type: infrastructure
+base_branch: develop
+working_branch: chore/multi-agent-development-system
+worktree_path: /Users/jheller/dev/resale-crosslister-multi-agent-system
+created_at: 2026-07-10T17:55:00.000Z
+goal: Replace handoff-driven coordination with isolated worktrees, machine-readable contracts, deterministic policy and validation, evidence-backed completion/review, and CI authority.
+context: Another agent owns concurrent landing-page work. This task is isolated from origin/develop and must not modify product behavior or any other worktree.
+non_goals:
+  - No Sello product behavior changes.
+  - No database schema or migration changes.
+  - No deployment, production migration, live marketplace action, paid-provider call, or merge to develop.
+  - No integration of another active agent's branch or uncommitted work.
+allowed_paths:
+  - .agent/**
+  - .conductor/**
+  - .cursor/**
+  - .github/**
+  - .gitleaks.toml
+  - .gitignore
+  - AGENTS.md
+  - CLAUDE.md
+  - HANDOFF.md
+  - LOCAL_DEVELOPMENT_RULES.md
+  - WORKTREES.md
+  - README.md
+  - docs/architecture/**
+  - docs/decisions/**
+  - docs/operations/**
+  - package.json
+  - package-lock.json
+  - scripts/agent-workflow/**
+  - scripts/conductor/**
+  - prisma/AGENTS.md
+  - src/lib/auth/AGENTS.md
+  - src/lib/billing/AGENTS.md
+  - src/lib/comps/AGENTS.md
+  - src/lib/inventory-sync/AGENTS.md
+  - src/lib/marketplace/AGENTS.md
+protected_paths:
+  - .env
+  - .env.*
+  - prisma/schema.prisma
+  - prisma/migrations/**
+  - src/app/**
+  - src/components/**
+  - src/lib/**/*.ts
+  - src/lib/**/*.tsx
+  - public/**
+required_reading:
+  - AGENTS.md
+  - HANDOFF.md
+  - LOCAL_DEVELOPMENT_RULES.md
+  - WORKTREES.md
+  - package.json
+  - prisma/schema.prisma
+acceptance:
+  - Canonical agent rules, architecture/invariant/ADR/operations documentation, and non-authoritative handoff treatment are committed.
+  - Task, completion, review, Cursor, Codex review, and Codex planning templates are valid and reusable.
+  - The CLI safely starts, reports, checks, finishes, reviews, and cleans tasks with human and JSON output.
+  - Path globs, protected/unauthorized/secret/conflict/dirty checks, validation evidence, worktree collisions, cleanup refusal, and reconciliation are covered by automated tests.
+  - GitHub CI runs policy, lint, typecheck, tests, Prisma validation, build, and secret scanning without live services.
+  - A ready but unstarted bounded app-UI task assigns Cursor/Grok and protects backend, Prisma, billing, marketplace, auth, and inventory-sync systems.
+  - Temporary workflow-test branches, worktrees, contracts, and files are removed.
+  - No product code, schema, production data, environment configuration, live external state, deployment, or other worktree is changed.
+validation:
+  - npm run agent:test
+  - npm run validate:scoped
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - docs/architecture/overview.md
+  - docs/architecture/invariants.md
+  - docs/decisions/README.md
+  - docs/operations/multi-agent-development.md
+review_requirements:
+  - Review CLI filesystem and Git safety, path-glob correctness, evidence honesty, cleanup refusal, output sanitization, and concurrency isolation.
+  - Confirm CI preserves existing safety checks and never performs live marketplace, billing, provider, migration, or deployment actions.
+  - Confirm the first UI task cannot modify sensitive backend systems or the active landing-page task surface.
+deployment_authorized: false
+merge_authorized: false
+notes: HANDOFF.md overlaps the active landing-page worktree; preserve both branches and resolve that documentation overlap semantically during later integration.

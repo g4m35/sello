@@ -1,0 +1,83 @@
+id: ui-app-experience-polish-001
+title: Polish the signed-in Sello app experience without touching landing or backend systems
+status: ready
+owner: Cursor/Grok
+reviewer: Codex
+risk: medium
+task_type: ui
+base_branch: develop
+working_branch: feature/app-experience-polish
+worktree_path: /Users/jheller/dev/resale-crosslister-app-experience
+created_at: 2026-07-10T18:00:00.000Z
+goal: Make the signed-in dashboard, inventory, listing, channels, and settings experience feel intentional, sleek, modern, coherent, responsive, and distinctly Sello while preserving all functionality and the current logo.
+context: The marketing landing page is owned by a separate active task, so this contract deliberately excludes landing files and globals.css. The signed-in app already uses a shared shell and design tokens; this task refines hierarchy, density, states, and interaction polish within app-owned components only.
+non_goals:
+  - No landing page, public marketing, pricing, privacy, contact, root layout, or global stylesheet changes.
+  - No API, database, auth, billing logic, marketplace behavior, comps/provider behavior, inventory-sync logic, feature flags, dependencies, CI, or deployment changes.
+  - No Sello logo, wordmark, or brand-mark replacement.
+  - No new product capability or simulated marketplace behavior.
+allowed_paths:
+  - .agent/**
+  - src/app/(app)/**
+  - src/components/app/**
+  - src/app/comps-panel.tsx
+  - src/app/comps-panel.test.tsx
+  - src/app/comps-pricing-view.tsx
+  - src/app/jobs-panel.tsx
+  - src/app/seller-workbench.tsx
+  - src/app/seller-workbench.test.ts
+  - src/app/status-badge.tsx
+protected_paths:
+  - .env
+  - .env.*
+  - package.json
+  - package-lock.json
+  - prisma/**
+  - src/app/api/**
+  - src/app/page.tsx
+  - src/app/landing.test.ts
+  - src/app/layout.tsx
+  - src/app/globals.css
+  - src/app/pricing/**
+  - src/app/privacy/**
+  - src/app/contact/**
+  - src/components/landing/**
+  - src/components/marketing/**
+  - src/lib/**
+  - public/sello-mark.svg
+  - public/sello-wordmark.svg
+  - .github/**
+  - scripts/**
+required_reading:
+  - AGENTS.md
+  - docs/architecture/overview.md
+  - docs/architecture/invariants.md
+  - docs/operations/multi-agent-development.md
+  - .agent/templates/cursor-task-prompt.md
+acceptance:
+  - The current Sello logo and wordmark remain unchanged and are used consistently in the signed-in shell.
+  - Dashboard, inventory list/grid and empty/loading/error states, listing detail/editor, channels, and settings share a clear visual hierarchy, consistent spacing, controls, cards, and feedback states.
+  - Existing routes, data loading, mutations, navigation, feature gates, publish/delist readiness, billing states, and inventory behavior remain functionally unchanged.
+  - Seller-facing copy uses listing terminology and never claims unsupported automation or marketplace success.
+  - The experience is usable at 1440px desktop, 1024px tablet, and 390px mobile without horizontal overflow, clipped actions, unreadable density, or inaccessible drawers/modals.
+  - Keyboard navigation, visible focus, semantic headings/landmarks, labels, contrast, touch targets, and reduced-motion behavior are reviewed and repaired within allowed paths.
+  - Motion is purposeful, respects prefers-reduced-motion, and does not block task completion or obscure state.
+  - Repetitive generic AI-dashboard styling is replaced with intentional Sello-specific hierarchy and restrained visual polish using the existing token system.
+  - Existing UI tests remain green; tests are added or updated for changed interactions, accessibility labels, responsive behavior, and state rendering.
+  - The completion record references desktop/tablet/mobile screenshots or PR visual evidence for dashboard, inventory, one listing, channels, and settings, where the available browser tooling supports capture.
+  - No protected path changes appear in the full diff.
+validation:
+  - npm test -- --run src/components/app 'src/app/(app)' src/app/comps-panel.test.tsx src/app/seller-workbench.test.ts
+  - npm run validate:scoped
+  - npm run build
+full_validation_required: true
+documentation:
+  - Record visual evidence and intentional unchanged behavior in .agent/completed/ui-app-experience-polish-001.md.
+review_requirements:
+  - Compare desktop, tablet, and mobile states for hierarchy, overflow, focus, keyboard access, reduced motion, loading/empty/error states, and Sello brand consistency.
+  - Verify every changed interaction preserves its prior data and authorization behavior.
+  - Verify seller copy is honest and uses listing terminology.
+  - Verify no backend, globals.css, landing-page, logo, dependency, schema, CI, or deployment path changed.
+deployment_authorized: false
+merge_authorized: false
+notes: Ready but intentionally not started. Landing-page work remains isolated in its existing worktree; this task protects that surface to eliminate concurrent overlap.

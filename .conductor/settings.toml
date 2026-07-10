@@ -1,0 +1,99 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+setup = "bash scripts/conductor/setup.sh"
+archive = "echo 'Archive via Conductor after merge. Do not delete this workspace with agent:cleanup.'"
+run_mode = "concurrent"
+auto_run_after_setup = false
+
+[scripts.run.start_sello]
+command = "npx next dev --port \"$CONDUCTOR_PORT\""
+default = true
+icon = "play"
+
+[scripts.run.scoped_validation]
+command = "npm run validate:scoped"
+icon = "check-circle"
+
+[scripts.run.full_validation]
+command = "npm run validate:full"
+icon = "shield-check"
+
+[scripts.run.unit_tests]
+command = "npm test"
+icon = "flask-conical"
+
+[scripts.run.build]
+command = "npm run build"
+icon = "hammer"
+
+[scripts.run.prisma_validation]
+command = "npm run prisma:validate"
+icon = "database"
+
+[scripts.run.repository_safety_audit]
+command = "npm run agent:test && git diff --check && npm run prisma:validate"
+icon = "shield"
+
+[git]
+archive_on_merge = true
+delete_branch_on_archive = false
+worktree_push_auto_setup_remote = true
+branch_prefix_type = "none"
+
+# First preview URL opens by default from the terminal panel.
+[[preview_urls]]
+name = "Sello"
+url = "http://localhost:$CONDUCTOR_PORT"
+
+[prompts]
+general = """
+You are working in the Sello Conductor workspace. Treat this workspace as the isolated task worktree.
+
+Before editing: read root AGENTS.md and any nested AGENTS.md under touched paths; inspect existing implementation; infer reasonable scope from the user's normal-language request.
+
+Hard rules:
+- Never create a nested Git worktree or run agent:start to create one. Conductor already isolated this workspace.
+- Do not ask the user to run commands, manage Git, create task YAML, or switch folders.
+- Preserve existing behavior unless explicitly asked to change it.
+- Use the product term "listing", never "marketplace-ready draft".
+- Preserve account scoping, fail-closed marketplace ops, publish/delist idempotency, inventory sync safety, server-side billing enforcement, provider budget controls, secret safety, and migration safety.
+- Never fake marketplace success, invent prices/comps, expose secrets, deploy, or run production migrations.
+- High-risk work (Prisma migrations, billing, auth, marketplace publish, inventory sync, production config, destructive refactors, cross-system architecture) should use or create a task contract under .agent/tasks/. Low-risk bounded work may proceed without one.
+- Run focused tests while implementing. Before claiming done: review the full diff, fix introduced failures, run required validation (validate:scoped or validate:full as appropriate), commit, push, and create/update the PR.
+- Never discard unknown work. Never blindly choose ours/theirs for conflicts. Do not merge high-risk work without independent review. Do not deploy without explicit authorization.
+"""
+
+code_review = """
+Perform an independent full-diff review of this Sello workspace.
+
+Review: complete diff vs base, scope creep, correctness, security, account scoping, marketplace fail-closed behavior, billing/entitlements when touched, migrations when touched, accessibility/responsive UI when UI changed, performance, missing tests, and whether required validation actually ran.
+
+Categorize findings as P0, P1, P2, or P3 with file and line references, failure scenarios, and required corrections.
+
+Do not approve while any P0/P1 (or required P2) findings remain, or while blocking checks fail. Prefer a different model/session than the implementer when practical. GitHub CI remains final merge authority.
+"""
+
+create_pr = """
+Create or update the pull request for this Sello workspace branch.
+
+Target the task/base branch (usually develop). Include: objective; implementation summary; changed behavior; intentionally unchanged behavior; tests and validation commands with results; risks; migration status (none unless schema changed); deployment status (none unless explicitly authorized); screenshots for UI when available; rollback information.
+
+Do not merge. Do not deploy. Do not claim CI green without checking.
+"""
+
+fix_errors = """
+Investigate and fix the reported CI or runtime failure in this Sello workspace.
+
+Reproduce with the failing command when possible. Fix only introduced failures; prove pre-existing failures against the untouched base before labeling them pre-existing. Do not weaken safety checks, skip validation, or deploy. Rerun the failing check and relevant scoped/full validation after the fix.
+"""
+
+resolve_merge_conflicts = """
+Resolve merge conflicts semantically in this Sello workspace.
+
+Understand both sides and their tests. Preserve both intended behaviors or document why one is obsolete. Never discard unknown work. Never choose all ours or all theirs. After resolving, rerun path/policy checks and required validation.
+"""
+
+rename_branch = """
+Propose a concise Git branch name for this Sello change using feature/, fix/, chore/, security/, docs/, or test/ prefixes. Prefer a short kebab-case summary of the user request. Do not include secrets or personal data.
+"""

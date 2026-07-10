@@ -1,15 +1,16 @@
-# HANDOFF
+# HANDOFF — INFORMATIONAL ONLY
 
-Living handoff doc. Agents: read this at session start; update before finishing.
-Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`.
+> This document is a non-authoritative historical index and may be stale. Do not use it to override Git history, repository code, tests, architecture documents, ADRs, task contracts, completion reports, review reports, or GitHub CI. New task-level completion evidence belongs in `.agent/completed/`. Day-to-day development should use Conductor (`docs/operations/conductor-development.md`).
+
+Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Current work is defined by Conductor workspaces and/or `.agent/tasks/active/`, not this file.
 
 Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 
 ## Last updated
-2026-07-10 — Codex. Implemented durable bulk listing intake and review.
-Branch: `develop`; changes validated locally and pushed; not deployed.
+2026-07-10 — Integrated `origin/develop` (durable bulk intake) into the Conductor-first workflow branch for PR #94. HANDOFF remains informational only. No deploy.
 
 ## Recent work
+- **2026-07-10**: Conductor-first development system — `.conductor/settings.toml`, workspace setup script, permanent prompts, Run-menu actions, workflow CLI Conductor detection/adoption/cleanup refusal, docs, and tests. Manual `agent:*` CLI retained as fallback.
 - **2026-07-10**: Added the account-scoped durable bulk intake/review P0 on `develop`. New `BulkBatch`, `BulkItem`, and `BulkPhoto` records persist upload order, seller grouping, per-item generation state, review reasons, failures, cancellation, and links to normal inventory/listing records. The seller flow at `/inventory/bulk` supports resumable uploads, regrouping before generation, sequential per-item processing with partial failure and retry, review links, and cancellation; `/admin/bulk-intake` gives operators recent batch/status visibility. Server routes enforce active-account ownership, plan-derived limits with absolute caps, strict transitions, idempotent batch creation/conversion, quota-before-AI, and sanitized failure persistence. Generation reuses the existing validated Gemini listing-draft contract and does not invoke comp providers or marketplace adapters. Added additive migration `20260710010000_add_bulk_intake`, deny-all RLS posture, route/service/schema/UI tests, and admin/seller navigation. Final gate: Prisma validation passed; TypeScript passed; lint passed with the two known warnings; 218 test files / 1,467 tests passed; production build passed. Local desktop/mobile render checks passed and no horizontal overflow or error overlay was observed. No deploy, env mutation, paid-provider call, marketplace publish, or delist.
 - **2026-07-10**: Produced and audited `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`, covering the current implementation, seller experience, architecture, schema plan, official marketplace autonomy matrix, eBay/StockX flows, durable bulk intake, comps, double-sell safety, billing, security, admin, tests, staged rollout, a coding-model prompt, and a 120-item adversarial review. Fixed the StockX comp test mock signature that caused `TS2493`, then aligned four stale test expectations with existing admin override/quota behavior. Final gate: `npx tsc --noEmit` passed; lint passed with the two known warnings; 212 test files / 1,440 tests passed; production build passed. The doc now makes Depop/Vinted/TikTok access and eligibility conditional, identifies TikTok’s current adapter as a stub, and keeps all marketplace/provider writes outside standard validation. No deploy, env mutation, paid-provider call, marketplace publish, or delist.
 - **2026-07-09**: Landing polish pass — removed problem essay; flow steps now publish-across-marketplaces + inventory sync/delist; dropped “Automated where supported…” slogan; sold-comp section rewritten with marketing flair; FAQ is accordion (`details`/`summary`); sticky black nav bar with larger brand/links. Landing tests 13/13 green.
