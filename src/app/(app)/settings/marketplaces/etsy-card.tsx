@@ -94,29 +94,53 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
   }, [authHeaders]);
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="grid h-9 w-9 place-items-center rounded bg-zinc-950 font-mono text-sm font-semibold text-zinc-100 ring-1 ring-white/10">
+    <section className="card">
+      <div className="card__head">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span
+            className="marketplace-logo"
+            style={{ width: 36, height: 36, borderRadius: "var(--r-2)", flexShrink: 0 }}
+            aria-hidden="true"
+          >
             Et
           </span>
           <div>
-            <div className="font-medium text-zinc-100">Etsy</div>
-            <div className="text-sm text-zinc-400">{describe(state, status)}</div>
+            <div style={{ fontWeight: 500 }}>Etsy</div>
+            <div className="t-small muted">{describe(state, status)}</div>
           </div>
         </div>
-        {state === "loading" && <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />}
-        {state === "ready" && status && (
-          <EtsyAction status={status} busy={busy} onConnect={connect} onDisconnect={disconnect} />
-        )}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {state === "loading" && (
+            <Loader2
+              size={14}
+              className="animate-spin"
+              style={{ color: "var(--ink-4)" }}
+              aria-hidden="true"
+            />
+          )}
+          {state === "ready" && status && (
+            <EtsyAction
+              status={status}
+              busy={busy}
+              onConnect={connect}
+              onDisconnect={disconnect}
+            />
+          )}
+        </div>
       </div>
 
       {state === "ready" && status && !canConnect(status) && (
-        <p className="mt-3 text-sm text-zinc-400">
+        <p className="t-small muted" style={{ padding: "10px 20px", margin: 0 }}>
           Etsy drafts are available from the listing editor.
         </p>
       )}
-      {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
+
+      {error && (
+        <p className="t-small danger" style={{ padding: "10px 20px", margin: 0 }}>
+          {error}
+        </p>
+      )}
     </section>
   );
 }
@@ -138,9 +162,9 @@ function EtsyAction({
         type="button"
         disabled={busy}
         onClick={onDisconnect}
-        className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+        className="btn btn--ghost btn--sm"
       >
-        <Unplug className="h-4 w-4" /> Disconnect
+        <Unplug size={13} aria-hidden="true" /> Disconnect
       </button>
     );
   }
@@ -150,9 +174,9 @@ function EtsyAction({
         type="button"
         disabled={busy}
         onClick={onConnect}
-        className="inline-flex items-center gap-2 rounded-md bg-zinc-100 px-3 py-1.5 text-sm font-medium text-zinc-900 hover:bg-white disabled:opacity-50"
+        className="btn btn--primary btn--sm"
       >
-        <Plug className="h-4 w-4" /> Connect Etsy
+        <Plug size={13} aria-hidden="true" /> Connect Etsy
       </button>
     );
   }
