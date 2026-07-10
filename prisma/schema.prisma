@@ -135,6 +135,28 @@ enum PublishAttemptStatus {
   FAILED
 }
 
+enum BulkBatchStatus {
+  created
+  uploading
+  processing
+  needs_review
+  ready
+  partially_failed
+  failed
+  canceled
+}
+
+enum BulkItemStatus {
+  uploaded
+  grouping
+  ready_for_generation
+  generating
+  needs_review
+  listing_ready
+  failed
+  canceled
+}
+
 model InventoryItem {
   id                    String               @id @default(uuid()) @db.Uuid
   sellerId              String               @db.Uuid
@@ -173,10 +195,81 @@ model InventoryItem {
   compSearchRuns        CompSearchRun[]
   inventoryEvents       InventoryEvent[]
   reviewTasks           ReviewTask[]
+  bulkItem              BulkItem?
 
   @@index([sellerId, status])
   @@index([accountId, status])
   @@index([createdAt])
+}
+
+model BulkBatch {
+  id                String          @id @default(uuid()) @db.Uuid
+  accountId         String          @db.Uuid
+  account           Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdByUserId   String          @db.Uuid
+  idempotencyKey    String?
+  status            BulkBatchStatus @default(created)
+  photoCount        Int             @default(0)
+  totalItems        Int             @default(0)
+  processedItems    Int             @default(0)
+  needsReviewItems  Int             @default(0)
+  listingReadyItems Int             @default(0)
+  failedItems       Int             @default(0)
+  canceledItems     Int             @default(0)
+  canceledAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  items             BulkItem[]
+  photos            BulkPhoto[]
+
+  @@unique([accountId, idempotencyKey])
+  @@index([accountId, createdAt])
+  @@index([accountId, status, updatedAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model BulkItem {
+  id                  String         @id @default(uuid()) @db.Uuid
+  batchId             String         @db.Uuid
+  batch               BulkBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  inventoryItemId     String?        @unique @db.Uuid
+  inventoryItem       InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  position            Int
+  status              BulkItemStatus @default(uploaded)
+  reviewReason        String?
+  errorCode           String?
+  errorMessage        String?
+  generationAttempts  Int            @default(0)
+  aiProvider          String?
+  aiModel             String?
+  generationStartedAt DateTime?
+  generationEndedAt   DateTime?
+  canceledAt          DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  photos              BulkPhoto[]
+
+  @@unique([batchId, position])
+  @@index([batchId, status, position])
+}
+
+model BulkPhoto {
+  id            String    @id @default(uuid()) @db.Uuid
+  batchId       String    @db.Uuid
+  batch         BulkBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  bulkItemId    String?   @db.Uuid
+  bulkItem      BulkItem? @relation(fields: [bulkItemId], references: [id], onDelete: SetNull)
+  storageBucket String
+  storagePath   String
+  mimeType      String
+  originalName  String
+  position      Int
+  itemPosition  Int?
+  createdAt     DateTime  @default(now())
+
+  @@unique([storageBucket, storagePath])
+  @@unique([batchId, position])
+  @@index([batchId, bulkItemId, itemPosition])
 }
 
 model ItemPhoto {
@@ -231,28 +324,28 @@ model AiOutput {
 }
 
 model ListingDraft {
-  id                    String        @id @default(uuid()) @db.Uuid
-  inventoryItemId       String        @db.Uuid
-  inventoryItem         InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
-  status                DraftStatus   @default(DRAFT)
-  title                 String
-  description           String
-  bulletPoints          String[]
-  recommendedPriceCents Int?
-  pricingRationale      String?
-  itemSpecifics         Json
-  marketplaceDrafts     Json
-  measurements          Json?
-  flaws                 Json?
-  selectedMarketplaces  Marketplace[] @default([])
-  stockxProductId       String?
-  stockxVariantId       String?
-  stockxMatchSource     String?
-  stockxMatchConfidence Float?
+  id                        String        @id @default(uuid()) @db.Uuid
+  inventoryItemId           String        @db.Uuid
+  inventoryItem             InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  status                    DraftStatus   @default(DRAFT)
+  title                     String
+  description               String
+  bulletPoints              String[]
+  recommendedPriceCents     Int?
+  pricingRationale          String?
+  itemSpecifics             Json
+  marketplaceDrafts         Json
+  measurements              Json?
+  flaws                     Json?
+  selectedMarketplaces      Marketplace[] @default([])
+  stockxProductId           String?
+  stockxVariantId           String?
+  stockxMatchSource         String?
+  stockxMatchConfidence     Float?
   stockxMarketDataCheckedAt DateTime?
-  approvedAt            DateTime?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
+  approvedAt                DateTime?
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
 
   @@index([inventoryItemId, status])
   @@index([stockxProductId])
@@ -793,13 +886,14 @@ model Account {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members      AccountMember[]
-  subscription Subscription?
-  usage        UsageCounter[]
-  inventory    InventoryItem[]
+  members                AccountMember[]
+  subscription           Subscription?
+  usage                  UsageCounter[]
+  inventory              InventoryItem[]
   marketplaceConnections MarketplaceConnection[]
   ebaySellerConfigs      EbaySellerConfig[]
   tiktokShopConfigs      TikTokShopConfig[]
+  bulkBatches            BulkBatch[]
 }
 
 model AccountMember {

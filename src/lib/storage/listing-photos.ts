@@ -28,6 +28,14 @@ export type UploadedListingPhoto = {
   position: number;
 };
 
+export type StoredListingPhoto = {
+  storageBucket: string;
+  storagePath: string;
+  mimeType: string;
+  originalName: string;
+  position: number;
+};
+
 export async function prepareListingPhotos(files: File[]) {
   return Promise.all(
     files.map(async (file, index): Promise<PreparedListingPhoto> => {
@@ -76,6 +84,37 @@ export async function uploadListingPhotos({
         mimeType: photo.mimeType,
         originalName: photo.originalName,
         position: photo.position,
+      };
+    }),
+  );
+}
+
+export async function downloadListingPhotos(
+  storedPhotos: StoredListingPhoto[],
+): Promise<PreparedListingPhoto[]> {
+  const supabase = createSupabaseServiceClient();
+  const ordered = [...storedPhotos].sort((a, b) => a.position - b.position);
+
+  return Promise.all(
+    ordered.map(async (photo, index) => {
+      const { data, error } = await supabase.storage
+        .from(photo.storageBucket)
+        .download(photo.storagePath);
+      if (error || !data) {
+        throw new Error("Stored listing photo could not be loaded.");
+      }
+
+      const buffer = Buffer.from(await data.arrayBuffer());
+      const file = new File([new Uint8Array(buffer)], photo.originalName, {
+        type: photo.mimeType,
+      });
+      return {
+        file,
+        buffer,
+        base64: buffer.toString("base64"),
+        mimeType: photo.mimeType,
+        originalName: photo.originalName,
+        position: index,
       };
     }),
   );
