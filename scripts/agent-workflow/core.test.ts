@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 
 import {
@@ -11,7 +11,9 @@ import {
   acquireTaskLock,
   checkTask,
   cleanupTask,
+  detectConductorEnvironment,
   finishTask,
+  isConductorManagedPath,
   readTaskFile,
   reviewTask,
   runValidationCommand,
@@ -24,6 +26,20 @@ import {
 import type { TaskContract } from "./types";
 
 const temporaryRoots: string[] = [];
+const originalProcessEnv = { ...process.env };
+
+function clearConductorEnv(): void {
+  delete process.env.CONDUCTOR_WORKSPACE_PATH;
+  delete process.env.CONDUCTOR_ROOT_PATH;
+  delete process.env.CONDUCTOR_PORT;
+  delete process.env.CONDUCTOR_IS_LOCAL;
+  delete process.env.CONDUCTOR_WORKSPACE_NAME;
+  delete process.env.CONDUCTOR_DEFAULT_BRANCH;
+}
+
+beforeEach(() => {
+  clearConductorEnv();
+});
 
 function git(cwd: string, ...args: string[]): string {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -375,5 +391,118 @@ describe("agent:cleanup and reconciliation", () => {
     write(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), stringify(task));
     const [entry] = taskStatus(root);
     expect(["missing", "stale"]).toContain(entry.reconciliation);
+  });
+});
+
+describe("Conductor-native workflow", () => {
+  afterEach(() => {
+    clearConductorEnv();
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalProcessEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalProcessEnv);
+    clearConductorEnv();
+  });
+
+  it("detects Conductor environment variables", () => {
+    expect(detectConductorEnvironment({}).active).toBe(false);
+    expect(
+      detectConductorEnvironment({
+        CONDUCTOR_WORKSPACE_PATH: "/tmp/workspace",
+        CONDUCTOR_ROOT_PATH: "/tmp/root",
+        CONDUCTOR_PORT: "4310",
+        CONDUCTOR_IS_LOCAL: "1",
+        CONDUCTOR_WORKSPACE_NAME: "demo",
+      }),
+    ).toMatchObject({
+      active: true,
+      workspacePath: "/tmp/workspace",
+      rootPath: "/tmp/root",
+      port: "4310",
+      isLocal: true,
+      workspaceName: "demo",
+    });
+  });
+
+  it("recognizes Conductor-managed workspace paths", () => {
+    const home = process.env.HOME || "/tmp";
+    expect(isConductorManagedPath(join(home, "conductor", "workspaces", "Sello", "alpha"), { HOME: home })).toBe(
+      true,
+    );
+    expect(
+      isConductorManagedPath("/tmp/other", {
+        HOME: home,
+        CONDUCTOR_WORKSPACE_PATH: "/tmp/other",
+      }),
+    ).toBe(true);
+    expect(isConductorManagedPath("/tmp/unrelated", { HOME: home })).toBe(false);
+  });
+
+  it("adopts the current Conductor workspace instead of creating a nested worktree", () => {
+    const { root } = initializeRepo();
+    const task = contract(root, {
+      worktree_path: join(root, "nested-should-not-be-created"),
+    });
+    addReadyTask(root, task);
+    process.env.CONDUCTOR_WORKSPACE_PATH = root;
+    process.env.CONDUCTOR_ROOT_PATH = root;
+    process.env.CONDUCTOR_PORT = "4321";
+    process.env.CONDUCTOR_IS_LOCAL = "1";
+
+    const before = spawnSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).stdout;
+    const beforeCount = (before.match(/^worktree /gm) || []).length;
+    const result = startTask(root, task.id);
+    const after = spawnSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).stdout;
+    const afterCount = (after.match(/^worktree /gm) || []).length;
+
+    expect(result.mode).toBe("conductor");
+    expect(result.adopted).toBe(true);
+    expect(result.worktree).toBe(root);
+    expect(result.branch).toBe(task.working_branch);
+    expect(existsSync(join(root, "nested-should-not-be-created"))).toBe(false);
+    expect(afterCount).toBe(beforeCount);
+    expect(readTaskFile(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), root).worktree_path).toBe(root);
+  });
+
+  it("runs check and finish inside an adopted Conductor workspace", () => {
+    const { root } = initializeRepo();
+    const task = contract(root, { worktree_path: join(dirname(root), "ignored-path") });
+    addReadyTask(root, task);
+    process.env.CONDUCTOR_WORKSPACE_PATH = root;
+    process.env.CONDUCTOR_ROOT_PATH = root;
+    process.env.CONDUCTOR_IS_LOCAL = "1";
+    startTask(root, task.id);
+    git(root, "add", ".");
+    git(root, "commit", "-m", "conductor adopt metadata");
+
+    const check = checkTask(root, readTaskFile(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), root));
+    expect(check.ok).toBe(true);
+    expect(check.worktree).toBe(root);
+
+    const finished = finishTask(root, task.id);
+    expect(finished.result.ok).toBe(true);
+    expect(existsSync(join(root, ".agent", "completed", `${task.id}.md`))).toBe(true);
+  });
+
+  it("refuses cleanup for Conductor-owned workspaces", () => {
+    const { root } = initializeRepo();
+    const task = contract(root, { worktree_path: root, status: "active" });
+    write(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), stringify(task));
+    process.env.CONDUCTOR_WORKSPACE_PATH = root;
+    expect(() => cleanupTask(root, task.id)).toThrowError(/Conductor manages this workspace lifecycle/);
+  });
+
+  it("preserves non-Conductor start behavior when Conductor env is absent", () => {
+    delete process.env.CONDUCTOR_WORKSPACE_PATH;
+    delete process.env.CONDUCTOR_ROOT_PATH;
+    delete process.env.CONDUCTOR_PORT;
+    delete process.env.CONDUCTOR_IS_LOCAL;
+    const { root } = initializeRepo();
+    const task = contract(root);
+    addReadyTask(root, task);
+    const result = startTask(root, task.id);
+    expect(result.mode).toBe("manual");
+    expect(result.adopted).toBe(false);
+    expect(existsSync(task.worktree_path)).toBe(true);
   });
 });

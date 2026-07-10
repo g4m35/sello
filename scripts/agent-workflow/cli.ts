@@ -89,7 +89,9 @@ try {
     const result = startTask(repoRoot, taskArg);
     if (flags.json) printJson(result);
     else {
-      console.log(`${result.reused ? "Reused" : "Created"} task worktree: ${result.worktree}`);
+      const verb = result.adopted ? "Adopted" : result.reused ? "Reused" : "Created";
+      console.log(`${verb} task worktree: ${result.worktree}`);
+      console.log(`Mode: ${result.mode}`);
       console.log(`Branch: ${result.branch}`);
       console.log(`Base: ${result.base_ref} (${result.base_commit})`);
       console.log(`Task: ${result.task_file}`);
@@ -111,7 +113,9 @@ try {
       }
     }
   } else if (command === "check") {
-    const resolved = resolveTask(repoRoot, flags.positionals[0]);
+    const taskArg = flags.positionals[0];
+    if (!taskArg) usage();
+    const resolved = resolveTask(repoRoot, taskArg);
     const result = checkTask(repoRoot, resolved.task, {
       taskFile: resolved.file,
       runValidation: flags.runValidation,
@@ -121,7 +125,9 @@ try {
     else printCheck(result);
     if (!result.ok) process.exitCode = 1;
   } else if (command === "finish") {
-    const result = finishTask(repoRoot, flags.positionals[0]);
+    const taskArg = flags.positionals[0];
+    if (!taskArg) usage();
+    const result = finishTask(repoRoot, taskArg);
     const output = { report: relative(repoRoot, result.report), ...result.result };
     if (flags.json) printJson(output);
     else {
@@ -130,7 +136,9 @@ try {
     }
     if (!result.result.ok) process.exitCode = 1;
   } else if (command === "review") {
-    const result = reviewTask(repoRoot, flags.positionals[0], flags.approve);
+    const taskArg = flags.positionals[0];
+    if (!taskArg) usage();
+    const result = reviewTask(repoRoot, taskArg, flags.approve);
     const output = {
       report: relative(repoRoot, result.report),
       diff: relative(repoRoot, result.diff),

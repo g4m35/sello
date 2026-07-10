@@ -1,6 +1,14 @@
 # Worktree workflow
 
-Sello uses one canonical clone plus one isolated worktree per task. The contract under `.agent/tasks/` owns the branch and absolute worktree path; `AGENTS.md` and `docs/operations/multi-agent-development.md` are authoritative.
+Sello prefers Conductor workspaces for day-to-day isolation. Manual Git worktrees remain available outside Conductor.
+
+## Conductor-native (recommended)
+
+Conductor creates an isolated workspace and branch for each task. Agents must treat that workspace as the task worktree and must not run `agent:start` to create another nested worktree. Archive through Conductor after merge; `agent:cleanup` refuses Conductor-managed paths.
+
+See `docs/operations/conductor-development.md`.
+
+## Manual worktrees (fallback)
 
 ```text
 canonical clone / integration inspection
@@ -9,7 +17,7 @@ canonical clone / integration inspection
   └── reviewer/integrator → evidence + CI → develop
 ```
 
-Create worktrees through the repository CLI:
+Create worktrees through the repository CLI only when not using Conductor:
 
 ```bash
 npm run agent:start -- <task-id-or-file>

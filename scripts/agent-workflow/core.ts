@@ -75,6 +75,77 @@ export function findRepoRoot(cwd = process.cwd()): string {
   return runGit(cwd, ["rev-parse", "--show-toplevel"]).stdout.trim();
 }
 
+export type ConductorEnvironment = {
+  active: boolean;
+  workspacePath: string | null;
+  rootPath: string | null;
+  port: string | null;
+  isLocal: boolean | null;
+  workspaceName: string | null;
+  defaultBranch: string | null;
+};
+
+/** Detect Conductor workspace context from supported environment variables. */
+export function detectConductorEnvironment(
+  env: Record<string, string | undefined> = process.env,
+): ConductorEnvironment {
+  const workspacePath = env.CONDUCTOR_WORKSPACE_PATH?.trim() || null;
+  const rootPath = env.CONDUCTOR_ROOT_PATH?.trim() || null;
+  const port = env.CONDUCTOR_PORT?.trim() || null;
+  const workspaceName = env.CONDUCTOR_WORKSPACE_NAME?.trim() || null;
+  const defaultBranch = env.CONDUCTOR_DEFAULT_BRANCH?.trim() || null;
+  const isLocalRaw = env.CONDUCTOR_IS_LOCAL?.trim();
+  const isLocal =
+    isLocalRaw === undefined || isLocalRaw === ""
+      ? null
+      : isLocalRaw === "1" || isLocalRaw.toLowerCase() === "true";
+  return {
+    active: Boolean(workspacePath),
+    workspacePath,
+    rootPath,
+    port,
+    isLocal,
+    workspaceName,
+    defaultBranch,
+  };
+}
+
+function conductorWorkspacesRoot(env: Record<string, string | undefined> = process.env): string | null {
+  const home = env.HOME?.trim();
+  if (!home) return null;
+  return resolve(home, "conductor", "workspaces");
+}
+
+/** True when a path is the active Conductor workspace or under ~/conductor/workspaces. */
+export function isConductorManagedPath(
+  path: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const conductor = detectConductorEnvironment(env);
+  if (conductor.workspacePath && samePath(path, conductor.workspacePath)) return true;
+  const workspacesRoot = conductorWorkspacesRoot(env);
+  if (!workspacesRoot) return false;
+  const normalized = resolve(path);
+  return normalized === workspacesRoot || normalized.startsWith(`${workspacesRoot}${sep}`);
+}
+
+function assertNotNestedConductorWorktree(
+  targetPath: string,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  const conductor = detectConductorEnvironment(env);
+  if (!conductor.active || !conductor.workspacePath) return;
+  const workspace = resolve(conductor.workspacePath);
+  const target = resolve(targetPath);
+  if (target === workspace) return;
+  if (target.startsWith(`${workspace}${sep}`)) {
+    throw new WorkflowError(
+      "Refusing to create a nested Git worktree inside a Conductor workspace. Use the current Conductor workspace as the task worktree.",
+      "CONDUCTOR_NESTED_WORKTREE",
+    );
+  }
+}
+
 function processIsAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -438,6 +509,8 @@ function moveTaskToActive(targetRoot: string, task: TaskContract): string {
 export type StartResult = {
   task_id: string;
   reused: boolean;
+  adopted: boolean;
+  mode: "conductor" | "manual";
   branch: string;
   worktree: string;
   base_ref: string;
@@ -447,6 +520,89 @@ export type StartResult = {
   next_instructions: string[];
 };
 
+function adoptConductorWorkspace(
+  repoRoot: string,
+  task: TaskContract,
+  baseRef: string,
+  baseCommit: string,
+  conductor: ConductorEnvironment,
+): StartResult {
+  const workspace = conductor.workspacePath!;
+  if (!samePath(repoRoot, workspace)) {
+    throw new WorkflowError(
+      `Conductor workspace is '${workspace}' but the current repository root is '${repoRoot}'. Run workflow commands inside the Conductor workspace.`,
+      "CONDUCTOR_WORKSPACE_MISMATCH",
+    );
+  }
+
+  // Ensure the task branch exists in this workspace without creating another worktree.
+  let branch = currentBranch(repoRoot);
+  if (branch !== task.working_branch) {
+    const localBranchExists =
+      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${task.working_branch}`], {
+        allowFailure: true,
+      }).status === 0;
+    const remoteBranchExists =
+      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${task.working_branch}`], {
+        allowFailure: true,
+      }).status === 0;
+    if (localBranchExists) {
+      runGit(repoRoot, ["checkout", task.working_branch]);
+    } else if (remoteBranchExists) {
+      runGit(repoRoot, ["checkout", "-b", task.working_branch, "--track", `origin/${task.working_branch}`]);
+    } else {
+      runGit(repoRoot, ["checkout", "-b", task.working_branch, baseRef]);
+    }
+    branch = currentBranch(repoRoot);
+  }
+  if (branch !== task.working_branch) {
+    throw new WorkflowError(
+      `Failed to adopt Conductor workspace onto task branch '${task.working_branch}' (current '${branch}').`,
+      "CONDUCTOR_BRANCH_MISMATCH",
+    );
+  }
+
+  const activeFile = moveTaskToActive(repoRoot, task);
+  updateTaskFile(activeFile, {
+    status: "active",
+    worktree_path: workspace,
+    working_branch: branch,
+  });
+  const now = new Date().toISOString();
+  const state = writeTaskState(repoRoot, {
+    task_id: task.id,
+    task_file: relative(repoRoot, activeFile),
+    base_branch: task.base_branch,
+    base_commit: baseCommit,
+    working_branch: branch,
+    worktree_path: workspace,
+    created_at: now,
+    updated_at: now,
+    started_by: userInfo().username,
+    status: "active",
+  });
+
+  return {
+    task_id: task.id,
+    reused: true,
+    adopted: true,
+    mode: "conductor",
+    branch,
+    worktree: workspace,
+    base_ref: baseRef,
+    base_commit: baseCommit,
+    task_file: activeFile,
+    state_file: state,
+    next_instructions: [
+      "Conductor workspace adopted. Do not create another worktree.",
+      `Read AGENTS.md and ${relative(repoRoot, activeFile)} before editing.`,
+      "Commit task-start metadata when a contract is in use, then implement in this workspace.",
+      `Optional evidence: npm run agent:check -- ${task.id}`,
+      "Use Conductor Diff, Checks, Review, Create PR, Merge, and Archive as the normal interface.",
+    ],
+  };
+}
+
 export function startTask(repoRoot: string, taskArg: string): StartResult {
   const { task } = resolveTask(repoRoot, taskArg);
   if (!(["backlog", "ready"] as string[]).includes(task.status)) {
@@ -455,75 +611,94 @@ export function startTask(repoRoot: string, taskArg: string): StartResult {
 
   const releaseLock = acquireTaskLock(repoRoot, task.id, "start");
   try {
-
+    const conductor = detectConductorEnvironment();
     runGit(repoRoot, ["fetch", "origin"]);
-  const baseRef = resolveBaseRef(repoRoot, task.base_branch);
-  const baseCommit = runGit(repoRoot, ["rev-parse", baseRef]).stdout.trim();
-  const worktrees = listWorktrees(repoRoot);
-  const pathRecord = worktrees.find((record) => samePath(record.worktree, task.worktree_path));
-  const branchRecord = worktrees.find((record) => record.branch === task.working_branch);
-  let reused = false;
+    const baseRef = resolveBaseRef(repoRoot, task.base_branch);
+    const baseCommit = runGit(repoRoot, ["rev-parse", baseRef]).stdout.trim();
 
-  if (pathRecord || branchRecord) {
-    if (
-      pathRecord &&
-      branchRecord &&
-      samePath(pathRecord.worktree, branchRecord.worktree) &&
-      pathRecord.branch === task.working_branch
-    ) {
-      reused = true;
-    } else {
+    if (conductor.active) {
+      return adoptConductorWorkspace(repoRoot, task, baseRef, baseCommit, conductor);
+    }
+
+    assertNotNestedConductorWorktree(task.worktree_path);
+    if (isConductorManagedPath(task.worktree_path)) {
       throw new WorkflowError(
-        `Declared branch or worktree is already in use by unrelated state. Branch record: ${branchRecord?.worktree ?? "none"}; path branch: ${pathRecord?.branch ?? "none"}.`,
-        "WORKTREE_CONFLICT",
+        `Refusing to create or claim Conductor-managed path '${task.worktree_path}' from outside Conductor. Open the workspace in Conductor instead.`,
+        "CONDUCTOR_PATH_RESERVED",
       );
     }
-  } else if (existsSync(task.worktree_path)) {
-    throw new WorkflowError(`Worktree path already exists and is not a registered Git worktree: ${task.worktree_path}`, "WORKTREE_PATH_EXISTS");
-  } else {
-    mkdirSync(dirname(task.worktree_path), { recursive: true });
-    const localBranchExists =
-      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${task.working_branch}`], { allowFailure: true })
-        .status === 0;
-    const remoteBranchExists =
-      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${task.working_branch}`], {
-        allowFailure: true,
-      }).status === 0;
-    if (localBranchExists) {
-      runGit(repoRoot, ["worktree", "add", task.worktree_path, task.working_branch]);
-    } else if (remoteBranchExists) {
-      runGit(repoRoot, [
-        "worktree",
-        "add",
-        "--track",
-        "-b",
-        task.working_branch,
-        task.worktree_path,
-        `origin/${task.working_branch}`,
-      ]);
-    } else {
-      runGit(repoRoot, ["worktree", "add", "-b", task.working_branch, task.worktree_path, baseRef]);
-    }
-  }
 
-  const activeFile = moveTaskToActive(task.worktree_path, task);
-  const now = new Date().toISOString();
-  const state = writeTaskState(task.worktree_path, {
-    task_id: task.id,
-    task_file: relative(task.worktree_path, activeFile),
-    base_branch: task.base_branch,
-    base_commit: baseCommit,
-    working_branch: task.working_branch,
-    worktree_path: task.worktree_path,
-    created_at: now,
-    updated_at: now,
-    started_by: userInfo().username,
-    status: "active",
-  });
+    const worktrees = listWorktrees(repoRoot);
+    const pathRecord = worktrees.find((record) => samePath(record.worktree, task.worktree_path));
+    const branchRecord = worktrees.find((record) => record.branch === task.working_branch);
+    let reused = false;
+
+    if (pathRecord || branchRecord) {
+      if (
+        pathRecord &&
+        branchRecord &&
+        samePath(pathRecord.worktree, branchRecord.worktree) &&
+        pathRecord.branch === task.working_branch
+      ) {
+        reused = true;
+      } else {
+        throw new WorkflowError(
+          `Declared branch or worktree is already in use by unrelated state. Branch record: ${branchRecord?.worktree ?? "none"}; path branch: ${pathRecord?.branch ?? "none"}.`,
+          "WORKTREE_CONFLICT",
+        );
+      }
+    } else if (existsSync(task.worktree_path)) {
+      throw new WorkflowError(
+        `Worktree path already exists and is not a registered Git worktree: ${task.worktree_path}`,
+        "WORKTREE_PATH_EXISTS",
+      );
+    } else {
+      mkdirSync(dirname(task.worktree_path), { recursive: true });
+      const localBranchExists =
+        runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${task.working_branch}`], {
+          allowFailure: true,
+        }).status === 0;
+      const remoteBranchExists =
+        runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${task.working_branch}`], {
+          allowFailure: true,
+        }).status === 0;
+      if (localBranchExists) {
+        runGit(repoRoot, ["worktree", "add", task.worktree_path, task.working_branch]);
+      } else if (remoteBranchExists) {
+        runGit(repoRoot, [
+          "worktree",
+          "add",
+          "--track",
+          "-b",
+          task.working_branch,
+          task.worktree_path,
+          `origin/${task.working_branch}`,
+        ]);
+      } else {
+        runGit(repoRoot, ["worktree", "add", "-b", task.working_branch, task.worktree_path, baseRef]);
+      }
+    }
+
+    const activeFile = moveTaskToActive(task.worktree_path, task);
+    const now = new Date().toISOString();
+    const state = writeTaskState(task.worktree_path, {
+      task_id: task.id,
+      task_file: relative(task.worktree_path, activeFile),
+      base_branch: task.base_branch,
+      base_commit: baseCommit,
+      working_branch: task.working_branch,
+      worktree_path: task.worktree_path,
+      created_at: now,
+      updated_at: now,
+      started_by: userInfo().username,
+      status: "active",
+    });
 
     return {
       task_id: task.id,
       reused,
+      adopted: false,
+      mode: "manual",
       branch: task.working_branch,
       worktree: task.worktree_path,
       base_ref: baseRef,
@@ -1092,6 +1267,13 @@ export function cleanupTask(
   const { task } = resolveTask(repoRoot, taskArg);
   const releaseLock = acquireTaskLock(repoRoot, task.id, "cleanup");
   try {
+    const conductor = detectConductorEnvironment();
+    if (conductor.active || isConductorManagedPath(task.worktree_path)) {
+      throw new WorkflowError(
+        "Cleanup refused: Conductor manages this workspace lifecycle. Use Conductor Archive after merge instead of agent:cleanup.",
+        "CONDUCTOR_CLEANUP_REFUSED",
+      );
+    }
     const record = listWorktrees(repoRoot).find((entry) => samePath(entry.worktree, task.worktree_path));
   if (!record) throw new WorkflowError(`Declared worktree is not registered: ${task.worktree_path}`, "WORKTREE_MISSING");
   if (record.branch !== task.working_branch) {

@@ -4,6 +4,15 @@ AI-native resale operating system for fashion sellers.
 
 Sello helps sellers turn raw item photos into structured listings, pricing guidance, channel-specific listing content, and publishing workflows. The product is focused on fashion resale first: streetwear, sneakers, vintage, designer, and hype-driven inventory.
 
+## Develop with Conductor (recommended)
+
+1. Open Conductor and select Sello.
+2. Create a workspace.
+3. Choose a model and type a normal product request.
+4. Use Diff, Checks, Review, Create PR, Merge, and Archive.
+
+You should not normally manage worktrees, branches, task YAML, or workflow CLI commands. Details: [`docs/operations/conductor-development.md`](docs/operations/conductor-development.md). Manual multi-agent fallback: [`docs/operations/multi-agent-development.md`](docs/operations/multi-agent-development.md).
+
 ## Current Status
 
 Sello currently supports the core listing workflow:
