@@ -1,0 +1,4134 @@
+diff --git a/.agent/completed/.gitkeep b/.agent/completed/.gitkeep
+new file mode 100644
+index 0000000..8b13789
+--- /dev/null
++++ b/.agent/completed/.gitkeep
+@@ -0,0 +1 @@
++
+diff --git a/.agent/completed/multi-agent-development-system.md b/.agent/completed/multi-agent-development-system.md
+new file mode 100644
+index 0000000..c659b6f
+--- /dev/null
++++ b/.agent/completed/multi-agent-development-system.md
+@@ -0,0 +1,303 @@
++# Completion: multi-agent-development-system
++
++## Task metadata
++
++- Task ID: multi-agent-development-system
++- Status: COMPLETED
++- Owner: Codex
++- Reviewer: Codex integrator plus GitHub CI
++- Branch: chore/multi-agent-development-system
++- Worktree: /Users/jheller/dev/resale-crosslister-multi-agent-system
++- Base branch: develop
++- Base commit: 1a19be13758e184bbc0295dfc7e72b19ea6f893d
++- Final commit: da7eed85e78e6fff93b5f3f8f75cbda58bc26cd5
++- Timestamp: 2026-07-10T18:53:07.546Z
++
++## Changed files
++
++- `.agent/completed/.gitkeep`
++- `.agent/completed/multi-agent-development-system.md`
++- `.agent/completed/multi-agent-development-system.yaml`
++- `.agent/prompts/ui-app-experience-polish-001-codex-review.md`
++- `.agent/prompts/ui-app-experience-polish-001-cursor.md`
++- `.agent/reviews/.gitkeep`
++- `.agent/state/.gitkeep`
++- `.agent/state/multi-agent-development-system.json`
++- `.agent/tasks/active/.gitkeep`
++- `.agent/tasks/backlog/.gitkeep`
++- `.agent/tasks/backlog/ui-app-experience-polish-001.yaml`
++- `.agent/tasks/examples/EXAMPLE-ui-task.yaml`
++- `.agent/templates/codex-review-prompt.md`
++- `.agent/templates/codex-task-planning-prompt.md`
++- `.agent/templates/completion.md`
++- `.agent/templates/cursor-task-prompt.md`
++- `.agent/templates/review.md`
++- `.agent/templates/task.yaml`
++- `.github/dependabot.yml`
++- `.github/pull_request_template.md`
++- `.github/workflows/ci.yml`
++- `.github/workflows/gitleaks.yml`
++- `.gitleaks.toml`
++- `AGENTS.md`
++- `CLAUDE.md`
++- `HANDOFF.md`
++- `LOCAL_DEVELOPMENT_RULES.md`
++- `README.md`
++- `WORKTREES.md`
++- `docs/architecture/invariants.md`
++- `docs/architecture/overview.md`
++- `docs/decisions/README.md`
++- `docs/operations/multi-agent-development.md`
++- `package-lock.json`
++- `package.json`
++- `prisma/AGENTS.md`
++- `scripts/agent-workflow/cli.ts`
++- `scripts/agent-workflow/core.test.ts`
++- `scripts/agent-workflow/core.ts`
++- `scripts/agent-workflow/types.ts`
++- `src/lib/auth/AGENTS.md`
++- `src/lib/billing/AGENTS.md`
++- `src/lib/comps/AGENTS.md`
++- `src/lib/inventory-sync/AGENTS.md`
++- `src/lib/marketplace/AGENTS.md`
++
++## Behavior changed
++
++- Replace handoff-driven coordination with isolated worktrees, machine-readable contracts, deterministic policy and validation, evidence-backed completion/review, and CI authority.
++
++## Behavior intentionally unchanged
++
++- No Sello product behavior changes.
++- No database schema or migration changes.
++- No deployment, production migration, live marketplace action, paid-provider call, or merge to develop.
++- No integration of another active agent's branch or uncommitted work.
++
++## Acceptance criteria results
++
++- PASS: Canonical agent rules, architecture/invariant/ADR/operations documentation, and non-authoritative handoff treatment are committed.
++- PASS: Task, completion, review, Cursor, Codex review, and Codex planning templates are valid and reusable.
++- PASS: The CLI safely starts, reports, checks, finishes, reviews, and cleans tasks with human and JSON output.
++- PASS: Path globs, protected/unauthorized/secret/conflict/dirty checks, validation evidence, worktree collisions, cleanup refusal, and reconciliation are covered by automated tests.
++- PASS: GitHub CI runs policy, lint, typecheck, tests, Prisma validation, build, and secret scanning without live services.
++- PASS: A ready but unstarted bounded app-UI task assigns Cursor/Grok and protects backend, Prisma, billing, marketplace, auth, and inventory-sync systems.
++- PASS: Temporary workflow-test branches, worktrees, contracts, and files are removed.
++- PASS: No product code, schema, production data, environment configuration, live external state, deployment, or other worktree is changed.
++
++## Validation commands and evidence
++
++### `npm run agent:test`
++
++- Start: 2026-07-10T18:52:24.238Z
++- End: 2026-07-10T18:52:31.149Z
++- Exit code: 0
++- Result: PASS
++- Stdout summary:
++
++```text
++> resale-crosslister@0.1.0 agent:test
++> vitest run scripts/agent-workflow
++
++
++ RUN  v4.1.10 /Users/jheller/dev/resale-crosslister-multi-agent-system
++
++
++ Test Files  1 passed (1)
++      Tests  25 passed (25)
++   Start at  11:52:24
++   Duration  6.71s (transform 33ms, setup 0ms, import 51ms, tests 6.60s, environment 0ms)
++```
++- Stderr summary:
++
++```text
++(no output)
++```
++
++### `npm run validate:scoped`
++
++- Start: 2026-07-10T18:52:31.149Z
++- End: 2026-07-10T18:52:44.318Z
++- Exit code: 0
++- Result: PASS
++- Stdout summary:
++
++```text
++> resale-crosslister@0.1.0 validate:scoped
++> npm run agent:test && npm run lint && npm run typecheck && npm run prisma:validate
++
++
++> resale-crosslister@0.1.0 agent:test
++> vitest run scripts/agent-workflow
++
++
++ RUN  v4.1.10 /Users/jheller/dev/resale-crosslister-multi-agent-system
++
++
++ Test Files  1 passed (1)
++      Tests  25 passed (25)
++   Start at  11:52:31
++   Duration  6.93s (transform 29ms, setup 0ms, import 46ms, tests 6.84s, environment 0ms)
++
++
++> resale-crosslister@0.1.0 lint
++> eslint
++
++
++/Users/jheller/dev/resale-crosslister-multi-agent-system/src/app/api/listings/draft/draft-actions.test.ts
++  38:25  warning  '_m' is assigned a value but never used  @typescript-eslint/no-unused-vars
++  38:36  warning  '_f' is assigned a value but never used  @typescript-eslint/no-unused-vars
++
++✖ 2 problems (0 errors, 2 warnings)
++
++
++> resale-crosslister@0.1.0 typecheck
++> prisma generate && tsc --noEmit --pretty false
++
++
++✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 85ms
++
++
++> resale-crosslister@0.1.0 prisma:validate
++> prisma validate
++
++The schema at prisma/schema.prisma is valid 🚀
++```
++- Stderr summary:
++
++```text
++Loaded Prisma config from prisma.config.ts.
++
++Prisma schema loaded from prisma/schema.prisma.
++Loaded Prisma config from prisma.config.ts.
++
++Prisma schema loaded from prisma/schema.prisma.
++```
++
++### `npm run validate:full`
++
++- Start: 2026-07-10T18:52:44.318Z
++- End: 2026-07-10T18:53:07.536Z
++- Exit code: 0
++- Result: PASS
++- Stdout summary:
++
++```text
++> resale-crosslister@0.1.0 validate:full
++> npm run lint && npm run typecheck && npm test && npm run prisma:validate && npm run build
++
++
++> resale-crosslister@0.1.0 lint
++> eslint
++
++
++/Users/jheller/dev/resale-crosslister-multi-agent-system/src/app/api/listings/draft/draft-actions.test.ts
++  38:25  warning  '_m' is assigned a value but never used  @typescript-eslint/no-unused-vars
++  38:36  warning  '_f' is assigned a value but never used  @typescript-eslint/no-unused-vars
++
++✖ 2 problems (0 errors, 2 warnings)
++
++
++> resale-crosslister@0.1.0 typecheck
++> prisma generate && tsc --noEmit --pretty false
++
++
++✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 85ms
++
++
++> resale-crosslister@0.1.0 test
++> vitest run
++
++
++ RUN  v4.1.10 /Users/jheller/dev/resale-crosslister-multi-agent-system
++
++
++ Test Files  213 passed (213)
++      Tests  1465 passed (1465)
++   Start at  11:52:50
++   Duration  9.59s (transform 3.66s, setup 0ms, import 14.57s, tests 11.03s, environment 12ms)
++
++
++> resale-crosslister@0.1.0 prisma:validate
++> prisma validate
++
++The schema at prisma/schema.prisma is valid 🚀
++
++> resale-crosslister@0.1.0 prebuild
++> prisma generate
++
++
++✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 82ms
++
++
++> resale-crosslister@0.1.0 build
++> next build
++
++▲ Next.js 16.2.10 (Turbopack)
++
++  Creating an optimized production build ...
++✓ Compiled successfully in 1869ms
++  Running TypeScript ...
++  Finished TypeScript in 4.1s ...
++  Collecting page data using 9 workers ...
++  Generating static pages using 9 workers (0/69) ...
++  Generating static pages using 9 workers (17/69)
++  Generating static pages using 9 workers (34/69)
++  Generating static pages using 9 workers (51/69)
++✓ Generating static pages using 9 workers (69/69) in 126ms
++  Finalizing page optimization ...
++
++Route (app)
++┌ ƒ /
++├ ○ /_not-found
++├ ƒ /
++… output truncated …
++```
++- Stderr summary:
++
++```text
++Loaded Prisma config from prisma.config.ts.
++
++Prisma schema loaded from prisma/schema.prisma.
++Loaded Prisma config from prisma.config.ts.
++
++Prisma schema loaded from prisma/schema.prisma.
++Loaded Prisma config from prisma.config.ts.
++
++Prisma schema loaded from prisma/schema.prisma.
++```
++
++## Introduced versus pre-existing failures
++
++- No validation failures were observed.
++
++## Tests added or changed
++
++- See the changed-file list and validation evidence; the CLI does not infer test intent.
++
++## Review findings resolved
++
++- None
++
++## Known limitations
++
++- Semantic correctness still requires the independent reviewer named in the task contract.
++
++## Documentation changed
++
++- docs/architecture/overview.md
++- docs/architecture/invariants.md
++- docs/decisions/README.md
++- docs/operations/multi-agent-development.md
++
++## Deployment status
++
++- Not authorized and not performed.
++
++## Merge status
++
++- Not authorized and not performed.
++
++## Review focus
++
++- Review CLI filesystem and Git safety, path-glob correctness, evidence honesty, cleanup refusal, output sanitization, and concurrency isolation.
++- Confirm CI preserves existing safety checks and never performs live marketplace, billing, provider, migration, or deployment actions.
++- Confirm the first UI task cannot modify sensitive backend systems or the active landing-page task surface.
+diff --git a/.agent/completed/multi-agent-development-system.yaml b/.agent/completed/multi-agent-development-system.yaml
+new file mode 100644
+index 0000000..4d891a9
+--- /dev/null
++++ b/.agent/completed/multi-agent-development-system.yaml
+@@ -0,0 +1,84 @@
++id: multi-agent-development-system
++title: Establish the production-grade multi-agent development system
++status: completed
++owner: Codex
++reviewer: Codex integrator plus GitHub CI
++risk: medium
++task_type: infrastructure
++base_branch: develop
++working_branch: chore/multi-agent-development-system
++worktree_path: /Users/jheller/dev/resale-crosslister-multi-agent-system
++created_at: 2026-07-10T17:55:00.000Z
++goal: Replace handoff-driven coordination with isolated worktrees, machine-readable contracts, deterministic policy and validation, evidence-backed completion/review, and CI authority.
++context: Another agent owns concurrent landing-page work. This task is isolated from origin/develop and must not modify product behavior or any other worktree.
++non_goals:
++  - No Sello product behavior changes.
++  - No database schema or migration changes.
++  - No deployment, production migration, live marketplace action, paid-provider call, or merge to develop.
++  - No integration of another active agent's branch or uncommitted work.
++allowed_paths:
++  - .agent/**
++  - .cursor/**
++  - .github/**
++  - .gitleaks.toml
++  - AGENTS.md
++  - CLAUDE.md
++  - HANDOFF.md
++  - LOCAL_DEVELOPMENT_RULES.md
++  - WORKTREES.md
++  - README.md
++  - docs/architecture/**
++  - docs/decisions/**
++  - docs/operations/**
++  - package.json
++  - package-lock.json
++  - scripts/agent-workflow/**
++  - prisma/AGENTS.md
++  - src/lib/auth/AGENTS.md
++  - src/lib/billing/AGENTS.md
++  - src/lib/comps/AGENTS.md
++  - src/lib/inventory-sync/AGENTS.md
++  - src/lib/marketplace/AGENTS.md
++protected_paths:
++  - .env
++  - .env.*
++  - prisma/schema.prisma
++  - prisma/migrations/**
++  - src/app/**
++  - src/components/**
++  - src/lib/**/*.ts
++  - src/lib/**/*.tsx
++  - public/**
++required_reading:
++  - AGENTS.md
++  - HANDOFF.md
++  - LOCAL_DEVELOPMENT_RULES.md
++  - WORKTREES.md
++  - package.json
++  - prisma/schema.prisma
++acceptance:
++  - Canonical agent rules, architecture/invariant/ADR/operations documentation, and non-authoritative handoff treatment are committed.
++  - Task, completion, review, Cursor, Codex review, and Codex planning templates are valid and reusable.
++  - The CLI safely starts, reports, checks, finishes, reviews, and cleans tasks with human and JSON output.
++  - Path globs, protected/unauthorized/secret/conflict/dirty checks, validation evidence, worktree collisions, cleanup refusal, and reconciliation are covered by automated tests.
++  - GitHub CI runs policy, lint, typecheck, tests, Prisma validation, build, and secret scanning without live services.
++  - A ready but unstarted bounded app-UI task assigns Cursor/Grok and protects backend, Prisma, billing, marketplace, auth, and inventory-sync systems.
++  - Temporary workflow-test branches, worktrees, contracts, and files are removed.
++  - No product code, schema, production data, environment configuration, live external state, deployment, or other worktree is changed.
++validation:
++  - npm run agent:test
++  - npm run validate:scoped
++  - npm run validate:full
++full_validation_required: true
++documentation:
++  - docs/architecture/overview.md
++  - docs/architecture/invariants.md
++  - docs/decisions/README.md
++  - docs/operations/multi-agent-development.md
++review_requirements:
++  - Review CLI filesystem and Git safety, path-glob correctness, evidence honesty, cleanup refusal, output sanitization, and concurrency isolation.
++  - Confirm CI preserves existing safety checks and never performs live marketplace, billing, provider, migration, or deployment actions.
++  - Confirm the first UI task cannot modify sensitive backend systems or the active landing-page task surface.
++deployment_authorized: false
++merge_authorized: false
++notes: HANDOFF.md overlaps the active landing-page worktree; preserve both branches and resolve that documentation overlap semantically during later integration.
+diff --git a/.agent/prompts/ui-app-experience-polish-001-codex-review.md b/.agent/prompts/ui-app-experience-polish-001-codex-review.md
+new file mode 100644
+index 0000000..cebecdc
+--- /dev/null
++++ b/.agent/prompts/ui-app-experience-polish-001-codex-review.md
+@@ -0,0 +1,11 @@
++# Ready-to-paste Codex review prompt
++
++Independently review and, where the contract authorizes, repair Sello task `ui-app-experience-polish-001`.
++
++Work in `/Users/jheller/dev/resale-crosslister-app-experience` on `feature/app-experience-polish`. Read root `AGENTS.md`, `.agent/tasks/active/ui-app-experience-polish-001.yaml` (or its completed YAML snapshot), `.agent/completed/ui-app-experience-polish-001.md`, all required reading, and applicable nested instructions. Verify the current branch/worktree and inspect the complete `origin/develop...HEAD` diff.
++
++Run `npm run agent:check -- ui-app-experience-polish-001`. Verify every changed path is allowed and no landing, globals.css, logo, backend/API/lib, Prisma, auth, billing, marketplace, comps/provider, inventory-sync, dependency, CI, or deployment path changed. Independently test functional preservation, data-loading/mutation states, responsive desktop/tablet/mobile layout, keyboard navigation, focus visibility, semantic structure, contrast, touch targets, reduced motion, loading/empty/error behavior, honest listing terminology, and Sello-specific visual coherence. Compare the required screenshots/visual evidence with the running app when browser tooling is available.
++
++Record findings as P0-P3 with exact file/line, failure scenario, and required correction. Fix valid findings on this task branch when they stay within allowed paths; add regression tests; rerun every declared validation command and required full validation; update completion evidence. Run `npm run agent:review -- ui-app-experience-polish-001` to generate the diff/review shell, and use `--approve` only after the semantic review is genuinely complete and all required findings/checks pass.
++
++Do not merge or deploy. Return the reviewed commit, findings/resolutions, exact commands and exit codes, review-record path, completion-record path, CI state, and final merge recommendation.
+diff --git a/.agent/prompts/ui-app-experience-polish-001-cursor.md b/.agent/prompts/ui-app-experience-polish-001-cursor.md
+new file mode 100644
+index 0000000..f9a39fe
+--- /dev/null
++++ b/.agent/prompts/ui-app-experience-polish-001-cursor.md
+@@ -0,0 +1,15 @@
++# Ready-to-paste Cursor/Grok prompt
++
++Implement Sello task `ui-app-experience-polish-001` as the primary owner.
++
++First run `pwd`, `git branch --show-current`, and `git status --short --branch` and confirm you are in `/Users/jheller/dev/resale-crosslister-app-experience` on `feature/app-experience-polish`. Read `AGENTS.md`, `.agent/tasks/active/ui-app-experience-polish-001.yaml`, every `required_reading` entry, and any nested instructions before editing.
++
++Work only inside the declared worktree and only on `allowed_paths`. Never edit a `protected_paths` match. The landing page, `src/app/globals.css`, logo assets, APIs, `src/lib`, Prisma, auth, billing, marketplaces, comps/providers, inventory sync, dependencies, CI, and deployment are outside scope.
++
++Complete the signed-in Sello UI polish across dashboard, inventory, listing detail/editor, channels, and settings. Preserve every existing route, data flow, mutation, gate, readiness result, and error behavior. Keep the current Sello logo. Use honest seller-facing `listing` language. Make desktop/tablet/mobile states coherent and intentional; repair hierarchy, density, responsive overflow, keyboard/focus semantics, contrast, touch targets, loading/empty/error states, and reduced-motion behavior within allowed files. Avoid generic AI-dashboard styling. Use the existing design tokens and component system; do not simulate product capabilities.
++
++Use the repository's required Lazyweb UI-reference/report workflow before making material product-UI judgments, but do not let it expand the contract scope. Capture desktop, tablet, and mobile visual evidence where supported.
++
++Add or update focused tests for changed UI behavior. Run every validation command in the contract. Run `npm run agent:check -- ui-app-experience-polish-001`, commit the implementation, ensure the worktree is clean, then run `npm run agent:finish -- ui-app-experience-polish-001` and commit the generated evidence. Do not merge or deploy.
++
++Return the final commit, exact commands and exit codes, completion-record path, changed files, screenshot/visual-evidence locations, verified pre-existing failures (only with clean-base proof), and the highest-risk review areas for Codex.
+diff --git a/.agent/reviews/.gitkeep b/.agent/reviews/.gitkeep
+new file mode 100644
+index 0000000..8b13789
+--- /dev/null
++++ b/.agent/reviews/.gitkeep
+@@ -0,0 +1 @@
++
+diff --git a/.agent/state/.gitkeep b/.agent/state/.gitkeep
+new file mode 100644
+index 0000000..8b13789
+--- /dev/null
++++ b/.agent/state/.gitkeep
+@@ -0,0 +1 @@
++
+diff --git a/.agent/state/multi-agent-development-system.json b/.agent/state/multi-agent-development-system.json
+new file mode 100644
+index 0000000..c426a84
+--- /dev/null
++++ b/.agent/state/multi-agent-development-system.json
+@@ -0,0 +1,13 @@
++{
++  "task_id": "multi-agent-development-system",
++  "task_file": ".agent/completed/multi-agent-development-system.yaml",
++  "base_branch": "develop",
++  "base_commit": "1a19be13758e184bbc0295dfc7e72b19ea6f893d",
++  "working_branch": "chore/multi-agent-development-system",
++  "worktree_path": "/Users/jheller/dev/resale-crosslister-multi-agent-system",
++  "created_at": "2026-07-10T17:55:00.000Z",
++  "updated_at": "2026-07-10T18:53:07.549Z",
++  "started_by": "jheller",
++  "status": "completed",
++  "final_commit": "da7eed85e78e6fff93b5f3f8f75cbda58bc26cd5"
++}
+diff --git a/.agent/tasks/active/.gitkeep b/.agent/tasks/active/.gitkeep
+new file mode 100644
+index 0000000..8b13789
+--- /dev/null
++++ b/.agent/tasks/active/.gitkeep
+@@ -0,0 +1 @@
++
+diff --git a/.agent/tasks/backlog/.gitkeep b/.agent/tasks/backlog/.gitkeep
+new file mode 100644
+index 0000000..8b13789
+--- /dev/null
++++ b/.agent/tasks/backlog/.gitkeep
+@@ -0,0 +1 @@
++
+diff --git a/.agent/tasks/backlog/ui-app-experience-polish-001.yaml b/.agent/tasks/backlog/ui-app-experience-polish-001.yaml
+new file mode 100644
+index 0000000..91aa2da
+--- /dev/null
++++ b/.agent/tasks/backlog/ui-app-experience-polish-001.yaml
+@@ -0,0 +1,83 @@
++id: ui-app-experience-polish-001
++title: Polish the signed-in Sello app experience without touching landing or backend systems
++status: ready
++owner: Cursor/Grok
++reviewer: Codex
++risk: medium
++task_type: ui
++base_branch: develop
++working_branch: feature/app-experience-polish
++worktree_path: /Users/jheller/dev/resale-crosslister-app-experience
++created_at: 2026-07-10T18:00:00.000Z
++goal: Make the signed-in dashboard, inventory, listing, channels, and settings experience feel intentional, sleek, modern, coherent, responsive, and distinctly Sello while preserving all functionality and the current logo.
++context: The marketing landing page is owned by a separate active task, so this contract deliberately excludes landing files and globals.css. The signed-in app already uses a shared shell and design tokens; this task refines hierarchy, density, states, and interaction polish within app-owned components only.
++non_goals:
++  - No landing page, public marketing, pricing, privacy, contact, root layout, or global stylesheet changes.
++  - No API, database, auth, billing logic, marketplace behavior, comps/provider behavior, inventory-sync logic, feature flags, dependencies, CI, or deployment changes.
++  - No Sello logo, wordmark, or brand-mark replacement.
++  - No new product capability or simulated marketplace behavior.
++allowed_paths:
++  - .agent/**
++  - src/app/(app)/**
++  - src/components/app/**
++  - src/app/comps-panel.tsx
++  - src/app/comps-panel.test.tsx
++  - src/app/comps-pricing-view.tsx
++  - src/app/jobs-panel.tsx
++  - src/app/seller-workbench.tsx
++  - src/app/seller-workbench.test.ts
++  - src/app/status-badge.tsx
++protected_paths:
++  - .env
++  - .env.*
++  - package.json
++  - package-lock.json
++  - prisma/**
++  - src/app/api/**
++  - src/app/page.tsx
++  - src/app/landing.test.ts
++  - src/app/layout.tsx
++  - src/app/globals.css
++  - src/app/pricing/**
++  - src/app/privacy/**
++  - src/app/contact/**
++  - src/components/landing/**
++  - src/components/marketing/**
++  - src/lib/**
++  - public/sello-mark.svg
++  - public/sello-wordmark.svg
++  - .github/**
++  - scripts/**
++required_reading:
++  - AGENTS.md
++  - docs/architecture/overview.md
++  - docs/architecture/invariants.md
++  - docs/operations/multi-agent-development.md
++  - .agent/templates/cursor-task-prompt.md
++acceptance:
++  - The current Sello logo and wordmark remain unchanged and are used consistently in the signed-in shell.
++  - Dashboard, inventory list/grid and empty/loading/error states, listing detail/editor, channels, and settings share a clear visual hierarchy, consistent spacing, controls, cards, and feedback states.
++  - Existing routes, data loading, mutations, navigation, feature gates, publish/delist readiness, billing states, and inventory behavior remain functionally unchanged.
++  - Seller-facing copy uses listing terminology and never claims unsupported automation or marketplace success.
++  - The experience is usable at 1440px desktop, 1024px tablet, and 390px mobile without horizontal overflow, clipped actions, unreadable density, or inaccessible drawers/modals.
++  - Keyboard navigation, visible focus, semantic headings/landmarks, labels, contrast, touch targets, and reduced-motion behavior are reviewed and repaired within allowed paths.
++  - Motion is purposeful, respects prefers-reduced-motion, and does not block task completion or obscure state.
++  - Repetitive generic AI-dashboard styling is replaced with intentional Sello-specific hierarchy and restrained visual polish using the existing token system.
++  - Existing UI tests remain green; tests are added or updated for changed interactions, accessibility labels, responsive behavior, and state rendering.
++  - The completion record references desktop/tablet/mobile screenshots or PR visual evidence for dashboard, inventory, one listing, channels, and settings, where the available browser tooling supports capture.
++  - No protected path changes appear in the full diff.
++validation:
++  - npm test -- --run src/components/app 'src/app/(app)' src/app/comps-panel.test.tsx src/app/seller-workbench.test.ts
++  - npm run validate:scoped
++  - npm run build
++full_validation_required: true
++documentation:
++  - Record visual evidence and intentional unchanged behavior in .agent/completed/ui-app-experience-polish-001.md.
++review_requirements:
++  - Compare desktop, tablet, and mobile states for hierarchy, overflow, focus, keyboard access, reduced motion, loading/empty/error states, and Sello brand consistency.
++  - Verify every changed interaction preserves its prior data and authorization behavior.
++  - Verify seller copy is honest and uses listing terminology.
++  - Verify no backend, globals.css, landing-page, logo, dependency, schema, CI, or deployment path changed.
++deployment_authorized: false
++merge_authorized: false
++notes: Ready but intentionally not started. Landing-page work remains isolated in its existing worktree; this task protects that surface to eliminate concurrent overlap.
+diff --git a/.agent/tasks/examples/EXAMPLE-ui-task.yaml b/.agent/tasks/examples/EXAMPLE-ui-task.yaml
+new file mode 100644
+index 0000000..c031422
+--- /dev/null
++++ b/.agent/tasks/examples/EXAMPLE-ui-task.yaml
+@@ -0,0 +1,38 @@
++# EXAMPLE ONLY. agent:start refuses contracts under .agent/tasks/examples/.
++id: example-ui-task
++title: Example bounded UI task
++status: backlog
++owner: Cursor/Grok
++reviewer: Codex
++risk: low
++task_type: ui
++base_branch: develop
++working_branch: feature/example-ui-task
++worktree_path: /absolute/example/path/resale-crosslister-example-ui
++created_at: 2026-07-10T00:00:00.000Z
++goal: Demonstrate a valid task contract without representing active work.
++context: This file documents the schema and must never be started.
++non_goals:
++  - No product behavior changes.
++allowed_paths:
++  - src/components/example/**
++  - .agent/**
++protected_paths:
++  - prisma/**
++  - src/app/api/**
++  - src/lib/billing/**
++  - src/lib/marketplace/**
++required_reading:
++  - AGENTS.md
++  - docs/architecture/invariants.md
++acceptance:
++  - The example remains clearly labeled and outside active/backlog task directories.
++validation:
++  - npm run validate:scoped
++full_validation_required: false
++documentation: []
++review_requirements:
++  - Confirm that no real task or product behavior is implied.
++deployment_authorized: false
++merge_authorized: false
++notes: EXAMPLE ONLY. Replace all example values in a real backlog contract.
+diff --git a/.agent/templates/codex-review-prompt.md b/.agent/templates/codex-review-prompt.md
+new file mode 100644
+index 0000000..c821fe0
+--- /dev/null
++++ b/.agent/templates/codex-review-prompt.md
+@@ -0,0 +1,14 @@
++# Codex reviewer/integrator prompt
++
++Review and, where the active contract authorizes it, repair the supplied Sello task.
++
++1. Read root `AGENTS.md`, the task contract at `<TASK_CONTRACT_PATH>`, its completion record at `<COMPLETION_RECORD_PATH>`, required reading, and applicable nested instructions.
++2. Verify the worktree/branch and inspect the complete merge-base-to-head diff. Run `npm run agent:check -- <TASK_ID>`.
++3. Independently inspect path authorization, functional correctness, account isolation, security, architecture, accessibility, performance, testing, and UX. Treat capabilities and completion claims as untrusted until verified.
++4. Run the declared validation independently. Record exact commands, exit codes, and sanitized evidence.
++5. Record every finding as P0-P3 with file/line, failure scenario, and required correction in `.agent/reviews/<TASK_ID>.md`.
++6. Fix valid findings on the task branch only when authorized, add regression coverage, rerun validation, and refresh completion/review evidence.
++7. Fetch the latest base and integrate it carefully when authorized. Resolve conflicts semantically; never choose all `ours` or `theirs`.
++8. Run `npm run agent:review -- <TASK_ID>` to generate the diff/report shell. Use `--approve` only after the semantic review is genuinely complete and required findings/checks are clear.
++9. Open or update the base-targeted PR when tools and authorization allow. Ensure evidence matches the reviewed commit and required GitHub CI is green.
++10. Never merge while required findings/checks fail. Never deploy without explicit deployment authorization and separate owner approval. Do not stop at ordinary repair/integration challenges.
+diff --git a/.agent/templates/codex-task-planning-prompt.md b/.agent/templates/codex-task-planning-prompt.md
+new file mode 100644
+index 0000000..5c74bbe
+--- /dev/null
++++ b/.agent/templates/codex-task-planning-prompt.md
+@@ -0,0 +1,14 @@
++# Codex task-contract planning prompt
++
++Convert the user's natural-language Sello request into a ready, machine-readable task contract without starting implementation.
++
++1. Read root `AGENTS.md`, `docs/architecture/overview.md`, `docs/architecture/invariants.md`, and current Git worktree/branch state.
++2. Identify the exact integration base, existing related work, concurrency overlap, sensitive systems, and smallest coherent outcome.
++3. Split unrelated or path-overlapping work into separate contracts. Assign one owner and one independent reviewer per task.
++4. Copy `.agent/templates/task.yaml` into `.agent/tasks/backlog/<task-id>.yaml` and populate every field with valid values.
++5. Use a unique branch and absolute dedicated worktree path. Make allowed paths narrow and protected paths explicit.
++6. Write objective acceptance criteria, failure-path tests, exact scoped validation, full-validation requirement, documentation, and review focus.
++7. Keep deployment and merge unauthorized unless the user explicitly granted those actions.
++8. Validate the YAML and confirm the contract does not collide with any registered worktree or branch.
++
++Return the contract path and the exact `npm run agent:start -- <task-id>` command. Do not implement the product task.
+diff --git a/.agent/templates/completion.md b/.agent/templates/completion.md
+new file mode 100644
+index 0000000..9d1ce4d
+--- /dev/null
++++ b/.agent/templates/completion.md
+@@ -0,0 +1,73 @@
++# Completion: TASK-ID
++
++## Task metadata
++
++- Task ID:
++- Status: COMPLETED | BLOCKED
++- Owner:
++- Reviewer:
++- Branch:
++- Worktree:
++- Base branch:
++- Base commit:
++- Final commit:
++- Timestamp:
++
++## Changed files
++
++- Exact repository-relative path.
++
++## Behavior changed
++
++- Observable change.
++
++## Behavior intentionally unchanged
++
++- Protected behavior or non-goal.
++
++## Acceptance criteria results
++
++- PASS | FAIL: criterion and evidence.
++
++## Validation commands and evidence
++
++### `exact command`
++
++- Start:
++- End:
++- Exit code:
++- Result: PASS | FAIL
++- Stdout summary:
++- Stderr summary:
++
++## Introduced versus pre-existing failures
++
++- Classification plus exact clean-base evidence; never infer.
++
++## Tests added or changed
++
++- Test path and scenario.
++
++## Review findings resolved
++
++- Finding and correction.
++
++## Known limitations
++
++- Explicit remaining limitation.
++
++## Documentation changed
++
++- Documentation path.
++
++## Deployment status
++
++- Authorized? Performed? Exact environment? Default is not authorized/not performed.
++
++## Merge status
++
++- Authorized? Performed? Default is not authorized/not performed.
++
++## Review focus
++
++- Specific semantic areas for the independent reviewer.
+diff --git a/.agent/templates/cursor-task-prompt.md b/.agent/templates/cursor-task-prompt.md
+new file mode 100644
+index 0000000..7ef6e39
+--- /dev/null
++++ b/.agent/templates/cursor-task-prompt.md
+@@ -0,0 +1,16 @@
++# Cursor/Grok task assignment prompt
++
++You are the primary implementation owner for the Sello task contract supplied below.
++
++1. Read the repository root `AGENTS.md` in full.
++2. Read the supplied task contract: `<TASK_CONTRACT_PATH>`.
++3. Read every `required_reading` entry and every narrower `AGENTS.md` governing an allowed path.
++4. Work only in the contract's `worktree_path` on its `working_branch`; verify both before editing.
++5. Change only `allowed_paths` and never change `protected_paths`.
++6. Implement the goal completely while preserving non-goals, Sello invariants, existing functionality, and seller-facing `listing` terminology.
++7. Do not deploy or merge unless the contract explicitly authorizes it. Do not make live marketplace, paid-provider, billing, or production-database calls as validation.
++8. Never discard unknown work or resolve conflicts by blindly choosing one side. Resolve safe ordinary implementation issues yourself.
++9. Run the contract's scoped validation and `npm run agent:check -- <TASK_ID>`.
++10. Commit the implementation with a clear message, ensure the worktree is clean, then run `npm run agent:finish -- <TASK_ID>` and commit the generated evidence.
++
++Return the final commit, exact commands and exit codes, completion-record path, changed files, any verified pre-existing failures, and review focus. Evidence replaces unsupported claims.
+diff --git a/.agent/templates/review.md b/.agent/templates/review.md
+new file mode 100644
+index 0000000..01c8132
+--- /dev/null
++++ b/.agent/templates/review.md
+@@ -0,0 +1,51 @@
++# Review: TASK-ID
++
++- Task ID:
++- Reviewer:
++- Reviewed commit:
++- Base commit:
++- Timestamp:
++
++## Scope assessment
++
++- Does the full diff implement only the contracted goal?
++
++## Unauthorized path assessment
++
++- List every changed path outside allowed paths or inside protected paths.
++
++## Findings by severity
++
++### P0
++
++- Finding, or none.
++
++### P1
++
++- Finding, or none.
++
++### P2
++
++- Finding, or none.
++
++### P3
++
++- Finding, or none.
++
++For each finding include:
++
++- File and line:
++- Failure scenario:
++- Required correction:
++
++## Missing tests
++
++- Missing behavioral or regression coverage.
++
++## Validation performed
++
++- Exact command, exit code, result, and relevant sanitized summary.
++
++## Final recommendation
++
++- MERGE READY | NOT MERGE READY, with blocking reason.
+diff --git a/.agent/templates/task.yaml b/.agent/templates/task.yaml
+new file mode 100644
+index 0000000..9ebcb54
+--- /dev/null
++++ b/.agent/templates/task.yaml
+@@ -0,0 +1,42 @@
++# Copy to .agent/tasks/backlog/<id>.yaml and replace every placeholder.
++# status: backlog | ready | active | blocked | in_review | completed | abandoned
++# risk: low | medium | high | critical
++# task_type: ui | frontend | backend | database | marketplace | billing | inventory | security | infrastructure | documentation
++# deployment_authorized and merge_authorized are booleans. false is the safe default.
++
++id: replace-with-task-id
++title: Replace with a concise task title
++status: backlog
++owner: unassigned
++reviewer: Codex
++risk: low
++task_type: documentation
++base_branch: develop
++working_branch: docs/replace-with-task-id
++worktree_path: /absolute/path/to/dedicated-worktree
++created_at: 2026-01-01T00:00:00.000Z
++goal: State one observable outcome.
++context: Summarize verified repository state and why this task exists.
++non_goals:
++  - State what this task deliberately will not change.
++allowed_paths:
++  - docs/**
++  - .agent/**
++protected_paths:
++  - prisma/**
++  - src/app/api/**
++required_reading:
++  - AGENTS.md
++  - docs/architecture/invariants.md
++acceptance:
++  - Define an objectively verifiable acceptance criterion.
++validation:
++  - npm run validate:scoped
++full_validation_required: false
++documentation:
++  - Name documentation that must be created or updated.
++review_requirements:
++  - State the independent review focus.
++deployment_authorized: false
++merge_authorized: false
++notes: Record assumptions, dependencies, overlap, or authorization limits.
+diff --git a/.github/dependabot.yml b/.github/dependabot.yml
+new file mode 100644
+index 0000000..b0b1e81
+--- /dev/null
++++ b/.github/dependabot.yml
+@@ -0,0 +1,26 @@
++version: 2
++updates:
++  - package-ecosystem: npm
++    directory: "/"
++    schedule:
++      interval: weekly
++    open-pull-requests-limit: 10
++    labels: [dependencies]
++    groups:
++      next-react:
++        patterns: [next, eslint-config-next, react, react-dom, "@types/react", "@types/react-dom"]
++      prisma:
++        patterns: [prisma, "@prisma/*"]
++      supabase:
++        patterns: ["@supabase/*"]
++      testing:
++        patterns: [vitest, "@vitest/*"]
++      linting:
++        patterns: [eslint, "eslint-*", "@typescript-eslint/*"]
++
++  - package-ecosystem: github-actions
++    directory: "/"
++    schedule:
++      interval: weekly
++    open-pull-requests-limit: 5
++    labels: [dependencies, github-actions]
+diff --git a/.github/pull_request_template.md b/.github/pull_request_template.md
+new file mode 100644
+index 0000000..c243ad7
+--- /dev/null
++++ b/.github/pull_request_template.md
+@@ -0,0 +1,45 @@
++## Problem
++
++
++## Task contract and workflow architecture
++
++- Contract:
++- Owner / reviewer:
++- Base / working branch:
++
++## Files and behavior
++
++- Files added/changed:
++- Behavior changed:
++- Behavior intentionally unchanged:
++
++## Validation evidence
++
++- Completion record:
++- Review record:
++- Exact commands and exit codes:
++
++## Safety impact
++
++- Account/data isolation:
++- Marketplace/inventory/provider behavior:
++- Secrets/security:
++
++## Migration impact
++
++- None, or describe forward-safe migration and authorization.
++
++## Product behavior impact
++
++
++## Deployment impact
++
++- Deployment authorized/performed:
++
++## Remaining repository-setting or manual steps
++
++- None, or exact authorized follow-up.
++
++## Rollback
++
++- Revert strategy and data/side-effect caveats.
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..dec0a39
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,73 @@
++name: CI
++
++on:
++  pull_request:
++  push:
++    branches: [main, develop]
++  workflow_dispatch:
++
++concurrency:
++  group: ci-${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
++permissions:
++  contents: read
++
++env:
++  # Deterministic non-secret placeholders. Validation must not contact live services.
++  DATABASE_URL: postgresql://ci-placeholder:ci-placeholder@127.0.0.1:5432/sello_ci
++  DIRECT_URL: postgresql://ci-placeholder:ci-placeholder@127.0.0.1:5432/sello_ci
++  NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
++  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
++  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
++  SUPABASE_STORAGE_BUCKET: listing-photos
++  GEMINI_API_KEY: ci-placeholder-gemini-key
++  GEMINI_MODEL: gemini-2.5-flash
++  REDIS_URL: redis://127.0.0.1:6379
++  COMPS_PAID_PROVIDERS_ENABLED: "false"
++  EBAY_PRODUCTION_PUBLISH_ENABLED: "false"
++  STOCKX_LISTING_ENABLED: "false"
++
++jobs:
++  agent-policy:
++    name: Agent policy and workflow tests
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout full branch history
++        uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++
++      - name: Set up Node
++        uses: actions/setup-node@v4
++        with:
++          node-version: 22
++          cache: npm
++
++      - name: Install dependencies
++        run: npm ci
++
++      - name: Validate agent task policy
++        run: npm run agent:ci -- --json
++
++      - name: Test the agent workflow
++        run: npm run agent:test
++
++  repository-validation:
++    name: Repository validation
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Set up Node
++        uses: actions/setup-node@v4
++        with:
++          node-version: 22
++          cache: npm
++
++      - name: Install dependencies
++        run: npm ci
++
++      - name: Run full integration gate
++        run: npm run validate:full
+diff --git a/.github/workflows/gitleaks.yml b/.github/workflows/gitleaks.yml
+new file mode 100644
+index 0000000..fdab44f
+--- /dev/null
++++ b/.github/workflows/gitleaks.yml
+@@ -0,0 +1,26 @@
++name: Gitleaks
++
++on:
++  pull_request:
++  push:
++    branches: [main, develop]
++  workflow_dispatch:
++
++permissions:
++  contents: read
++  pull-requests: read
++
++jobs:
++  scan:
++    name: Secret scan
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout full history
++        uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++
++      - name: Run Gitleaks
++        uses: gitleaks/gitleaks-action@v2
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+diff --git a/.gitleaks.toml b/.gitleaks.toml
+new file mode 100644
+index 0000000..2a2c211
+--- /dev/null
++++ b/.gitleaks.toml
+@@ -0,0 +1,10 @@
++# Extend the default rules and narrowly allow deterministic eBay crypto fixtures.
++[extend]
++useDefault = true
++
++[allowlist]
++description = "Deterministic fake crypto fixtures in eBay unit tests"
++paths = [
++  '''src/lib/marketplace/adapters/ebay/.*\.test\.ts$''',
++  '''src/app/api/marketplaces/ebay/.*\.test\.ts$''',
++]
+diff --git a/AGENTS.md b/AGENTS.md
+index 0ef6bf0..dd54b9a 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,140 +4,136 @@
+ This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+ <!-- END:nextjs-agent-rules -->
+ 
+-# Agent Operating Rules
++# Sello Agent Operating Rules
+ 
+-## Canonical repo
++This file is the canonical instruction source for every coding agent. Git history, repository code, tests, architecture documents, ADRs, task contracts, completion records, review records, and GitHub CI are authoritative. `HANDOFF.md` is informational only and may be stale.
+ 
+-Work only in `~/dev/resale-crosslister-clean`. Under the Cursor workspace
+-`perc 30`, `resale-crosslister` is a symlink to that path. Never develop in
+-`resale-crosslister-ARCHIVED-NO-GIT` (old iCloud checkout, no `.git`).
++## Repository and architecture map
+ 
+-## Session Handoff (read first, update last)
++- Canonical clone: `~/dev/resale-crosslister-clean`; the `perc 30/resale-crosslister` workspace path is a symlink to it.
++- Never develop in `resale-crosslister-ARCHIVED-NO-GIT`.
++- Task worktrees: isolated siblings under `~/dev/`, created from the task contract by `npm run agent:start`.
++- `src/app/`: Next.js App Router pages, layouts, and route handlers.
++- `src/components/`: reusable product and app UI.
++- `src/lib/ai/`: Gemini request/response boundaries and Zod validation.
++- `src/lib/billing/`: accounts, memberships, Stripe, plans, entitlements, and usage.
++- `src/lib/comps/`: comp providers, matching, budgets, quotas, cooldowns, and kill switches.
++- `src/lib/marketplace/`: capability registry, publish/delist orchestration, and marketplace adapters.
++- `src/lib/inventory/` and `src/lib/inventory-sync/`: sold-state safety, audit events, review tasks, delist jobs, and workers.
++- `src/lib/auth/`: authentication-adjacent authorization and feature access.
++- `prisma/`: schema and forward-only migration history.
++- `.agent/`: task contracts, state, completion evidence, review evidence, and reusable prompts.
++- `docs/architecture/` and `docs/operations/`: verified system design and operating procedures.
+ 
+-This project alternates between Codex and Claude agents (the owner switches due to
+-usage limits), so you start with no memory of the previous session. **Read
+-`HANDOFF.md` at the start of every session** for the live state, and **update
+-`HANDOFF.md` before finishing** (Last updated, a dated Recent-work bullet, Current
+-state, Blocked-on-owner, Next up). Keep it accurate; never put secrets in it.
+-Older history lives in `docs/history/`.
++The fuller architecture map is in `docs/architecture/overview.md`; mandatory guarantees are in `docs/architecture/invariants.md`.
+ 
+-## Mission
++## Toolchain and commands
+ 
+-Build a production-grade AI resale cross-listing SaaS toward launch. The core
+-workflow is stable; the work now is completing the real platform on top of it:
++- Package manager: npm, using the committed `package-lock.json`.
++- Install: `npm ci` for reproducible installs; use `npm install` only when intentionally changing dependencies.
++- Develop: `npm run dev`.
++- Focused tests: `npm test -- --run <test-files>`.
++- Fast repository gate: `npm run validate:scoped`.
++- Full integration gate: `npm run validate:full`.
++- Prisma syntax only: `npm run prisma:validate`.
+ 
+-Upload photos → Gemini identifies item → structured listing draft → user edits &
+-approves → automatic pricing from real comps → cross-list to marketplaces → keep
+-inventory in sync → monetize.
++Do not run `db:migrate`, `db:deploy`, production provider calls, live marketplace actions, or deploy commands as validation.
+ 
+-Build complete features, not placeholders. The earlier "small MVP, don't expand
+-scope" framing is retired.
++## Task contract is required
+ 
+-## Product Scope
++Every agent-owned change uses one YAML contract in `.agent/tasks/active/`, created from `.agent/templates/task.yaml`. Read it before editing. It defines the owner, reviewer, base and working branches, worktree, allowed paths, protected paths, acceptance criteria, validation, and deployment/merge authorization.
+ 
+-In scope:
+-
+-- Photo upload, Gemini identification, Zod-validated structured outputs
+-- Editable listing drafts, autosave, lifecycle states
+-- Automatic pricing from real comp data sources
+-- Real marketplace publishing behind capability-gated adapters
+-- Marketplace OAuth, publish jobs, inventory sync
+-- Paid subscriptions (Stripe)
+-- Background jobs / workers
+-
+-Out of scope (for now):
+-
+-- Mobile-native app
+-- Social features
+-- AI sourcing intelligence
+-- Scraping as a primary integration (Playwright only where no official API exists)
+-
+-## Non-Negotiables (integrity — never violate)
+-
+-- Never fake successful marketplace publishing; a channel without a real adapter
+-  returns a typed NOT_IMPLEMENTED outcome.
+-- Real publishing must call the marketplace API and reflect the true result.
+-- Never use Gemini to invent prices; never fabricate comps. Show "Needs comps"
+-  when there is no real data.
+-- Never publish or take destructive marketplace actions without explicit user intent.
+-- Never expose, log, or hardcode secrets.
+-- Never let one user access another user's data.
+-- Never silently ignore failed validation or failed jobs.
+-
+-## Architecture Principles
+-
+-- One master item drives all marketplace drafts/listings.
+-- Marketplace logic lives in adapters; the UI branches on capability flags, not ids.
+-- Pricing/business logic lives in pure, testable utilities.
+-- AI output is schema-validated before use; store raw + parsed.
+-- Jobs are idempotent; long/unreliable work runs in queues.
+-- Errors are typed and visible enough to debug.
+-- Prefer clear states over decoration.
+-
+-## Required Verification
+-
+-Before reporting completion, run:
++Run these from the repository that contains the contract:
+ 
+ ```bash
+-npm run lint
+-npm test
+-npx prisma validate
+-npm run build
++npm run agent:start -- <task-id-or-file>
++npm run agent:status
++npm run agent:check -- <task-id-or-file>
++npm run agent:finish -- <task-id-or-file>
++npm run agent:review -- <task-id-or-file>
++npm run agent:cleanup -- <task-id-or-file>
+ ```
+ 
+-## Commit / Push / Deploy Policy
+-
+-- Commit after the verification gate passes.
+-- Push only when explicitly requested.
+-- `main` is protected production state; never push `main` without explicit approval.
+-- Merge flow: `feature/*` -> `develop` -> `main` -> production.
+-- No automatic deploys. Production deploys only when explicitly requested; preview
+-  deploys are fine on request.
+-- Never expose or hardcode secrets.
+-
+-# Git Worktree Workflow
+-
+-Active worktrees:
+-
+-- `/Users/jheller/Desktop/perc 30/resale-crosslister` — branch `develop` (integration:
+-  migrations, docs, small fixes, merges, branch maintenance).
+-- `/Users/jheller/Desktop/perc 30/worktrees/ui` — branch `feature/ui` (current
+-  feature work; broadly used for app + backend changes).
+-
+-The earlier per-area worktrees (lifecycle, adapters, publishing, inventory-sync,
+-playwright) were consolidated; recreate a dedicated `feature/*` worktree with
+-`git worktree add` when a large, risky workstream (e.g. real publishing, OAuth,
+-inventory sync, Playwright) warrants isolation.
+-
+-Rules:
+-
+-- One agent per worktree; never run two agents in the same worktree at once.
+-- Never run migrations simultaneously across worktrees; route migrations through `develop`.
+-- Feature work happens on `feature/*`; large risky systems get their own worktree.
+-- Never switch branches or delete a worktree with uncommitted work.
+-- Never push `main` without approval; never auto-deploy.
+-- Report the selected worktree/branch before coding.
+-
+-## Learned User Preferences
+-
+-- Scope deep audits and improvements to `resale-crosslister` only unless asked otherwise; go deep and change whatever is needed.
+-- For large reviews (security, efficiency, bugs) and structural cleanup, research and plan before implementing; keep the repo organized, clean, and well-made.
+-- Apply recommended fixes directly rather than only proposing them.
+-- Default bulk publish limit should be 10 listings.
+-- Prefer TypeScript for frontend work.
+-- When asked to open the app, open or preview it for the user; end conflicting local server processes before reloading.
+-- Keep listing/feature surfaces always on for testing — do not toggle listing forms off; treat listing severity as low while the app has no real users.
+-- Signed-in users should go straight into the Sello app, not the marketing landing; the landing page is for new/anonymous users only.
+-- Landing should clearly explain what Sello solves; use modern SaaS references (Linear, Stripe, Brilliant); prefer a clean in-page demo flow over clunky gimmicks.
+-- Abandoned the SVG morph-loader landing experiment after repeated outline/morph quality issues; do not revive it unless explicitly asked.
+-
+-## Learned Workspace Facts
+-
+-- Canonical app repo: `~/dev/resale-crosslister-clean` (git). Under the Cursor workspace `perc 30`, `resale-crosslister` is a symlink to that path.
+-- Do not develop in `resale-crosslister-ARCHIVED-NO-GIT` (old iCloud/Desktop checkout with no `.git`).
+-- Product brand/name is Sello (production host `sello.wtf`).
+-- Stack: Supabase Auth, Prisma, marketplace OAuth (eBay/Etsy/StockX), Stripe billing.
+-- Clerk auth/billing was researched and deferred — stay on Supabase Auth + Stripe for now (`docs/CLERK_AUTH_BILLING_RESEARCH.md`).
+-- Session handoff lives in `HANDOFF.md` / `AGENTS.md`; read at session start and update before finishing.
+-- Merge flow: `feature/*` → `develop` → `main` → production. Never push `main` or deploy without explicit owner approval.
+-- Always-on testing policy: admins get feature entitlements for comps/publish testing (`docs/ALWAYS_ON_TESTING_POLICY.md`); global kill-switches (e.g. `COMPS_PAID_PROVIDERS_ENABLED`, `EBAY_PRODUCTION_PUBLISH_ENABLED`) still apply.
++JSON is available with `--json`. Use `--run-validation` with `agent:check` when validation should run. `agent:review` requires a real semantic review before `--approve` may be supplied. `agent:cleanup` is conservative; destructive overrides require the explicit `--dangerous` flag.
++
++## Branches, worktrees, and ownership
++
++- Integration branch: `develop`. Production branch: `main`.
++- Branch names: `feature/*`, `fix/*`, `chore/*`, `security/*`, `docs/*`, or `test/*`.
++- Exactly one primary implementation owner and one dedicated worktree per task.
++- Never edit in the canonical integration checkout for a feature task.
++- Never share one worktree between concurrent agents.
++- Never switch, reset, clean, stash, rebase, merge, commit, or discard work in another task's worktree.
++- Never reuse an occupied branch or path for an unrelated task.
++- Never silently expand beyond `allowed_paths`; update the contract deliberately and obtain the required review.
++- `protected_paths` are a hard stop unless the contract is explicitly revised by an authorized owner.
++- Do not independently have several agents implement the same task. Parallel work must be split into non-overlapping contracts.
++
++## Commit, review, integration, and definition of done
++
++- Commit coherent implementation changes on the task branch. Do not mix unrelated cleanup.
++- Commit task-start metadata before implementation, and commit completion/review evidence after the CLI generates it.
++- Before `agent:finish`, the implementation worktree must be clean so the recorded Git hashes and diff are reproducible.
++- `agent:finish` never merges and never deploys. A failed validation creates BLOCKED evidence and may not be described as complete.
++- The reviewer must inspect the full base-to-head diff, path scope, functional behavior, security, data isolation, accessibility, performance, UX, and tests.
++- Resolve review findings on the task branch when authorized, rerun validation, and update review/completion evidence.
++- Integrate the latest base semantically. Never resolve a conflict by blindly choosing `ours` or `theirs`.
++- Do not call a failure pre-existing without a clean-base run or equivalent exact evidence. Introduced and verified pre-existing failures must be distinguished.
++- GitHub CI is the final merge authority. Local success is necessary but not sufficient.
++
++A task is done only when acceptance criteria are met, declared validation passes, the completion record contains real commands/hashes/exit codes, independent review is complete, required CI is green, and deployment/merge authorization has not been exceeded.
++
++## Security and protected systems
++
++- Never expose, log, paste, or commit environment values, marketplace credentials, OAuth tokens, billing secrets, provider payloads containing secrets, private keys, or database credentials.
++- Never commit `.env` files. `.env.example` may contain names and obvious placeholders only.
++- All external and AI data is untrusted and must be validated at the boundary.
++- Sensitive backend systems may be edited only when the contract explicitly allows them: `prisma/`, auth, billing, marketplace adapters and live actions, inventory synchronization, provider budgets, CI/deployment, and secret-handling code.
++- Never weaken account isolation, feature/entitlement checks, readiness gates, idempotency, transaction boundaries, provider controls, sanitization, or audit trails for UI convenience.
++- Never fake marketplace publishing, delisting, price comps, validation success, or completion evidence.
++
++Narrower instructions in nested `AGENTS.md` files apply within sensitive directories.
++
++## Database and migrations
++
++- Use Prisma for database access.
++- Schema or migration changes require `task_type: database` (or an explicitly authorized backend task), high-risk review, focused migration tests, `npm run prisma:validate`, and the full integration gate.
++- Migrations must be additive or otherwise forward-safe, auditable, and have a documented rollback/mitigation path.
++- Never edit an already-applied migration to rewrite history.
++- Never run production migrations without explicit authorization in the active task contract and separate owner approval for the production action.
++
++## Deployment and merge authorization
++
++- `deployment_authorized: false` means no preview or production deployment. `true` authorizes only the scope stated in the contract.
++- `merge_authorized: false` means do not merge, even when review and CI pass.
++- Never deploy merely because a task merged. Deployment is a separate, explicitly authorized operation.
++- Never push `main` or deploy production without explicit owner approval.
++
++## Mandatory Sello invariants
++
++1. All seller-owned data remains account-scoped.
++2. Marketplace operations fail closed.
++3. Publishing requires server-side readiness validation.
++4. Publishing and delisting remain idempotent.
++5. Sold-state transitions and required delisting jobs remain transactionally safe.
++6. Marketplace credentials, tokens, secrets, and environment values are never logged or committed.
++7. Billing and entitlement enforcement occurs server-side.
++8. User-facing language says `listing`, never `marketplace-ready draft`.
++9. Paid providers remain behind feature, quota, budget, cooldown, and kill-switch controls.
++10. Existing marketplace safety behavior is never weakened for UI convenience.
++11. Production migrations are forward-safe, auditable, and explicitly authorized.
++12. Agents do not deploy unless the active task contract explicitly authorizes deployment.
++13. Agents do not silently skip validation because failures appear pre-existing.
++14. Agents distinguish introduced failures from verified pre-existing failures.
++15. Agents resolve safe ordinary implementation challenges instead of stopping at them.
++16. Agents never discard unknown work.
++17. Agents never resolve merge conflicts by blindly choosing `ours` or `theirs`.
++18. Sensitive backend systems are edited only when the task contract explicitly allows them.
++19. Git history, code, tests, task contracts, architecture documentation, validation evidence, review evidence, and CI outrank handoff prose.
++20. Every completed task has an evidence-backed completion record.
++
++## Completion report requirements
++
++Completion records live at `.agent/completed/<task-id>.md` and must include the task, owner/reviewer, branch/worktree, base/final commits, exact changed files, intended and unchanged behavior, acceptance results, exact commands and exit codes, output summaries, failure classification evidence, tests, review resolution, limitations, documentation, deployment/merge state, review focus, and timestamp.
++
++Use `listing` for seller-facing concepts. Capability descriptions must state what the system truly does now, not a future ceiling or simulated success.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 01464bb..66bd373 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -1,118 +1,5 @@
+-# Claude Project Instructions
++# Claude / Grok / Cursor Entry Point
+ 
+-## Session Handoff (read first, update last)
++`AGENTS.md` is the canonical source of repository instructions. Read it in full, then read the active YAML task contract in `.agent/tasks/active/` and any narrower `AGENTS.md` governing allowed paths.
+ 
+-This project alternates between Claude and Codex agents (the owner switches due to
+-usage limits). **At the start of every session, read `HANDOFF.md`** for the live
+-state. **Before finishing any session, update `HANDOFF.md`** (Last updated, a dated
+-Recent-work bullet, Current state, Blocked-on-owner, Next up). Never put secrets in it.
+-
+-## Product
+-
+-An AI-powered resale cross-listing SaaS for streetwear, sneakers, and hype-fashion
+-sellers. This is a real product being built out toward launch — not a throwaway
+-MVP. Expanding scope is expected; build complete, production-grade features.
+-
+-Next.js web app (not mobile-native).
+-
+-Core workflow (the spine; everything else hangs off it):
+-
+-1. User uploads item photos.
+-2. Gemini identifies the product.
+-3. Gemini generates structured marketplace listing drafts (Zod-validated).
+-4. User edits and approves the master listing.
+-5. Automatic pricing from real sold/active comps.
+-6. Cross-list to marketplaces and keep inventory in sync.
+-
+-All of cross-listing, real marketplace publishing, automatic comps, inventory
+-sync, and monetization are now in scope. Build them properly (gated, tested,
+-honest) rather than stubbing them out.
+-
+-## Tech Stack
+-
+-- Next.js (App Router) + TypeScript (strict) + Tailwind v4
+-- Supabase Auth / Postgres / Storage
+-- Prisma
+-- Gemini API (structured JSON output only)
+-- Zod (validate all external + AI data at boundaries)
+-- BullMQ + Redis / Upstash (background jobs)
+-- Marketplace APIs (eBay, StockX, etc.); Playwright only where no official API exists
+-- Stripe (subscriptions / billing)
+-- Vercel (hosting)
+-
+-## Database Notes
+-
+-- DATABASE_URL intentionally uses the Supabase transaction pooler.
+-- DIRECT_URL had IPv6/DNS connectivity problems on this machine.
+-- A dedicated role `resale_app` was created for runtime/app access. Do not switch
+-  back to the postgres owner account unless explicitly instructed.
+-- Preserve the current Prisma/Supabase role strategy.
+-- Runtime reads `DATABASE_URL`; the Vercel/Supabase integration also provides
+-  `POSTGRES_*` names — keep `DATABASE_URL` set explicitly to the `resale_app` URL.
+-
+-## Integrity Rules (never violate)
+-
+-These are about honesty and safety, not scope — they stay no matter how big we get:
+-
+-- Never fake successful marketplace publishing. A channel with no real adapter
+-  returns a typed NOT_IMPLEMENTED outcome; it does not pretend to succeed.
+-- Real publishing must actually call the marketplace API and reflect the true
+-  result. No simulated "live" states.
+-- Never invent prices with Gemini. Pricing comes only from real comp data; show
+-  "Needs comps" when there is none.
+-- Never fake or hand-fabricate comps as if they were real sales.
+-- Never publish or take destructive marketplace actions without explicit user intent.
+-- Never expose, log, or hardcode secrets/keys. Use environment variables.
+-- Never allow one user to access another user's data (scope every query to the seller).
+-- Never silently swallow failed validation or failed jobs — fail loudly and visibly.
+-
+-## Deploy & Branch Safety (keep)
+-
+-- `main` is production-safe and protected. Never push `main` without explicit approval.
+-- Merge flow: `feature/*` -> `develop` -> `main` -> production.
+-- No automatic deploys. Production deploys happen only when explicitly requested.
+-  Preview deploys are fine on request.
+-- Commit after the verification gate passes. Push only when asked.
+-
+-## Engineering Rules
+-
+-- Strict TypeScript; Zod at all external/AI boundaries; store raw + parsed AI output.
+-- Prisma for DB access; migrations are reviewed and routed through `develop`.
+-- Marketplace logic lives in adapters with explicit capability flags; UI branches
+-  on capabilities, never on a hardcoded marketplace id.
+-- Slow/unreliable work runs in idempotent background jobs.
+-- Pricing/business logic lives in pure, testable utilities; add tests for it.
+-- Prefer clear loading/empty/error states over decoration.
+-- Run the gate before finishing: `npm run lint`, `npm test`, `npx prisma validate`,
+-  `npm run build`.
+-
+-## Current State
+-
+-Shipped and verified (Phase 0 + Phase 1 live; T1–T7 on `develop`):
+-
+-- Full app UI: dashboard, inventory (list/grid, sort, pagination, bulk
+-  delete/price/CSV), listing detail/editor (autosave, editable fields, photo
+-  add/remove/reorder/cover), publish history, marketplaces, new listing
+-  (photo -> Gemini), responsive layout, consistent states.
+-- Seller-scoped API: listings, listing detail, history, CSV import, item update,
+-  bulk price/delete, photos, comps + comps refresh.
+-- Honest publish flow (records real attempts; returns 501 NOT_IMPLEMENTED).
+-- Automatic comps pipeline (sources, dedupe/outlier, fetch job, refresh,
+-  auto-fetch on identify/load). Dormant until a comp source key is configured.
+-- Lifecycle actions (mark sold / delist).
+-
+-Dormant/blocked on credentials or decisions (not on more code):
+-
+-- Real comp data (needs StockX partner access, an eBay Browse prod keyset, or a
+-  third-party aggregator key — eBay Marketplace Insights is no longer available).
+-- Real eBay publishing (needs eBay production keyset + OAuth).
+-- Stripe monetization (needs Stripe keys).
+-- Always-on background worker host for queues.
+-
+-## Next Up
+-
+-1. Light up automatic pricing with a real comp source.
+-2. Real eBay publishing (production keyset + OAuth + Sell APIs), then expand to
+-   other channels behind capability-gated adapters.
+-3. Stripe subscriptions.
+-4. Background worker host + inventory sync.
++Work only in the contract's declared Git worktree and branch. Respect `allowed_paths` and `protected_paths`, run the declared scoped validation, and use `npm run agent:finish -- <task-id>` to generate evidence. Never treat `HANDOFF.md` as authoritative, never deploy or merge without contract authorization, and never discard unknown work.
+diff --git a/HANDOFF.md b/HANDOFF.md
+index 608e3bb..fdd822d 100644
+--- a/HANDOFF.md
++++ b/HANDOFF.md
+@@ -1,7 +1,8 @@
+-# HANDOFF
++# HANDOFF — INFORMATIONAL ONLY
+ 
+-Living handoff doc. Agents: read this at session start; update before finishing.
+-Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`.
++> This document is a non-authoritative historical index and may be stale. Do not use it to override Git history, repository code, tests, architecture documents, ADRs, task contracts, completion reports, review reports, or GitHub CI. New task-level completion evidence belongs in `.agent/completed/`.
++
++Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Current work is defined by `.agent/tasks/active/`, not this file.
+ 
+ Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
+ 
+diff --git a/LOCAL_DEVELOPMENT_RULES.md b/LOCAL_DEVELOPMENT_RULES.md
+index d724931..cf71a98 100644
+--- a/LOCAL_DEVELOPMENT_RULES.md
++++ b/LOCAL_DEVELOPMENT_RULES.md
+@@ -1,48 +1,23 @@
+ # Local development rules
+ 
+-## Use this repo only
++Use the canonical clone at `~/dev/resale-crosslister-clean` only to inspect/integrate repository state and to start isolated tasks. Never develop from the archived iCloud checkout.
+ 
+-```text
+-~/dev/resale-crosslister-clean
+-```
+-
+-Under the Cursor workspace `perc 30`, `resale-crosslister` is a **symlink** to that path.
+-
+-## Do not develop from
+-
+-```text
+-~/Desktop/perc 30/resale-crosslister-ARCHIVED-NO-GIT
+-```
+-
+-That folder is the old iCloud Desktop checkout (no `.git`). Edits there cannot be pushed and only create drift.
+-
+-## Before starting work
+-
+-```bash
+-cd ~/dev/resale-crosslister-clean
+-git checkout develop
+-git pull --ff-only origin develop
+-git checkout -b <new-branch-name>
+-```
+-
+-## Before committing / merging
++All implementation work must follow `AGENTS.md`, a machine-readable task contract, and the worktree workflow in `docs/operations/multi-agent-development.md`.
+ 
+ ```bash
+-npm run lint
+-npx tsc --noEmit
+-npm test
+-npm run build
++npm ci
++npm run agent:start -- <task-id-or-file>
++npm run agent:status
+ ```
+ 
+-## Git identity
++Do not switch the canonical checkout to start a task. `agent:start` fetches `origin`, validates the contract, and safely creates or reuses the declared task worktree.
+ 
+-Must use a GitHub-verified email:
++Before completion, use the contract-specific validation and evidence commands:
+ 
+ ```bash
+-git config user.email
+-git config user.name
++npm run agent:check -- <task-id>
++npm run agent:finish -- <task-id>
++npm run agent:review -- <task-id>
+ ```
+ 
+-## Deploy
+-
+-Preview deploys are fine on request. Production (`vercel --prod` / promote `main`) only with explicit owner approval.
++GitHub CI is the final authority. Deployment remains a separate, explicitly authorized operation.
+diff --git a/README.md b/README.md
+index b105c90..9709667 100644
+--- a/README.md
++++ b/README.md
+@@ -2,7 +2,7 @@
+ 
+ AI-native resale operating system for fashion sellers.
+ 
+-Sello helps sellers turn raw item photos into structured listings, pricing guidance, marketplace-ready drafts, and publishing workflows. The product is focused on fashion resale first: streetwear, sneakers, vintage, designer, and hype-driven inventory.
++Sello helps sellers turn raw item photos into structured listings, pricing guidance, channel-specific listing content, and publishing workflows. The product is focused on fashion resale first: streetwear, sneakers, vintage, designer, and hype-driven inventory.
+ 
+ ## Current Status
+ 
+@@ -31,7 +31,7 @@ Sello is not just a cross-lister. The long-term goal is to make individual fashi
+ Core direction:
+ 
+ - Convert photos into clean product data
+-- Generate marketplace-ready listings
++- Generate channel-specific listings
+ - Assist with pricing and comps
+ - Let sellers choose where inventory should publish
+ - Automate repetitive listing and sync work
+@@ -198,6 +198,21 @@ Open:
+ http://127.0.0.1:3000
+ ```
+ 
++## Agent development workflow
++
++Repository changes use one machine-readable task contract, branch, and isolated worktree per implementation owner. `AGENTS.md` is canonical; `HANDOFF.md` is informational only.
++
++```bash
++npm run agent:start -- <task-id-or-file>
++npm run agent:status
++npm run agent:check -- <task-id-or-file>
++npm run agent:finish -- <task-id-or-file>
++npm run agent:review -- <task-id-or-file>
++npm run agent:cleanup -- <task-id-or-file>
++```
++
++Use `npm run validate:scoped` for the fast repository gate and `npm run validate:full` for integration. See `docs/operations/multi-agent-development.md` for task ownership, review, CI, conflict-resolution, and cleanup rules.
++
+ ## Supabase Notes
+ 
+ Sello uses Supabase for:
+diff --git a/WORKTREES.md b/WORKTREES.md
+index d4b9e4d..f9991bf 100644
+--- a/WORKTREES.md
++++ b/WORKTREES.md
+@@ -1,56 +1,20 @@
+-# Worktree Workflow
++# Worktree workflow
+ 
+-Use **one canonical clone** and optional sibling worktrees. Never develop from the archived Desktop checkout.
+-
+-## Canonical paths
+-
+-| Role | Path | Notes |
+-| --- | --- | --- |
+-| Primary clone | `~/dev/resale-crosslister-clean` | Real git repo. Default for agents. |
+-| Workspace symlink | `~/Desktop/perc 30/resale-crosslister` | Symlink → primary clone (so `perc 30` chats stay consistent). |
+-| Archived (do not use) | `~/Desktop/perc 30/resale-crosslister-ARCHIVED-NO-GIT` | Old iCloud checkout with **no `.git`**. |
+-
+-## Branch structure
+-
+-- `main`: production-safe only. Do not push without explicit approval.
+-- `develop`: active integration.
+-- `feature/*`, `fix/*`, `chore/*`, `security/*`: short-lived work.
+-
+-## Merge flow
++Sello uses one canonical clone plus one isolated worktree per task. The contract under `.agent/tasks/` owns the branch and absolute worktree path; `AGENTS.md` and `docs/operations/multi-agent-development.md` are authoritative.
+ 
+ ```text
+-feature/* → develop → main → production
++canonical clone / integration inspection
++  ├── task worktree A → one branch → one implementation owner
++  ├── task worktree B → one branch → one implementation owner
++  └── reviewer/integrator → evidence + CI → develop
+ ```
+ 
+-Never deploy automatically. Production deploys require explicit owner approval.
+-
+-## Worktrees (current)
+-
+-Create worktrees **under `~/dev/`**, not on iCloud Desktop:
++Create worktrees through the repository CLI:
+ 
+ ```bash
+-cd ~/dev/resale-crosslister-clean
+-git fetch origin
+-git worktree add ../resale-crosslister-<topic> -b feature/<topic> origin/develop
++npm run agent:start -- <task-id-or-file>
+ ```
+ 
+-| Area | Use for | Suggested path |
+-| --- | --- | --- |
+-| develop | migrations, deps, docs, integration | `~/dev/resale-crosslister-clean` or `~/dev/resale-crosslister-safety` |
+-| ui / polish | dashboard, marketing, visual polish | `~/dev/resale-crosslister-ui` |
+-| billing | Stripe / plans / metering | `~/dev/resale-crosslister-billing` |
+-| marketplaces | adapters, OAuth, publish | `~/dev/resale-crosslister-marketplaces` |
+-| comps | pricing comps / providers | `~/dev/resale-crosslister-comps` |
+-
+-## Safety rules
+-
+-- One agent per worktree.
+-- Never switch branches with uncommitted work.
+-- Never delete a worktree with uncommitted work.
+-- Migrations and dependency bumps: from `develop` (or a `chore/*` cut from `develop`).
+-- Risky systems (publishing, inventory sync, Playwright, billing): feature branches only.
+-- Never push `main` without approval.
+-
+-## Router
++The command fetches without moving another local branch, validates branch/path state, refuses unrelated collisions, records the exact base commit, and prints the assigned worktree. Never switch, stash, reset, clean, merge, or delete another task's worktree. Cleanup is allowed only through `npm run agent:cleanup -- <task-id>` after the task is complete, pushed, merged, and clean; destructive exceptions require explicit `--dangerous` intent.
+ 
+-If the task is ambiguous, stop and pick the safest worktree. If it spans areas, split into separate worktree tasks.
++Branch flow remains `feature/*|fix/*|chore/*|security/*|docs/*|test/* → develop → main → production`. Merge and deployment are separate authorizations.
+diff --git a/docs/architecture/invariants.md b/docs/architecture/invariants.md
+new file mode 100644
+index 0000000..7c1921a
+--- /dev/null
++++ b/docs/architecture/invariants.md
+@@ -0,0 +1,36 @@
++# Sello invariants
++
++These are mandatory design constraints. A task that cannot preserve them is blocked until the contract and architecture decision are reviewed.
++
++1. All seller-owned data remains account-scoped.
++2. Marketplace operations fail closed.
++3. Publishing requires server-side readiness validation.
++4. Publishing and delisting remain idempotent.
++5. Sold-state transitions and required delisting jobs remain transactionally safe.
++6. Marketplace credentials, tokens, secrets, and environment values are never logged or committed.
++7. Billing and entitlement enforcement occurs server-side.
++8. User-facing language says `listing`, never `marketplace-ready draft`.
++9. Paid providers remain behind feature, quota, budget, cooldown, and kill-switch controls.
++10. Existing marketplace safety behavior is never weakened for UI convenience.
++11. Production migrations are forward-safe, auditable, and explicitly authorized.
++12. Agents do not deploy unless the active task contract explicitly authorizes deployment.
++13. Agents do not silently skip validation because failures appear pre-existing.
++14. Agents distinguish introduced failures from verified pre-existing failures.
++15. Agents resolve safe ordinary implementation challenges instead of stopping at them.
++16. Agents never discard unknown work.
++17. Agents never resolve merge conflicts by blindly choosing `ours` or `theirs`.
++18. Sensitive backend systems are edited only when the task contract explicitly allows them.
++19. Git history, code, tests, task contracts, architecture documentation, validation evidence, review evidence, and CI outrank handoff prose.
++20. Every completed task has an evidence-backed completion record.
++
++Additional verified repository invariants:
++
++- AI and external provider output is untrusted; validate it before business use and preserve raw versus validated evidence where the current model requires it.
++- A capability ceiling is not current readiness. Missing configuration, connection, entitlement, listing data, or implementation keeps the action disabled.
++- Unsupported marketplace actions return typed, honest outcomes and perform no external side effect.
++- Marketplace tokens are encrypted at rest and are never sent to the browser.
++- The active account, not an email string or client claim, is the authorization boundary for shared seller workspaces.
++- Duplicate or conflicting sale signals never overwrite an established sold source silently.
++- Paid-provider kill switches are absolute; admin/test access may not bypass them.
++- Stripe webhook processing verifies signatures and remains idempotent.
++- A local passing gate does not authorize merge or deployment; required GitHub checks and the task contract decide those actions.
+diff --git a/docs/architecture/overview.md b/docs/architecture/overview.md
+new file mode 100644
+index 0000000..534c1a8
+--- /dev/null
++++ b/docs/architecture/overview.md
+@@ -0,0 +1,78 @@
++# Sello architecture overview
++
++This document describes the repository state at `origin/develop` when the multi-agent workflow was established. Code and tests take precedence if the implementation later changes.
++
++## Application framework
++
++Sello is a strict-TypeScript Next.js 16 App Router application with React 19 and Tailwind CSS 4. Route handlers live under `src/app/api/`; authenticated product pages use the `src/app/(app)/` route group. Vitest provides unit and route-level tests, generally colocated with source.
++
++## Authentication and storage
++
++Supabase provides authentication, Postgres, and listing-photo storage. Server routes establish the signed-in user through helpers under `src/lib/supabase/` and `src/lib/auth/`. Authorization is not implied by authentication: seller-owned reads and writes must resolve the active account or an account-derived ownership scope.
++
++## Database and ORM
++
++Prisma 7 models Postgres data in `prisma/schema.prisma`; generated client output lives under `src/generated/prisma/`. Runtime Prisma access uses the Postgres driver adapter in `src/lib/prisma.ts`. Forward migrations and migration-focused tests live under `prisma/migrations/`.
++
++## Account scoping
++
++`Account` is the shared seller workspace. `AccountMember` records active/invited/revoked membership and owner/admin/member roles. New seller-owned state is keyed by `accountId`; legacy creator/audit identifiers such as `sellerId` or `userId` remain where the schema and audit flow require them. `src/lib/billing/account.ts`, `membership.ts`, and `scope.ts` are the canonical helpers for resolving active accounts and building account or inventory-child filters.
++
++## Listings and inventory
++
++`InventoryItem` is the master seller item. It owns photos, AI outputs, listing drafts, comps, marketplace listings, jobs, inventory events, and review tasks. `src/lib/listing/`, `src/lib/view/`, and app/API routes implement draft readiness, editing, views, and lifecycle actions. AI raw and validated output are stored separately after Zod validation.
++
++## Marketplace integrations
++
++`src/lib/marketplace/registry.ts` describes each channel's integration mode and capability ceiling. A ceiling is not proof of live readiness. Dedicated eBay, Etsy, and StockX modules live under `src/lib/marketplace/adapters/`; generic/unsupported channels fail closed with typed `NOT_IMPLEMENTED` or assisted-output behavior. Live availability is further reduced by server-side configuration, feature access, account connection, marketplace readiness, and action-specific gates.
++
++## Publishing and delisting
++
++Route handlers call `src/lib/marketplace/publish-handler.ts` and `delist-handler.ts` rather than calling marketplace APIs directly. Marketplace-specific readiness validates credentials/configuration and listing requirements on the server. `MarketplaceListing`, `PublishAttempt`, and `MarketplaceEvent` provide durable status, correlation, audit evidence, and idempotency. The database migration for active/successful attempt keys supplies a concurrency guard that Prisma cannot express directly.
++
++## Inventory synchronization
++
++`src/lib/inventory/mark-sold.ts` is the authoritative sold-state path. It uses optimistic concurrency and a transaction that changes the item, records the sale event, and queues required delist work together. `src/lib/inventory-sync/jobs/worker.ts` claims durable `SyncJob` rows, calls supported adapters, records success/failure evidence, and creates manual review tasks when an operation cannot be safely completed. Duplicate terminal work is idempotent.
++
++## Billing and entitlements
++
++`src/lib/billing/` implements plans, active accounts, memberships/seats, Stripe customers/subscriptions/webhooks, entitlements, connection limits, and usage counters. `src/lib/auth/feature-access.ts` adds server-side alpha/feature access. Admin testing access does not bypass global marketplace/provider kill switches. Billing and capability APIs under `src/app/api/billing/` and `src/app/api/capabilities/` expose sanitized state to the UI.
++
++## Background jobs
++
++Two durable patterns exist. `src/lib/queues/marketplace-jobs.ts` defines BullMQ/Redis marketplace-job contracts for slow external work. Inventory synchronization uses database-backed `SyncJob` records and the worker under `src/lib/inventory-sync/jobs/`. Both patterns require idempotency, bounded retries, visible failure state, and account scope.
++
++## Provider budget controls
++
++`src/lib/comps/` registers real comp sources and normalizes/deduplicates results. Paid sources are gated by server-side feature access, provider configuration, global budget, per-user daily/monthly quotas, draft cooldown, identity quality, and an absolute kill switch. `ProviderCallLedger` records provider use and cost evidence. No-data and provider-failure paths must remain honest and seller-safe.
++
++## Testing and validation
++
++- Vitest: colocated `*.test.ts` and `*.test.tsx`, plus migration tests.
++- ESLint: repository-wide static linting.
++- TypeScript: strict no-emit typecheck after Prisma client generation.
++- Prisma: schema validation without applying migrations.
++- Next.js: production build.
++- Agent workflow tests: task parsing, worktree isolation, path/secret/conflict policy, evidence, JSON, review, cleanup, and reconciliation.
++
++Task contracts choose focused validation. Integration uses `npm run validate:full`, and GitHub Actions is the final authority.
++
++## Deployment
++
++The application is hosted on Vercel. No tracked Vercel configuration overrides the repository's Next.js defaults. Deployment is outside normal validation and requires a separately authorized task contract plus explicit owner approval; production migrations and live marketplace/provider actions are not part of a build gate.
++
++## Relevant directories
++
++| Path | Responsibility |
++| --- | --- |
++| `src/app/` | App Router UI and API route handlers |
++| `src/components/` | Shared product UI |
++| `src/lib/ai/` | Gemini and structured-output boundaries |
++| `src/lib/billing/` | Accounts, plans, Stripe, entitlements, usage |
++| `src/lib/comps/` | Comp sources, scoring, provider controls |
++| `src/lib/marketplace/` | Capabilities, adapters, publish/delist orchestration |
++| `src/lib/inventory/` | Sold state, events, review tasks, delist queueing |
++| `src/lib/inventory-sync/` | Durable sync worker |
++| `src/lib/queues/` | BullMQ job contracts |
++| `prisma/` | Schema and forward migrations |
++| `.agent/` | Task contracts and evidence |
+diff --git a/docs/decisions/README.md b/docs/decisions/README.md
+new file mode 100644
+index 0000000..048a83f
+--- /dev/null
++++ b/docs/decisions/README.md
+@@ -0,0 +1,42 @@
++# Architecture decision records
++
++Use an ADR when a change creates or revises a durable architectural boundary, data ownership rule, external integration strategy, security posture, or operating constraint.
++
++Name records `ADR-0001-short-description.md` with the next available four-digit number. Keep an ADR focused on one decision and link the task contract and implementation files.
++
++```markdown
++# ADR-0001: Short description
++
++- Status: proposed | accepted | superseded | rejected
++- Date: YYYY-MM-DD
++
++## Context
++
++What problem, constraint, and verified repository state require a decision?
++
++## Decision
++
++What will the system do, and where is the boundary enforced?
++
++## Alternatives considered
++
++- Alternative and why it was not selected.
++
++## Consequences
++
++- Positive and negative operational consequences.
++
++## Risks
++
++- Failure modes and mitigations.
++
++## Relevant files
++
++- `path/to/file`
++
++## Follow-up work
++
++- Explicit deferred tasks.
++```
++
++Never use an ADR to retroactively justify unsafe implementation or to override an invariant without explicit owner/security review.
+diff --git a/docs/operations/multi-agent-development.md b/docs/operations/multi-agent-development.md
+new file mode 100644
+index 0000000..1ddc771
+--- /dev/null
++++ b/docs/operations/multi-agent-development.md
+@@ -0,0 +1,146 @@
++# Multi-agent development workflow
++
++Sello treats repository state as the shared brain. Every implementation is anchored to an exact Git base, a machine-readable contract, one branch, one worktree, one primary owner, deterministic evidence, an independent review, and GitHub CI.
++
++## Roles
++
++- Codex normally plans contracts, reviews full diffs, repairs valid findings when authorized, integrates the latest base, opens/updates PRs, and treats CI as final authority.
++- Cursor/Grok normally implements bounded frontend or feature tasks inside an assigned worktree.
++- Other agents can join by accepting the same model-independent contract and evidence requirements. Their model/vendor does not alter path or authorization boundaries.
++- One agent is the primary implementation owner for a task. Multiple agents do not independently edit the same branch or worktree; divide parallel work into non-overlapping task contracts.
++
++## Canonical checkout versus task worktrees
++
++The canonical clone is the repository/control point. It is used to inspect state, create worktrees, review, and integrate. Product implementation happens in contract-owned worktrees under `~/dev/`. `agent:start` fetches remote refs without moving a local integration branch, then creates the task branch from the current `origin/<base_branch>` commit.
++
++Every pre-existing worktree, branch, uncommitted file, and unknown file belongs to its current owner. Never switch, stash, reset, clean, rebase, merge, commit, or edit another worktree to make a task convenient.
++
++## End-to-end workflow
++
++### 1. Define the task
++
++Translate the user request into one bounded goal with explicit non-goals, risk, owner, reviewer, acceptance criteria, and authorization. Split unrelated or path-overlapping work before assignment.
++
++### 2. Create the task contract
++
++Copy `.agent/templates/task.yaml` to `.agent/tasks/backlog/<task-id>.yaml`, fill every field, validate the branch/path, and commit it to the integration branch through the normal review path. Contracts use repository-relative glob patterns for `allowed_paths` and `protected_paths`.
++
++### 3. Create the worktree
++
++From a safe repository worktree:
++
++```bash
++npm run agent:start -- <task-id-or-file>
++```
++
++The command fetches `origin`, verifies the base, checks existing branches/worktrees, safely reuses only an exact match, creates the branch/worktree when safe, moves the contract to active state in the task branch, records the base commit under `.agent/state/`, and prints the exact assigned path. Mutating actions take a task-specific lock in Git's shared metadata so two worktrees cannot start, finish, review, or clean the same task concurrently. Commit the start metadata before implementation.
++
++### 4. Assign the agent
++
++Use `.agent/templates/cursor-task-prompt.md` or the appropriate model-independent prompt. The assignee reads root and nested `AGENTS.md`, the active contract, and `required_reading`; verifies `pwd`, branch, and worktree; then states the accepted scope before editing.
++
++### 5. Implement
++
++The primary owner changes only allowed paths. Sensitive backend work requires explicit protected-system authorization. Ordinary errors, repository differences, and test failures are investigated and repaired; they are not reasons to abandon the task. No agent discards unknown work or expands scope silently.
++
++### 6. Run scoped validation
++
++Run focused commands during development, then the exact `validation` array in the contract. `npm run validate:scoped` is the common fast gate; backend contracts add focused safety tests. A UI task should not run live provider/marketplace/database actions, and it need not run the slowest integration gate on every iteration.
++
++### 7. Generate completion evidence
++
++Commit implementation changes, ensure the worktree is clean, then run:
++
++```bash
++npm run agent:check -- <task-id>
++npm run agent:finish -- <task-id>
++```
++
++`agent:check` verifies identity, base/merge-base, changed paths, protected paths, secret files/patterns, conflict markers, dirty state, metadata, and authorizations. `agent:finish` runs every declared command and writes `.agent/completed/<task-id>.md` with real hashes, paths, timestamps, exit codes, and sanitized output summaries. Failed validation produces BLOCKED evidence and a nonzero exit; it never fabricates completion.
++
++Commit the generated completion contract/state/report as a separate evidence commit.
++
++### 8. Perform independent review
++
++The named reviewer uses `.agent/templates/codex-review-prompt.md` and runs:
++
++```bash
++npm run agent:review -- <task-id>
++```
++
++The command creates the full diff artifact and structured report under `.agent/reviews/`, reruns path policy and declared validation, and remains NOT MERGE READY until a semantic reviewer has inspected functional behavior, security, architecture, accessibility, performance, tests, and UX. Supply `--approve` only after that review is genuinely complete and all required findings are resolved.
++
++### 9. Repair loop
++
++Record findings as P0-P3 with file/line, failure scenario, and required correction. The authorized implementation owner or reviewer fixes valid findings on the task branch, commits, reruns scoped/full validation as required, regenerates completion evidence, and updates the review. P0/P1 and required P2 findings block merge.
++
++### 10. Integrate the latest base
++
++Fetch `origin` and compare the task branch with current `origin/<base_branch>`. Rebase or merge only in the task worktree according to the contract/reviewer decision. Resolve each conflict semantically by understanding both changes and their tests. Never choose all `ours` or all `theirs`; preserve both intended behaviors or document why one is obsolete. Rerun scope checks after conflict resolution.
++
++### 11. Run full validation
++
++When `full_validation_required: true`, run:
++
++```bash
++npm run validate:full
++```
++
++This generates Prisma types, lints, typechecks, runs the full Vitest suite (including marketplace, billing, inventory-sync, auth, security, and migration coverage), validates Prisma syntax, and builds the Next.js application. It does not run a production migration or live external action.
++
++### 12. Open or update the PR
++
++Target the task's declared base branch. Include the problem, workflow/implementation architecture, changed files, tests and exact commands, safety behavior, migration/product/deployment impact, limitations, rollback, and links to contract/completion/review evidence. Do not merge merely because the PR exists.
++
++### 13. Verify CI
++
++GitHub Actions is the final authority. Required checks validate agent policy, workflow tests, lint, typecheck, full tests, Prisma, build, and secret scanning. Inspect failures, repair introduced problems, and prove any pre-existing failure against the exact untouched base. Never waive or relabel failures for convenience.
++
++### 14. Merge
++
++Merge only when `merge_authorized: true`, required findings are resolved, completion/review evidence matches the reviewed commit, and required CI is green. Codex normally performs or supervises integration. Merging to `develop` does not authorize promotion to `main`.
++
++### 15. Clean up
++
++After the task is complete, pushed, merged, and clean:
++
++```bash
++npm run agent:cleanup -- <task-id>
++```
++
++The command refuses dirty, unpushed, unmerged, or incomplete work. It removes only the declared worktree and prunes metadata; it does not delete an unmerged branch by default. `--dangerous` is an explicit human recovery override, not a normal path.
++
++### 16. Authorize deployment separately
++
++Deployment has its own task/approval window. Recheck environment-name coverage, migration order, auth/protection walls, live readiness, rollback, and non-destructive smoke scope. Never infer deployment permission from merge permission or a green build.
++
++## Why the repository is the shared brain
++
++Chat history, agent memory, and handoff prose drift. Commits and exact diffs identify what exists; contracts identify authorized intent; architecture and ADRs identify durable boundaries; tests and evidence identify what was actually exercised; CI identifies the reviewed revision. `HANDOFF.md` can help orient a human but cannot override these sources.
++
++## Conflict handling
++
++1. Preserve both worktrees and all uncommitted files.
++2. Determine each side's task contract, base, intended behavior, and tests.
++3. Reproduce the conflict in the integrating task worktree only.
++4. Merge the semantics, not the text markers.
++5. Add or repair tests for both intended behaviors.
++6. Rerun path checks and validation.
++7. Record the resolution and any deferred overlap in completion/review evidence.
++
++If two active tasks modify the same instruction/workflow file, finish them independently and flag the overlap for later semantic integration; never overwrite the other task's checkout.
++
++## Pre-existing failures
++
++A failing command is unclassified until the same command (or a justified equivalent) is run at the exact untouched base revision. Evidence must include command, base hash, exit code, and relevant sanitized summary. Fix safe in-scope failures. If the failure is genuinely pre-existing and outside scope, record it precisely; never silently omit the command or call the task complete when the contract requires it to pass.
++
++## Risk-specific expectations
++
++- UI/frontend: narrow page/component paths, backend protected, responsive and reduced-motion states, keyboard/focus/semantic checks, screenshots or visual comparison where supported, no functionality regression.
++- Backend/API: account-scope denial tests, typed boundary errors, no secret leakage, idempotency where side effects exist.
++- Marketplace/inventory/billing/auth/provider: explicit sensitive paths, high-risk review, disabled/unauthorized/race/failure tests, no live calls, full validation.
++- Database/operations/deployment: forward-safe plan, rollback/mitigation, authorization, exact environment boundaries, and separate production action.
++
++## Git hooks and bypasses
++
++This repository intentionally does not set a shared `core.hooksPath`: Git config is common to all worktrees and changing it during concurrent work could disrupt protected tasks or emergency recovery. The equivalent deterministic safeguards live in `agent:check`, `agent:finish`, and required CI. Explicit recovery bypasses are narrow and visible (`agent:cleanup --dangerous`); they never convert failed evidence into success.
+diff --git a/package-lock.json b/package-lock.json
+index 7bc8a1e..6f07c55 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -29,17 +29,20 @@
+         "@tailwindcss/postcss": "^4.3.2",
+         "@types/node": "^25.9.5",
+         "@types/pg": "^8.20.0",
++        "@types/picomatch": "^4.0.3",
+         "@types/react": "^19.2.17",
+         "@types/react-dom": "^19.2.3",
+         "@typescript/native": "npm:typescript@^7.0.2",
+         "dotenv": "^17.4.2",
+         "eslint": "^9.39.4",
+         "eslint-config-next": "^16.2.10",
++        "picomatch": "^4.0.5",
+         "prisma": "^7.8.0",
+         "tailwindcss": "^4.3.2",
+         "tsx": "^4.23.0",
+         "typescript": "npm:@typescript/typescript6@^6.0.2",
+-        "vitest": "^4.1.10"
++        "vitest": "^4.1.10",
++        "yaml": "^2.9.0"
+       }
+     },
+     "node_modules/@alloc/quick-lru": {
+@@ -3091,6 +3094,13 @@
+         "pg-types": "^2.2.0"
+       }
+     },
++    "node_modules/@types/picomatch": {
++      "version": "4.0.3",
++      "resolved": "https://registry.npmjs.org/@types/picomatch/-/picomatch-4.0.3.tgz",
++      "integrity": "sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@types/react": {
+       "version": "19.2.17",
+       "resolved": "https://registry.npmjs.org/@types/react/-/react-19.2.17.tgz",
+@@ -7817,6 +7827,19 @@
+         "node": ">=8.6"
+       }
+     },
++    "node_modules/micromatch/node_modules/picomatch": {
++      "version": "2.3.2",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz",
++      "integrity": "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=8.6"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/jonschlinkert"
++      }
++    },
+     "node_modules/minimatch": {
+       "version": "3.1.5",
+       "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-3.1.5.tgz",
+@@ -8484,13 +8507,13 @@
+       "license": "ISC"
+     },
+     "node_modules/picomatch": {
+-      "version": "2.3.2",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz",
+-      "integrity": "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA==",
++      "version": "4.0.5",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.5.tgz",
++      "integrity": "sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==",
+       "dev": true,
+       "license": "MIT",
+       "engines": {
+-        "node": ">=8.6"
++        "node": ">=12"
+       },
+       "funding": {
+         "url": "https://github.com/sponsors/jonschlinkert"
+@@ -9678,19 +9701,6 @@
+         }
+       }
+     },
+-    "node_modules/tinyglobby/node_modules/picomatch": {
+-      "version": "4.0.4",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.4.tgz",
+-      "integrity": "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=12"
+-      },
+-      "funding": {
+-        "url": "https://github.com/sponsors/jonschlinkert"
+-      }
+-    },
+     "node_modules/tinyrainbow": {
+       "version": "3.1.0",
+       "resolved": "https://registry.npmjs.org/tinyrainbow/-/tinyrainbow-3.1.0.tgz",
+@@ -10104,19 +10114,6 @@
+         }
+       }
+     },
+-    "node_modules/vite/node_modules/picomatch": {
+-      "version": "4.0.5",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.5.tgz",
+-      "integrity": "sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=12"
+-      },
+-      "funding": {
+-        "url": "https://github.com/sponsors/jonschlinkert"
+-      }
+-    },
+     "node_modules/vitest": {
+       "version": "4.1.10",
+       "resolved": "https://registry.npmjs.org/vitest/-/vitest-4.1.10.tgz",
+@@ -10207,19 +10204,6 @@
+         }
+       }
+     },
+-    "node_modules/vitest/node_modules/picomatch": {
+-      "version": "4.0.4",
+-      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.4.tgz",
+-      "integrity": "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==",
+-      "dev": true,
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=12"
+-      },
+-      "funding": {
+-        "url": "https://github.com/sponsors/jonschlinkert"
+-      }
+-    },
+     "node_modules/vitest/node_modules/std-env": {
+       "version": "4.1.0",
+       "resolved": "https://registry.npmjs.org/std-env/-/std-env-4.1.0.tgz",
+@@ -10405,6 +10389,22 @@
+       "dev": true,
+       "license": "ISC"
+     },
++    "node_modules/yaml": {
++      "version": "2.9.0",
++      "resolved": "https://registry.npmjs.org/yaml/-/yaml-2.9.0.tgz",
++      "integrity": "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==",
++      "dev": true,
++      "license": "ISC",
++      "bin": {
++        "yaml": "bin.mjs"
++      },
++      "engines": {
++        "node": ">= 14.6"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/eemeli"
++      }
++    },
+     "node_modules/yocto-queue": {
+       "version": "0.1.0",
+       "resolved": "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz",
+diff --git a/package.json b/package.json
+index afd2dce..e3b17eb 100644
+--- a/package.json
++++ b/package.json
+@@ -8,10 +8,22 @@
+     "build": "next build",
+     "start": "next start",
+     "lint": "eslint",
++    "typecheck": "prisma generate && tsc --noEmit --pretty false",
+     "test": "vitest run",
++    "agent:start": "tsx scripts/agent-workflow/cli.ts start",
++    "agent:status": "tsx scripts/agent-workflow/cli.ts status",
++    "agent:check": "tsx scripts/agent-workflow/cli.ts check",
++    "agent:finish": "tsx scripts/agent-workflow/cli.ts finish",
++    "agent:review": "tsx scripts/agent-workflow/cli.ts review",
++    "agent:cleanup": "tsx scripts/agent-workflow/cli.ts cleanup",
++    "agent:ci": "tsx scripts/agent-workflow/cli.ts ci",
++    "agent:test": "vitest run scripts/agent-workflow",
++    "validate:scoped": "npm run agent:test && npm run lint && npm run typecheck && npm run prisma:validate",
++    "validate:full": "npm run lint && npm run typecheck && npm test && npm run prisma:validate && npm run build",
+     "db:migrate": "prisma migrate dev",
+     "db:deploy": "prisma migrate deploy",
+-    "db:generate": "prisma generate"
++    "db:generate": "prisma generate",
++    "prisma:validate": "prisma validate"
+   },
+   "dependencies": {
+     "@google/genai": "^2.10.0",
+@@ -35,17 +47,20 @@
+     "@tailwindcss/postcss": "^4.3.2",
+     "@types/node": "^25.9.5",
+     "@types/pg": "^8.20.0",
++    "@types/picomatch": "^4.0.3",
+     "@types/react": "^19.2.17",
+     "@types/react-dom": "^19.2.3",
+     "@typescript/native": "npm:typescript@^7.0.2",
+     "dotenv": "^17.4.2",
+     "eslint": "^9.39.4",
+     "eslint-config-next": "^16.2.10",
++    "picomatch": "^4.0.5",
+     "prisma": "^7.8.0",
+     "tailwindcss": "^4.3.2",
+     "tsx": "^4.23.0",
+     "typescript": "npm:@typescript/typescript6@^6.0.2",
+-    "vitest": "^4.1.10"
++    "vitest": "^4.1.10",
++    "yaml": "^2.9.0"
+   },
+   "overrides": {
+     "postcss": "8.5.15",
+diff --git a/prisma/AGENTS.md b/prisma/AGENTS.md
+new file mode 100644
+index 0000000..6274aa4
+--- /dev/null
++++ b/prisma/AGENTS.md
+@@ -0,0 +1,9 @@
++# Prisma safety rules
++
++The root `AGENTS.md` remains canonical. A task may change this directory only when `prisma/**` is explicitly allowed and the risk/reviewer are appropriate for database work.
++
++- Preserve account ownership, idempotency constraints, auditability, and transaction-safety invariants.
++- Never rewrite an applied migration or silently repair the production ledger.
++- Prefer additive, forward-safe migrations. Document data backfills, failure behavior, rollout order, and rollback/mitigation.
++- Run migration-focused tests, `npm run prisma:validate`, and `npm run validate:full`.
++- Do not run `prisma migrate deploy`, production SQL, destructive resets, or shared-database mutations without explicit contract and owner authorization.
+diff --git a/scripts/agent-workflow/cli.ts b/scripts/agent-workflow/cli.ts
+new file mode 100644
+index 0000000..e2061c2
+--- /dev/null
++++ b/scripts/agent-workflow/cli.ts
+@@ -0,0 +1,177 @@
++#!/usr/bin/env node
++
++import { relative } from "node:path";
++
++import {
++  WorkflowError,
++  checkTask,
++  ciCheck,
++  cleanupTask,
++  findRepoRoot,
++  finishTask,
++  resolveTask,
++  reviewTask,
++  startTask,
++  taskStatus,
++} from "./core";
++
++type Flags = {
++  json: boolean;
++  runValidation: boolean;
++  all: boolean;
++  dangerous: boolean;
++  deleteBranch: boolean;
++  approve: boolean;
++  positionals: string[];
++};
++
++function parseFlags(values: string[]): Flags {
++  const flags: Flags = {
++    json: false,
++    runValidation: false,
++    all: false,
++    dangerous: false,
++    deleteBranch: false,
++    approve: false,
++    positionals: [],
++  };
++  for (const value of values) {
++    if (value === "--json") flags.json = true;
++    else if (value === "--run-validation") flags.runValidation = true;
++    else if (value === "--all") flags.all = true;
++    else if (value === "--dangerous") flags.dangerous = true;
++    else if (value === "--delete-branch") flags.deleteBranch = true;
++    else if (value === "--approve") flags.approve = true;
++    else flags.positionals.push(value);
++  }
++  return flags;
++}
++
++function printJson(value: unknown): void {
++  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
++}
++
++function printCheck(result: ReturnType<typeof checkTask>): void {
++  console.log(`${result.ok ? "PASS" : "FAIL"}: task ${result.task_id}`);
++  console.log(`Branch: ${result.branch}`);
++  console.log(`Worktree: ${result.worktree}`);
++  console.log(`Base: ${result.base_ref} (${result.base_commit})`);
++  console.log(`Merge base: ${result.merge_base}`);
++  console.log(`Changed files (${result.changed_files.length}):`);
++  for (const file of result.changed_files) console.log(`  ${file}`);
++  if (result.issues.length > 0) {
++    console.log(`Issues (${result.issues.length}):`);
++    for (const issue of result.issues) {
++      console.log(`  ${issue.severity} ${issue.code}${issue.file ? ` ${issue.file}${issue.line ? `:${issue.line}` : ""}` : ""}: ${issue.message}`);
++    }
++  }
++  for (const validation of result.validation) {
++    console.log(`Validation ${validation.passed ? "PASS" : "FAIL"} (${validation.exit_code}): ${validation.command}`);
++  }
++}
++
++function usage(): never {
++  console.error(
++    "Usage: agent-workflow <start|status|check|finish|review|cleanup|ci> [task-id-or-file] [--json]",
++  );
++  process.exit(2);
++}
++
++const [command, ...args] = process.argv.slice(2);
++if (!command) usage();
++const flags = parseFlags(args);
++
++try {
++  const repoRoot = findRepoRoot();
++  if (command === "start") {
++    const taskArg = flags.positionals[0];
++    if (!taskArg) usage();
++    const result = startTask(repoRoot, taskArg);
++    if (flags.json) printJson(result);
++    else {
++      console.log(`${result.reused ? "Reused" : "Created"} task worktree: ${result.worktree}`);
++      console.log(`Branch: ${result.branch}`);
++      console.log(`Base: ${result.base_ref} (${result.base_commit})`);
++      console.log(`Task: ${result.task_file}`);
++      console.log("Next instructions:");
++      for (const instruction of result.next_instructions) console.log(`  ${instruction}`);
++    }
++  } else if (command === "status") {
++    const result = taskStatus(repoRoot, flags.all);
++    if (flags.json) printJson(result);
++    else if (result.length === 0) console.log("No active task contracts found.");
++    else {
++      for (const task of result) {
++        console.log(`${task.id}: ${task.status} / ${task.risk} / ${task.reconciliation}`);
++        console.log(`  ${task.owner} -> ${task.reviewer}`);
++        console.log(`  ${task.branch}`);
++        console.log(`  ${task.worktree}`);
++        console.log(`  modified: ${task.modified === null ? "unknown" : task.modified}`);
++        for (const detail of task.details) console.log(`  warning: ${detail}`);
++      }
++    }
++  } else if (command === "check") {
++    const resolved = resolveTask(repoRoot, flags.positionals[0]);
++    const result = checkTask(repoRoot, resolved.task, {
++      taskFile: resolved.file,
++      runValidation: flags.runValidation,
++      requireClean: true,
++    });
++    if (flags.json) printJson(result);
++    else printCheck(result);
++    if (!result.ok) process.exitCode = 1;
++  } else if (command === "finish") {
++    const result = finishTask(repoRoot, flags.positionals[0]);
++    const output = { report: relative(repoRoot, result.report), ...result.result };
++    if (flags.json) printJson(output);
++    else {
++      printCheck(result.result);
++      console.log(`Completion record: ${relative(repoRoot, result.report)}`);
++    }
++    if (!result.result.ok) process.exitCode = 1;
++  } else if (command === "review") {
++    const result = reviewTask(repoRoot, flags.positionals[0], flags.approve);
++    const output = {
++      report: relative(repoRoot, result.report),
++      diff: relative(repoRoot, result.diff),
++      approved: flags.approve && result.result.ok,
++      ...result.result,
++    };
++    if (flags.json) printJson(output);
++    else {
++      printCheck(result.result);
++      console.log(`Review record: ${relative(repoRoot, result.report)}`);
++      console.log(`Full diff: ${relative(repoRoot, result.diff)}`);
++      if (!flags.approve) console.log("Semantic reviewer attestation still required; rerun with --approve only after review.");
++    }
++    if (!result.result.ok || !flags.approve) process.exitCode = 1;
++  } else if (command === "cleanup") {
++    const taskArg = flags.positionals[0];
++    if (!taskArg) usage();
++    const result = cleanupTask(repoRoot, taskArg, {
++      dangerous: flags.dangerous,
++      deleteBranch: flags.deleteBranch,
++    });
++    if (flags.json) printJson(result);
++    else {
++      console.log(`Removed worktree: ${result.worktree}`);
++      console.log(`Pruned stale metadata: ${result.pruned}`);
++      console.log(`Deleted branch: ${result.deleted_branch}`);
++    }
++  } else if (command === "ci") {
++    const result = ciCheck(repoRoot, process.env.GITHUB_BASE_REF || flags.positionals[0]);
++    if (flags.json) printJson(result);
++    else {
++      console.log(result.message);
++      if (result.result) printCheck(result.result);
++    }
++    if (result.result && !result.result.ok) process.exitCode = 1;
++  } else {
++    usage();
++  }
++} catch (error) {
++  const workflowError = error instanceof WorkflowError ? error : new WorkflowError(String(error), "UNEXPECTED_ERROR");
++  if (flags.json) printJson({ ok: false, error: { code: workflowError.code, message: workflowError.message } });
++  else console.error(`${workflowError.code}: ${workflowError.message}`);
++  process.exitCode = 1;
++}
+diff --git a/scripts/agent-workflow/core.test.ts b/scripts/agent-workflow/core.test.ts
+new file mode 100644
+index 0000000..710f1a4
+--- /dev/null
++++ b/scripts/agent-workflow/core.test.ts
+@@ -0,0 +1,378 @@
++import { spawnSync } from "node:child_process";
++import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { dirname, join, resolve } from "node:path";
++
++import { afterEach, describe, expect, it } from "vitest";
++import { stringify } from "yaml";
++
++import {
++  WorkflowError,
++  acquireTaskLock,
++  checkTask,
++  cleanupTask,
++  finishTask,
++  readTaskFile,
++  reviewTask,
++  runValidationCommand,
++  sanitizeOutput,
++  startTask,
++  taskStatus,
++  validateTaskContract,
++  writeTaskState,
++} from "./core";
++import type { TaskContract } from "./types";
++
++const temporaryRoots: string[] = [];
++
++function git(cwd: string, ...args: string[]): string {
++  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
++  if (result.status !== 0) {
++    throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
++  }
++  return (result.stdout ?? "").trim();
++}
++
++function write(path: string, content: string): void {
++  mkdirSync(dirname(path), { recursive: true });
++  writeFileSync(path, content);
++}
++
++function initializeRepo(): { root: string; remote: string; scratch: string } {
++  const scratch = mkdtempSync(join(tmpdir(), "sello-agent-workflow-"));
++  temporaryRoots.push(scratch);
++  const root = join(scratch, "repo");
++  const remote = join(scratch, "origin.git");
++  mkdirSync(root);
++  git(root, "init", "-b", "develop");
++  git(root, "config", "user.email", "agent-tests@example.invalid");
++  git(root, "config", "user.name", "Agent Workflow Tests");
++  write(join(root, "AGENTS.md"), "# Test agent rules\n");
++  write(join(root, ".agent", "tasks", "active", ".gitkeep"), "");
++  write(join(root, ".agent", "tasks", "backlog", ".gitkeep"), "");
++  write(join(root, ".agent", "tasks", "examples", ".gitkeep"), "");
++  write(join(root, ".agent", "completed", ".gitkeep"), "");
++  write(join(root, ".agent", "reviews", ".gitkeep"), "");
++  write(join(root, ".agent", "state", ".gitkeep"), "");
++  write(join(root, "src", "components", "seed.ts"), "export const seed = true;\n");
++  git(root, "add", ".");
++  git(root, "commit", "-m", "base");
++  mkdirSync(remote);
++  git(remote, "init", "--bare");
++  git(root, "remote", "add", "origin", remote);
++  git(root, "push", "-u", "origin", "develop");
++  return { root, remote, scratch };
++}
++
++function contract(root: string, overrides: Partial<TaskContract> = {}): TaskContract {
++  return {
++    id: "test-task-001",
++    title: "Test task",
++    status: "ready",
++    owner: "Cursor/Grok",
++    reviewer: "Codex",
++    risk: "low",
++    task_type: "frontend",
++    base_branch: "develop",
++    working_branch: "feature/test-task-001",
++    worktree_path: join(dirname(root), "test-task-worktree"),
++    created_at: "2026-07-10T00:00:00.000Z",
++    goal: "Exercise the workflow without changing product behavior.",
++    context: "Temporary test repository.",
++    non_goals: ["No deployment."],
++    allowed_paths: [".agent/**", "src/components/**"],
++    protected_paths: ["prisma/**", "src/app/api/**"],
++    required_reading: ["AGENTS.md"],
++    acceptance: ["Workflow behavior is deterministic."],
++    validation: ["node -e \"process.exit(0)\""],
++    full_validation_required: false,
++    documentation: [],
++    review_requirements: ["Review path policy."],
++    deployment_authorized: false,
++    merge_authorized: false,
++    notes: "Test-only contract.",
++    ...overrides,
++  };
++}
++
++function addReadyTask(root: string, task = contract(root)): string {
++  const file = join(root, ".agent", "tasks", "backlog", `${task.id}.yaml`);
++  write(file, stringify(task));
++  git(root, "add", ".");
++  git(root, "commit", "-m", `task: ${task.id}`);
++  git(root, "push", "origin", "develop");
++  return file;
++}
++
++function createActiveBranch(root: string, task = contract(root)): { task: TaskContract; file: string; base: string } {
++  addReadyTask(root, task);
++  const base = git(root, "rev-parse", "origin/develop");
++  git(root, "checkout", "-b", task.working_branch);
++  const backlog = join(root, ".agent", "tasks", "backlog", `${task.id}.yaml`);
++  const active = join(root, ".agent", "tasks", "active", `${task.id}.yaml`);
++  const activeTask = { ...task, status: "active" as const, worktree_path: root };
++  rmSync(backlog);
++  write(active, stringify(activeTask));
++  writeTaskState(root, {
++    task_id: task.id,
++    task_file: `.agent/tasks/active/${task.id}.yaml`,
++    base_branch: task.base_branch,
++    base_commit: base,
++    working_branch: task.working_branch,
++    worktree_path: root,
++    created_at: "2026-07-10T00:00:00.000Z",
++    updated_at: "2026-07-10T00:00:00.000Z",
++    started_by: "test",
++    status: "active",
++  });
++  git(root, "add", ".");
++  git(root, "commit", "-m", "start task");
++  return { task: activeTask, file: active, base };
++}
++
++afterEach(() => {
++  while (temporaryRoots.length > 0) rmSync(temporaryRoots.pop()!, { recursive: true, force: true });
++});
++
++describe("task-contract parsing", () => {
++  it("accepts a valid task contract", () => {
++    const { root } = initializeRepo();
++    expect(validateTaskContract(contract(root), root).id).toBe("test-task-001");
++  });
++
++  it("rejects invalid or missing required fields", () => {
++    const { root } = initializeRepo();
++    expect(() => validateTaskContract({ ...contract(root), allowed_paths: [] }, root)).toThrowError(WorkflowError);
++    expect(() => validateTaskContract({ ...contract(root), deployment_authorized: "no" }, root)).toThrowError(
++      /deployment_authorized/,
++    );
++  });
++});
++
++describe("agent:start", () => {
++  it("creates a worktree, branch, active contract, and state record", () => {
++    const { root } = initializeRepo();
++    const task = contract(root);
++    addReadyTask(root, task);
++    const result = startTask(root, task.id);
++    expect(result.reused).toBe(false);
++    expect(git(task.worktree_path, "branch", "--show-current")).toBe(task.working_branch);
++    expect(existsSync(join(task.worktree_path, ".agent", "state", `${task.id}.json`))).toBe(true);
++    expect(readTaskFile(join(task.worktree_path, ".agent", "tasks", "active", `${task.id}.yaml`), task.worktree_path).status).toBe(
++      "active",
++    );
++  });
++
++  it("detects and safely reuses an existing matching worktree", () => {
++    const { root } = initializeRepo();
++    const task = contract(root);
++    addReadyTask(root, task);
++    startTask(root, task.id);
++    expect(startTask(root, task.id).reused).toBe(true);
++  });
++
++  it("uses an existing local branch that is not checked out", () => {
++    const { root } = initializeRepo();
++    const task = contract(root);
++    addReadyTask(root, task);
++    git(root, "branch", task.working_branch, "origin/develop");
++    expect(startTask(root, task.id).branch).toBe(task.working_branch);
++  });
++
++  it("refuses when the branch is checked out in a different worktree", () => {
++    const { root, scratch } = initializeRepo();
++    const task = contract(root);
++    addReadyTask(root, task);
++    const other = join(scratch, "unrelated-worktree");
++    git(root, "worktree", "add", "-b", task.working_branch, other, "origin/develop");
++    expect(() => startTask(root, task.id)).toThrowError(/already in use/);
++  });
++});
++
++describe("agent:check policy", () => {
++  it("accepts allowed paths", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root);
++    write(join(root, "src", "components", "allowed.ts"), "export const allowed = true;\n");
++    git(root, "add", ".");
++    git(root, "commit", "-m", "allowed change");
++    expect(checkTask(root, active.task).ok).toBe(true);
++  });
++
++  it("rejects unauthorized paths", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root);
++    write(join(root, "README.md"), "unauthorized\n");
++    git(root, "add", ".");
++    git(root, "commit", "-m", "unauthorized change");
++    expect(checkTask(root, active.task).issues.some((issue) => issue.code === "UNAUTHORIZED_PATH")).toBe(true);
++  });
++
++  it("rejects protected paths even when broadly allowed", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root, contract(root, { allowed_paths: ["**"] }));
++    write(join(root, "prisma", "schema.prisma"), "datasource db {}\n");
++    git(root, "add", ".");
++    git(root, "commit", "-m", "protected change");
++    expect(checkTask(root, active.task).issues.some((issue) => issue.code === "PROTECTED_PATH")).toBe(true);
++  });
++
++  it("rejects deletion of a protected path", () => {
++    const { root } = initializeRepo();
++    write(join(root, "prisma", "protected.txt"), "protected\n");
++    git(root, "add", ".");
++    git(root, "commit", "-m", "protected base file");
++    git(root, "push", "origin", "develop");
++    const active = createActiveBranch(root, contract(root, { allowed_paths: ["**"] }));
++    rmSync(join(root, "prisma", "protected.txt"));
++    git(root, "add", ".");
++    git(root, "commit", "-m", "delete protected file");
++    expect(checkTask(root, active.task).issues.some((issue) => issue.code === "PROTECTED_PATH")).toBe(true);
++  });
++
++  it("rejects committed secret files", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root, contract(root, { allowed_paths: ["**"] }));
++    write(join(root, ".env.local"), "SAFE_TEST_VALUE=placeholder\n");
++    git(root, "add", "-f", ".env.local");
++    git(root, "commit", "-m", "secret file fixture");
++    expect(checkTask(root, active.task).issues.some((issue) => issue.code === "SECRET_FILE")).toBe(true);
++  });
++
++  it("detects unresolved merge markers", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root);
++    write(join(root, "src", "components", "conflict.ts"), "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> branch\n");
++    git(root, "add", ".");
++    git(root, "commit", "-m", "conflict marker fixture");
++    expect(checkTask(root, active.task).issues.some((issue) => issue.code === "MERGE_MARKER")).toBe(true);
++  });
++
++  it("detects a dirty worktree", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root);
++    write(join(root, "src", "components", "dirty.ts"), "export const dirty = true;\n");
++    expect(checkTask(root, active.task).issues.some((issue) => issue.code === "DIRTY_WORKTREE")).toBe(true);
++  });
++});
++
++describe("validation and evidence", () => {
++  it("normalizes carriage-return progress output before writing evidence", () => {
++    expect(sanitizeOutput("step one  \r\nstep two\rprogress  ")).toBe("step one\nstep twoprogress");
++  });
++
++  it("refuses concurrent mutating actions for the same task", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root);
++    const release = acquireTaskLock(root, active.task.id, "test-holder");
++    try {
++      expect(() => finishTask(root, active.task.id)).toThrowError(/locked by test-holder/);
++    } finally {
++      release();
++    }
++  });
++
++  it("executes validation commands and captures a successful exit code", () => {
++    const { root } = initializeRepo();
++    const result = runValidationCommand("node -e \"console.log('ok')\"", root);
++    expect(result).toMatchObject({ exit_code: 0, passed: true });
++    expect(result.stdout_summary).toContain("ok");
++  });
++
++  it("captures the exact failing exit code", () => {
++    const { root } = initializeRepo();
++    expect(runValidationCommand("node -e \"process.exit(7)\"", root)).toMatchObject({ exit_code: 7, passed: false });
++  });
++
++  it("generates a completion record with actual hashes and command evidence", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root);
++    const result = finishTask(root, active.task.id);
++    const report = readFileSync(result.report, "utf8");
++    expect(result.result.ok).toBe(true);
++    expect(report).toContain(`- Final commit: ${git(root, "rev-parse", "HEAD")}`);
++    expect(report).toContain("- Exit code: 0");
++    expect(existsSync(join(root, ".agent", "completed", `${active.task.id}.yaml`))).toBe(true);
++  });
++
++  it("keeps a blocked task contract active while recording failure evidence", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(
++      root,
++      contract(root, { validation: ["node -e \"process.exit(9)\""] }),
++    );
++    const result = finishTask(root, active.task.id);
++    expect(result.result.ok).toBe(false);
++    expect(readTaskFile(active.file, root).status).toBe("blocked");
++    expect(readFileSync(result.report, "utf8")).toContain("- Exit code: 9");
++  });
++
++  it("generates a review record and full diff artifact", () => {
++    const { root } = initializeRepo();
++    const active = createActiveBranch(root);
++    const result = reviewTask(root, active.task.id, false);
++    expect(existsSync(result.report)).toBe(true);
++    expect(existsSync(result.diff)).toBe(true);
++    expect(readFileSync(result.report, "utf8")).toContain("NOT MERGE READY");
++  });
++
++  it("emits parseable JSON through the CLI", () => {
++    const { root } = initializeRepo();
++    const task = contract(root, { status: "active", worktree_path: root });
++    const file = join(root, ".agent", "tasks", "active", `${task.id}.yaml`);
++    write(file, stringify(task));
++    const cli = resolve(import.meta.dirname, "cli.ts");
++    const tsx = resolve(import.meta.dirname, "..", "..", "node_modules", ".bin", "tsx");
++    const result = spawnSync(tsx, [cli, "status", "--json"], { cwd: root, encoding: "utf8" });
++    expect(result.status).toBe(0);
++    expect(() => JSON.parse(result.stdout)).not.toThrow();
++  });
++});
++
++describe("agent:cleanup and reconciliation", () => {
++  it("safely removes a clean, pushed, completed, merged worktree", () => {
++    const { root } = initializeRepo();
++    const task = contract(root);
++    addReadyTask(root, task);
++    startTask(root, task.id);
++    git(task.worktree_path, "add", ".");
++    git(task.worktree_path, "commit", "-m", "start metadata");
++    finishTask(task.worktree_path, task.id);
++    git(task.worktree_path, "add", ".");
++    git(task.worktree_path, "commit", "-m", "finish evidence");
++    git(task.worktree_path, "push", "-u", "origin", task.working_branch);
++    git(root, "merge", "--no-ff", task.working_branch, "-m", "merge test task");
++    git(root, "push", "origin", "develop");
++    const result = cleanupTask(root, task.id);
++    expect(result.removed_worktree).toBe(true);
++    expect(existsSync(task.worktree_path)).toBe(false);
++  });
++
++  it("refuses to clean an unmerged task", () => {
++    const { root } = initializeRepo();
++    const task = contract(root);
++    addReadyTask(root, task);
++    startTask(root, task.id);
++    git(task.worktree_path, "add", ".");
++    git(task.worktree_path, "commit", "-m", "start metadata");
++    git(task.worktree_path, "push", "-u", "origin", task.working_branch);
++    expect(() => cleanupTask(root, task.id)).toThrowError(/unmerged branch/);
++  });
++
++  it("refuses to destroy dirty work", () => {
++    const { root } = initializeRepo();
++    const task = contract(root);
++    addReadyTask(root, task);
++    startTask(root, task.id);
++    write(join(task.worktree_path, "src", "components", "dirty.ts"), "dirty\n");
++    expect(() => cleanupTask(root, task.id)).toThrowError(/dirty worktree/);
++  });
++
++  it("flags stale or missing declared worktrees", () => {
++    const { root } = initializeRepo();
++    const task = contract(root, { status: "active" });
++    write(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), stringify(task));
++    const [entry] = taskStatus(root);
++    expect(["missing", "stale"]).toContain(entry.reconciliation);
++  });
++});
+diff --git a/scripts/agent-workflow/core.ts b/scripts/agent-workflow/core.ts
+new file mode 100644
+index 0000000..6aed9b3
+--- /dev/null
++++ b/scripts/agent-workflow/core.ts
+@@ -0,0 +1,1161 @@
++import { spawnSync } from "node:child_process";
++import { randomUUID } from "node:crypto";
++import {
++  closeSync,
++  existsSync,
++  lstatSync,
++  mkdirSync,
++  openSync,
++  readFileSync,
++  readdirSync,
++  realpathSync,
++  renameSync,
++  rmSync,
++  statSync,
++  writeFileSync,
++} from "node:fs";
++import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
++import { userInfo } from "node:os";
++
++import picomatch from "picomatch";
++import { parseDocument } from "yaml";
++
++import {
++  TASK_RISKS,
++  TASK_STATUSES,
++  TASK_TYPES,
++  type CheckIssue,
++  type CheckResult,
++  type TaskContract,
++  type TaskState,
++  type ValidationResult,
++} from "./types";
++
++type GitResult = { status: number; stdout: string; stderr: string };
++
++export class WorkflowError extends Error {
++  constructor(
++    message: string,
++    readonly code = "WORKFLOW_ERROR",
++  ) {
++    super(message);
++  }
++}
++
++function splitLines(value: string): string[] {
++  return value
++    .split(/\r?\n/)
++    .map((line) => line.trim())
++    .filter(Boolean);
++}
++
++export function runGit(
++  cwd: string,
++  args: string[],
++  options: { allowFailure?: boolean } = {},
++): GitResult {
++  const result = spawnSync("git", args, {
++    cwd,
++    encoding: "utf8",
++    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
++  });
++  const status = result.status ?? 1;
++  const stdout = result.stdout ?? "";
++  const stderr = result.stderr ?? "";
++  if (status !== 0 && !options.allowFailure) {
++    throw new WorkflowError(
++      `git ${args.join(" ")} failed (${status}): ${sanitizeOutput(stderr || stdout)}`,
++      "GIT_COMMAND_FAILED",
++    );
++  }
++  return { status, stdout, stderr };
++}
++
++export function findRepoRoot(cwd = process.cwd()): string {
++  return runGit(cwd, ["rev-parse", "--show-toplevel"]).stdout.trim();
++}
++
++function processIsAlive(pid: number): boolean {
++  if (!Number.isInteger(pid) || pid <= 0) return false;
++  try {
++    process.kill(pid, 0);
++    return true;
++  } catch (error) {
++    return (error as NodeJS.ErrnoException).code === "EPERM";
++  }
++}
++
++export function acquireTaskLock(repoRoot: string, taskId: string, action: string): () => void {
++  const commonDirRaw = runGit(repoRoot, ["rev-parse", "--git-common-dir"]).stdout.trim();
++  const commonDir = resolve(repoRoot, commonDirRaw);
++  const lockDirectory = join(commonDir, "agent-workflow-locks");
++  const lockPath = join(lockDirectory, `${taskId}.lock`);
++  mkdirSync(lockDirectory, { recursive: true });
++  const token = randomUUID();
++
++  const createLock = (): void => {
++    try {
++      const fd = openSync(lockPath, "wx", 0o600);
++      writeFileSync(
++        fd,
++        `${JSON.stringify({ task_id: taskId, action, pid: process.pid, token, created_at: new Date().toISOString() }, null, 2)}\n`,
++      );
++      closeSync(fd);
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
++      let existing: { pid?: number; action?: string; created_at?: string } = {};
++      try {
++        existing = JSON.parse(readFileSync(lockPath, "utf8")) as typeof existing;
++      } catch {
++        // A malformed lock remains authoritative until it is old enough to be safely stale.
++      }
++      const ageMs = Date.now() - statSync(lockPath).mtimeMs;
++      const stale = existing.pid ? !processIsAlive(existing.pid) : ageMs > 60 * 60 * 1000;
++      if (stale) {
++        rmSync(lockPath, { force: true });
++        createLock();
++        return;
++      }
++      throw new WorkflowError(
++        `Task '${taskId}' is locked by ${existing.action ?? "another workflow action"} (pid ${existing.pid ?? "unknown"}). Wait for it to finish or investigate the live process.`,
++        "TASK_LOCKED",
++      );
++    }
++  };
++
++  createLock();
++  return () => {
++    if (!existsSync(lockPath)) return;
++    try {
++      const existing = JSON.parse(readFileSync(lockPath, "utf8")) as { token?: string };
++      if (existing.token === token) rmSync(lockPath, { force: true });
++    } catch {
++      // Never remove a lock that can no longer be proven to belong to this process.
++    }
++  };
++}
++
++export function currentBranch(cwd: string): string {
++  return runGit(cwd, ["branch", "--show-current"]).stdout.trim();
++}
++
++export function resolveBaseRef(repoRoot: string, baseBranch: string): string {
++  const remote = `refs/remotes/origin/${baseBranch}`;
++  if (runGit(repoRoot, ["show-ref", "--verify", "--quiet", remote], { allowFailure: true }).status === 0) {
++    return `origin/${baseBranch}`;
++  }
++  const local = `refs/heads/${baseBranch}`;
++  if (runGit(repoRoot, ["show-ref", "--verify", "--quiet", local], { allowFailure: true }).status === 0) {
++    return baseBranch;
++  }
++  throw new WorkflowError(`Declared base branch '${baseBranch}' does not exist locally or at origin.`, "BASE_BRANCH_MISSING");
++}
++
++function taskSearchDirectories(repoRoot: string): string[] {
++  return [
++    join(repoRoot, ".agent", "tasks", "active"),
++    join(repoRoot, ".agent", "tasks", "backlog"),
++    join(repoRoot, ".agent", "tasks", "examples"),
++    join(repoRoot, ".agent", "completed"),
++  ];
++}
++
++function yamlFiles(directory: string): string[] {
++  if (!existsSync(directory)) return [];
++  return readdirSync(directory, { withFileTypes: true })
++    .filter((entry) => entry.isFile() && /\.ya?ml$/i.test(entry.name))
++    .map((entry) => join(directory, entry.name));
++}
++
++export function listTaskFiles(repoRoot: string): string[] {
++  return taskSearchDirectories(repoRoot).flatMap(yamlFiles);
++}
++
++function assertString(value: unknown, field: string): asserts value is string {
++  if (typeof value !== "string" || value.trim() === "") {
++    throw new WorkflowError(`Task field '${field}' must be a non-empty string.`, "INVALID_TASK");
++  }
++}
++
++function assertStringArray(value: unknown, field: string, allowEmpty = false): asserts value is string[] {
++  if (
++    !Array.isArray(value) ||
++    (!allowEmpty && value.length === 0) ||
++    value.some((entry) => typeof entry !== "string" || entry.trim() === "")
++  ) {
++    throw new WorkflowError(
++      `Task field '${field}' must be ${allowEmpty ? "an" : "a non-empty"} array of non-empty strings.`,
++      "INVALID_TASK",
++    );
++  }
++}
++
++function validateBranchName(repoRoot: string, branch: string, field: string): void {
++  const result = runGit(repoRoot, ["check-ref-format", "--branch", branch], { allowFailure: true });
++  if (result.status !== 0) {
++    throw new WorkflowError(`Task field '${field}' is not a valid Git branch name: ${branch}`, "INVALID_TASK");
++  }
++}
++
++export function validateTaskContract(raw: unknown, repoRoot: string): TaskContract {
++  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
++    throw new WorkflowError("Task contract must be a YAML mapping.", "INVALID_TASK");
++  }
++  const value = raw as Record<string, unknown>;
++  const stringFields = [
++    "id",
++    "title",
++    "owner",
++    "reviewer",
++    "base_branch",
++    "working_branch",
++    "worktree_path",
++    "created_at",
++    "goal",
++    "context",
++    "notes",
++  ];
++  for (const field of stringFields) assertString(value[field], field);
++
++  if (!/^[a-z0-9][a-z0-9-]{2,79}$/.test(value.id as string)) {
++    throw new WorkflowError("Task field 'id' must use lowercase letters, digits, and hyphens.", "INVALID_TASK");
++  }
++  if (!TASK_STATUSES.includes(value.status as (typeof TASK_STATUSES)[number])) {
++    throw new WorkflowError(`Task field 'status' must be one of: ${TASK_STATUSES.join(", ")}.`, "INVALID_TASK");
++  }
++  if (!TASK_RISKS.includes(value.risk as (typeof TASK_RISKS)[number])) {
++    throw new WorkflowError(`Task field 'risk' must be one of: ${TASK_RISKS.join(", ")}.`, "INVALID_TASK");
++  }
++  if (!TASK_TYPES.includes(value.task_type as (typeof TASK_TYPES)[number])) {
++    throw new WorkflowError(`Task field 'task_type' must be one of: ${TASK_TYPES.join(", ")}.`, "INVALID_TASK");
++  }
++
++  const arrayFields = [
++    "non_goals",
++    "allowed_paths",
++    "protected_paths",
++    "required_reading",
++    "acceptance",
++    "validation",
++    "documentation",
++    "review_requirements",
++  ];
++  for (const field of arrayFields) assertStringArray(value[field], field, field === "non_goals" || field === "documentation");
++
++  for (const field of ["full_validation_required", "deployment_authorized", "merge_authorized"]) {
++    if (typeof value[field] !== "boolean") {
++      throw new WorkflowError(`Task field '${field}' must be true or false.`, "INVALID_TASK");
++    }
++  }
++
++  if (!isAbsolute(value.worktree_path as string)) {
++    throw new WorkflowError("Task field 'worktree_path' must be an absolute path.", "INVALID_TASK");
++  }
++  validateBranchName(repoRoot, value.base_branch as string, "base_branch");
++  validateBranchName(repoRoot, value.working_branch as string, "working_branch");
++  if (["main", "develop"].includes(value.working_branch as string)) {
++    throw new WorkflowError("A task working branch cannot be main or develop.", "INVALID_TASK");
++  }
++  if (!/^(feature|fix|chore|security|docs|test)\//.test(value.working_branch as string)) {
++    throw new WorkflowError(
++      "Task working_branch must start with feature/, fix/, chore/, security/, docs/, or test/.",
++      "INVALID_TASK",
++    );
++  }
++  if (Number.isNaN(Date.parse(value.created_at as string))) {
++    throw new WorkflowError("Task field 'created_at' must be an ISO-8601 date or timestamp.", "INVALID_TASK");
++  }
++  return value as TaskContract;
++}
++
++export function readTaskFile(file: string, repoRoot: string): TaskContract {
++  const document = parseDocument(readFileSync(file, "utf8"));
++  if (document.errors.length > 0) {
++    throw new WorkflowError(
++      `Invalid YAML in ${relative(repoRoot, file)}: ${document.errors.map((error) => error.message).join("; ")}`,
++      "INVALID_YAML",
++    );
++  }
++  return validateTaskContract(document.toJS(), repoRoot);
++}
++
++export function resolveTask(
++  repoRoot: string,
++  taskArg?: string,
++  options: { allowExample?: boolean } = {},
++): { file: string; task: TaskContract } {
++  let candidates: string[] = [];
++  if (taskArg) {
++    const direct = resolve(repoRoot, taskArg);
++    if (existsSync(direct) && statSync(direct).isFile()) {
++      candidates = [direct];
++    } else {
++      candidates = listTaskFiles(repoRoot).filter((file) => {
++        if (basename(file).replace(/\.ya?ml$/i, "") === taskArg) return true;
++        try {
++          return readTaskFile(file, repoRoot).id === taskArg;
++        } catch {
++          return false;
++        }
++      });
++    }
++  } else {
++    const branch = currentBranch(repoRoot);
++    candidates = listTaskFiles(repoRoot).filter((file) => {
++      try {
++        return readTaskFile(file, repoRoot).working_branch === branch;
++      } catch {
++        return false;
++      }
++    });
++  }
++
++  if (candidates.length === 0) {
++    throw new WorkflowError(
++      taskArg ? `No task contract found for '${taskArg}'.` : "No task contract matches the current branch.",
++      "TASK_NOT_FOUND",
++    );
++  }
++  if (candidates.length > 1) {
++    throw new WorkflowError(
++      `Task resolution is ambiguous: ${candidates.map((file) => relative(repoRoot, file)).join(", ")}`,
++      "TASK_AMBIGUOUS",
++    );
++  }
++  const file = candidates[0];
++  if (!options.allowExample && file.includes(`${sep}examples${sep}`)) {
++    throw new WorkflowError("Example task contracts cannot be started or completed.", "EXAMPLE_TASK");
++  }
++  return { file, task: readTaskFile(file, repoRoot) };
++}
++
++export function updateTaskFile(
++  file: string,
++  updates: Partial<Record<keyof TaskContract, unknown>>,
++): void {
++  const document = parseDocument(readFileSync(file, "utf8"));
++  for (const [key, value] of Object.entries(updates)) document.set(key, value);
++  writeFileSync(file, document.toString({ lineWidth: 0 }));
++}
++
++export function taskStatePath(repoRoot: string, taskId: string): string {
++  return join(repoRoot, ".agent", "state", `${taskId}.json`);
++}
++
++export function writeTaskState(repoRoot: string, state: TaskState): string {
++  const path = taskStatePath(repoRoot, state.task_id);
++  mkdirSync(dirname(path), { recursive: true });
++  writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`);
++  return path;
++}
++
++export function readTaskState(repoRoot: string, taskId: string): TaskState | null {
++  const path = taskStatePath(repoRoot, taskId);
++  if (!existsSync(path)) return null;
++  return JSON.parse(readFileSync(path, "utf8")) as TaskState;
++}
++
++export type WorktreeRecord = {
++  worktree: string;
++  head: string;
++  branch: string | null;
++  bare: boolean;
++  detached: boolean;
++};
++
++export function listWorktrees(repoRoot: string): WorktreeRecord[] {
++  const records: WorktreeRecord[] = [];
++  let current: Partial<WorktreeRecord> = {};
++  for (const line of runGit(repoRoot, ["worktree", "list", "--porcelain"]).stdout.split(/\r?\n/)) {
++    if (line === "") {
++      if (current.worktree) {
++        records.push({
++          worktree: current.worktree,
++          head: current.head ?? "",
++          branch: current.branch ?? null,
++          bare: current.bare ?? false,
++          detached: current.detached ?? false,
++        });
++      }
++      current = {};
++    } else if (line.startsWith("worktree ")) current.worktree = line.slice(9);
++    else if (line.startsWith("HEAD ")) current.head = line.slice(5);
++    else if (line.startsWith("branch ")) current.branch = line.slice(7).replace(/^refs\/heads\//, "");
++    else if (line === "bare") current.bare = true;
++    else if (line === "detached") current.detached = true;
++  }
++  if (current.worktree) {
++    records.push({
++      worktree: current.worktree,
++      head: current.head ?? "",
++      branch: current.branch ?? null,
++      bare: current.bare ?? false,
++      detached: current.detached ?? false,
++    });
++  }
++  return records;
++}
++
++function samePath(left: string, right: string): boolean {
++  const normalize = (value: string) => {
++    try {
++      return realpathSync(value);
++    } catch {
++      return resolve(value);
++    }
++  };
++  return normalize(left) === normalize(right);
++}
++
++function moveTaskToActive(targetRoot: string, task: TaskContract): string {
++  const matches = listTaskFiles(targetRoot).filter((file) => {
++    try {
++      return readTaskFile(file, targetRoot).id === task.id;
++    } catch {
++      return false;
++    }
++  });
++  if (matches.length !== 1) {
++    throw new WorkflowError(
++      `The new worktree must contain exactly one copy of task '${task.id}', found ${matches.length}. Commit the task contract to ${task.base_branch} before starting it.`,
++      "TASK_NOT_IN_BASE",
++    );
++  }
++  const source = matches[0];
++  const activeDirectory = join(targetRoot, ".agent", "tasks", "active");
++  mkdirSync(activeDirectory, { recursive: true });
++  const target = join(activeDirectory, `${task.id}.yaml`);
++  if (!samePath(source, target)) {
++    if (existsSync(target)) {
++      throw new WorkflowError(`Active task path already exists: ${target}`, "TASK_PATH_CONFLICT");
++    }
++    renameSync(source, target);
++  }
++  updateTaskFile(target, { status: "active" });
++  return target;
++}
++
++export type StartResult = {
++  task_id: string;
++  reused: boolean;
++  branch: string;
++  worktree: string;
++  base_ref: string;
++  base_commit: string;
++  task_file: string;
++  state_file: string;
++  next_instructions: string[];
++};
++
++export function startTask(repoRoot: string, taskArg: string): StartResult {
++  const { task } = resolveTask(repoRoot, taskArg);
++  if (!(["backlog", "ready"] as string[]).includes(task.status)) {
++    throw new WorkflowError(`Task '${task.id}' has status '${task.status}', not backlog or ready.`, "TASK_NOT_STARTABLE");
++  }
++
++  const releaseLock = acquireTaskLock(repoRoot, task.id, "start");
++  try {
++
++    runGit(repoRoot, ["fetch", "origin"]);
++  const baseRef = resolveBaseRef(repoRoot, task.base_branch);
++  const baseCommit = runGit(repoRoot, ["rev-parse", baseRef]).stdout.trim();
++  const worktrees = listWorktrees(repoRoot);
++  const pathRecord = worktrees.find((record) => samePath(record.worktree, task.worktree_path));
++  const branchRecord = worktrees.find((record) => record.branch === task.working_branch);
++  let reused = false;
++
++  if (pathRecord || branchRecord) {
++    if (
++      pathRecord &&
++      branchRecord &&
++      samePath(pathRecord.worktree, branchRecord.worktree) &&
++      pathRecord.branch === task.working_branch
++    ) {
++      reused = true;
++    } else {
++      throw new WorkflowError(
++        `Declared branch or worktree is already in use by unrelated state. Branch record: ${branchRecord?.worktree ?? "none"}; path branch: ${pathRecord?.branch ?? "none"}.`,
++        "WORKTREE_CONFLICT",
++      );
++    }
++  } else if (existsSync(task.worktree_path)) {
++    throw new WorkflowError(`Worktree path already exists and is not a registered Git worktree: ${task.worktree_path}`, "WORKTREE_PATH_EXISTS");
++  } else {
++    mkdirSync(dirname(task.worktree_path), { recursive: true });
++    const localBranchExists =
++      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${task.working_branch}`], { allowFailure: true })
++        .status === 0;
++    const remoteBranchExists =
++      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${task.working_branch}`], {
++        allowFailure: true,
++      }).status === 0;
++    if (localBranchExists) {
++      runGit(repoRoot, ["worktree", "add", task.worktree_path, task.working_branch]);
++    } else if (remoteBranchExists) {
++      runGit(repoRoot, [
++        "worktree",
++        "add",
++        "--track",
++        "-b",
++        task.working_branch,
++        task.worktree_path,
++        `origin/${task.working_branch}`,
++      ]);
++    } else {
++      runGit(repoRoot, ["worktree", "add", "-b", task.working_branch, task.worktree_path, baseRef]);
++    }
++  }
++
++  const activeFile = moveTaskToActive(task.worktree_path, task);
++  const now = new Date().toISOString();
++  const state = writeTaskState(task.worktree_path, {
++    task_id: task.id,
++    task_file: relative(task.worktree_path, activeFile),
++    base_branch: task.base_branch,
++    base_commit: baseCommit,
++    working_branch: task.working_branch,
++    worktree_path: task.worktree_path,
++    created_at: now,
++    updated_at: now,
++    started_by: userInfo().username,
++    status: "active",
++  });
++
++    return {
++      task_id: task.id,
++      reused,
++      branch: task.working_branch,
++      worktree: task.worktree_path,
++      base_ref: baseRef,
++      base_commit: baseCommit,
++      task_file: activeFile,
++      state_file: state,
++      next_instructions: [
++        `cd ${quoteShell(task.worktree_path)}`,
++        `Read AGENTS.md and ${relative(task.worktree_path, activeFile)} before editing.`,
++        "Verify the branch and commit the task-start metadata before implementation.",
++        `Run npm run agent:check -- ${task.id} before claiming completion.`,
++      ],
++    };
++  } finally {
++    releaseLock();
++  }
++}
++
++function quoteShell(value: string): string {
++  return `'${value.replaceAll("'", `'\\''`)}'`;
++}
++
++function dirtyFiles(cwd: string): string[] {
++  return runGit(cwd, ["status", "--porcelain=v1", "--untracked-files=all"])
++    .stdout.split(/\r?\n/)
++    .filter((line) => line.length > 0)
++    .map((line) => line.slice(3));
++}
++
++function changedFiles(repoRoot: string, mergeBase: string, headRef = "HEAD"): string[] {
++  const committed = splitLines(
++    runGit(repoRoot, ["diff", "--name-only", "--diff-filter=ACMRD", `${mergeBase}...${headRef}`]).stdout,
++  );
++  if (headRef !== "HEAD") return [...new Set(committed)].sort();
++  const staged = splitLines(runGit(repoRoot, ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"]).stdout);
++  const unstaged = splitLines(runGit(repoRoot, ["diff", "--name-only", "--diff-filter=ACMRD"]).stdout);
++  const untracked = splitLines(runGit(repoRoot, ["ls-files", "--others", "--exclude-standard"]).stdout);
++  return [...new Set([...committed, ...staged, ...unstaged, ...untracked])].sort();
++}
++
++function matchesAny(path: string, patterns: string[]): boolean {
++  return patterns.some((pattern) => picomatch.isMatch(path, pattern, { dot: true }));
++}
++
++const SECRET_FILE_PATTERN = /(^|\/)(?:\.env(?:$|\.)|[^/]+\.(?:pem|key|p12|pfx|jks|keystore)$)/i;
++const SECRET_FILE_EXAMPLE_PATTERN = /(^|\/)\.env(?:\.[^/]*)?\.example$|(^|\/)\.env\.example$/i;
++const SECRET_PATTERNS: Array<{ name: string; pattern: RegExp }> = [
++  { name: "private key", pattern: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
++  { name: "GitHub token", pattern: /\bgh[pousr]_[A-Za-z0-9]{30,}\b/ },
++  { name: "Slack token", pattern: /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/ },
++  { name: "Stripe live secret", pattern: /\bsk_live_[A-Za-z0-9]{16,}\b/ },
++  { name: "AWS access key", pattern: /\bAKIA[0-9A-Z]{16}\b/ },
++  { name: "Google API key", pattern: /\bAIza[0-9A-Za-z_-]{30,}\b/ },
++];
++
++function lineNumber(content: string, index: number): number {
++  return content.slice(0, index).split("\n").length;
++}
++
++function inspectChangedContent(repoRoot: string, files: string[]): CheckIssue[] {
++  const issues: CheckIssue[] = [];
++  for (const file of files) {
++    const absolute = join(repoRoot, file);
++    if (!existsSync(absolute) || !lstatSync(absolute).isFile() || statSync(absolute).size > 1_000_000) continue;
++    const content = readFileSync(absolute, "utf8");
++    const marker = /^(<<<<<<< .+|>>>>>>> .+)$/m.exec(content);
++    if (marker) {
++      issues.push({
++        code: "MERGE_MARKER",
++        severity: "P0",
++        message: "Unresolved merge-conflict marker detected.",
++        file,
++        line: lineNumber(content, marker.index),
++      });
++    }
++    for (const secret of SECRET_PATTERNS) {
++      const match = secret.pattern.exec(content);
++      if (match) {
++        issues.push({
++          code: "CREDENTIAL_PATTERN",
++          severity: "P0",
++          message: `${secret.name} pattern detected in changed content.`,
++          file,
++          line: lineNumber(content, match.index),
++        });
++      }
++    }
++  }
++  return issues;
++}
++
++export function sanitizeOutput(value: string, limit = 1800): string {
++  const redacted = value
++    .replace(/\r/g, "")
++    .replace(/[ \t]+\n/g, "\n")
++    .replace(/[ \t]+$/g, "")
++    .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, "[REDACTED_GITHUB_TOKEN]")
++    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED_SLACK_TOKEN]")
++    .replace(/\bsk_(?:live|test)_[A-Za-z0-9]{10,}\b/g, "[REDACTED_STRIPE_KEY]")
++    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, "[REDACTED_GOOGLE_KEY]")
++    .replace(/(postgres(?:ql)?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1[REDACTED]@")
++    .replace(/((?:TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY)\s*[=:]\s*)[^\s]+/gi, "$1[REDACTED]")
++    .trim();
++  if (redacted.length <= limit) return redacted || "(no output)";
++  return `${redacted.slice(0, limit)}\n… output truncated …`;
++}
++
++export function runValidationCommand(command: string, cwd: string): ValidationResult {
++  const startedAt = new Date();
++  const result = spawnSync(command, {
++    cwd,
++    shell: true,
++    encoding: "utf8",
++    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
++    maxBuffer: 10 * 1024 * 1024,
++  });
++  const endedAt = new Date();
++  const exitCode = result.status ?? 1;
++  return {
++    command,
++    started_at: startedAt.toISOString(),
++    ended_at: endedAt.toISOString(),
++    exit_code: exitCode,
++    stdout_summary: sanitizeOutput(result.stdout ?? ""),
++    stderr_summary: sanitizeOutput(result.stderr ?? ""),
++    passed: exitCode === 0,
++  };
++}
++
++export function checkTask(
++  repoRoot: string,
++  task: TaskContract,
++  options: {
++    taskFile?: string;
++    runValidation?: boolean;
++    requireClean?: boolean;
++    ciMode?: boolean;
++    headRef?: string;
++  } = {},
++): CheckResult {
++  const ciMode = options.ciMode ?? false;
++  const headRef = options.headRef ?? "HEAD";
++  const branch = ciMode ? task.working_branch : currentBranch(repoRoot);
++  const baseRef = resolveBaseRef(repoRoot, task.base_branch);
++  const baseCommit = runGit(repoRoot, ["rev-parse", baseRef]).stdout.trim();
++  const mergeBase = runGit(repoRoot, ["merge-base", baseRef, headRef]).stdout.trim();
++  const changed = changedFiles(repoRoot, mergeBase, headRef);
++  const dirty = headRef === "HEAD" ? dirtyFiles(repoRoot) : [];
++  const issues: CheckIssue[] = [];
++
++  if (!ciMode && branch !== task.working_branch) {
++    issues.push({
++      code: "BRANCH_MISMATCH",
++      severity: "P0",
++      message: `Current branch '${branch}' does not match task branch '${task.working_branch}'.`,
++    });
++  }
++  if (!ciMode && !samePath(repoRoot, task.worktree_path)) {
++    issues.push({
++      code: "WORKTREE_MISMATCH",
++      severity: "P0",
++      message: `Current worktree '${repoRoot}' does not match '${task.worktree_path}'.`,
++    });
++  }
++  if (options.requireClean !== false && dirty.length > 0) {
++    issues.push({
++      code: "DIRTY_WORKTREE",
++      severity: "P1",
++      message: `Worktree has ${dirty.length} uncommitted path(s): ${dirty.join(", ")}`,
++    });
++  }
++
++  for (const file of changed) {
++    if (matchesAny(file, task.protected_paths)) {
++      issues.push({
++        code: "PROTECTED_PATH",
++        severity: "P0",
++        message: "Changed path matches a protected_paths rule.",
++        file,
++      });
++    } else if (!matchesAny(file, task.allowed_paths)) {
++      issues.push({
++        code: "UNAUTHORIZED_PATH",
++        severity: "P1",
++        message: "Changed path does not match any allowed_paths rule.",
++        file,
++      });
++    }
++    if (SECRET_FILE_PATTERN.test(file) && !SECRET_FILE_EXAMPLE_PATTERN.test(file)) {
++      issues.push({
++        code: "SECRET_FILE",
++        severity: "P0",
++        message: "Committed or changed secret-bearing file type is forbidden.",
++        file,
++      });
++    }
++  }
++  issues.push(...inspectChangedContent(repoRoot, changed));
++
++  const state = readTaskState(repoRoot, task.id);
++  if (!state) {
++    issues.push({
++      code: "TASK_STATE_MISSING",
++      severity: "P1",
++      message: `Missing .agent/state/${task.id}.json metadata.`,
++    });
++  } else {
++    const recordedBaseIsKnown =
++      runGit(repoRoot, ["cat-file", "-e", `${state.base_commit}^{commit}`], { allowFailure: true }).status === 0;
++    const recordedBaseIsAncestor =
++      recordedBaseIsKnown &&
++      runGit(repoRoot, ["merge-base", "--is-ancestor", state.base_commit, mergeBase], { allowFailure: true }).status === 0;
++    if (!recordedBaseIsAncestor) {
++      issues.push({
++        code: "BASE_METADATA_DRIFT",
++        severity: "P2",
++        message: `Recorded base ${state.base_commit} is missing or is not an ancestor of merge base ${mergeBase}.`,
++      });
++    }
++    if (state.working_branch !== task.working_branch || !samePath(state.worktree_path, task.worktree_path)) {
++      issues.push({
++        code: "TASK_STATE_CONFLICT",
++        severity: "P0",
++        message: "Task state branch/worktree metadata conflicts with the task contract.",
++      });
++    }
++  }
++
++  if (!task.merge_authorized) {
++    const merged = runGit(repoRoot, ["merge-base", "--is-ancestor", headRef, baseRef], { allowFailure: true }).status === 0;
++    const headCommit = runGit(repoRoot, ["rev-parse", headRef]).stdout.trim();
++    const advancedBeyondRecordedBase = state ? headCommit !== state.base_commit : headCommit !== mergeBase;
++    if (merged && branch !== task.base_branch && advancedBeyondRecordedBase) {
++      issues.push({
++        code: "MERGE_AUTHORIZATION_EXCEEDED",
++        severity: "P0",
++        message: "Task branch appears merged into its base while merge_authorized is false.",
++      });
++    }
++  }
++  if (!task.deployment_authorized && ["main", "production"].includes(branch)) {
++    issues.push({
++      code: "DEPLOYMENT_AUTHORIZATION_EXCEEDED",
++      severity: "P0",
++      message: "Task is on a production branch while deployment_authorized is false.",
++    });
++  }
++
++  const validation = options.runValidation
++    ? task.validation.map((command) => runValidationCommand(command, repoRoot))
++    : [];
++  for (const result of validation) {
++    if (!result.passed) {
++      issues.push({
++        code: "VALIDATION_FAILED",
++        severity: "P1",
++        message: `Validation failed (${result.exit_code}): ${result.command}`,
++      });
++    }
++  }
++
++  return {
++    ok: issues.length === 0,
++    task_id: task.id,
++    branch,
++    worktree: repoRoot,
++    base_ref: baseRef,
++    base_commit: baseCommit,
++    merge_base: mergeBase,
++    changed_files: changed,
++    dirty_files: dirty,
++    issues,
++    validation,
++  };
++}
++
++function markdownCode(value: string): string {
++  return `\`${value.replaceAll("`", "\\`")}\``;
++}
++
++function listOrNone(values: string[], formatter = (value: string) => value): string {
++  return values.length > 0 ? values.map((value) => `- ${formatter(value)}`).join("\n") : "- None";
++}
++
++function validationMarkdown(results: ValidationResult[]): string {
++  if (results.length === 0) return "- No validation commands ran.";
++  return results
++    .map(
++      (result) =>
++        `### ${markdownCode(result.command)}\n\n` +
++        `- Start: ${result.started_at}\n` +
++        `- End: ${result.ended_at}\n` +
++        `- Exit code: ${result.exit_code}\n` +
++        `- Result: ${result.passed ? "PASS" : "FAIL"}\n` +
++        `- Stdout summary:\n\n\`\`\`text\n${result.stdout_summary}\n\`\`\`\n` +
++        `- Stderr summary:\n\n\`\`\`text\n${result.stderr_summary}\n\`\`\``,
++    )
++    .join("\n\n");
++}
++
++export function completionMarkdown(args: {
++  task: TaskContract;
++  state: TaskState | null;
++  finalCommit: string;
++  changedFiles: string[];
++  validation: ValidationResult[];
++  status: "COMPLETED" | "BLOCKED";
++  reviewFindingsResolved?: string[];
++}): string {
++  const { task, state, finalCommit, changedFiles, validation, status } = args;
++  const failed = validation.filter((result) => !result.passed);
++  return `# Completion: ${task.id}\n\n` +
++    `## Task metadata\n\n` +
++    `- Task ID: ${task.id}\n` +
++    `- Status: ${status}\n` +
++    `- Owner: ${task.owner}\n` +
++    `- Reviewer: ${task.reviewer}\n` +
++    `- Branch: ${task.working_branch}\n` +
++    `- Worktree: ${task.worktree_path}\n` +
++    `- Base branch: ${task.base_branch}\n` +
++    `- Base commit: ${state?.base_commit ?? "UNKNOWN"}\n` +
++    `- Final commit: ${finalCommit}\n` +
++    `- Timestamp: ${new Date().toISOString()}\n\n` +
++    `## Changed files\n\n${listOrNone(changedFiles, markdownCode)}\n\n` +
++    `## Behavior changed\n\n- ${task.goal}\n\n` +
++    `## Behavior intentionally unchanged\n\n${listOrNone(task.non_goals)}\n\n` +
++    `## Acceptance criteria results\n\n${task.acceptance.map((criterion) => `- ${status === "COMPLETED" ? "PASS" : "NOT COMPLETE"}: ${criterion}`).join("\n")}\n\n` +
++    `## Validation commands and evidence\n\n${validationMarkdown(validation)}\n\n` +
++    `## Introduced versus pre-existing failures\n\n` +
++    (failed.length === 0
++      ? "- No validation failures were observed.\n"
++      : "- Failures remain unclassified unless a separate clean-base run proves they are pre-existing. This report makes no unsupported pre-existing-failure claim.\n") +
++    `\n## Tests added or changed\n\n- See the changed-file list and validation evidence; the CLI does not infer test intent.\n\n` +
++    `## Review findings resolved\n\n${listOrNone(args.reviewFindingsResolved ?? [])}\n\n` +
++    `## Known limitations\n\n- Semantic correctness still requires the independent reviewer named in the task contract.\n\n` +
++    `## Documentation changed\n\n${listOrNone(task.documentation)}\n\n` +
++    `## Deployment status\n\n- ${task.deployment_authorized ? "Authorized by contract but not performed by agent:finish." : "Not authorized and not performed."}\n\n` +
++    `## Merge status\n\n- ${task.merge_authorized ? "Authorized by contract but not performed by agent:finish." : "Not authorized and not performed."}\n\n` +
++    `## Review focus\n\n${listOrNone(task.review_requirements)}\n`;
++}
++
++export function finishTask(repoRoot: string, taskArg?: string): { report: string; result: CheckResult } {
++  const { file, task } = resolveTask(repoRoot, taskArg);
++  const releaseLock = acquireTaskLock(repoRoot, task.id, "finish");
++  try {
++    const precheck = checkTask(repoRoot, task, { taskFile: file, requireClean: true });
++  const validation = task.validation.map((command) => runValidationCommand(command, repoRoot));
++  const status = precheck.ok && validation.every((result) => result.passed) ? "COMPLETED" : "BLOCKED";
++  const issues = [...precheck.issues];
++  for (const result of validation) {
++    if (!result.passed) {
++      issues.push({
++        code: "VALIDATION_FAILED",
++        severity: "P1",
++        message: `Validation failed (${result.exit_code}): ${result.command}`,
++      });
++    }
++  }
++  const result: CheckResult = { ...precheck, ok: status === "COMPLETED", issues, validation };
++  const finalCommit = runGit(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
++  const state = readTaskState(repoRoot, task.id);
++  const reportDirectory = join(repoRoot, ".agent", "completed");
++  mkdirSync(reportDirectory, { recursive: true });
++  const report = join(reportDirectory, `${task.id}.md`);
++  writeFileSync(
++    report,
++    completionMarkdown({ task, state, finalCommit, changedFiles: result.changed_files, validation, status }),
++  );
++
++  updateTaskFile(file, { status: status === "COMPLETED" ? "completed" : "blocked" });
++  const targetContract = join(reportDirectory, `${task.id}.yaml`);
++  const finalTaskFile = status === "COMPLETED" ? targetContract : file;
++  if (status === "COMPLETED" && !samePath(file, targetContract)) {
++    if (existsSync(targetContract)) rmSync(targetContract);
++    renameSync(file, targetContract);
++  }
++  const now = new Date().toISOString();
++  writeTaskState(repoRoot, {
++    ...(state ?? {
++      task_id: task.id,
++      task_file: relative(repoRoot, finalTaskFile),
++      base_branch: task.base_branch,
++      base_commit: result.merge_base,
++      working_branch: task.working_branch,
++      worktree_path: task.worktree_path,
++      created_at: now,
++      started_by: userInfo().username,
++      status: status === "COMPLETED" ? "completed" : "blocked",
++    }),
++    task_file: relative(repoRoot, finalTaskFile),
++    status: status === "COMPLETED" ? "completed" : "blocked",
++    final_commit: finalCommit,
++    updated_at: now,
++  });
++    return { report, result };
++  } finally {
++    releaseLock();
++  }
++}
++
++export function reviewMarkdown(args: {
++  task: TaskContract;
++  check: CheckResult;
++  reviewedCommit: string;
++  approved: boolean;
++}): string {
++  const findings = args.check.issues;
++  const grouped = (["P0", "P1", "P2", "P3"] as const)
++    .map((severity) => {
++      const matches = findings.filter((finding) => finding.severity === severity);
++      return `### ${severity}\n\n${
++        matches.length > 0
++          ? matches
++              .map(
++                (finding) =>
++                  `- ${finding.code}${finding.file ? ` — ${finding.file}${finding.line ? `:${finding.line}` : ""}` : ""}\n` +
++                  `  - Failure scenario: ${finding.message}\n` +
++                  `  - Required correction: Resolve the reported policy or validation failure and rerun the review.`,
++              )
++              .join("\n")
++          : "- None found by automated checks."
++      }`;
++    })
++    .join("\n\n");
++  const recommendation = args.approved && args.check.ok ? "MERGE READY" : "NOT MERGE READY";
++  return `# Review: ${args.task.id}\n\n` +
++    `- Task ID: ${args.task.id}\n` +
++    `- Reviewer: ${args.task.reviewer}\n` +
++    `- Reviewed commit: ${args.reviewedCommit}\n` +
++    `- Base commit: ${args.check.merge_base}\n` +
++    `- Timestamp: ${new Date().toISOString()}\n\n` +
++    `## Scope assessment\n\n- ${args.check.changed_files.length} changed path(s) inspected against allowed_paths.\n\n` +
++    `## Unauthorized path assessment\n\n- ${findings.some((finding) => finding.code === "UNAUTHORIZED_PATH" || finding.code === "PROTECTED_PATH") ? "Scope violations found; see findings." : "No automated path-policy violations found."}\n\n` +
++    `## Findings by severity\n\n${grouped}\n\n` +
++    `## Missing tests\n\n- A semantic reviewer must record any missing behavioral coverage here; automation cannot prove completeness.\n\n` +
++    `## Validation performed\n\n${validationMarkdown(args.check.validation)}\n\n` +
++    `## Diff artifact\n\n- Full diff: .agent/reviews/${args.task.id}.diff\n\n` +
++    `## Final recommendation\n\n- ${recommendation}${args.approved ? " (explicit reviewer attestation supplied)" : " (explicit semantic reviewer attestation still required)"}\n`;
++}
++
++export function reviewTask(
++  repoRoot: string,
++  taskArg?: string,
++  approved = false,
++): { report: string; diff: string; result: CheckResult } {
++  const { file, task } = resolveTask(repoRoot, taskArg);
++  const releaseLock = acquireTaskLock(repoRoot, task.id, "review");
++  try {
++    const result = checkTask(repoRoot, task, { taskFile: file, runValidation: true, requireClean: true });
++  const reviewedCommit = runGit(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
++  const reviewDirectory = join(repoRoot, ".agent", "reviews");
++  mkdirSync(reviewDirectory, { recursive: true });
++  const diff = join(reviewDirectory, `${task.id}.diff`);
++  const containsSecretFinding = result.issues.some(
++    (issue) => issue.code === "SECRET_FILE" || issue.code === "CREDENTIAL_PATTERN",
++  );
++  writeFileSync(
++    diff,
++    containsSecretFinding
++      ? "Full diff withheld because automated checks detected a possible secret. Review the Git diff in a secure local environment, remove the secret, rotate it if real, and rerun review.\n"
++      : runGit(repoRoot, ["diff", "--no-ext-diff", `${result.merge_base}...HEAD`]).stdout,
++  );
++  const report = join(reviewDirectory, `${task.id}.md`);
++  writeFileSync(report, reviewMarkdown({ task, check: result, reviewedCommit, approved }));
++    return { report, diff, result };
++  } finally {
++    releaseLock();
++  }
++}
++
++export type StatusEntry = {
++  id: string;
++  title: string;
++  owner: string;
++  reviewer: string;
++  branch: string;
++  worktree: string;
++  status: string;
++  risk: string;
++  reconciliation: "ok" | "missing" | "conflicting" | "stale";
++  modified: boolean | null;
++  details: string[];
++};
++
++export function taskStatus(repoRoot: string, includeAll = false): StatusEntry[] {
++  const directories = includeAll
++    ? taskSearchDirectories(repoRoot)
++    : [join(repoRoot, ".agent", "tasks", "active")];
++  const files = directories.flatMap(yamlFiles);
++  const worktrees = listWorktrees(repoRoot);
++  return files.map((file) => {
++    const task = readTaskFile(file, repoRoot);
++    const pathRecord = worktrees.find((record) => samePath(record.worktree, task.worktree_path));
++    const branchRecord = worktrees.find((record) => record.branch === task.working_branch);
++    const details: string[] = [];
++    let reconciliation: StatusEntry["reconciliation"] = "ok";
++    if (!pathRecord && !branchRecord) {
++      if (task.status === "backlog" || task.status === "ready") {
++        details.push("Task is not started; no worktree is expected yet.");
++      } else {
++        reconciliation = "missing";
++        details.push("No registered worktree or checked-out branch matches the active contract.");
++      }
++    } else if (!pathRecord || !branchRecord || !samePath(pathRecord.worktree, branchRecord.worktree)) {
++      reconciliation = "conflicting";
++      details.push("Declared branch and worktree resolve to different Git worktree records.");
++    }
++    let modified: boolean | null = null;
++    if (pathRecord && existsSync(pathRecord.worktree)) {
++      modified = dirtyFiles(pathRecord.worktree).length > 0;
++      if (modified) details.push("Worktree has uncommitted changes.");
++      const actualHead = runGit(pathRecord.worktree, ["rev-parse", "HEAD"]).stdout.trim();
++      const state = readTaskState(pathRecord.worktree, task.id);
++      if (state && state.base_commit === actualHead && task.status === "active") {
++        details.push("Task worktree has not advanced beyond its recorded base commit.");
++      }
++    }
++    return {
++      id: task.id,
++      title: task.title,
++      owner: task.owner,
++      reviewer: task.reviewer,
++      branch: task.working_branch,
++      worktree: task.worktree_path,
++      status: task.status,
++      risk: task.risk,
++      reconciliation,
++      modified,
++      details,
++    };
++  });
++}
++
++export type CleanupResult = {
++  task_id: string;
++  worktree: string;
++  branch: string;
++  removed_worktree: boolean;
++  pruned: boolean;
++  deleted_branch: boolean;
++  checks: {
++    dirty: boolean;
++    unpushed: boolean;
++    merged: boolean;
++    complete: boolean;
++  };
++};
++
++export function cleanupTask(
++  repoRoot: string,
++  taskArg: string,
++  options: { dangerous?: boolean; deleteBranch?: boolean } = {},
++): CleanupResult {
++  const { task } = resolveTask(repoRoot, taskArg);
++  const releaseLock = acquireTaskLock(repoRoot, task.id, "cleanup");
++  try {
++    const record = listWorktrees(repoRoot).find((entry) => samePath(entry.worktree, task.worktree_path));
++  if (!record) throw new WorkflowError(`Declared worktree is not registered: ${task.worktree_path}`, "WORKTREE_MISSING");
++  if (record.branch !== task.working_branch) {
++    throw new WorkflowError(`Worktree branch '${record.branch}' does not match '${task.working_branch}'.`, "WORKTREE_CONFLICT");
++  }
++  if (samePath(record.worktree, repoRoot)) {
++    throw new WorkflowError("Run cleanup from a different repository worktree; a worktree cannot remove itself safely.", "SELF_CLEANUP");
++  }
++  const dirty = dirtyFiles(record.worktree).length > 0;
++  const baseRef = resolveBaseRef(repoRoot, task.base_branch);
++  const merged = runGit(repoRoot, ["merge-base", "--is-ancestor", task.working_branch, baseRef], { allowFailure: true }).status === 0;
++  let unpushed = true;
++  const upstream = runGit(repoRoot, ["rev-parse", "--abbrev-ref", `${task.working_branch}@{upstream}`], {
++    allowFailure: true,
++  });
++  if (upstream.status === 0) {
++    unpushed = runGit(repoRoot, ["rev-list", "--count", `${upstream.stdout.trim()}..${task.working_branch}`]).stdout.trim() !== "0";
++  } else {
++    const remoteRef = `refs/remotes/origin/${task.working_branch}`;
++    if (runGit(repoRoot, ["show-ref", "--verify", "--quiet", remoteRef], { allowFailure: true }).status === 0) {
++      unpushed = runGit(repoRoot, ["rev-list", "--count", `origin/${task.working_branch}..${task.working_branch}`]).stdout.trim() !== "0";
++    }
++  }
++  const complete = task.status === "completed" && existsSync(join(repoRoot, ".agent", "completed", `${task.id}.md`));
++  const blockers = [dirty && "dirty worktree", unpushed && "unpushed commits", !merged && "unmerged branch", !complete && "incomplete task"].filter(Boolean);
++  if (blockers.length > 0 && !options.dangerous) {
++    throw new WorkflowError(`Cleanup refused: ${blockers.join(", ")}.`, "CLEANUP_REFUSED");
++  }
++  runGit(repoRoot, ["worktree", "remove", ...(options.dangerous ? ["--force"] : []), task.worktree_path]);
++  runGit(repoRoot, ["worktree", "prune"]);
++  let deletedBranch = false;
++  if (options.deleteBranch) {
++    if (!options.dangerous && !merged) {
++      throw new WorkflowError("Refusing to delete an unmerged branch without --dangerous.", "BRANCH_DELETE_REFUSED");
++    }
++    runGit(repoRoot, ["branch", options.dangerous ? "-D" : "-d", task.working_branch]);
++    deletedBranch = true;
++  }
++    return {
++      task_id: task.id,
++      worktree: task.worktree_path,
++      branch: task.working_branch,
++      removed_worktree: true,
++      pruned: true,
++      deleted_branch: deletedBranch,
++      checks: { dirty, unpushed, merged, complete },
++    };
++  } finally {
++    releaseLock();
++  }
++}
++
++export function ciCheck(repoRoot: string, baseBranch?: string): { skipped: boolean; message: string; result?: CheckResult } {
++  const branch = process.env.GITHUB_HEAD_REF || currentBranch(repoRoot);
++  const matching = listTaskFiles(repoRoot).filter((file) => {
++    try {
++      return readTaskFile(file, repoRoot).working_branch === branch;
++    } catch {
++      return false;
++    }
++  });
++  if (matching.length === 0) {
++    return { skipped: true, message: `No task contract declares branch '${branch}'; changed-path policy is not applicable.` };
++  }
++  if (matching.length > 1) throw new WorkflowError(`Multiple task contracts declare branch '${branch}'.`, "TASK_AMBIGUOUS");
++  const task = readTaskFile(matching[0], repoRoot);
++  if (baseBranch && task.base_branch !== baseBranch) {
++    throw new WorkflowError(
++      `Task base '${task.base_branch}' does not match CI base '${baseBranch}'.`,
++      "BASE_BRANCH_MISMATCH",
++    );
++  }
++  const result = checkTask(repoRoot, task, { ciMode: true, requireClean: true });
++  return { skipped: false, message: result.ok ? "Task contract and changed-path policy passed." : "Task policy failed.", result };
++}
++
++export function removePathIfExists(path: string): void {
++  if (existsSync(path)) rmSync(path, { recursive: true, force: true });
++}
+diff --git a/scripts/agent-workflow/types.ts b/scripts/agent-workflow/types.ts
+new file mode 100644
+index 0000000..f71e5f5
+--- /dev/null
++++ b/scripts/agent-workflow/types.ts
+@@ -0,0 +1,102 @@
++export const TASK_STATUSES = [
++  "backlog",
++  "ready",
++  "active",
++  "blocked",
++  "in_review",
++  "completed",
++  "abandoned",
++] as const;
++
++export const TASK_RISKS = ["low", "medium", "high", "critical"] as const;
++
++export const TASK_TYPES = [
++  "ui",
++  "frontend",
++  "backend",
++  "database",
++  "marketplace",
++  "billing",
++  "inventory",
++  "security",
++  "infrastructure",
++  "documentation",
++] as const;
++
++export type TaskStatus = (typeof TASK_STATUSES)[number];
++export type TaskRisk = (typeof TASK_RISKS)[number];
++export type TaskType = (typeof TASK_TYPES)[number];
++
++export type TaskContract = {
++  id: string;
++  title: string;
++  status: TaskStatus;
++  owner: string;
++  reviewer: string;
++  risk: TaskRisk;
++  task_type: TaskType;
++  base_branch: string;
++  working_branch: string;
++  worktree_path: string;
++  created_at: string;
++  goal: string;
++  context: string;
++  non_goals: string[];
++  allowed_paths: string[];
++  protected_paths: string[];
++  required_reading: string[];
++  acceptance: string[];
++  validation: string[];
++  full_validation_required: boolean;
++  documentation: string[];
++  review_requirements: string[];
++  deployment_authorized: boolean;
++  merge_authorized: boolean;
++  notes: string;
++};
++
++export type TaskState = {
++  task_id: string;
++  task_file: string;
++  base_branch: string;
++  base_commit: string;
++  working_branch: string;
++  worktree_path: string;
++  created_at: string;
++  updated_at: string;
++  started_by: string;
++  status: TaskStatus;
++  final_commit?: string;
++};
++
++export type ValidationResult = {
++  command: string;
++  started_at: string;
++  ended_at: string;
++  exit_code: number;
++  stdout_summary: string;
++  stderr_summary: string;
++  passed: boolean;
++};
++
++export type CheckIssue = {
++  code: string;
++  severity: "P0" | "P1" | "P2" | "P3";
++  message: string;
++  file?: string;
++  line?: number;
++};
++
++export type CheckResult = {
++  ok: boolean;
++  task_id: string;
++  branch: string;
++  worktree: string;
++  base_ref: string;
++  base_commit: string;
++  merge_base: string;
++  changed_files: string[];
++  dirty_files: string[];
++  issues: CheckIssue[];
++  validation: ValidationResult[];
++};
+diff --git a/src/lib/auth/AGENTS.md b/src/lib/auth/AGENTS.md
+new file mode 100644
+index 0000000..63e9a64
+--- /dev/null
++++ b/src/lib/auth/AGENTS.md
+@@ -0,0 +1,9 @@
++# Authentication and authorization safety rules
++
++The root `AGENTS.md` remains canonical. Auth and feature-access code is protected by default.
++
++- Authentication establishes identity; server-side authorization still verifies active account membership, role, ownership, feature entitlement, and action-specific readiness.
++- Fail closed for missing, stale, ambiguous, or revoked identity/account state.
++- Never add email, admin, or client-only fallbacks that bypass the canonical access path.
++- Do not log sessions, tokens, magic-link data, cookies, secret values, or raw provider failures.
++- Tests must cover anonymous, unrelated-account, revoked-member, role-restricted, admin, and fail-closed configuration paths.
+diff --git a/src/lib/billing/AGENTS.md b/src/lib/billing/AGENTS.md
+new file mode 100644
+index 0000000..eee0455
+--- /dev/null
++++ b/src/lib/billing/AGENTS.md
+@@ -0,0 +1,9 @@
++# Billing safety rules
++
++The root `AGENTS.md` remains canonical. Billing changes require explicit contract scope and server-side tests.
++
++- Resolve the active account before reading or mutating seller billing state.
++- Enforce plan limits, roles, entitlements, and quotas on the server; client UI is explanatory only.
++- Preserve Stripe webhook signature verification and event idempotency.
++- Never expose Stripe secrets, raw provider payloads, customer identifiers beyond their intended server scope, or environment values.
++- Do not create live checkout sessions, alter products/prices, call paid APIs, or mutate live billing during validation.
+diff --git a/src/lib/comps/AGENTS.md b/src/lib/comps/AGENTS.md
+new file mode 100644
+index 0000000..4d05c7b
+--- /dev/null
++++ b/src/lib/comps/AGENTS.md
+@@ -0,0 +1,9 @@
++# Pricing comp and provider safety rules
++
++The root `AGENTS.md` remains canonical. Paid-provider code is protected and requires explicit contract scope.
++
++- Never fabricate comps or use AI-generated prices as sold-market evidence.
++- Preserve feature access, seller/account quota, global budget, per-user limits, cooldown, provider configuration, identity confidence, and the absolute kill switch.
++- Reserve and record paid usage safely before or around provider calls as defined by the existing ledger; do not create retry paths that double-charge.
++- Provider failures degrade to typed, seller-safe outcomes without leaking payloads, credentials, stack traces, or environment values.
++- Tests must prove each gate and verify that denied paths make no paid call.
+diff --git a/src/lib/inventory-sync/AGENTS.md b/src/lib/inventory-sync/AGENTS.md
+new file mode 100644
+index 0000000..7081724
+--- /dev/null
++++ b/src/lib/inventory-sync/AGENTS.md
+@@ -0,0 +1,9 @@
++# Inventory synchronization safety rules
++
++The root `AGENTS.md` remains canonical. Inventory sync is protected because errors can double-sell or strand live listings.
++
++- Sold-state mutation, audit events, and required delist-job creation remain transactionally safe.
++- Jobs are account-scoped, idempotent, lease/retry safe, and honest about terminal versus review-required outcomes.
++- Never mark a marketplace action successful without verified adapter success.
++- Conflicting sale signals preserve the original source and create explicit review evidence; they are never auto-resolved by overwriting state.
++- Tests must cover concurrent signals, duplicate runs, lease/attempt exhaustion, manual-review fallbacks, and partial upstream failures.
+diff --git a/src/lib/marketplace/AGENTS.md b/src/lib/marketplace/AGENTS.md
+new file mode 100644
+index 0000000..6f0a301
+--- /dev/null
++++ b/src/lib/marketplace/AGENTS.md
+@@ -0,0 +1,9 @@
++# Marketplace safety rules
++
++The root `AGENTS.md` remains canonical. Marketplace code is protected by default and requires explicit contract scope.
++
++- Live actions fail closed and require server-side feature access, entitlement/quota checks, environment kill switches, connection state, and marketplace-specific readiness.
++- Capability ceilings never imply a live implementation. Unsupported operations return honest typed outcomes and perform no external side effect.
++- Publish/delist operations remain idempotent, concurrency-safe, auditable, and seller/account-scoped.
++- Never log tokens, provider payloads containing credentials, raw marketplace errors with sensitive data, or environment values.
++- Tests must cover disabled, unauthorized, unready, duplicate/racing, upstream failure, retry, and success paths without live marketplace calls.
