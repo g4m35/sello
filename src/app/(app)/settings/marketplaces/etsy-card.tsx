@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Plug, Unplug } from "lucide-react";
 
-import { getErrorMessage } from "@/lib/errors";
+import { AppError, getErrorMessage } from "@/lib/errors";
+import { readJsonResponse } from "@/lib/http";
 
 type EtsyStatus = {
   apiEnabled: boolean;
@@ -19,15 +21,12 @@ type EtsyStatus = {
 
 type CardState = "loading" | "ready" | "error";
 
-// Self-contained Etsy connection card for the marketplace settings page. It is
-// fully gated: the Connect action only appears when the API is enabled and the
-// seller is on the connect allowlist. Otherwise it explains that the copy-ready
-// Etsy draft remains available, so Etsy is never a dead end.
 export function EtsyConnectionCard({ accessToken }: { accessToken: string | null }) {
   const [status, setStatus] = useState<EtsyStatus | null>(null);
   const [state, setState] = useState<CardState>("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const authHeaders = useCallback(
@@ -41,16 +40,21 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
     let active = true;
     async function loadStatus() {
       try {
-        const response = await fetch("/api/marketplaces/etsy/status", {
-          headers: authHeaders(),
-        });
+        const payload = await readJsonResponse<EtsyStatus>(
+          await fetch("/api/marketplaces/etsy/status", {
+            headers: authHeaders(),
+          }),
+        );
         if (!active) return;
-        if (!response.ok) throw new Error("status_failed");
-        setStatus((await response.json()) as EtsyStatus);
+        setStatus(payload);
         setState("ready");
         setError(null);
-      } catch {
-        if (active) setState("error");
+        setErrorCode(null);
+      } catch (e) {
+        if (active) {
+          setState("error");
+          setError(getErrorMessage(e));
+        }
       }
     }
     void loadStatus();
@@ -62,17 +66,17 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
   const connect = useCallback(async () => {
     setBusy(true);
     setError(null);
+    setErrorCode(null);
     try {
-      const response = await fetch("/api/marketplaces/etsy/connect", {
-        headers: { ...authHeaders(), accept: "application/json" },
-      });
-      const payload = (await response.json()) as { authorizationUrl?: string };
-      if (!response.ok || !payload.authorizationUrl) {
-        throw new Error("Could not start the Etsy connection.");
-      }
+      const payload = await readJsonResponse<{ authorizationUrl: string }>(
+        await fetch("/api/marketplaces/etsy/connect", {
+          headers: { ...authHeaders(), accept: "application/json" },
+        }),
+      );
       window.location.assign(payload.authorizationUrl);
     } catch (e) {
       setError(getErrorMessage(e));
+      setErrorCode(e instanceof AppError ? e.code ?? null : null);
       setBusy(false);
     }
   }, [authHeaders]);
@@ -80,11 +84,14 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
   const disconnect = useCallback(async () => {
     setBusy(true);
     setError(null);
+    setErrorCode(null);
     try {
-      await fetch("/api/marketplaces/etsy/disconnect", {
-        method: "POST",
-        headers: authHeaders(),
-      });
+      await readJsonResponse(
+        await fetch("/api/marketplaces/etsy/disconnect", {
+          method: "POST",
+          headers: authHeaders(),
+        }),
+      );
       setReloadKey((key) => key + 1);
     } catch (e) {
       setError(getErrorMessage(e));
@@ -92,6 +99,21 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
       setBusy(false);
     }
   }, [authHeaders]);
+
+  const statusLine =
+    state === "loading"
+      ? "Checking Etsy…"
+      : state === "error" || !status
+        ? "Etsy status unavailable"
+        : !status.apiEnabled
+          ? "Drafts"
+          : status.connected
+            ? status.capabilities.publish
+              ? "Connected · ready"
+              : "Connected · drafts"
+            : !status.capabilities.connect
+              ? "Drafts"
+              : "Not connected";
 
   return (
     <section className="card">
@@ -106,7 +128,7 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
           </span>
           <div>
             <div style={{ fontWeight: 500 }}>Etsy</div>
-            <div className="t-small muted">{describe(state, status)}</div>
+            <div className="t-small muted">{statusLine}</div>
           </div>
         </div>
 
@@ -130,16 +152,26 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
         </div>
       </div>
 
-      {state === "ready" && status && !canConnect(status) && (
+      {state === "ready" && status && !canConnect(status) && !status.connected && (
         <p className="t-small muted" style={{ padding: "10px 20px", margin: 0 }}>
           Etsy drafts are available from the listing editor.
         </p>
       )}
 
       {error && (
-        <p className="t-small danger" style={{ padding: "10px 20px", margin: 0 }}>
-          {error}
-        </p>
+        <div
+          className="t-small danger"
+          style={{ padding: "10px 20px", borderTop: "1px solid var(--line)" }}
+        >
+          <p style={{ margin: 0 }}>{error}</p>
+          {errorCode === "CONNECTION_LIMIT_REACHED" && (
+            <p style={{ margin: "6px 0 0" }}>
+              <Link href="/settings/billing" style={{ textDecoration: "underline" }}>
+                Upgrade plan
+              </Link>
+            </p>
+          )}
+        </div>
       )}
     </section>
   );
@@ -185,17 +217,4 @@ function EtsyAction({
 
 function canConnect(status: EtsyStatus): boolean {
   return status.apiEnabled && status.capabilities.connect;
-}
-
-function describe(state: CardState, status: EtsyStatus | null): string {
-  if (state === "loading") return "Checking Etsy status…";
-  if (state === "error" || !status) return "Etsy status unavailable.";
-  if (!status.apiEnabled) return "Drafts";
-  if (status.connected) {
-    return status.capabilities.publish
-      ? "Connected · live"
-      : "Connected · drafts";
-  }
-  if (!status.capabilities.connect) return "Drafts";
-  return "Not connected";
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
@@ -12,14 +13,14 @@ import {
   XCircle,
 } from "lucide-react";
 
-import { getErrorMessage } from "@/lib/errors";
+import { Topbar } from "@/components/app/topbar";
+import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
+import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
 import {
   consumeSupabaseImplicitSessionFromUrl,
   getBrowserSupabase,
 } from "@/lib/supabase/browser";
-import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
-import { Topbar } from "@/components/app/topbar";
 
 import { ebayMarketplaceLabels } from "./labels";
 import { EtsyConnectionCard } from "./etsy-card";
@@ -63,6 +64,7 @@ export default function MarketplaceSettingsPage() {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [actionState, setActionState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [locationForm, setLocationForm] = useState<LocationForm>(emptyLocationForm);
   const autoRefreshAttemptedRef = useRef(false);
   const supabase = useMemo(() => getBrowserSupabase(), []);
@@ -96,6 +98,7 @@ export default function MarketplaceSettingsPage() {
 
     setActionState("loading");
     setError(null);
+    setErrorCode(null);
     try {
       const payload = await readJsonResponse<{ authorizationUrl: string }>(
         await fetch("/api/marketplaces/ebay/connect", {
@@ -108,6 +111,7 @@ export default function MarketplaceSettingsPage() {
       window.location.assign(payload.authorizationUrl);
     } catch (err) {
       setError(getErrorMessage(err));
+      setErrorCode(err instanceof AppError ? err.code ?? null : null);
       setActionState("error");
     }
   }, [authHeaders, session?.access_token, supabase]);
@@ -254,9 +258,13 @@ export default function MarketplaceSettingsPage() {
     void refreshReadiness();
   }, [readiness, refreshReadiness]);
 
-  const missing = new Set(readiness?.missing ?? ebayReadinessItems);
   const connected = Boolean(readiness?.connected);
   const ready = Boolean(readiness?.ready);
+  const missing = new Set(readiness?.missing ?? []);
+  const missingItems = ebayReadinessItems.filter((item) => {
+    if (item === "oauth_connection") return !connected;
+    return missing.has(item);
+  }) as EbayReadinessItem[];
   const environment = readiness?.environment ?? null;
   const labels = ebayMarketplaceLabels(environment);
   const setupMessage = getEbaySetupMessage(readiness);
@@ -269,14 +277,14 @@ export default function MarketplaceSettingsPage() {
     locationForm.stateOrProvince.trim().length >= 2 &&
     /^\d{5}(-\d{4})?$/.test(locationForm.postalCode.trim());
   const statusLabel = readiness?.reconnectRequired
-    ? "Connection expired, reconnect your eBay account"
+    ? "Connection expired"
     : !connected
       ? "Not connected"
       : !ready
-        ? "Connected, setup incomplete"
+        ? "Connected · finish setup"
         : environment === "production"
-          ? "Connected, account ready (publishing not enabled yet)"
-          : "Connected, ready for sandbox publish";
+          ? "Connected · ready"
+          : "Connected · ready (sandbox)";
 
   return (
     <>
@@ -469,21 +477,18 @@ export default function MarketplaceSettingsPage() {
               </div>
             )}
 
-            {/* Readiness checklist */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-                gap: 10,
-                padding: "16px 20px",
-              }}
-              className="readiness-grid"
-            >
-              {ebayReadinessItems.map((item) => {
-                const ok = item === "oauth_connection" ? connected : !missing.has(item);
-                const Icon = ok ? CheckCircle2 : XCircle;
-
-                return (
+            {/* Only show what's still missing — shortest path to ready. */}
+            {connected && !ready && missingItems.length > 0 && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 10,
+                  padding: "16px 20px",
+                }}
+                className="readiness-grid"
+              >
+                {missingItems.map((item) => (
                   <div
                     key={item}
                     style={{
@@ -493,29 +498,43 @@ export default function MarketplaceSettingsPage() {
                       padding: "var(--s-4)",
                     }}
                   >
-                    <Icon
+                    <XCircle
                       size={18}
-                      style={{ color: ok ? "var(--positive)" : "var(--ink-4)" }}
+                      style={{ color: "var(--ink-4)" }}
                       aria-hidden="true"
                     />
                     <p style={{ margin: "10px 0 2px", fontSize: 12.5, fontWeight: 500 }}>
                       {ebayReadinessLabels[item]}
                     </p>
                     <p className="t-small muted" style={{ margin: 0 }}>
-                      {ok ? "Ready" : "Missing"}
+                      Missing
                     </p>
-                    {!ok && (
-                      <p
-                        className="t-small muted"
-                        style={{ margin: "8px 0 0", lineHeight: 1.5 }}
-                      >
-                        {ebayReadinessHelp[item as EbayReadinessItem]}
-                      </p>
-                    )}
+                    <p
+                      className="t-small muted"
+                      style={{ margin: "8px 0 0", lineHeight: 1.5 }}
+                    >
+                      {ebayReadinessHelp[item]}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
+
+            {connected && ready && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "12px 20px",
+                  borderTop: "1px solid var(--line)",
+                }}
+                className="t-small muted"
+              >
+                <CheckCircle2 size={14} style={{ color: "var(--positive)" }} aria-hidden="true" />
+                Account setup complete
+              </div>
+            )}
 
             {/* Syncing indicator */}
             {(loadState === "loading" || actionState === "loading") && (
@@ -540,7 +559,14 @@ export default function MarketplaceSettingsPage() {
                 style={{ borderTop: "1px solid var(--line)", padding: "10px 20px" }}
                 className="t-small danger"
               >
-                Error: {error}
+                <p style={{ margin: 0 }}>{error}</p>
+                {errorCode === "CONNECTION_LIMIT_REACHED" && (
+                  <p style={{ margin: "6px 0 0" }}>
+                    <Link href="/settings/billing" style={{ textDecoration: "underline" }}>
+                      Upgrade plan
+                    </Link>
+                  </p>
+                )}
               </div>
             )}
           </section>
