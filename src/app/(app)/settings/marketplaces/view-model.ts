@@ -34,31 +34,30 @@ export function getEbaySetupMessage(readiness: EbayReadinessResponse | null) {
   if (readiness?.reconnectRequired) {
     return {
       heading: "Reconnect eBay",
-      body: "Your eBay connection has expired or was revoked. Reconnect your eBay account to continue.",
+      body: "Your eBay connection expired. Reconnect to continue.",
     };
   }
 
   if (!readiness?.connected) {
     return {
       heading: "Connect eBay",
-      body: "Connect your eBay account before Sello can check seller setup.",
+      body: "Connect eBay so Sello can check seller setup.",
     };
   }
 
   if (readiness.ready) {
     return {
-      heading: "Connected",
+      heading: "Connected · ready",
       body:
         readiness.environment === "production"
-          ? "Your eBay account setup is ready. Production publishing remains disabled until it is deliberately enabled."
-          : "Your eBay sandbox account setup is ready for guarded sandbox publishing.",
+          ? "eBay setup is complete."
+          : "Sandbox setup is complete.",
     };
   }
 
   return {
-    heading: "Setup required before publishing",
-    body:
-      "Connected. Sello still needs eBay business policies and an enabled inventory location before publishing can be enabled.",
+    heading: "Finish eBay setup",
+    body: "Add the missing business policies and inventory location, then refresh.",
   };
 }
 

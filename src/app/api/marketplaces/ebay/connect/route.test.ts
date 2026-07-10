@@ -46,7 +46,9 @@ describe("eBay connect route", () => {
     const response = await GET(new Request("http://localhost/api/marketplaces/ebay/connect"));
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: "Sign in." });
+    expect(await response.json()).toEqual({
+      error: { code: "REQUEST_FAILED", message: "Sign in." },
+    });
   });
 
   it("returns a sandbox authorization URL and an httpOnly state cookie", async () => {
