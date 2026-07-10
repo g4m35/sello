@@ -617,6 +617,7 @@ function inspectChangedContent(repoRoot: string, files: string[]): CheckIssue[] 
 
 export function sanitizeOutput(value: string, limit = 1800): string {
   const redacted = value
+    .replace(/\r/g, "")
     .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, "[REDACTED_GITHUB_TOKEN]")
     .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED_SLACK_TOKEN]")
     .replace(/\bsk_(?:live|test)_[A-Za-z0-9]{10,}\b/g, "[REDACTED_STRIPE_KEY]")
@@ -864,9 +865,6 @@ export function completionMarkdown(args: {
 
 export function finishTask(repoRoot: string, taskArg?: string): { report: string; result: CheckResult } {
   const { file, task } = resolveTask(repoRoot, taskArg);
-  if (task.status === "completed") {
-    throw new WorkflowError(`Task '${task.id}' is already completed.`, "TASK_ALREADY_COMPLETED");
-  }
   const releaseLock = acquireTaskLock(repoRoot, task.id, "finish");
   try {
     const precheck = checkTask(repoRoot, task, { taskFile: file, requireClean: true });
