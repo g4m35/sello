@@ -4,16 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
-  CheckCircle2,
   Loader2,
   Plug,
   RefreshCw,
-  ShieldCheck,
   Unplug,
   XCircle,
 } from "lucide-react";
 
 import { Topbar } from "@/components/app/topbar";
+import { MpLogo } from "@/components/ui/marketplace";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
 import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
@@ -302,29 +301,12 @@ export default function MarketplaceSettingsPage() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <StockXConnectionCard accessToken={session?.access_token ?? null} />
-          <EtsyConnectionCard accessToken={session?.access_token ?? null} />
-
           {/* eBay */}
           <section className="card">
             {/* Header row */}
             <div className="card__head" style={{ flexWrap: "wrap", gap: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: "var(--r-3)",
-                    background: connected ? "var(--status-ready-bg)" : "var(--surface-sunk)",
-                    color: connected ? "var(--status-ready-ink)" : "var(--ink-3)",
-                    display: "grid",
-                    placeItems: "center",
-                    flexShrink: 0,
-                    border: "1px solid var(--line)",
-                  }}
-                >
-                  <ShieldCheck size={22} aria-hidden="true" />
-                </div>
+                <MpLogo id="ebay" size={36} />
                 <div style={{ minWidth: 0 }}>
                   <h2 style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{labels.account}</h2>
                   <p className="t-small muted" style={{ margin: 0 }}>{statusLabel}</p>
@@ -337,9 +319,9 @@ export default function MarketplaceSettingsPage() {
                     type="button"
                     onClick={connectEbay}
                     disabled={!session || actionState === "loading"}
-                    className="btn btn--primary"
+                    className="btn btn--primary btn--sm"
                   >
-                    <Plug size={14} aria-hidden="true" />
+                    <Plug size={13} aria-hidden="true" />
                     {actionModel.primaryConnectLabel}
                   </button>
                 )}
@@ -348,28 +330,30 @@ export default function MarketplaceSettingsPage() {
                     type="button"
                     onClick={connectEbay}
                     disabled={!session || actionState === "loading"}
-                    className="btn btn--secondary"
+                    className="btn btn--secondary btn--sm"
                   >
-                    <Plug size={14} aria-hidden="true" />
+                    <Plug size={13} aria-hidden="true" />
                     {actionModel.secondaryReconnectLabel}
+                  </button>
+                )}
+                {connected && !ready && (
+                  <button
+                    type="button"
+                    onClick={refreshReadiness}
+                    disabled={actionState === "loading"}
+                    className="btn btn--secondary btn--sm"
+                  >
+                    <RefreshCw size={13} aria-hidden="true" />
+                    Recheck
                   </button>
                 )}
                 <button
                   type="button"
-                  onClick={refreshReadiness}
-                  disabled={!connected || actionState === "loading"}
-                  className="btn btn--secondary"
-                >
-                  <RefreshCw size={14} aria-hidden="true" />
-                  Refresh
-                </button>
-                <button
-                  type="button"
                   onClick={disconnectEbay}
                   disabled={!connected || actionState === "loading"}
-                  className="btn btn--ghost"
+                  className="btn btn--ghost btn--sm"
                 >
-                  <Unplug size={14} aria-hidden="true" />
+                  <Unplug size={13} aria-hidden="true" />
                   Disconnect
                 </button>
               </div>
@@ -409,75 +393,88 @@ export default function MarketplaceSettingsPage() {
               </div>
             )}
 
-            {/* Inventory location form */}
+            {/* Inventory location form — collapsed by default */}
             {offerLocationSetup && (
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
-                <h3 style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 500 }}>
-                  Create your ship-from inventory location
-                </h3>
-                <p className="t-small muted" style={{ margin: "0 0 14px" }}>
-                  eBay has no Seller Hub page for Inventory API locations, so Sello creates one
-                  for you. Enter the address your items ship from; it is sent only to eBay.
-                </p>
-                <form
-                  className="form-grid"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void createInventoryLocation();
-                  }}
-                >
-                  {(
-                    [
-                      ["name", "Location name", "Default location", true],
-                      ["addressLine1", "Address line 1", "123 Main St", true],
-                      ["addressLine2", "Address line 2 (optional)", "Apt 4", false],
-                      ["city", "City", "San Francisco", true],
-                      ["stateOrProvince", "State", "CA", true],
-                      ["postalCode", "ZIP code", "94103", true],
-                      ["phone", "Phone (optional)", "415-555-0100", false],
-                    ] as const
-                  ).map(([field, label, placeholder, required]) => (
-                    <label key={field} className="field">
-                      <span className="field__label">{label}</span>
+              <div style={{ padding: "0 20px", borderBottom: "1px solid var(--line)" }}>
+                <details style={{ padding: "14px 0" }}>
+                  <summary
+                    style={{
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      userSelect: "none",
+                      listStyle: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    Set up ship-from location
+                  </summary>
+                  <p className="t-small muted" style={{ margin: "8px 0 14px" }}>
+                    eBay has no Seller Hub page for Inventory API locations, so Sello creates one
+                    for you. Enter the address your items ship from; it is sent only to eBay.
+                  </p>
+                  <form
+                    className="form-grid"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void createInventoryLocation();
+                    }}
+                  >
+                    {(
+                      [
+                        ["name", "Location name", "Default location", true],
+                        ["addressLine1", "Address line 1", "123 Main St", true],
+                        ["addressLine2", "Address line 2 (optional)", "Apt 4", false],
+                        ["city", "City", "San Francisco", true],
+                        ["stateOrProvince", "State", "CA", true],
+                        ["postalCode", "ZIP code", "94103", true],
+                        ["phone", "Phone (optional)", "415-555-0100", false],
+                      ] as const
+                    ).map(([field, label, placeholder, required]) => (
+                      <label key={field} className="field">
+                        <span className="field__label">{label}</span>
+                        <input
+                          type="text"
+                          required={required}
+                          value={locationForm[field]}
+                          placeholder={placeholder}
+                          onChange={(e) =>
+                            setLocationForm((prev) => ({
+                              ...prev,
+                              [field]: e.target.value,
+                            }))
+                          }
+                          className="input"
+                        />
+                      </label>
+                    ))}
+                    <label className="field">
+                      <span className="field__label">Country</span>
                       <input
                         type="text"
-                        required={required}
-                        value={locationForm[field]}
-                        placeholder={placeholder}
-                        onChange={(e) =>
-                          setLocationForm((prev) => ({
-                            ...prev,
-                            [field]: e.target.value,
-                          }))
-                        }
+                        value="US"
+                        disabled
                         className="input"
+                        style={{ opacity: 0.5 }}
                       />
                     </label>
-                  ))}
-                  <label className="field">
-                    <span className="field__label">Country</span>
-                    <input
-                      type="text"
-                      value="US"
-                      disabled
-                      className="input"
-                      style={{ opacity: 0.5 }}
-                    />
-                  </label>
-                  <div style={{ display: "flex", alignItems: "flex-end" }}>
-                    <button
-                      type="submit"
-                      disabled={!locationFormValid || actionState === "loading"}
-                      className="btn btn--primary"
-                    >
-                      Create inventory location
-                    </button>
-                  </div>
-                </form>
+                    <div style={{ display: "flex", alignItems: "flex-end" }}>
+                      <button
+                        type="submit"
+                        disabled={!locationFormValid || actionState === "loading"}
+                        className="btn btn--primary btn--sm"
+                      >
+                        Create inventory location
+                      </button>
+                    </div>
+                  </form>
+                </details>
               </div>
             )}
 
-            {/* Only show what's still missing — shortest path to ready. */}
+            {/* Missing items — only show when connected and setup incomplete */}
             {connected && !ready && missingItems.length > 0 && (
               <div
                 style={{
@@ -520,22 +517,6 @@ export default function MarketplaceSettingsPage() {
               </div>
             )}
 
-            {connected && ready && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "12px 20px",
-                  borderTop: "1px solid var(--line)",
-                }}
-                className="t-small muted"
-              >
-                <CheckCircle2 size={14} style={{ color: "var(--positive)" }} aria-hidden="true" />
-                Account setup complete
-              </div>
-            )}
-
             {/* Syncing indicator */}
             {(loadState === "loading" || actionState === "loading") && (
               <div
@@ -570,6 +551,9 @@ export default function MarketplaceSettingsPage() {
               </div>
             )}
           </section>
+
+          <StockXConnectionCard accessToken={session?.access_token ?? null} />
+          <EtsyConnectionCard accessToken={session?.access_token ?? null} />
         </div>
       </main>
     </>
