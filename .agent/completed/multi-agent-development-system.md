@@ -10,8 +10,8 @@
 - Worktree: /Users/jheller/dev/resale-crosslister-multi-agent-system
 - Base branch: develop
 - Base commit: 1a19be13758e184bbc0295dfc7e72b19ea6f893d
-- Final commit: eaa390cc1a01357a66372f5a3ed3294f06b93cf4
-- Timestamp: 2026-07-10T18:51:18.451Z
+- Final commit: da7eed85e78e6fff93b5f3f8f75cbda58bc26cd5
+- Timestamp: 2026-07-10T18:53:07.546Z
 
 ## Changed files
 
@@ -87,8 +87,8 @@
 
 ### `npm run agent:test`
 
-- Start: 2026-07-10T18:50:35.124Z
-- End: 2026-07-10T18:50:41.919Z
+- Start: 2026-07-10T18:52:24.238Z
+- End: 2026-07-10T18:52:31.149Z
 - Exit code: 0
 - Result: PASS
 - Stdout summary:
@@ -103,8 +103,8 @@
 
  Test Files  1 passed (1)
       Tests  25 passed (25)
-   Start at  11:50:35
-   Duration  6.61s (transform 30ms, setup 0ms, import 47ms, tests 6.52s, environment 0ms)
+   Start at  11:52:24
+   Duration  6.71s (transform 33ms, setup 0ms, import 51ms, tests 6.60s, environment 0ms)
 ```
 - Stderr summary:
 
@@ -114,8 +114,8 @@
 
 ### `npm run validate:scoped`
 
-- Start: 2026-07-10T18:50:41.919Z
-- End: 2026-07-10T18:50:55.329Z
+- Start: 2026-07-10T18:52:31.149Z
+- End: 2026-07-10T18:52:44.318Z
 - Exit code: 0
 - Result: PASS
 - Stdout summary:
@@ -134,8 +134,8 @@
 
  Test Files  1 passed (1)
       Tests  25 passed (25)
-   Start at  11:50:42
-   Duration  6.93s (transform 30ms, setup 0ms, import 46ms, tests 6.84s, environment 0ms)
+   Start at  11:52:31
+   Duration  6.93s (transform 29ms, setup 0ms, import 46ms, tests 6.84s, environment 0ms)
 
 
 > resale-crosslister@0.1.0 lint
@@ -153,7 +153,7 @@
 > prisma generate && tsc --noEmit --pretty false
 
 
-✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 88ms
+✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 85ms
 
 
 > resale-crosslister@0.1.0 prisma:validate
@@ -174,8 +174,8 @@ Prisma schema loaded from prisma/schema.prisma.
 
 ### `npm run validate:full`
 
-- Start: 2026-07-10T18:50:55.330Z
-- End: 2026-07-10T18:51:18.441Z
+- Start: 2026-07-10T18:52:44.318Z
+- End: 2026-07-10T18:53:07.536Z
 - Exit code: 0
 - Result: PASS
 - Stdout summary:
@@ -200,7 +200,7 @@ Prisma schema loaded from prisma/schema.prisma.
 > prisma generate && tsc --noEmit --pretty false
 
 
-✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 88ms
+✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 85ms
 
 
 > resale-crosslister@0.1.0 test
@@ -212,8 +212,8 @@ Prisma schema loaded from prisma/schema.prisma.
 
  Test Files  213 passed (213)
       Tests  1465 passed (1465)
-   Start at  11:51:01
-   Duration  9.46s (transform 3.74s, setup 0ms, import 14.37s, tests 10.85s, environment 10ms)
+   Start at  11:52:50
+   Duration  9.59s (transform 3.66s, setup 0ms, import 14.57s, tests 11.03s, environment 12ms)
 
 
 > resale-crosslister@0.1.0 prisma:validate
@@ -234,21 +234,21 @@ The schema at prisma/schema.prisma is valid 🚀
 ▲ Next.js 16.2.10 (Turbopack)
 
   Creating an optimized production build ...
-✓ Compiled successfully in 1829ms
+✓ Compiled successfully in 1869ms
   Running TypeScript ...
-  Finished TypeScript in 4.0s ...
+  Finished TypeScript in 4.1s ...
   Collecting page data using 9 workers ...
   Generating static pages using 9 workers (0/69) ...
   Generating static pages using 9 workers (17/69)
   Generating static pages using 9 workers (34/69)
   Generating static pages using 9 workers (51/69)
-✓ Generating static pages using 9 workers (69/69) in 134ms
+✓ Generating static pages using 9 workers (69/69) in 126ms
   Finalizing page optimization ...
 
 Route (app)
 ┌ ƒ /
 ├ ○ /_not-found
-├
+├ ƒ /
 … output truncated …
 ```
 - Stderr summary:
