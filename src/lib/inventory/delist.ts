@@ -62,7 +62,7 @@ export type DelistPrismaLike = SyncJobPrismaLike &
     };
     inventoryItem: {
       findFirst(args: {
-        where: { id: string; sellerId: string };
+        where: { id: string; sellerId?: string; accountId?: string };
         select: { id: true; accountId: true; productName: true };
       }): Promise<{ id: string; accountId: string | null; productName: string } | null>;
     };
@@ -92,10 +92,13 @@ export async function queueDelistOtherListings(
   soldMarketplace: Marketplace | null,
   userId: string,
   inventoryOwnerUserId: string = userId,
+  accountId?: string,
 ): Promise<QueueDelistResult> {
   // Ownership: only the owning seller's item is ever inspected/acted on.
   const item = await db.inventoryItem.findFirst({
-    where: { id: inventoryItemId, sellerId: inventoryOwnerUserId },
+    where: accountId
+      ? { id: inventoryItemId, accountId }
+      : { id: inventoryItemId, sellerId: inventoryOwnerUserId },
     select: { id: true, accountId: true, productName: true },
   });
   if (!item) {
@@ -130,6 +133,7 @@ export async function queueDelistOtherListings(
 
     const job = await enqueueSyncJob(db, {
       userId,
+      accountId: item.accountId,
       type: "delist_marketplace_listing",
       idempotencyKey,
       inventoryItemId,
@@ -162,6 +166,7 @@ export async function queueDelistOtherListings(
         : "sold";
       const task = await createReviewTask(db, {
         userId,
+        accountId: item.accountId,
         type: "manual_delist_required",
         inventoryItemId,
         marketplace: listing.marketplace,
@@ -185,6 +190,7 @@ export async function queueDelistOtherListings(
     await recordInventoryEvent(db, {
       inventoryItemId,
       userId,
+      accountId: item.accountId,
       type: "delist_requested",
       source: "system",
       marketplace: listing.marketplace,

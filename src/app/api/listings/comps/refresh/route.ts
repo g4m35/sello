@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import {
@@ -8,9 +10,12 @@ import {
 import { isAdminUser } from "@/lib/auth/admin";
 import { requireFeatureAccess } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
-import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { accountScope } from "@/lib/billing/scope";
-import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
+import {
+  releaseUsageReservation,
+  reserveUsageOrThrow,
+  settleUsageReservation,
+} from "@/lib/billing/usage";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { AppError, logUnexpectedError, safeErrorResponse } from "@/lib/errors";
@@ -22,6 +27,8 @@ export const runtime = "nodejs";
 // Fetches fresh automatic comps for an item from all enabled comp sources.
 // Returns 0 honestly when no source is configured (no invented prices).
 export async function POST(request: Request) {
+  let usageReservationId: string | null = null;
+  let prisma: ReturnType<typeof getPrisma> | null = null;
   try {
     const user = await requireSupabaseUser(request);
     requireFeatureAccess(user, "paidComps");
@@ -38,7 +45,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const prisma = getPrisma();
+    prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
     const item = await prisma.inventoryItem.findFirst({
       where: { id: inventoryItemId, ...accountScope(account) },
@@ -48,14 +55,22 @@ export async function POST(request: Request) {
       throw new AppError("Item not found", 404);
     }
 
-    // Monthly paid-refresh quota. Checked before the cooldown so an out-of-quota
-    // seller gets a clear 402 upgrade signal rather than a retry timer.
-    await assertWithinQuota(
-      accountWithEffectivePlan(account, user),
-      "comp_refresh",
-      new Date(),
-      { user },
-    );
+    const requestIdempotencyKey = request.headers.get("idempotency-key") ?? randomUUID();
+    const reservation = await reserveUsageOrThrow({
+      accountId: account.id,
+      metric: "comp_refresh",
+      idempotencyKey: requestIdempotencyKey,
+      now: new Date(),
+      user,
+    }, prisma);
+    if (reservation.idempotent) {
+      throw new AppError(
+        "This comp-refresh request is already in progress or completed.",
+        409,
+        "USAGE_REQUEST_ALREADY_RESERVED",
+      );
+    }
+    usageReservationId = reservation.reservationId;
 
     // Cooldown: spam-clicking Refresh must not fire repeated paid provider calls.
     // Only count the last run that actually queried a provider — a disabled,
@@ -77,6 +92,7 @@ export async function POST(request: Request) {
         cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: false }),
       });
       if (!cooldown.allowed) {
+        await releaseUsageReservation(usageReservationId, new Date(), prisma);
         return NextResponse.json(
           {
             error: `Comps were just refreshed. Try again in ${cooldown.retryAfterSeconds}s.`,
@@ -92,18 +108,22 @@ export async function POST(request: Request) {
       paidProvidersAllowed: true,
       accountId: account.id,
       adminOverride: isOwner,
+      idempotencyKey: requestIdempotencyKey,
     });
 
-    // Count the refresh against the monthly quota on success only; a failed
-    // fetch (which throws) never burns quota. Best-effort, logged on failure.
     try {
-      await incrementUsage(account.id, "comp_refresh", new Date());
+      await settleUsageReservation(usageReservationId, new Date(), prisma);
     } catch (usageError) {
-      logUnexpectedError("comp_refresh_usage_increment", usageError);
+      logUnexpectedError("comp_refresh_usage_settlement", usageError);
     }
 
     return NextResponse.json(result);
   } catch (error) {
+    if (usageReservationId && prisma) {
+      await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
+        (usageError) => logUnexpectedError("comp_refresh_usage_release", usageError),
+      );
+    }
     // Sanitized: an unexpected failure (e.g. a Prisma/DB error) never leaks raw
     // internals. AppError keeps its code/message; everything else collapses to a
     // stable code + seller-safe copy. Manual comps are unaffected by this path.

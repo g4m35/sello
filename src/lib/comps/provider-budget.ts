@@ -24,6 +24,7 @@ export type PaidProviderSkipReason =
   | "draft_cooldown_active"
   | "weak_identity"
   | "provider_not_configured"
+  | "duplicate_request"
   | "provider_error";
 
 export type PaidGateConfig = {

@@ -5,8 +5,9 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   runCompFetch: vi.fn(),
   getActiveAccount: vi.fn(),
-  assertWithinQuota: vi.fn(),
-  incrementUsage: vi.fn(),
+  releaseUsageReservation: vi.fn(),
+  reserveUsageOrThrow: vi.fn(),
+  settleUsageReservation: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -25,8 +26,9 @@ vi.mock("@/lib/comps/fetch", () => ({
 
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/billing/usage", () => ({
-  assertWithinQuota: mocks.assertWithinQuota,
-  incrementUsage: mocks.incrementUsage,
+  releaseUsageReservation: mocks.releaseUsageReservation,
+  reserveUsageOrThrow: mocks.reserveUsageOrThrow,
+  settleUsageReservation: mocks.settleUsageReservation,
 }));
 
 import { AppError } from "@/lib/errors";
@@ -43,8 +45,13 @@ describe("explicit comp refresh route", () => {
       email: "allowed@example.com",
     });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
-    mocks.assertWithinQuota.mockResolvedValue(undefined);
-    mocks.incrementUsage.mockResolvedValue(undefined);
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.settleUsageReservation.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -57,7 +64,7 @@ describe("explicit comp refresh route", () => {
       compSearchRun: { findFirst: vi.fn().mockResolvedValue(null) },
     };
     mocks.getPrisma.mockReturnValue(prisma);
-    mocks.assertWithinQuota.mockRejectedValue(
+    mocks.reserveUsageOrThrow.mockRejectedValue(
       new AppError(
         "You have used all of your comp refreshes for this billing period. Upgrade your plan for more.",
         402,
@@ -75,7 +82,7 @@ describe("explicit comp refresh route", () => {
     expect(response.status).toBe(402);
     expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_COMP_REFRESH");
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
-    expect(mocks.incrementUsage).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservation).not.toHaveBeenCalled();
   });
 
   it("returns 403 before database reads or provider work for a nonallowlisted seller", async () => {
@@ -156,6 +163,7 @@ describe("explicit comp refresh route", () => {
         paidProvidersAllowed: true,
         accountId: "acc-1",
         adminOverride: false,
+        idempotencyKey: expect.any(String),
       },
     );
   });

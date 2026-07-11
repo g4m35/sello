@@ -22,6 +22,8 @@ Prisma 7 models Postgres data in `prisma/schema.prisma`; generated client output
 
 `InventoryItem` is the master seller item. It owns photos, AI outputs, listing drafts, comps, marketplace listings, jobs, inventory events, and review tasks. `src/lib/listing/`, `src/lib/view/`, and app/API routes implement draft readiness, editing, views, and lifecycle actions. AI raw and validated output are stored separately after Zod validation.
 
+Durable bulk intake lives under `src/lib/bulk-intake/` and creates those same canonical inventory/listing records; it is not a parallel listing model and performs no marketplace write. Ownership, lifecycle, usage, worker, and sold-reconciliation details are in `docs/architecture/bulk-intake-paid-beta-readiness.md`.
+
 ## Marketplace integrations
 
 `src/lib/marketplace/registry.ts` describes each channel's integration mode and capability ceiling. A ceiling is not proof of live readiness. Dedicated eBay, Etsy, and StockX modules live under `src/lib/marketplace/adapters/`; generic/unsupported channels fail closed with typed `NOT_IMPLEMENTED` or assisted-output behavior. Live availability is further reduced by server-side configuration, feature access, account connection, marketplace readiness, and action-specific gates.
@@ -37,6 +39,8 @@ Route handlers call `src/lib/marketplace/publish-handler.ts` and `delist-handler
 ## Billing and entitlements
 
 `src/lib/billing/` implements plans, active accounts, memberships/seats, Stripe customers/subscriptions/webhooks, entitlements, connection limits, and usage counters. `src/lib/auth/feature-access.ts` adds server-side alpha/feature access. Admin testing access does not bypass global marketplace/provider kill switches. Billing and capability APIs under `src/app/api/billing/` and `src/app/api/capabilities/` expose sanitized state to the UI.
+
+Metered execution reserves account usage atomically before work and settles/releases the durable reservation afterward. The authoritative fail-closed entitlement order is `src/lib/auth/entitlement-decision.ts`; plan and alpha/beta helpers delegate to it.
 
 ## Background jobs
 

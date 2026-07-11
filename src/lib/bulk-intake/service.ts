@@ -3,9 +3,13 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
-import { accountWithEffectivePlan, effectiveLimitsForUser } from "@/lib/billing/effective-plan";
+import { effectiveLimitsForUser } from "@/lib/billing/effective-plan";
 import type { AccountRecord } from "@/lib/billing/account";
-import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
+import {
+  releaseUsageReservation,
+  reserveUsageOrThrow,
+  settleUsageReservation,
+} from "@/lib/billing/usage";
 import {
   AppError,
   logUnexpectedError,
@@ -39,6 +43,7 @@ import {
 } from "./validation";
 
 type Db = ReturnType<typeof getPrisma>;
+const BULK_GENERATION_STALE_MS = 15 * 60 * 1000;
 
 export type BulkIntakeUser = {
   id: string;
@@ -250,6 +255,7 @@ export async function registerBulkPhotos(
   const rows = uploaded.map((photo) => ({
     id: randomUUID(),
     batchId: batch.id,
+    accountId: args.account.id,
     storageBucket: photo.bucket,
     storagePath: photo.path,
     mimeType: photo.mimeType,
@@ -336,6 +342,7 @@ export async function groupBulkPhotos(
       data: groups.map((group) => ({
         id: group.id,
         batchId: batch.id,
+        accountId: args.account.id,
         position: group.position,
         status: "uploaded",
       })),
@@ -408,10 +415,12 @@ export async function startBulkBatchGeneration(
   accountId: string,
   prisma: Db = getPrisma(),
 ): Promise<{ itemIds: string[]; batch: BulkBatchView }> {
-  const batch = await requireOwnedBulkBatch(batchId, accountId, prisma);
+  let batch = await requireOwnedBulkBatch(batchId, accountId, prisma);
   if (batch.status === "canceled") {
     throw new AppError("Canceled batches cannot be generated.", 409, "BULK_BATCH_CANCELED");
   }
+  await recoverStaleBulkGeneration(batchId, accountId, new Date(), prisma);
+  batch = await requireOwnedBulkBatch(batchId, accountId, prisma);
   const itemIds = batch.items
     .filter(
       (item) =>
@@ -429,6 +438,63 @@ export async function startBulkBatchGeneration(
     await refreshBulkBatch(batch.id, prisma);
   }
   return { itemIds, batch: await getBulkBatchView(batch.id, accountId, prisma) };
+}
+
+export async function recoverStaleBulkGeneration(
+  batchId: string,
+  accountId: string,
+  now: Date,
+  prisma: Db = getPrisma(),
+): Promise<number> {
+  const cutoff = new Date(now.getTime() - BULK_GENERATION_STALE_MS);
+  const staleItems = await prisma.bulkItem.findMany({
+    where: {
+      batchId,
+      accountId,
+      status: "generating",
+      inventoryItemId: null,
+      generationStartedAt: { lte: cutoff },
+    },
+    select: { id: true, generationAttempts: true },
+  });
+  let recovered = 0;
+  for (const item of staleItems) {
+    const updated = await prisma.bulkItem.updateMany({
+      where: {
+        id: item.id,
+        accountId,
+        status: "generating",
+        inventoryItemId: null,
+        generationAttempts: item.generationAttempts,
+        generationStartedAt: { lte: cutoff },
+      },
+      data: {
+        status: "failed",
+        errorCode: "BULK_GENERATION_STALE",
+        errorMessage: "Listing generation stopped before completion. Retry this item.",
+        generationEndedAt: now,
+      },
+    });
+    if (updated.count !== 1) continue;
+    recovered += 1;
+    const reservation = await prisma.usageReservation.findUnique({
+      where: {
+        accountId_metric_idempotencyKey: {
+          accountId,
+          metric: "ai_listing",
+          idempotencyKey: `bulk-ai:${item.id}:attempt:${item.generationAttempts}`,
+        },
+      },
+      select: { id: true, status: true },
+    });
+    if (reservation?.status === "reserved") {
+      await releaseUsageReservation(reservation.id, now, prisma, "expired").catch(
+        (error) => logUnexpectedError("bulk_stale_usage_expiry", error),
+      );
+    }
+  }
+  if (recovered > 0) await refreshBulkBatch(batchId, prisma);
+  return recovered;
 }
 
 function reviewReasonForDraft(result: Awaited<ReturnType<typeof generateListingDraftWithGemini>>) {
@@ -540,13 +606,16 @@ export async function generateBulkItem(
     data: { status: "processing" },
   });
 
+  let usageReservationId: string | null = null;
   try {
-    await assertWithinQuota(
-      accountWithEffectivePlan(args.account, args.user),
-      "ai_listing",
-      new Date(),
-      { prisma, user: args.user },
-    );
+    const reservation = await reserveUsageOrThrow({
+      accountId: args.account.id,
+      metric: "ai_listing",
+      idempotencyKey: `bulk-ai:${item.id}:attempt:${item.generationAttempts + 1}`,
+      now: new Date(),
+      user: args.user,
+    }, prisma);
+    usageReservationId = reservation.reservationId;
   } catch (error) {
     if (error instanceof AppError && error.code?.startsWith("QUOTA_EXCEEDED")) {
       assertBulkItemTransition("generating", "needs_review");
@@ -689,11 +758,16 @@ export async function generateBulkItem(
     });
 
     try {
-      await incrementUsage(args.account.id, "ai_listing", new Date(), 1, prisma);
+      await settleUsageReservation(usageReservationId, new Date(), prisma);
     } catch (usageError) {
-      logUnexpectedError("bulk_ai_listing_usage_increment", usageError);
+      logUnexpectedError("bulk_ai_listing_usage_settlement", usageError);
     }
   } catch (error) {
+    if (usageReservationId) {
+      await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
+        (usageError) => logUnexpectedError("bulk_ai_listing_usage_release", usageError),
+      );
+    }
     assertBulkItemTransition("generating", "failed");
     await prisma.bulkItem.updateMany({
       where: { id: item.id, status: "generating" },

@@ -5,8 +5,11 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
 import { getActiveAccount } from "@/lib/billing/account";
-import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
-import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
+import {
+  releaseUsageReservation,
+  reserveUsageOrThrow,
+  settleUsageReservation,
+} from "@/lib/billing/usage";
 import { isAdminUser } from "@/lib/auth/admin";
 import { featureAccessForUser } from "@/lib/auth/feature-access";
 import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
@@ -77,26 +80,35 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   let inventoryItemId: string | null = null;
   let prisma: ReturnType<typeof getPrisma> | null = null;
+  let usageReservationId: string | null = null;
+  let usageIdempotencyKey: string | null = null;
 
   try {
     const user = await requireSupabaseUser(request);
 
-    // Enforce the monthly AI-listing quota before doing any work (and before an
-    // inventory item exists), so an over-quota request fails fast with 402 and
-    // leaves nothing behind.
-    const account = await getActiveAccount(user.id);
-    await assertWithinQuota(
-      accountWithEffectivePlan(account, user),
-      "ai_listing",
-      new Date(),
-      { user },
-    );
+    prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
+    usageIdempotencyKey = request.headers.get("idempotency-key") ?? randomUUID();
+    const reservation = await reserveUsageOrThrow({
+      accountId: account.id,
+      metric: "ai_listing",
+      idempotencyKey: usageIdempotencyKey,
+      now: new Date(),
+      user,
+    }, prisma);
+    if (reservation.idempotent) {
+      throw new AppError(
+        "This listing-generation request is already in progress or completed.",
+        409,
+        "USAGE_REQUEST_ALREADY_RESERVED",
+      );
+    }
+    usageReservationId = reservation.reservationId;
 
     const formData = await request.formData();
     const files = extractListingPhotos(formData);
     const photos = await prepareListingPhotos(files);
 
-    prisma = getPrisma();
     inventoryItemId = randomUUID();
     const createdInventoryItemId = inventoryItemId;
 
@@ -193,13 +205,10 @@ export async function POST(request: Request) {
       }),
     ]);
 
-    // Count the successful generation against the monthly quota. Best-effort:
-    // the draft already succeeded, so a counter-write failure is logged loudly
-    // rather than failing the response (which would wrongly mark the item).
     try {
-      await incrementUsage(account.id, "ai_listing", new Date());
+      await settleUsageReservation(usageReservationId, new Date(), prisma);
     } catch (usageError) {
-      logUnexpectedError("ai_listing_usage_increment", usageError);
+      logUnexpectedError("ai_listing_usage_settlement", usageError);
     }
 
     // Best-effort: gather automatic comps now that the item is identified.
@@ -207,6 +216,8 @@ export async function POST(request: Request) {
     await runCompFetch(prisma, createdInventoryItemId, user.id, {
       paidProvidersAllowed: featureAccessForUser(user).paidComps,
       adminOverride: isAdminUser(user),
+      accountId: account.id,
+      idempotencyKey: `${usageIdempotencyKey}:auto-comps`,
     }).catch(() => undefined);
 
     return NextResponse.json({
@@ -239,6 +250,12 @@ export async function POST(request: Request) {
           },
         })
         .catch(() => undefined);
+    }
+
+    if (usageReservationId && prisma) {
+      await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
+        (usageError) => logUnexpectedError("ai_listing_usage_release", usageError),
+      );
     }
 
     const status = error instanceof AppError ? error.status : 500;

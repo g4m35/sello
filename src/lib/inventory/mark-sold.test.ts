@@ -191,6 +191,41 @@ describe("markItemSold", () => {
     expect(prisma._store.syncJobs).toHaveLength(0);
   });
 
+  it("rolls back sold state and source-listing state when delist queue creation fails", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem({ accountId: "account-1" })],
+      listings: [
+        listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" }),
+        listing({ id: "l-grailed", marketplace: "grailed" }),
+      ],
+    });
+    prisma.syncJob.upsert = async () => {
+      throw new Error("queue unavailable");
+    };
+
+    await expect(
+      markItemSold(prisma, {
+        inventoryItemId: "item-1",
+        accountId: "account-1",
+        userId: "user-1",
+        soldMarketplace: "ebay",
+        soldListingId: "e1",
+        sourceMarketplaceListingId: "l-ebay",
+        source: "api",
+      }),
+    ).rejects.toThrow("queue unavailable");
+
+    expect(prisma._store.items[0]).toMatchObject({
+      status: "LISTED",
+      quantityAvailable: 1,
+      soldSourceMarketplace: null,
+      lockVersion: 0,
+    });
+    expect(prisma._store.listings.find((row) => row.id === "l-ebay")?.status).toBe("LISTED");
+    expect(prisma._store.events).toHaveLength(0);
+    expect(prisma._store.syncJobs).toHaveLength(0);
+  });
+
   it("handles a sold item with no recorded source: conflict, never overwrite", async () => {
     const prisma = createInventoryFakePrisma({
       items: [baseItem({ status: "SOLD", quantityAvailable: 0, lockVersion: 1 })],

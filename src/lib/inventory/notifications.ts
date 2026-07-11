@@ -11,10 +11,12 @@ export type NotificationPrismaLike = {
     create(args: {
       data: {
         userId: string;
+        accountId?: string | null;
         kind: string;
         title: string;
         body: string;
         inventoryItemId?: string | null;
+        dedupeKey?: string | null;
       };
     }): Promise<{ id: string }>;
   };
@@ -141,10 +143,12 @@ export function syncConflictCopy(input: {
 
 export type CreateNotificationInput = {
   userId: string;
+  accountId?: string | null;
   kind: string;
   title: string;
   body: string;
   inventoryItemId?: string | null;
+  dedupeKey?: string | null;
 };
 
 export async function createNotification(
@@ -154,10 +158,12 @@ export async function createNotification(
   return db.notification.create({
     data: {
       userId: input.userId,
+      accountId: input.accountId ?? null,
       kind: input.kind,
       title: input.title,
       body: input.body,
       inventoryItemId: input.inventoryItemId ?? null,
+      dedupeKey: input.dedupeKey ?? null,
     },
   });
 }

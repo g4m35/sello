@@ -105,6 +105,7 @@ export async function run(request: Request, db: SyncWorkerPrismaLike) {
       failed: summary.failed,
       skipped: summary.skipped,
       needsReview: summary.needsReview,
+      retryWait: summary.retryWait,
     });
   } catch (error) {
     const { status, body } = safeErrorResponse(error, {

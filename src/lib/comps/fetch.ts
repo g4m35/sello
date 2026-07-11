@@ -57,6 +57,8 @@ export type RunCompFetchOptions = {
   force?: boolean;
   paidProvidersAllowed?: boolean;
   accountId?: string;
+  /** Request-scoped key used to prevent duplicate paid-provider reservations. */
+  idempotencyKey?: string;
   /** When true (admin identity), bypass paid-provider budget/quota/cooldown. */
   adminOverride?: boolean;
 };
@@ -204,6 +206,7 @@ export async function runCompFetch(
   // Paid-provider (e.g. Apify) cost/quota accounting context.
   const ledgerPrisma = prisma as unknown as ProviderLedgerPrismaLike;
   const draftId = draft?.id ?? null;
+  const ledgerAccountId = options.accountId ?? item.accountId;
   const queryHash = hashQueries(queries);
   const paidConfig =
     paidSources.length > 0
@@ -257,6 +260,7 @@ export async function runCompFetch(
       try {
         await recordProviderCall(ledgerPrisma, {
           userId: sellerId,
+          accountId: ledgerAccountId,
           draftId,
           inventoryItemId,
           provider: paidSource.id,
@@ -267,6 +271,9 @@ export async function runCompFetch(
           acceptedCount: 0,
           rejectedCount: 0,
           queryHash,
+          idempotencyKey: options.idempotencyKey
+            ? `${options.idempotencyKey}:${paidSource.id}:weak-identity`
+            : null,
         });
       } catch (error) {
         // The skip ledger is best-effort accounting. A DB hiccup here must not
@@ -349,11 +356,15 @@ export async function runCompFetch(
       try {
         reservation = await reservePaidProviderCall(ledgerPrisma, {
           config: paidConfig,
+          accountId: ledgerAccountId,
           userId: sellerId,
           draftId,
           inventoryItemId,
           provider: paidSource.id,
           queryHash,
+          idempotencyKey: options.idempotencyKey
+            ? `${options.idempotencyKey}:${paidSource.id}`
+            : null,
           now,
         });
       } catch (error) {

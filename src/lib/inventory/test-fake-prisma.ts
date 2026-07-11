@@ -39,6 +39,7 @@ export type FakeListing = {
 export type FakeReviewTask = {
   id: string;
   userId: string;
+  accountId: string | null;
   type: string;
   status: string;
   inventoryItemId: string | null;
@@ -51,6 +52,7 @@ export type FakeReviewTask = {
 export type FakeSyncJob = {
   id: string;
   userId: string;
+  accountId: string | null;
   type: string;
   status: string;
   inventoryItemId: string | null;
@@ -63,12 +65,17 @@ export type FakeSyncJob = {
   runAfter: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  lockedAt: Date | null;
+  leaseOwner: string | null;
+  retryClass: string | null;
+  completedAt: Date | null;
   payload: unknown;
 };
 
 export type FakeEvent = {
   inventoryItemId: string;
   userId: string;
+  accountId: string | null;
   type: string;
   source: string;
   marketplace: Marketplace | null;
@@ -78,6 +85,7 @@ export type FakeEvent = {
 
 export type FakeNotification = {
   userId: string;
+  accountId: string | null;
   kind: string;
   title: string;
   body: string;
@@ -99,6 +107,7 @@ export type FakePrisma = SaleSignalPrismaLike & { _store: FakeStore };
 export type FakeSyncJobSeed = {
   id: string;
   userId: string;
+  accountId?: string | null;
   type: string;
   status?: string;
   inventoryItemId?: string | null;
@@ -116,6 +125,7 @@ function seedSyncJob(seed: FakeSyncJobSeed): FakeSyncJob {
   return {
     id: seed.id,
     userId: seed.userId,
+    accountId: seed.accountId ?? null,
     type: seed.type,
     status: seed.status ?? "queued",
     inventoryItemId: seed.inventoryItemId ?? null,
@@ -130,6 +140,10 @@ function seedSyncJob(seed: FakeSyncJobSeed): FakeSyncJob {
     // Mirrors Prisma @updatedAt. Seedable so a test can backdate a 'running' row
     // to make it look stale to the reaper.
     updatedAt: seed.updatedAt ?? seed.createdAt ?? new Date(),
+    lockedAt: null,
+    leaseOwner: null,
+    retryClass: null,
+    completedAt: null,
     payload: seed.payload ?? {},
   };
 }
@@ -314,7 +328,8 @@ export function createInventoryFakePrisma(seed: {
       where,
     }: {
       where: {
-        userId: string;
+        userId?: string;
+        accountId?: string;
         type: string;
         status: string;
         inventoryItemId: string | null;
@@ -324,7 +339,8 @@ export function createInventoryFakePrisma(seed: {
     }) {
       const found = store.reviewTasks.find(
         (t) =>
-          t.userId === where.userId &&
+          (where.accountId === undefined || t.accountId === where.accountId) &&
+          (where.userId === undefined || t.userId === where.userId) &&
           t.type === where.type &&
           t.status === where.status &&
           t.inventoryItemId === where.inventoryItemId &&
@@ -337,6 +353,7 @@ export function createInventoryFakePrisma(seed: {
     }: {
       data: {
         userId: string;
+        accountId?: string | null;
         type: string;
         inventoryItemId?: string | null;
         marketplace?: Marketplace | null;
@@ -348,6 +365,7 @@ export function createInventoryFakePrisma(seed: {
       const task: FakeReviewTask = {
         id: `task-${store.reviewTasks.length + 1}`,
         userId: data.userId,
+        accountId: data.accountId ?? null,
         type: data.type,
         status: "open",
         inventoryItemId: data.inventoryItemId ?? null,
@@ -364,6 +382,7 @@ export function createInventoryFakePrisma(seed: {
   const jobSelectRow = (job: FakeSyncJob) => ({
     id: job.id,
     userId: job.userId,
+    accountId: job.accountId,
     type: job.type,
     status: job.status,
     inventoryItemId: job.inventoryItemId,
@@ -371,6 +390,7 @@ export function createInventoryFakePrisma(seed: {
     attempts: job.attempts,
     maxAttempts: job.maxAttempts,
     payload: job.payload,
+    leaseOwner: job.leaseOwner,
   });
 
   const syncJob = {
@@ -382,6 +402,7 @@ export function createInventoryFakePrisma(seed: {
       update: Record<string, never>;
       create: {
         userId: string;
+        accountId?: string | null;
         type: string;
         status: string;
         inventoryItemId?: string | null;
@@ -407,6 +428,7 @@ export function createInventoryFakePrisma(seed: {
       const job: FakeSyncJob = {
         id: `job-${store.syncJobs.length + 1}`,
         userId: create.userId,
+        accountId: create.accountId ?? null,
         type: create.type,
         status: create.status,
         inventoryItemId: create.inventoryItemId ?? null,
@@ -419,6 +441,10 @@ export function createInventoryFakePrisma(seed: {
         runAfter: create.runAfter ?? null,
         createdAt: new Date(),
         updatedAt: new Date(),
+        lockedAt: null,
+        leaseOwner: null,
+        retryClass: null,
+        completedAt: null,
         payload: create.payload,
       };
       store.syncJobs.push(job);
@@ -436,7 +462,7 @@ export function createInventoryFakePrisma(seed: {
       take,
     }: {
       where: {
-        status: string;
+        status: string | { in: readonly string[] };
         OR?: Array<{ runAfter: null } | { runAfter: { lte: Date } }>;
         updatedAt?: { lte: Date };
       };
@@ -453,7 +479,9 @@ export function createInventoryFakePrisma(seed: {
       // attempts/maxAttempts. Claim path: status + runAfter due, ordered by createdAt.
       const isStaleSweep = where.updatedAt !== undefined;
       const filtered = store.syncJobs.filter((j) => {
-        if (j.status !== where.status) return false;
+        const expectedStatuses =
+          typeof where.status === "string" ? [where.status] : where.status.in;
+        if (!expectedStatuses.includes(j.status)) return false;
         if (where.updatedAt) {
           return j.updatedAt <= where.updatedAt.lte;
         }
@@ -478,20 +506,26 @@ export function createInventoryFakePrisma(seed: {
       where,
       data,
     }: {
-      where: { id: string; status: string };
+      where: { id: string; status: string | { in: readonly string[] } };
       data: {
         status: string;
         attempts?: { increment: number };
         runAfter?: Date | null;
         errorCode?: string | null;
         errorMessage?: string | null;
+        lockedAt?: Date | null;
+        leaseOwner?: string | null;
+        retryClass?: string | null;
+        completedAt?: Date | null;
       };
     }) {
       // Atomic conditional write: only flips a row still in the expected status.
       // Used by both the claim (queued->running) and the reaper (running->queued
       // or running->failed).
+      const expectedStatuses =
+        typeof where.status === "string" ? [where.status] : where.status.in;
       const job = store.syncJobs.find(
-        (j) => j.id === where.id && j.status === where.status,
+        (j) => j.id === where.id && expectedStatuses.includes(j.status),
       );
       if (!job) return { count: 0 };
       job.status = data.status;
@@ -499,6 +533,10 @@ export function createInventoryFakePrisma(seed: {
       if (data.runAfter !== undefined) job.runAfter = data.runAfter;
       if (data.errorCode !== undefined) job.errorCode = data.errorCode;
       if (data.errorMessage !== undefined) job.errorMessage = data.errorMessage;
+      if (data.lockedAt !== undefined) job.lockedAt = data.lockedAt;
+      if (data.leaseOwner !== undefined) job.leaseOwner = data.leaseOwner;
+      if (data.retryClass !== undefined) job.retryClass = data.retryClass;
+      if (data.completedAt !== undefined) job.completedAt = data.completedAt;
       job.updatedAt = new Date();
       return { count: 1 };
     },
@@ -521,6 +559,11 @@ export function createInventoryFakePrisma(seed: {
         attempts?: { increment: number };
         errorCode?: string | null;
         errorMessage?: string | null;
+        runAfter?: Date | null;
+        lockedAt?: Date | null;
+        leaseOwner?: string | null;
+        retryClass?: string | null;
+        completedAt?: Date | null;
       };
     }) {
       const job = store.syncJobs.find((j) => j.id === where.id);
@@ -529,6 +572,11 @@ export function createInventoryFakePrisma(seed: {
       if (data.attempts) job.attempts += data.attempts.increment;
       if (data.errorCode !== undefined) job.errorCode = data.errorCode;
       if (data.errorMessage !== undefined) job.errorMessage = data.errorMessage;
+      if (data.runAfter !== undefined) job.runAfter = data.runAfter;
+      if (data.lockedAt !== undefined) job.lockedAt = data.lockedAt;
+      if (data.leaseOwner !== undefined) job.leaseOwner = data.leaseOwner;
+      if (data.retryClass !== undefined) job.retryClass = data.retryClass;
+      if (data.completedAt !== undefined) job.completedAt = data.completedAt;
       job.updatedAt = new Date();
       return { id: job.id };
     },
@@ -541,6 +589,7 @@ export function createInventoryFakePrisma(seed: {
       data: {
         inventoryItemId: string;
         userId: string;
+        accountId?: string | null;
         type: string;
         source: string;
         marketplace?: Marketplace | null;
@@ -551,6 +600,7 @@ export function createInventoryFakePrisma(seed: {
       store.events.push({
         inventoryItemId: data.inventoryItemId,
         userId: data.userId,
+        accountId: data.accountId ?? null,
         type: data.type,
         source: data.source,
         marketplace: data.marketplace ?? null,
@@ -567,6 +617,7 @@ export function createInventoryFakePrisma(seed: {
     }: {
       where: {
         userId: string;
+        accountId?: string | null;
         kind: string;
         title: string;
         inventoryItemId: string | null;
@@ -577,6 +628,7 @@ export function createInventoryFakePrisma(seed: {
       const index = store.notifications.findIndex(
         (n) =>
           n.userId === where.userId &&
+          (where.accountId === undefined || n.accountId === where.accountId) &&
           n.kind === where.kind &&
           n.title === where.title &&
           n.inventoryItemId === where.inventoryItemId &&
@@ -589,6 +641,7 @@ export function createInventoryFakePrisma(seed: {
     }: {
       data: {
         userId: string;
+        accountId?: string | null;
         kind: string;
         title: string;
         body: string;
@@ -597,6 +650,7 @@ export function createInventoryFakePrisma(seed: {
     }) {
       store.notifications.push({
         userId: data.userId,
+        accountId: data.accountId ?? null,
         kind: data.kind,
         title: data.title,
         body: data.body,
@@ -615,12 +669,32 @@ export function createInventoryFakePrisma(seed: {
     inventoryEvent,
     notification,
   };
+  let transactionTail = Promise.resolve();
 
   const prisma = {
     _store: store,
     ...base,
     async $transaction<T>(callback: (tx: typeof base) => Promise<T>): Promise<T> {
-      return callback(base);
+      let release = () => {};
+      const previous = transactionTail;
+      transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      const snapshot = structuredClone(store);
+      try {
+        return await callback(base);
+      } catch (error) {
+        store.items.splice(0, store.items.length, ...snapshot.items);
+        store.listings.splice(0, store.listings.length, ...snapshot.listings);
+        store.reviewTasks.splice(0, store.reviewTasks.length, ...snapshot.reviewTasks);
+        store.syncJobs.splice(0, store.syncJobs.length, ...snapshot.syncJobs);
+        store.events.splice(0, store.events.length, ...snapshot.events);
+        store.notifications.splice(0, store.notifications.length, ...snapshot.notifications);
+        throw error;
+      } finally {
+        release();
+      }
     },
   };
 

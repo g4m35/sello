@@ -1,5 +1,6 @@
 import "server-only";
 
+import { decideEntitlement } from "@/lib/auth/entitlement-decision";
 import { getPrisma } from "@/lib/prisma";
 
 import { getActiveAccount } from "./account";
@@ -38,5 +39,11 @@ export async function getEntitlements(
 export function requirePlanFeature(entitlements: Entitlements, feature: FeatureFlag): void {
   const value = entitlements.features[feature];
   const granted = typeof value === "string" ? value !== "none" : Boolean(value);
-  if (!granted) throw planFeatureRequired();
+  const decision = decideEntitlement({
+    plan: entitlements.plan,
+    accountEnabled: true,
+    subscriptionRequired: false,
+    planGranted: granted,
+  });
+  if (!decision.allowed) throw planFeatureRequired();
 }

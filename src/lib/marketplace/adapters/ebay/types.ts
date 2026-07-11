@@ -95,6 +95,32 @@ export type EbayOfferLookup = {
   status?: string;
 };
 
+export type EbayFulfillmentOrderLineItem = {
+  lineItemId?: string;
+  legacyItemId?: string;
+  sku?: string;
+  title?: string;
+  quantity?: number;
+  lineItemCost?: { value?: string; currency?: string };
+};
+
+export type EbayFulfillmentOrder = {
+  orderId?: string;
+  creationDate?: string;
+  lastModifiedDate?: string;
+  orderPaymentStatus?: string;
+  orderFulfillmentStatus?: string;
+  cancelStatus?: { cancelState?: string; cancelledDate?: string };
+  paymentSummary?: { refunds?: Array<{ refundStatus?: string }> };
+  lineItems?: EbayFulfillmentOrderLineItem[];
+};
+
+export type EbayFulfillmentOrdersPage = {
+  orders: EbayFulfillmentOrder[];
+  total: number;
+  next: string | null;
+};
+
 // Request body for createInventoryLocation
 // (POST /sell/inventory/v1/location/{merchantLocationKey}).
 export type EbayInventoryLocationPayload = {

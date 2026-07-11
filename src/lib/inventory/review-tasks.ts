@@ -16,7 +16,8 @@ export type ReviewTaskPrismaLike = {
   reviewTask: {
     findFirst(args: {
       where: {
-        userId: string;
+        userId?: string;
+        accountId?: string;
         type: ReviewTaskType;
         status: ReviewTaskStatus;
         inventoryItemId: string | null;
@@ -27,12 +28,14 @@ export type ReviewTaskPrismaLike = {
     create(args: {
       data: {
         userId: string;
+        accountId?: string | null;
         inventoryItemId?: string | null;
         marketplace?: Marketplace | null;
         type: ReviewTaskType;
         title: string;
         description: string;
         payload: Prisma.InputJsonValue;
+        dedupeKey?: string | null;
       };
     }): Promise<{ id: string }>;
   };
@@ -40,12 +43,14 @@ export type ReviewTaskPrismaLike = {
 
 export type CreateReviewTaskInput = {
   userId: string;
+  accountId?: string | null;
   type: ReviewTaskType;
   inventoryItemId?: string | null;
   marketplace?: Marketplace | null;
   title: string;
   description: string;
   payload?: Prisma.InputJsonValue;
+  dedupeKey?: string | null;
 };
 
 export type CreateReviewTaskResult = {
@@ -63,7 +68,7 @@ export async function createReviewTask(
 
   const existing = await db.reviewTask.findFirst({
     where: {
-      userId: input.userId,
+      ...(input.accountId ? { accountId: input.accountId } : { userId: input.userId }),
       type: input.type,
       status: "open",
       inventoryItemId,
@@ -78,12 +83,14 @@ export async function createReviewTask(
   const created = await db.reviewTask.create({
     data: {
       userId: input.userId,
+      accountId: input.accountId ?? null,
       inventoryItemId,
       marketplace,
       type: input.type,
       title: input.title,
       description: input.description,
       payload: input.payload ?? {},
+      dedupeKey: input.dedupeKey ?? null,
     },
   });
   return { id: created.id, deduped: false };

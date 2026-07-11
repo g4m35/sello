@@ -11,6 +11,7 @@ import type {
   EbayEnvironment,
   EbayInventoryItemLookup,
   EbayFulfillmentPolicy,
+  EbayFulfillmentOrdersPage,
   EbayInventoryLocation,
   EbayInventoryLocationPayload,
   EbayOfferLookup,
@@ -94,6 +95,27 @@ export class EbaySandboxClient implements EbayApiClient {
       "/sell/inventory/v1/location",
     );
     return payload.locations ?? [];
+  }
+
+  async getOrdersModifiedSince(
+    modifiedSince: Date,
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<EbayFulfillmentOrdersPage> {
+    const limit = Math.min(Math.max(Math.floor(opts.limit ?? 50), 1), 200);
+    const offset = Math.max(Math.floor(opts.offset ?? 0), 0);
+    const filter = `lastmodifieddate:[${modifiedSince.toISOString()}..]`;
+    const payload = await this.get<{
+      orders?: EbayFulfillmentOrdersPage["orders"];
+      total?: number;
+      next?: string;
+    }>(
+      `/sell/fulfillment/v1/order?filter=${encodeURIComponent(filter)}&limit=${limit}&offset=${offset}`,
+    );
+    return {
+      orders: payload.orders ?? [],
+      total: payload.total ?? 0,
+      next: payload.next ?? null,
+    };
   }
 
   async getItemAspectsForCategory(categoryId: string): Promise<EbayTaxonomyAspect[]> {
@@ -499,6 +521,7 @@ export async function getUsableEbayAccessToken(
       scope: [
         "https://api.ebay.com/oauth/api_scope/sell.inventory",
         "https://api.ebay.com/oauth/api_scope/sell.account",
+        "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
       ].join(" "),
     }),
   });

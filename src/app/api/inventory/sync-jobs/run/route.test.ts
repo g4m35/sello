@@ -112,6 +112,7 @@ describe("POST /api/inventory/sync-jobs/run — execution", () => {
       failed: 0,
       skipped: 0,
       needsReview: 0,
+      retryWait: 0,
     });
     // Sanitized: no job payloads or secrets leak into the response.
     expect(JSON.stringify(payload)).not.toContain("idem");
@@ -203,11 +204,12 @@ describe("POST /api/inventory/sync-jobs/run — stale-running reaper", () => {
     const payload = await res.json();
 
     expect(res.status).toBe(200);
-    // Reaper requeued it, then the same run claimed + executed it.
+    // Reaper parks it with backoff; a later run claims it after runAfter.
     expect(payload.requeuedStale).toBe(1);
     expect(payload.failedStale).toBe(0);
-    expect(payload.claimed).toBe(1);
-    expect(payload.succeeded).toBe(1);
+    expect(payload.claimed).toBe(0);
+    expect(payload.succeeded).toBe(0);
+    expect(prisma._store.syncJobs[0].status).toBe("retry_wait");
   });
 
   it("requeueStale:false (default) does not touch stale jobs", async () => {

@@ -9,8 +9,11 @@ import {
 } from "@/lib/inventory/test-fake-prisma";
 
 import {
+  cancelSyncJob,
   claimQueuedSyncJobs,
   requeueStaleRunningSyncJobs,
+  retryDelayMs,
+  retrySyncJobForAdmin,
   runQueuedSyncJobs,
   runSyncJob,
   type SyncWorkerPrismaLike,
@@ -273,6 +276,13 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     expect(prisma._store.listings[0].endedAt).toBeNull();
     const task = prisma._store.reviewTasks.find((t) => t.type === "manual_delist_required");
     expect(task).toBeTruthy();
+    expect(prisma._store.notifications).toEqual([
+      expect.objectContaining({
+        accountId: null,
+        kind: "delist_failed",
+        inventoryItemId: "item-1",
+      }),
+    ]);
   });
 
   it("sanitizes the persisted failure message (no raw provider text)", async () => {
@@ -468,8 +478,8 @@ describe("runSyncJob — delist_marketplace_listing (StockX)", () => {
 
     const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
 
-    expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
-    expect(prisma._store.syncJobs[0].status).toBe("needs_review");
+    expect(summary).toMatchObject({ claimed: 1, retryWait: 1 });
+    expect(prisma._store.syncJobs[0].status).toBe("retry_wait");
     expect(prisma._store.events.some((e) => e.type === "delist_failed")).toBe(true);
     expect(prisma._store.listings[0].endedAt).toBeNull();
     const task = prisma._store.reviewTasks.find((t) => t.type === "manual_delist_required");
@@ -842,9 +852,9 @@ describe("runSyncJob — detect_status (StockX)", () => {
 
     const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxStatusSync });
 
-    expect(summary).toMatchObject({ claimed: 1, failed: 1 });
+    expect(summary).toMatchObject({ claimed: 1, retryWait: 1 });
     const job = prisma._store.syncJobs[0];
-    expect(job.status).toBe("failed");
+    expect(job.status).toBe("retry_wait");
     expect(job.errorCode).toBe("STATUS_SYNC_FAILED");
     expect(job.errorMessage).not.toContain("Bearer");
     expect(job.errorMessage).not.toContain("secret");
@@ -898,7 +908,7 @@ describe("requeueStaleRunningSyncJobs", () => {
 
     expect(summary).toEqual({ requeued: 1, failed: 0 });
     const job = prisma._store.syncJobs.find((j) => j.id === "j-stale");
-    expect(job?.status).toBe("queued");
+    expect(job?.status).toBe("retry_wait");
     expect(job?.runAfter).toBeInstanceOf(Date);
     // attempts is NOT reset (the claim already counted it).
     expect(job?.attempts).toBe(2);
@@ -980,7 +990,7 @@ describe("requeueStaleRunningSyncJobs", () => {
     });
 
     expect(summary.requeued).toBe(3);
-    const requeued = prisma._store.syncJobs.filter((j) => j.status === "queued");
+    const requeued = prisma._store.syncJobs.filter((j) => j.status === "retry_wait");
     expect(requeued).toHaveLength(3);
     // The rest stay running, untouched.
     expect(prisma._store.syncJobs.filter((j) => j.status === "running")).toHaveLength(5);
@@ -1051,5 +1061,104 @@ describe("requeueStaleRunningSyncJobs", () => {
     expect(prisma._store.reviewTasks).toHaveLength(0);
     expect(prisma._store.events).toHaveLength(0);
     expect(prisma._store.notifications).toHaveLength(0);
+  });
+});
+
+describe("worker leases, backoff, and admin recovery", () => {
+  it("claims retry-wait work only when due and records the lease owner", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        {
+          id: "due",
+          userId: "user-1",
+          accountId: "account-1",
+          type: "notify_user",
+          status: "retry_wait",
+          runAfter: new Date(Date.now() - 1_000),
+        },
+        {
+          id: "future",
+          userId: "user-1",
+          type: "notify_user",
+          status: "retry_wait",
+          runAfter: new Date(Date.now() + 60_000),
+        },
+      ],
+    });
+
+    const claimed = await claimQueuedSyncJobs(workerDb(prisma), {
+      workerId: "worker-a",
+      limit: 10,
+    });
+    expect(claimed.map((job) => job.id)).toEqual(["due"]);
+    expect(claimed[0]).toMatchObject({ accountId: "account-1", leaseOwner: "worker-a" });
+    expect(prisma._store.syncJobs.find((job) => job.id === "due")).toMatchObject({
+      status: "running",
+      leaseOwner: "worker-a",
+      lockedAt: expect.any(Date),
+    });
+    expect(prisma._store.syncJobs.find((job) => job.id === "future")?.status).toBe("retry_wait");
+  });
+
+  it("uses bounded exponential backoff with deterministic jitter", () => {
+    const first = retryDelayMs(1, "job-a");
+    const second = retryDelayMs(2, "job-a");
+    const otherSeed = retryDelayMs(2, "job-b");
+    expect(second).toBeGreaterThan(first);
+    expect(otherSeed).not.toBe(second);
+    expect(retryDelayMs(100, "job-a")).toBeLessThanOrEqual(15 * 60_000 * 1.25);
+  });
+
+  it("lets admin retry an eligible terminal job and records audit evidence", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [{
+        id: "failed-job",
+        userId: "user-1",
+        type: "notify_user",
+        status: "failed",
+        attempts: 1,
+        maxAttempts: 5,
+        inventoryItemId: "item-1",
+      }],
+    });
+    expect(await retrySyncJobForAdmin(workerDb(prisma), "failed-job", "admin-1")).toBe(true);
+    expect(prisma._store.syncJobs[0]).toMatchObject({
+      status: "queued",
+      retryClass: "admin_retry",
+      runAfter: expect.any(Date),
+    });
+    expect(prisma._store.events[0].payload).toMatchObject({ action: "admin_retry" });
+  });
+
+  it("refuses admin retry after attempt exhaustion", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [{
+        id: "exhausted-job",
+        userId: "user-1",
+        type: "notify_user",
+        status: "failed",
+        attempts: 5,
+        maxAttempts: 5,
+      }],
+    });
+    expect(await retrySyncJobForAdmin(workerDb(prisma), "exhausted-job", "admin-1")).toBe(false);
+    expect(prisma._store.syncJobs[0].status).toBe("failed");
+  });
+
+  it("cancels queued/retry-wait work but never a running external operation", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        { id: "waiting", userId: "user-1", type: "notify_user", status: "retry_wait" },
+        { id: "running", userId: "user-1", type: "notify_user", status: "running" },
+      ],
+    });
+    expect(await cancelSyncJob(workerDb(prisma), "waiting", "admin-1")).toBe(true);
+    expect(await cancelSyncJob(workerDb(prisma), "running", "admin-1")).toBe(false);
+    expect(prisma._store.syncJobs[0]).toMatchObject({ status: "canceled", retryClass: "canceled" });
+    expect(prisma._store.syncJobs[1].status).toBe("running");
   });
 });

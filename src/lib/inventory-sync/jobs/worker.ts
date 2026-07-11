@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   InventoryStatus,
   Marketplace,
@@ -13,6 +15,7 @@ import {
 } from "@/lib/inventory/events";
 import {
   createNotification,
+  delistFailedCopy,
   type NotificationPrismaLike,
 } from "@/lib/inventory/notifications";
 import {
@@ -59,6 +62,7 @@ const MAX_ATTEMPTS_EXHAUSTED_MESSAGE =
 export type ClaimedSyncJob = {
   id: string;
   userId: string;
+  accountId: string | null;
   type: SyncJobType;
   status: SyncJobStatus;
   inventoryItemId: string | null;
@@ -66,6 +70,7 @@ export type ClaimedSyncJob = {
   attempts: number;
   maxAttempts: number;
   payload: Prisma.JsonValue;
+  leaseOwner: string | null;
 };
 
 // --- Prisma surfaces ---------------------------------------------------------
@@ -74,7 +79,7 @@ export type ClaimedSyncJob = {
 
 type ClaimCandidateFindMany = {
   where: {
-    status: "queued";
+    status: { in: readonly ["queued", "retry_wait"] };
     OR: [{ runAfter: null }, { runAfter: { lte: Date } }];
   };
   select: { id: true };
@@ -91,20 +96,54 @@ type StaleRunningFindMany = {
 };
 
 type ClaimUpdateMany = {
-  where: { id: string; status: "queued" };
-  data: { status: "running"; attempts: { increment: number } };
+  where: { id: string; status: { in: readonly ["queued", "retry_wait"] } };
+  data: {
+    status: "running";
+    attempts: { increment: number };
+    lockedAt: Date;
+    leaseOwner: string;
+    retryClass: null;
+  };
 };
 
 // Race-safe reaper writes: each conditional on status:'running' so a row that a
 // real worker already moved on is never clobbered. attempts is NOT reset.
 type RequeueStaleUpdateMany = {
   where: { id: string; status: "running" };
-  data: { status: "queued"; runAfter: Date };
+  data: {
+    status: "retry_wait";
+    runAfter: Date;
+    lockedAt: null;
+    leaseOwner: null;
+    retryClass: string;
+  };
 };
 
 type FailStaleUpdateMany = {
   where: { id: string; status: "running" };
-  data: { status: "failed"; errorCode: string; errorMessage: string };
+  data: {
+    status: "failed";
+    errorCode: string;
+    errorMessage: string;
+    lockedAt: null;
+    leaseOwner: null;
+    retryClass: string;
+    completedAt: Date;
+  };
+};
+
+type ControlUpdateMany = {
+  where: { id: string; status: { in: SyncJobStatus[] } };
+  data: {
+    status: SyncJobStatus;
+    runAfter: Date | null;
+    lockedAt: null;
+    leaseOwner: null;
+    retryClass: string;
+    completedAt: Date | null;
+    errorCode?: null;
+    errorMessage?: null;
+  };
 };
 
 type WorkerJobDelegate = {
@@ -115,11 +154,13 @@ type WorkerJobDelegate = {
   updateMany(args: ClaimUpdateMany): Promise<{ count: number }>;
   updateMany(args: RequeueStaleUpdateMany): Promise<{ count: number }>;
   updateMany(args: FailStaleUpdateMany): Promise<{ count: number }>;
+  updateMany(args: ControlUpdateMany): Promise<{ count: number }>;
   findFirst(args: {
     where: { id: string };
     select: {
       id: true;
       userId: true;
+      accountId: true;
       type: true;
       status: true;
       inventoryItemId: true;
@@ -127,6 +168,7 @@ type WorkerJobDelegate = {
       attempts: true;
       maxAttempts: true;
       payload: true;
+      leaseOwner: true;
     };
   }): Promise<ClaimedSyncJob | null>;
   update(args: {
@@ -135,6 +177,11 @@ type WorkerJobDelegate = {
       status?: SyncJobStatus;
       errorCode?: string | null;
       errorMessage?: string | null;
+      runAfter?: Date | null;
+      lockedAt?: Date | null;
+      leaseOwner?: string | null;
+      retryClass?: string | null;
+      completedAt?: Date | null;
     };
   }): Promise<{ id: string }>;
 };
@@ -144,7 +191,7 @@ type WorkerListingRow = {
   marketplace: Marketplace;
   status: MarketplaceListingStatus;
   externalUrl: string | null;
-  inventoryItem: { accountId: string | null; sellerId: string };
+  inventoryItem: { accountId: string | null; sellerId: string; productName: string };
 };
 
 type WorkerListingDelegate = {
@@ -158,7 +205,7 @@ type WorkerListingDelegate = {
       marketplace: true;
       status: true;
       externalUrl: true;
-      inventoryItem: { select: { accountId: true; sellerId: true } };
+      inventoryItem: { select: { accountId: true; sellerId: true; productName: true } };
     };
   }): Promise<WorkerListingRow | null>;
   update(args: {
@@ -192,6 +239,7 @@ type WorkerNotificationDelegate = NotificationPrismaLike["notification"] & {
   findFirst(args: {
     where: {
       userId: string;
+      accountId?: string | null;
       kind: string;
       title: string;
       inventoryItemId: string | null;
@@ -208,6 +256,30 @@ export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
     inventoryItem: WorkerInventoryItemDelegate;
     notification: WorkerNotificationDelegate;
   };
+
+export type SyncJobControlPrismaLike = InventoryEventPrismaLike & {
+  syncJob: {
+    findFirst(args: {
+      where: { id: string };
+      select: {
+        id: true;
+        accountId: true;
+        inventoryItemId: true;
+        attempts: true;
+        maxAttempts: true;
+        status: true;
+      };
+    }): Promise<{
+      id: string;
+      accountId: string | null;
+      inventoryItemId: string | null;
+      attempts: number;
+      maxAttempts: number;
+      status: SyncJobStatus;
+    } | null>;
+    updateMany(args: ControlUpdateMany): Promise<{ count: number }>;
+  };
+};
 
 // executeEbayDelist needs the full delist-handler surface (publishAttempt,
 // marketplaceEvent, ...). The worker passes its db straight through; in
@@ -228,14 +300,15 @@ export type RunSyncJobDeps = {
  */
 export async function claimQueuedSyncJobs(
   db: SyncWorkerPrismaLike = getPrisma() as unknown as SyncWorkerPrismaLike,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; workerId?: string } = {},
 ): Promise<ClaimedSyncJob[]> {
   const limit = clampLimit(opts.limit);
   const now = new Date();
+  const workerId = opts.workerId?.trim() || randomUUID();
 
   const candidates = await db.syncJob.findMany({
     where: {
-      status: "queued",
+      status: { in: ["queued", "retry_wait"] },
       OR: [{ runAfter: null }, { runAfter: { lte: now } }],
     },
     select: { id: true },
@@ -246,8 +319,14 @@ export async function claimQueuedSyncJobs(
   const claimed: ClaimedSyncJob[] = [];
   for (const { id } of candidates) {
     const result = await db.syncJob.updateMany({
-      where: { id, status: "queued" },
-      data: { status: "running", attempts: { increment: 1 } },
+      where: { id, status: { in: ["queued", "retry_wait"] } },
+      data: {
+        status: "running",
+        attempts: { increment: 1 },
+        lockedAt: now,
+        leaseOwner: workerId,
+        retryClass: null,
+      },
     });
     if (result.count !== 1) continue; // another worker won the claim.
 
@@ -318,6 +397,7 @@ export type RunQueuedSummary = {
   failed: number;
   skipped: number;
   needsReview: number;
+  retryWait: number;
 };
 
 /**
@@ -336,6 +416,7 @@ export async function runQueuedSyncJobs(
     failed: 0,
     skipped: 0,
     needsReview: 0,
+    retryWait: 0,
   };
 
   for (const job of claimedJobs) {
@@ -353,6 +434,9 @@ export async function runQueuedSyncJobs(
       case "needs_review":
         summary.needsReview += 1;
         break;
+      case "retry_wait":
+        summary.retryWait += 1;
+        break;
       default:
         break;
     }
@@ -366,6 +450,20 @@ export type RequeueStaleSummary = {
   requeued: number;
   failed: number;
 };
+
+export function retryDelayMs(
+  attempt: number,
+  seed: string,
+  baseMs = 1_000,
+  maxMs = 15 * 60_000,
+): number {
+  const exponent = Math.max(0, Math.min(20, attempt - 1));
+  const raw = Math.min(maxMs, baseMs * 2 ** exponent);
+  let hash = 0;
+  for (const character of seed) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  const jitter = 0.75 + (hash % 501) / 1_000;
+  return Math.max(250, Math.round(raw * jitter));
+}
 
 /**
  * Recover jobs stuck in 'running' (a worker crashed mid-run, so they never
@@ -399,9 +497,16 @@ export async function requeueStaleRunningSyncJobs(
   const summary: RequeueStaleSummary = { requeued: 0, failed: 0 };
   for (const job of stale) {
     if (job.attempts < job.maxAttempts) {
+      const runAfter = new Date(now.getTime() + retryDelayMs(job.attempts, job.id));
       const result = await db.syncJob.updateMany({
         where: { id: job.id, status: "running" },
-        data: { status: "queued", runAfter: now },
+        data: {
+          status: "retry_wait",
+          runAfter,
+          lockedAt: null,
+          leaseOwner: null,
+          retryClass: "stale_recovery",
+        },
       });
       if (result.count === 1) summary.requeued += 1;
     } else {
@@ -414,12 +519,80 @@ export async function requeueStaleRunningSyncJobs(
             MAX_ATTEMPTS_EXHAUSTED_MESSAGE,
             MAX_ATTEMPTS_EXHAUSTED_MESSAGE,
           ),
+          lockedAt: null,
+          leaseOwner: null,
+          retryClass: "attempts_exhausted",
+          completedAt: now,
         },
       });
       if (result.count === 1) summary.failed += 1;
     }
   }
   return summary;
+}
+
+export async function retrySyncJobForAdmin(
+  db: SyncJobControlPrismaLike,
+  jobId: string,
+  adminUserId: string,
+): Promise<boolean> {
+  const job = await readControlJob(db, jobId);
+  if (!job || job.attempts >= job.maxAttempts) return false;
+  const result = await db.syncJob.updateMany({
+    where: { id: jobId, status: { in: ["failed", "needs_review"] } },
+    data: {
+      status: "queued",
+      runAfter: new Date(),
+      lockedAt: null,
+      leaseOwner: null,
+      retryClass: "admin_retry",
+      completedAt: null,
+      errorCode: null,
+      errorMessage: null,
+    },
+  });
+  if (result.count === 1 && job.inventoryItemId) {
+    await recordInventoryEvent(db, {
+      inventoryItemId: job.inventoryItemId,
+      userId: adminUserId,
+      accountId: job.accountId,
+      type: "sync_conflict",
+      source: "system",
+      payload: { syncJobId: job.id, action: "admin_retry" } as Prisma.InputJsonValue,
+    });
+  }
+  return result.count === 1;
+}
+
+export async function cancelSyncJob(
+  db: SyncJobControlPrismaLike,
+  jobId: string,
+  actorUserId: string,
+): Promise<boolean> {
+  const job = await readControlJob(db, jobId);
+  if (!job) return false;
+  const result = await db.syncJob.updateMany({
+    where: { id: jobId, status: { in: ["queued", "retry_wait", "needs_review"] } },
+    data: {
+      status: "canceled",
+      runAfter: null,
+      lockedAt: null,
+      leaseOwner: null,
+      retryClass: "canceled",
+      completedAt: new Date(),
+    },
+  });
+  if (result.count === 1 && job.inventoryItemId) {
+    await recordInventoryEvent(db, {
+      inventoryItemId: job.inventoryItemId,
+      userId: actorUserId,
+      accountId: job.accountId,
+      type: "sync_conflict",
+      source: "system",
+      payload: { syncJobId: job.id, action: "canceled" } as Prisma.InputJsonValue,
+    });
+  }
+  return result.count === 1;
 }
 
 // --- Executor: delist_marketplace_listing ------------------------------------
@@ -474,7 +647,7 @@ async function execDelist(
       marketplace: true,
       status: true,
       externalUrl: true,
-      inventoryItem: { select: { accountId: true, sellerId: true } },
+      inventoryItem: { select: { accountId: true, sellerId: true, productName: true } },
     },
   });
 
@@ -505,8 +678,8 @@ async function execDelist(
   // Non-adapter marketplaces are defensive only: these are normally enqueued as
   // needs_review and never claimed. NEVER fake a delist for a marketplace with
   // no adapter.
-  await parkForManualDelist(db, job, listing, soldMarketplace);
-  return finalizeNeedsReviewOrFailed(db, job);
+  await parkForManualDelist(db, job, listing, soldMarketplace, false);
+  return finalizeNeedsReview(db, job.id, "MANUAL_DELIST_REQUIRED");
 }
 
 async function execEbayDelist(
@@ -532,6 +705,7 @@ async function execEbayDelist(
     await recordInventoryEvent(db, {
       inventoryItemId,
       userId: job.userId,
+      accountId: job.accountId,
       type: "delist_failed",
       source: "system",
       marketplace: listing.marketplace,
@@ -545,7 +719,7 @@ async function execEbayDelist(
         syncJobId: job.id,
       } as Prisma.InputJsonValue,
     });
-    await parkForManualDelist(db, job, listing, soldMarketplace);
+    await parkForManualDelist(db, job, listing, soldMarketplace, true);
     return finalizeNeedsReviewOrFailed(db, job, error);
   }
 
@@ -558,6 +732,7 @@ async function execEbayDelist(
   await recordInventoryEvent(db, {
     inventoryItemId,
     userId: job.userId,
+    accountId: job.accountId,
     type: "delist_succeeded",
     source: "system",
     marketplace: listing.marketplace,
@@ -602,6 +777,7 @@ async function execStockXDelist(
     await recordInventoryEvent(db, {
       inventoryItemId,
       userId: job.userId,
+      accountId: job.accountId,
       type: "delist_failed",
       source: "system",
       marketplace: listing.marketplace,
@@ -614,7 +790,7 @@ async function execStockXDelist(
         syncJobId: job.id,
       } as Prisma.InputJsonValue,
     });
-    await parkForManualDelist(db, job, listing, null);
+    await parkForManualDelist(db, job, listing, null, true);
     return finalizeNeedsReviewOrFailed(db, job, error);
   }
 
@@ -625,6 +801,7 @@ async function execStockXDelist(
   await recordInventoryEvent(db, {
     inventoryItemId,
     userId: job.userId,
+    accountId: job.accountId,
     type: "delist_succeeded",
     source: "system",
     marketplace: listing.marketplace,
@@ -667,10 +844,12 @@ async function parkForManualDelist(
   job: ClaimedSyncJob,
   listing: WorkerListingRow,
   soldMarketplace: Marketplace | null,
+  automatedAttemptFailed: boolean,
 ): Promise<void> {
   const inventoryItemId = job.inventoryItemId ?? "";
   await createReviewTask(db, {
     userId: job.userId,
+    accountId: job.accountId,
     type: "manual_delist_required",
     inventoryItemId: job.inventoryItemId,
     marketplace: listing.marketplace,
@@ -688,6 +867,31 @@ async function parkForManualDelist(
       syncJobId: job.id,
     } as Prisma.InputJsonValue,
   });
+  if (automatedAttemptFailed) {
+    const copy = delistFailedCopy({
+      productName: listing.inventoryItem.productName,
+      marketplace: listing.marketplace,
+    });
+    const existing = await db.notification.findFirst({
+      where: {
+        userId: job.userId,
+        accountId: job.accountId,
+        kind: copy.kind,
+        title: copy.title,
+        inventoryItemId: job.inventoryItemId,
+        readAt: null,
+      },
+      select: { id: true },
+    });
+    if (!existing) {
+      await createNotification(db, {
+        userId: job.userId,
+        accountId: job.accountId,
+        inventoryItemId: job.inventoryItemId,
+        ...copy,
+      });
+    }
+  }
 }
 
 // --- Executor: detect_status -------------------------------------------------
@@ -730,7 +934,7 @@ async function execDetectStatus(
       marketplace: true,
       status: true,
       externalUrl: true,
-      inventoryItem: { select: { accountId: true, sellerId: true } },
+      inventoryItem: { select: { accountId: true, sellerId: true, productName: true } },
     },
   });
 
@@ -759,6 +963,7 @@ async function execDetectStatus(
     await recordInventoryEvent(db, {
       inventoryItemId,
       userId: job.userId,
+      accountId: job.accountId,
       type: "sync_conflict",
       source: "system",
       marketplace: listing.marketplace,
@@ -815,6 +1020,7 @@ async function execNotify(
   const existing = await db.notification.findFirst({
     where: {
       userId,
+      accountId: job.accountId,
       kind,
       title,
       inventoryItemId: inventoryItemId ?? null,
@@ -826,6 +1032,7 @@ async function execNotify(
   if (!existing) {
     await createNotification(db, {
       userId,
+      accountId: job.accountId,
       kind,
       title,
       body,
@@ -835,6 +1042,7 @@ async function execNotify(
       await recordInventoryEvent(db, {
         inventoryItemId,
         userId,
+        accountId: job.accountId,
         type: "notification_sent",
         source: "system",
         payload: { kind, title, syncJobId: job.id } as Prisma.InputJsonValue,
@@ -878,6 +1086,7 @@ async function execCreateReviewTask(
   // createReviewTask already dedupes open tasks by type+inventoryItemId+marketplace.
   await createReviewTask(db, {
     userId,
+    accountId: job.accountId,
     type: type as Parameters<typeof createReviewTask>[1]["type"],
     inventoryItemId:
       typeof payload.inventoryItemId === "string"
@@ -902,7 +1111,16 @@ async function finalizeSucceeded(
 ): Promise<RunSummary> {
   await db.syncJob.update({
     where: { id: jobId },
-    data: { status: "succeeded", errorCode: null, errorMessage: null },
+    data: {
+      status: "succeeded",
+      errorCode: null,
+      errorMessage: null,
+      runAfter: null,
+      lockedAt: null,
+      leaseOwner: null,
+      retryClass: null,
+      completedAt: new Date(),
+    },
   });
   return { status: "succeeded" };
 }
@@ -919,9 +1137,35 @@ async function finalizeSkip(
       status: "skipped",
       errorCode: code,
       errorMessage: safeFailureText(message, "The sync job was skipped."),
+      runAfter: null,
+      lockedAt: null,
+      leaseOwner: null,
+      retryClass: "terminal",
+      completedAt: new Date(),
     },
   });
   return { status: "skipped" };
+}
+
+async function finalizeNeedsReview(
+  db: SyncWorkerPrismaLike,
+  jobId: string,
+  code: string,
+): Promise<RunSummary> {
+  await db.syncJob.update({
+    where: { id: jobId },
+    data: {
+      status: "needs_review",
+      errorCode: code,
+      errorMessage: "Seller review is required before this job can continue.",
+      runAfter: null,
+      lockedAt: null,
+      leaseOwner: null,
+      retryClass: "manual_review",
+      completedAt: null,
+    },
+  });
+  return { status: "needs_review" };
 }
 
 async function finalizeFailure(
@@ -931,6 +1175,27 @@ async function finalizeFailure(
   error: unknown,
   opts: { fallback?: string } = {},
 ): Promise<RunSummary> {
+  const retryable = isRetryableFailure(code, error);
+  if (retryable && job.attempts < job.maxAttempts) {
+    const runAfter = new Date(Date.now() + retryDelayMs(job.attempts, job.id));
+    await db.syncJob.update({
+      where: { id: job.id },
+      data: {
+        status: "retry_wait",
+        errorCode: code,
+        errorMessage: safeFailureText(
+          error instanceof Error ? error.message : undefined,
+          opts.fallback ?? "The sync job will be retried.",
+        ),
+        runAfter,
+        lockedAt: null,
+        leaseOwner: null,
+        retryClass: "transient",
+        completedAt: null,
+      },
+    });
+    return { status: "retry_wait" };
+  }
   await db.syncJob.update({
     where: { id: job.id },
     data: {
@@ -940,14 +1205,19 @@ async function finalizeFailure(
         error instanceof Error ? error.message : undefined,
         opts.fallback ?? "The sync job failed.",
       ),
+      runAfter: null,
+      lockedAt: null,
+      leaseOwner: null,
+      retryClass: retryable ? "attempts_exhausted" : "terminal",
+      completedAt: new Date(),
     },
   });
   return { status: "failed" };
 }
 
-// A retryable failure: park needs_review so a later worker pass can pick it up
-// again, UNLESS attempts have reached maxAttempts — then mark terminal 'failed'
-// so endless retry is impossible.
+// A retryable external failure parks in retry_wait with exponential backoff.
+// The review task/notification created by the caller remains visible while the
+// automatic retry proceeds. Attempt exhaustion becomes terminal failed.
 async function finalizeNeedsReviewOrFailed(
   db: SyncWorkerPrismaLike,
   job: ClaimedSyncJob,
@@ -961,19 +1231,57 @@ async function finalizeNeedsReviewOrFailed(
   if (exhausted) {
     await db.syncJob.update({
       where: { id: job.id },
-      data: { status: "failed", errorCode: "DELIST_FAILED", errorMessage: message },
+      data: {
+        status: "failed",
+        errorCode: "DELIST_FAILED",
+        errorMessage: message,
+        runAfter: null,
+        lockedAt: null,
+        leaseOwner: null,
+        retryClass: "attempts_exhausted",
+        completedAt: new Date(),
+      },
     });
     return { status: "failed" };
+  }
+  const status = failureStatus(error);
+  if (status !== null && status !== 408 && status !== 429 && status < 500) {
+    return finalizeNeedsReview(db, job.id, "DELIST_MANUAL_REVIEW_REQUIRED");
   }
   await db.syncJob.update({
     where: { id: job.id },
     data: {
-      status: "needs_review",
-      errorCode: "DELIST_NEEDS_REVIEW",
+      status: "retry_wait",
+      errorCode: "DELIST_RETRY_WAIT",
       errorMessage: message,
+      runAfter: new Date(Date.now() + retryDelayMs(job.attempts, job.id)),
+      lockedAt: null,
+      leaseOwner: null,
+      retryClass: "transient_external",
+      completedAt: null,
     },
   });
-  return { status: "needs_review" };
+  return { status: "retry_wait" };
+}
+
+function isRetryableFailure(code: string, error: unknown): boolean {
+  if (code === "INVALID_PAYLOAD" || code === "NOT_IMPLEMENTED") return false;
+  const status = failureStatus(error);
+  if (status !== null) return status === 408 || status === 429 || status >= 500;
+  return code === "STATUS_SYNC_FAILED" || code.includes("TIMEOUT") || code.includes("UNAVAILABLE");
+}
+
+function failureStatus(error: unknown): number | null {
+  return (
+    error && typeof error === "object" && "status" in error &&
+    typeof (error as { status?: unknown }).status === "number"
+      ? (error as { status: number }).status
+      : error && typeof error === "object" && "details" in error &&
+          (error as { details?: unknown }).details &&
+          typeof (error as { details: { status?: unknown } }).details.status === "number"
+        ? (error as { details: { status: number } }).details.status
+        : null
+  );
 }
 
 // --- internals ---------------------------------------------------------------
@@ -1011,6 +1319,7 @@ async function readJob(
     select: {
       id: true,
       userId: true,
+      accountId: true,
       type: true,
       status: true,
       inventoryItemId: true,
@@ -1018,6 +1327,24 @@ async function readJob(
       attempts: true,
       maxAttempts: true,
       payload: true,
+      leaseOwner: true,
+    },
+  });
+}
+
+async function readControlJob(
+  db: SyncJobControlPrismaLike,
+  id: string,
+) {
+  return db.syncJob.findFirst({
+    where: { id },
+    select: {
+      id: true,
+      accountId: true,
+      inventoryItemId: true,
+      attempts: true,
+      maxAttempts: true,
+      status: true,
     },
   });
 }

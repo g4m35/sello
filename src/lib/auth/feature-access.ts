@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isAdminUser } from "@/lib/auth/admin";
+import { decideEntitlement } from "@/lib/auth/entitlement-decision";
 import { AppError } from "@/lib/errors";
 
 export type FeatureEntitlement =
@@ -64,12 +65,6 @@ function normalizedEmails(value: string | undefined): string[] {
   ];
 }
 
-function allEntitlementsGranted(): FeatureAccess {
-  return Object.fromEntries(
-    FEATURE_ENTITLEMENTS.map((entitlement) => [entitlement, true]),
-  ) as FeatureAccess;
-}
-
 export function configuredFeatureEmails(
   env: Record<string, string | undefined> = process.env,
 ): Record<FeatureEntitlement, string[]> {
@@ -88,16 +83,25 @@ export function featureAccessForUser(
   user: { id?: string | null; email?: string | null },
   env: Record<string, string | undefined> = process.env,
 ): FeatureAccess {
-  if (isAdminUser(user, env)) {
-    return allEntitlementsGranted();
-  }
-
+  const adminOverride = isAdminUser(user, env);
   const email = user.email?.trim().toLowerCase();
   const configured = configuredFeatureEmails(env);
   return Object.fromEntries(
     FEATURE_ENTITLEMENTS.map((entitlement) => [
       entitlement,
-      email ? configured[entitlement].includes(email) : false,
+      decideEntitlement({
+        plan: "free",
+        adminOverride,
+        accountEnabled: true,
+        subscriptionRequired: false,
+        planGranted: true,
+        allowlistRequired: true,
+        allowlisted: email ? configured[entitlement].includes(email) : false,
+        globalEnabled: true,
+        featureEnabled: true,
+        providerEnabled: true,
+        environmentCapable: true,
+      }).allowed,
     ]),
   ) as FeatureAccess;
 }

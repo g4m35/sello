@@ -304,6 +304,29 @@ describe("eBay sandbox publish methods", () => {
     return { client, calls };
   }
 
+  it("reads fulfillment orders from a bounded modified-date cursor", async () => {
+    const { client, calls } = recordingClient([
+      new Response(
+        JSON.stringify({
+          orders: [{ orderId: "order-1", orderPaymentStatus: "PAID" }],
+          total: 1,
+        }),
+        { status: 200 },
+      ),
+    ]);
+
+    const page = await client.getOrdersModifiedSince(
+      new Date("2026-07-10T00:00:00.000Z"),
+      { limit: 500, offset: -1 },
+    );
+    expect(page).toMatchObject({ total: 1, next: null });
+    expect(page.orders[0].orderPaymentStatus).toBe("PAID");
+    expect(calls[0].url).toContain("/sell/fulfillment/v1/order?");
+    expect(calls[0].url).toContain("lastmodifieddate%3A%5B2026-07-10T00%3A00%3A00.000Z..%5D");
+    expect(calls[0].url).toContain("limit=200");
+    expect(calls[0].url).toContain("offset=0");
+  });
+
   it("PUTs createOrReplaceInventoryItem to the inventory_item/{sku} path", async () => {
     const { client, calls } = recordingClient([new Response(null, { status: 204 })]);
 

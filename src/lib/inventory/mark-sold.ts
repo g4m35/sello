@@ -58,6 +58,12 @@ export type MarkSoldTransaction = DelistPrismaLike & {
       };
     }): Promise<{ id: string }>;
   };
+  marketplaceListing: DelistPrismaLike["marketplaceListing"] & {
+    update(args: {
+      where: { id: string };
+      data: { status: "SOLD"; endedAt: Date };
+    }): Promise<{ id: string }>;
+  };
 };
 
 export type MarkSoldPrismaLike = DelistPrismaLike &
@@ -66,7 +72,7 @@ export type MarkSoldPrismaLike = DelistPrismaLike &
   InventoryEventPrismaLike & {
     inventoryItem: DelistPrismaLike["inventoryItem"] & {
       findFirst(args: {
-        where: { id: string; sellerId: string };
+        where: { id: string; sellerId?: string; accountId?: string };
         select: {
           id: true;
           sellerId: true;
@@ -84,11 +90,13 @@ export type MarkSoldPrismaLike = DelistPrismaLike &
 export type MarkItemSoldInput = {
   inventoryItemId: string;
   userId: string;
+  accountId?: string;
   inventoryOwnerUserId?: string;
   // null = "source unknown" (e.g. a manual mark-sold via the lifecycle route):
   // record no sold source and delist EVERY active listing.
   soldMarketplace: Marketplace | null;
   soldListingId?: string | null;
+  sourceMarketplaceListingId?: string | null;
   soldPriceCents?: number | null;
   source: "api" | "email" | "manual" | "system";
 };
@@ -119,7 +127,9 @@ export async function markItemSold(
 ): Promise<MarkItemSoldResult> {
   const inventoryOwnerUserId = input.inventoryOwnerUserId ?? input.userId;
   const item = await db.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: inventoryOwnerUserId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: inventoryOwnerUserId },
     select: {
       id: true,
       sellerId: true,
@@ -154,6 +164,7 @@ export async function markItemSold(
       : "from another source";
     const task = await createReviewTask(db, {
       userId: input.userId,
+      accountId: input.accountId,
       type: "sync_conflict",
       inventoryItemId: item.id,
       marketplace: input.soldMarketplace,
@@ -175,6 +186,7 @@ export async function markItemSold(
     await recordInventoryEvent(db, {
       inventoryItemId: item.id,
       userId: input.userId,
+      accountId: input.accountId,
       type: "sync_conflict",
       source: input.source,
       marketplace: input.soldMarketplace,
@@ -190,6 +202,7 @@ export async function markItemSold(
     if (existingSource && input.soldMarketplace) {
       await createNotification(db, {
         userId: input.userId,
+        accountId: input.accountId,
         inventoryItemId: item.id,
         ...syncConflictCopy({
           productName: item.productName,
@@ -229,9 +242,16 @@ export async function markItemSold(
           lockVersion: { increment: 1 },
         },
       });
+      if (input.sourceMarketplaceListingId) {
+        await tx.marketplaceListing.update({
+          where: { id: input.sourceMarketplaceListingId },
+          data: { status: "SOLD", endedAt: now },
+        });
+      }
       await recordInventoryEvent(tx, {
         inventoryItemId: item.id,
         userId: input.userId,
+        accountId: input.accountId,
         type: "sale_confirmed",
         source: input.source,
         marketplace: input.soldMarketplace,
@@ -248,6 +268,7 @@ export async function markItemSold(
         input.soldMarketplace,
         input.userId,
         inventoryOwnerUserId,
+        input.accountId,
       );
     });
   } catch (error) {
@@ -267,6 +288,7 @@ export async function markItemSold(
   // never roll back a completed sale.
   await createNotification(db, {
     userId: input.userId,
+    accountId: input.accountId,
     inventoryItemId: item.id,
     ...soldDelistingCopy({
       productName: item.productName,

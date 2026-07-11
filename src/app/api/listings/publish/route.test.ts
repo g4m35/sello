@@ -11,8 +11,9 @@ const mocks = vi.hoisted(() => ({
     | undefined
     | ((...args: unknown[]) => Promise<unknown>),
   getActiveAccount: vi.fn(),
-  assertWithinQuota: vi.fn(),
-  incrementUsage: vi.fn(),
+  releaseUsageReservation: vi.fn(),
+  reserveUsageOrThrow: vi.fn(),
+  settleUsageReservation: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -27,8 +28,9 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/billing/usage", () => ({
-  assertWithinQuota: mocks.assertWithinQuota,
-  incrementUsage: mocks.incrementUsage,
+  releaseUsageReservation: mocks.releaseUsageReservation,
+  reserveUsageOrThrow: mocks.reserveUsageOrThrow,
+  settleUsageReservation: mocks.settleUsageReservation,
 }));
 
 vi.mock("@/lib/marketplace/publish-handler", async (importOriginal) => {
@@ -49,8 +51,13 @@ describe("publish API auth boundaries", () => {
     mocks.executePublish.mockReset();
     mocks.executePublish.mockImplementation(mocks.executePublishActual!);
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "kingpin" });
-    mocks.assertWithinQuota.mockResolvedValue(undefined);
-    mocks.incrementUsage.mockResolvedValue(undefined);
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.settleUsageReservation.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -59,7 +66,7 @@ describe("publish API auth boundaries", () => {
 
   it("returns 402 and does not publish when the autopublish quota is exhausted", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
-    mocks.assertWithinQuota.mockRejectedValue(
+    mocks.reserveUsageOrThrow.mockRejectedValue(
       new AppError(
         "You have used all of your autopublishes for this billing period. Upgrade your plan for more.",
         402,
@@ -77,7 +84,36 @@ describe("publish API auth boundaries", () => {
     expect(response.status).toBe(402);
     expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_AUTOPUBLISH");
     expect(mocks.executePublish).not.toHaveBeenCalled();
-    expect(mocks.incrementUsage).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservation).not.toHaveBeenCalled();
+  });
+
+  it("does not release the original reservation for a duplicate request", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "allowed@example.com",
+    });
+    mocks.getPrisma.mockReturnValue({});
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-in-flight",
+      idempotent: true,
+      status: "reserved",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        headers: { "idempotency-key": "request-key-123" },
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe("USAGE_REQUEST_ALREADY_RESERVED");
+    expect(mocks.executePublish).not.toHaveBeenCalled();
+    expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
   });
 
   it("rejects publish attempts when the seller is not signed in", async () => {

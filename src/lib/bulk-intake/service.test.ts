@@ -6,12 +6,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors";
 
 const mocks = vi.hoisted(() => ({
-  assertWithinQuota: vi.fn(),
   createSignedUrl: vi.fn().mockResolvedValue({ data: { signedUrl: "signed-photo" } }),
   downloadListingPhotos: vi.fn(),
   generateListingDraftWithGemini: vi.fn(),
   getPrisma: vi.fn(),
-  incrementUsage: vi.fn(),
+  releaseUsageReservation: vi.fn(),
+  reserveUsageOrThrow: vi.fn(),
+  settleUsageReservation: vi.fn(),
   prepareListingPhotos: vi.fn(),
   uploadListingPhotos: vi.fn(),
 }));
@@ -23,8 +24,9 @@ vi.mock("@/lib/ai/gemini", () => ({
   generateListingDraftWithGemini: mocks.generateListingDraftWithGemini,
 }));
 vi.mock("@/lib/billing/usage", () => ({
-  assertWithinQuota: mocks.assertWithinQuota,
-  incrementUsage: mocks.incrementUsage,
+  releaseUsageReservation: mocks.releaseUsageReservation,
+  reserveUsageOrThrow: mocks.reserveUsageOrThrow,
+  settleUsageReservation: mocks.settleUsageReservation,
 }));
 vi.mock("@/lib/storage/listing-photos", () => ({
   downloadListingPhotos: mocks.downloadListingPhotos,
@@ -44,6 +46,8 @@ import {
   createBulkBatch,
   generateBulkItem,
   groupBulkPhotos,
+  registerBulkPhotos,
+  recoverStaleBulkGeneration,
   requireOwnedBulkBatch,
 } from "./service";
 
@@ -55,6 +59,7 @@ function photo(id: string, position: number, bulkItemId: string | null = null) {
   return {
     id,
     batchId: "10000000-0000-4000-8000-000000000001",
+    accountId: account.id,
     bulkItemId,
     storageBucket: "private",
     storagePath: `user-1/batch/${id}.jpg`,
@@ -96,6 +101,7 @@ function generationItem(status = "ready_for_generation") {
   return {
     id: "20000000-0000-4000-8000-000000000001",
     batchId: "10000000-0000-4000-8000-000000000001",
+    accountId: account.id,
     inventoryItemId: null,
     position: 0,
     status,
@@ -118,8 +124,14 @@ function generationItem(status = "ready_for_generation") {
 describe("bulk intake service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.assertWithinQuota.mockResolvedValue(undefined);
-    mocks.incrementUsage.mockResolvedValue(undefined);
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      allowed: true,
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.settleUsageReservation.mockResolvedValue(true);
     mocks.downloadListingPhotos.mockResolvedValue([]);
   });
 
@@ -213,6 +225,107 @@ describe("bulk intake service", () => {
     expect(result.status).toBe("needs_review");
   });
 
+  it("registers account-scoped photo metadata in deterministic upload order", async () => {
+    const before = batchRecord("created");
+    const registered = photo("30000000-0000-4000-8000-000000000010", 0);
+    const after = batchRecord("uploading", [registered]);
+    const findFirst = vi.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(after);
+    const createMany = vi.fn().mockResolvedValue({ count: 1 });
+    const update = vi.fn().mockResolvedValue({ id: before.id });
+    const prisma = {
+      bulkBatch: { findFirst, update },
+      bulkPhoto: { createMany },
+      $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.prepareListingPhotos.mockResolvedValue([
+      {
+        bytes: new Uint8Array([1, 2, 3]),
+        mimeType: "image/jpeg",
+        originalName: "front.jpg",
+        position: 0,
+      },
+    ]);
+    mocks.uploadListingPhotos.mockResolvedValue([
+      {
+        bucket: "private",
+        path: "user-1/batch/front.jpg",
+        mimeType: "image/jpeg",
+        originalName: "front.jpg",
+        position: 0,
+      },
+    ]);
+    const formData = new FormData();
+    formData.append("photos", new File([new Uint8Array([1])], "front.jpg", { type: "image/jpeg" }));
+
+    const result = await registerBulkPhotos({
+      batchId: before.id,
+      account,
+      user,
+      formData,
+    });
+
+    expect(result.photoCount).toBe(1);
+    expect(createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          batchId: before.id,
+          accountId: account.id,
+          position: 0,
+          storagePath: "user-1/batch/front.jpg",
+        }),
+      ],
+    });
+  });
+
+  it("recovers stale generation and expires its reserved usage", async () => {
+    const itemId = "20000000-0000-4000-8000-000000000099";
+    const now = new Date("2026-07-10T12:00:00Z");
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = {
+      bulkItem: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([{ id: itemId, generationAttempts: 2 }])
+          .mockResolvedValueOnce([{ status: "failed" }]),
+        updateMany,
+      },
+      bulkBatch: {
+        findUnique: vi.fn().mockResolvedValue({ status: "processing" }),
+        update: vi.fn().mockResolvedValue({ id: batchRecord().id }),
+      },
+      usageReservation: {
+        findUnique: vi.fn().mockResolvedValue({ id: "reservation-stale", status: "reserved" }),
+      },
+    };
+    mocks.getPrisma.mockReturnValue(prisma);
+
+    await expect(
+      recoverStaleBulkGeneration(batchRecord().id, account.id, now),
+    ).resolves.toBe(1);
+
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: itemId,
+          accountId: account.id,
+          status: "generating",
+          generationAttempts: 2,
+        }),
+        data: expect.objectContaining({
+          status: "failed",
+          errorCode: "BULK_GENERATION_STALE",
+        }),
+      }),
+    );
+    expect(mocks.releaseUsageReservation).toHaveBeenCalledWith(
+      "reservation-stale",
+      now,
+      prisma,
+      "expired",
+    );
+  });
+
   it("moves quota-exhausted items to review without calling Gemini", async () => {
     const initial = generationItem();
     const final = { ...initial, status: "needs_review", reviewReason: "Upgrade for more.", errorCode: "QUOTA_EXCEEDED_AI_LISTING" };
@@ -230,7 +343,7 @@ describe("bulk intake service", () => {
       },
     };
     mocks.getPrisma.mockReturnValue(prisma);
-    mocks.assertWithinQuota.mockRejectedValue(
+    mocks.reserveUsageOrThrow.mockRejectedValue(
       new AppError("Upgrade for more.", 402, "QUOTA_EXCEEDED_AI_LISTING"),
     );
 
@@ -363,11 +476,9 @@ describe("bulk intake service", () => {
     expect(tx.aiOutput.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ provider: "gemini" }) }),
     );
-    expect(mocks.incrementUsage).toHaveBeenCalledWith(
-      account.id,
-      "ai_listing",
+    expect(mocks.settleUsageReservation).toHaveBeenCalledWith(
+      "usage-reservation-1",
       expect.any(Date),
-      1,
       prisma,
     );
   });
@@ -391,7 +502,7 @@ describe("bulk intake service", () => {
       status: "listing_ready",
       inventoryItemId: converted.inventoryItemId,
     });
-    expect(mocks.assertWithinQuota).not.toHaveBeenCalled();
+    expect(mocks.reserveUsageOrThrow).not.toHaveBeenCalled();
     expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
   });
 

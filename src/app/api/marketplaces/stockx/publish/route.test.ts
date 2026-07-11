@@ -10,8 +10,9 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
   getPrisma: vi.fn(),
-  assertWithinQuota: vi.fn(),
-  incrementUsage: vi.fn(),
+  releaseUsageReservation: vi.fn(),
+  reserveUsageOrThrow: vi.fn(),
+  settleUsageReservation: vi.fn(),
   executePublish: vi.fn(),
 }));
 
@@ -23,8 +24,9 @@ vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: mocks.getActiveAccount,
 }));
 vi.mock("@/lib/billing/usage", () => ({
-  assertWithinQuota: mocks.assertWithinQuota,
-  incrementUsage: mocks.incrementUsage,
+  releaseUsageReservation: mocks.releaseUsageReservation,
+  reserveUsageOrThrow: mocks.reserveUsageOrThrow,
+  settleUsageReservation: mocks.settleUsageReservation,
 }));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
@@ -53,8 +55,13 @@ describe("StockX publish route", () => {
       plan: "kingpin",
     });
     mocks.getPrisma.mockReturnValue({ db: true });
-    mocks.assertWithinQuota.mockResolvedValue(undefined);
-    mocks.incrementUsage.mockResolvedValue(undefined);
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.settleUsageReservation.mockResolvedValue(true);
     mocks.executePublish.mockResolvedValue({
       outcome: {
         status: "submitted",
@@ -131,16 +138,18 @@ describe("StockX publish route", () => {
       }),
     );
 
-    expect(mocks.assertWithinQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "acc-1" }),
-      "autopublish",
-      expect.any(Date),
-      { user: { id: "user-1" } },
+    expect(mocks.reserveUsageOrThrow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "acc-1",
+        metric: "autopublish",
+        user: { id: "user-1" },
+      }),
+      { db: true },
     );
-    expect(mocks.incrementUsage).toHaveBeenCalledWith(
-      "acc-1",
-      "autopublish",
+    expect(mocks.settleUsageReservation).toHaveBeenCalledWith(
+      "usage-reservation-1",
       expect.any(Date),
+      { db: true },
     );
   });
 
@@ -169,6 +178,6 @@ describe("StockX publish route", () => {
       message: "StockX API request failed.",
       details: { status: 400 },
     });
-    expect(mocks.incrementUsage).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservation).not.toHaveBeenCalled();
   });
 });
