@@ -32,6 +32,7 @@ describe("createNotification", () => {
 
     await createNotification(prisma, {
       userId: "user-1",
+      accountId: "account-1",
       kind: "sold_delisting",
       title: "t",
       body: "b",

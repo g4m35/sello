@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import type { Prisma } from "@/generated/prisma/client";
 import { isAdminUser } from "@/lib/auth/admin";
-import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
 import { accountScope } from "@/lib/billing/scope";
 import {
@@ -29,10 +29,11 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const paidProvidersEnabled =
-      isCompsPaidProvidersEnabled() && featureAccessForUser(user).paidComps;
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const resolved = await resolveRuntimeEntitlements(user, prisma);
+    const account = resolved.account;
+    const paidProvidersEnabled =
+      isCompsPaidProvidersEnabled() && resolved.access.paidComps;
 
     const requestedItemId = new URL(request.url).searchParams.get("inventoryItemId");
 

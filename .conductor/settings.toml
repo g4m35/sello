@@ -39,7 +39,8 @@ icon = "shield"
 archive_on_merge = true
 delete_branch_on_archive = false
 worktree_push_auto_setup_remote = true
-branch_prefix_type = "none"
+branch_prefix_type = "custom"
+branch_prefix = "feature"
 
 # First preview URL opens by default from the terminal panel.
 [[preview_urls]]
@@ -95,5 +96,5 @@ Understand both sides and their tests. Preserve both intended behaviors or docum
 """
 
 rename_branch = """
-Propose a concise Git branch name for this Sello change using feature/, fix/, chore/, security/, docs/, or test/ prefixes. Prefer a short kebab-case summary of the user request. Do not include secrets or personal data.
+Propose a concise kebab-case branch suffix describing the user request. Conductor applies the configured feature/ prefix. Do not include another slash, secrets, or personal data.
 """

@@ -6,12 +6,15 @@ import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
 import { getActiveAccount } from "@/lib/billing/account";
 import {
+  markUsageReconciliationRequired,
+  markUsageWorkStarted,
   releaseUsageReservation,
   reserveUsageOrThrow,
-  settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation,
 } from "@/lib/billing/usage";
 import { isAdminUser } from "@/lib/auth/admin";
-import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
+import { accountScope } from "@/lib/billing/scope";
 import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
 import { asStringRecord } from "@/lib/listing/ebay-draft-fields";
 import { runCompFetch } from "@/lib/comps/fetch";
@@ -32,12 +35,11 @@ export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const draft = await prisma.listingDraft.findFirst({
       where: {
-        inventoryItem: {
-          sellerId: user.id,
-        },
+        inventoryItem: accountScope(account),
       },
       orderBy: { updatedAt: "desc" },
       include: {
@@ -82,18 +84,23 @@ export async function POST(request: Request) {
   let prisma: ReturnType<typeof getPrisma> | null = null;
   let usageReservationId: string | null = null;
   let usageIdempotencyKey: string | null = null;
+  let meteredWorkCompleted = false;
 
   try {
     const user = await requireSupabaseUser(request);
 
     prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const runtimeEntitlements = await resolveRuntimeEntitlements(user, prisma);
+    const account = runtimeEntitlements.account;
+    inventoryItemId = randomUUID();
     usageIdempotencyKey = request.headers.get("idempotency-key") ?? randomUUID();
     const reservation = await reserveUsageOrThrow({
       accountId: account.id,
       metric: "ai_listing",
       idempotencyKey: usageIdempotencyKey,
       now: new Date(),
+      operationType: "listing_draft",
+      operationId: inventoryItemId,
       user,
     }, prisma);
     if (reservation.idempotent) {
@@ -109,7 +116,6 @@ export async function POST(request: Request) {
     const files = extractListingPhotos(formData);
     const photos = await prepareListingPhotos(files);
 
-    inventoryItemId = randomUUID();
     const createdInventoryItemId = inventoryItemId;
 
     await prisma.inventoryItem.create({
@@ -138,6 +144,13 @@ export async function POST(request: Request) {
       })),
     });
 
+    if (!(await markUsageWorkStarted(usageReservationId, new Date(), prisma))) {
+      throw new AppError(
+        "Listing generation could not start because its usage reservation is no longer active.",
+        409,
+        "USAGE_RESERVATION_NOT_ACTIVE",
+      );
+    }
     const gemini = await generateListingDraftWithGemini(photos);
     const { identification, listingDraft } = gemini.draft;
 
@@ -204,17 +217,19 @@ export async function POST(request: Request) {
         },
       }),
     ]);
+    meteredWorkCompleted = true;
 
-    try {
-      await settleUsageReservation(usageReservationId, new Date(), prisma);
-    } catch (usageError) {
-      logUnexpectedError("ai_listing_usage_settlement", usageError);
-    }
+    await settleUsageReservationOrRequireReconciliation(
+      usageReservationId,
+      new Date(),
+      "AI_LISTING_SETTLEMENT_FAILED",
+      prisma,
+    );
 
     // Best-effort: gather automatic comps now that the item is identified.
     // No-op (and fast) when no comp source is configured; never blocks the draft.
     await runCompFetch(prisma, createdInventoryItemId, user.id, {
-      paidProvidersAllowed: featureAccessForUser(user).paidComps,
+      paidProvidersAllowed: runtimeEntitlements.access.paidComps,
       adminOverride: isAdminUser(user),
       accountId: account.id,
       idempotencyKey: `${usageIdempotencyKey}:auto-comps`,
@@ -253,9 +268,22 @@ export async function POST(request: Request) {
     }
 
     if (usageReservationId && prisma) {
-      await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
-        (usageError) => logUnexpectedError("ai_listing_usage_release", usageError),
-      );
+      if (meteredWorkCompleted) {
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          "AI_LISTING_SETTLEMENT_FAILED",
+          prisma,
+        ).catch((usageError) => logUnexpectedError("ai_listing_usage_reconcile", usageError));
+      } else {
+        await releaseUsageReservation(
+          usageReservationId,
+          new Date(),
+          prisma,
+          "released",
+          { allowStartedWork: true },
+        ).catch((usageError) => logUnexpectedError("ai_listing_usage_release", usageError));
+      }
     }
 
     const status = error instanceof AppError ? error.status : 500;

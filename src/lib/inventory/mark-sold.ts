@@ -34,6 +34,7 @@ import { createReviewTask, type ReviewTaskPrismaLike } from "./review-tasks";
 export type MarkSoldItemRow = {
   id: string;
   sellerId: string;
+  accountId: string;
   productName: string;
   status: InventoryStatus;
   soldSourceMarketplace: Marketplace | null;
@@ -76,6 +77,7 @@ export type MarkSoldPrismaLike = DelistPrismaLike &
         select: {
           id: true;
           sellerId: true;
+          accountId: true;
           productName: true;
           status: true;
           soldSourceMarketplace: true;
@@ -121,6 +123,8 @@ export type MarkItemSoldResult =
       reviewTaskId: string;
     };
 
+class InventoryLockVersionConflict extends Error {}
+
 export async function markItemSold(
   db: MarkSoldPrismaLike = getPrisma(),
   input: MarkItemSoldInput,
@@ -133,6 +137,7 @@ export async function markItemSold(
     select: {
       id: true,
       sellerId: true,
+      accountId: true,
       productName: true,
       status: true,
       soldSourceMarketplace: true,
@@ -144,6 +149,7 @@ export async function markItemSold(
   if (!item) {
     throw new AppError("Inventory item not found.", 404);
   }
+  const authoritativeAccountId = item.accountId;
 
   // Already sold: idempotent if same source, conflict if a different source.
   if (item.status === "SOLD" || item.soldSourceMarketplace) {
@@ -164,7 +170,7 @@ export async function markItemSold(
       : "from another source";
     const task = await createReviewTask(db, {
       userId: input.userId,
-      accountId: input.accountId,
+      accountId: authoritativeAccountId,
       type: "sync_conflict",
       inventoryItemId: item.id,
       marketplace: input.soldMarketplace,
@@ -186,7 +192,7 @@ export async function markItemSold(
     await recordInventoryEvent(db, {
       inventoryItemId: item.id,
       userId: input.userId,
-      accountId: input.accountId,
+      accountId: authoritativeAccountId,
       type: "sync_conflict",
       source: input.source,
       marketplace: input.soldMarketplace,
@@ -202,7 +208,7 @@ export async function markItemSold(
     if (existingSource && input.soldMarketplace) {
       await createNotification(db, {
         userId: input.userId,
-        accountId: input.accountId,
+        accountId: authoritativeAccountId,
         inventoryItemId: item.id,
         ...syncConflictCopy({
           productName: item.productName,
@@ -231,17 +237,22 @@ export async function markItemSold(
   let delist: QueueDelistResult;
   try {
     delist = await db.$transaction(async (tx) => {
-      await tx.inventoryItem.update({
-        where: { id: item.id, lockVersion: item.lockVersion },
-        data: {
-          status: "SOLD",
-          quantityAvailable: 0,
-          soldAt: now,
-          soldSourceMarketplace: input.soldMarketplace,
-          soldSourceListingId: input.soldListingId ?? null,
-          lockVersion: { increment: 1 },
-        },
-      });
+      try {
+        await tx.inventoryItem.update({
+          where: { id: item.id, lockVersion: item.lockVersion },
+          data: {
+            status: "SOLD",
+            quantityAvailable: 0,
+            soldAt: now,
+            soldSourceMarketplace: input.soldMarketplace,
+            soldSourceListingId: input.soldListingId ?? null,
+            lockVersion: { increment: 1 },
+          },
+        });
+      } catch (error) {
+        if (isRecordNotFound(error)) throw new InventoryLockVersionConflict();
+        throw error;
+      }
       if (input.sourceMarketplaceListingId) {
         await tx.marketplaceListing.update({
           where: { id: input.sourceMarketplaceListingId },
@@ -251,7 +262,7 @@ export async function markItemSold(
       await recordInventoryEvent(tx, {
         inventoryItemId: item.id,
         userId: input.userId,
-        accountId: input.accountId,
+        accountId: authoritativeAccountId,
         type: "sale_confirmed",
         source: input.source,
         marketplace: input.soldMarketplace,
@@ -268,18 +279,40 @@ export async function markItemSold(
         input.soldMarketplace,
         input.userId,
         inventoryOwnerUserId,
-        input.accountId,
+        authoritativeAccountId,
       );
     });
   } catch (error) {
     // A concurrent sale won the lockVersion race. Treat as already-sold (the
     // other writer is mid-flight); never overwrite or double-queue.
-    if (isLockVersionConflict(error)) {
-      return {
-        outcome: "already_sold",
-        inventoryItemId: item.id,
-        soldMarketplace: input.soldMarketplace,
-      };
+    if (error instanceof InventoryLockVersionConflict) {
+      const latest = await db.inventoryItem.findFirst({
+        where: input.accountId
+          ? { id: input.inventoryItemId, accountId: input.accountId }
+          : { id: input.inventoryItemId, sellerId: inventoryOwnerUserId },
+        select: {
+          id: true,
+          sellerId: true,
+          accountId: true,
+          productName: true,
+          status: true,
+          soldSourceMarketplace: true,
+          soldSourceListingId: true,
+          lockVersion: true,
+        },
+      });
+      if (latest && (latest.status === "SOLD" || latest.soldSourceMarketplace)) {
+        return {
+          outcome: "already_sold",
+          inventoryItemId: item.id,
+          soldMarketplace: input.soldMarketplace,
+        };
+      }
+      throw new AppError(
+        "Inventory changed while the sale was being recorded. Retry reconciliation.",
+        409,
+        "INVENTORY_LOCK_CONFLICT",
+      );
     }
     throw error;
   }
@@ -288,7 +321,7 @@ export async function markItemSold(
   // never roll back a completed sale.
   await createNotification(db, {
     userId: input.userId,
-    accountId: input.accountId,
+    accountId: authoritativeAccountId,
     inventoryItemId: item.id,
     ...soldDelistingCopy({
       productName: item.productName,
@@ -310,7 +343,7 @@ export async function markItemSold(
 }
 
 // Prisma surfaces "record not found for the where clause" on an update as P2025.
-function isLockVersionConflict(error: unknown): boolean {
+function isRecordNotFound(error: unknown): boolean {
   return (
     !!error &&
     typeof error === "object" &&

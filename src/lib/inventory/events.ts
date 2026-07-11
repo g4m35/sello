@@ -20,7 +20,7 @@ export type InventoryEventPrismaLike = {
       data: {
         inventoryItemId: string;
         userId: string;
-        accountId?: string | null;
+        accountId: string;
         type: InventoryEventType;
         source: SignalSource;
         marketplace?: Marketplace | null;
@@ -36,7 +36,7 @@ export type InventoryEventPrismaLike = {
 export type RecordInventoryEventInput = {
   inventoryItemId: string;
   userId: string;
-  accountId?: string | null;
+  accountId: string;
   type: InventoryEventType;
   source: SignalSource;
   marketplace?: Marketplace | null;
@@ -54,7 +54,7 @@ export async function recordInventoryEvent(
     data: {
       inventoryItemId: input.inventoryItemId,
       userId: input.userId,
-      accountId: input.accountId ?? null,
+      accountId: input.accountId,
       type: input.type,
       source: input.source,
       marketplace: input.marketplace ?? null,

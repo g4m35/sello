@@ -6,9 +6,11 @@ import { assertBulkBatchSize } from "@/lib/billing/batch";
 import { effectiveLimitsForUser } from "@/lib/billing/effective-plan";
 import type { AccountRecord } from "@/lib/billing/account";
 import {
+  markUsageReconciliationRequired,
+  markUsageWorkStarted,
   releaseUsageReservation,
   reserveUsageOrThrow,
-  settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation,
 } from "@/lib/billing/usage";
 import {
   AppError,
@@ -488,7 +490,13 @@ export async function recoverStaleBulkGeneration(
       select: { id: true, status: true },
     });
     if (reservation?.status === "reserved") {
-      await releaseUsageReservation(reservation.id, now, prisma, "expired").catch(
+      await releaseUsageReservation(
+        reservation.id,
+        now,
+        prisma,
+        "expired",
+        { allowStartedWork: true },
+      ).catch(
         (error) => logUnexpectedError("bulk_stale_usage_expiry", error),
       );
     }
@@ -613,6 +621,8 @@ export async function generateBulkItem(
       metric: "ai_listing",
       idempotencyKey: `bulk-ai:${item.id}:attempt:${item.generationAttempts + 1}`,
       now: new Date(),
+      operationType: "bulk_listing",
+      operationId: item.id,
       user: args.user,
     }, prisma);
     usageReservationId = reservation.reservationId;
@@ -648,6 +658,13 @@ export async function generateBulkItem(
   }
 
   try {
+    if (!(await markUsageWorkStarted(usageReservationId, new Date(), prisma))) {
+      throw new AppError(
+        "Bulk generation could not start because its usage reservation is no longer active.",
+        409,
+        "USAGE_RESERVATION_NOT_ACTIVE",
+      );
+    }
     const photos = await downloadListingPhotos(
       item.photos.map((photo, position) => ({
         storageBucket: photo.storageBucket,
@@ -757,14 +774,31 @@ export async function generateBulkItem(
       }
     });
 
-    try {
-      await settleUsageReservation(usageReservationId, new Date(), prisma);
-    } catch (usageError) {
+    await settleUsageReservationOrRequireReconciliation(
+      usageReservationId,
+      new Date(),
+      "BULK_AI_LISTING_SETTLEMENT_FAILED",
+      prisma,
+    ).catch(async (usageError) => {
       logUnexpectedError("bulk_ai_listing_usage_settlement", usageError);
-    }
+      await markUsageReconciliationRequired(
+        usageReservationId,
+        new Date(),
+        "BULK_AI_LISTING_SETTLEMENT_FAILED",
+        prisma,
+      ).catch((markError) =>
+        logUnexpectedError("bulk_ai_listing_usage_reconcile", markError),
+      );
+    });
   } catch (error) {
     if (usageReservationId) {
-      await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
+      await releaseUsageReservation(
+        usageReservationId,
+        new Date(),
+        prisma,
+        "released",
+        { allowStartedWork: true },
+      ).catch(
         (usageError) => logUnexpectedError("bulk_ai_listing_usage_release", usageError),
       );
     }
@@ -821,5 +855,29 @@ export async function cancelBulkBatch(
       data: { ...summary, status: "canceled", canceledAt: new Date() },
     });
   });
+  const canceledItems = await prisma.bulkItem.findMany({
+    where: { batchId, accountId, status: "canceled", inventoryItemId: null },
+    select: { id: true },
+  });
+  if (canceledItems.length > 0) {
+    const reservations = await prisma.usageReservation.findMany({
+      where: {
+        accountId,
+        operationType: "bulk_listing",
+        operationId: { in: canceledItems.map((item) => item.id) },
+        status: "reserved",
+      },
+      select: { id: true },
+    });
+    for (const reservation of reservations) {
+      await releaseUsageReservation(
+        reservation.id,
+        new Date(),
+        prisma,
+        "released",
+        { allowStartedWork: true },
+      ).catch((error) => logUnexpectedError("bulk_cancel_usage_release", error));
+    }
+  }
   return getBulkBatchView(batchId, accountId, prisma);
 }

@@ -226,6 +226,37 @@ describe("markItemSold", () => {
     expect(prisma._store.syncJobs).toHaveLength(0);
   });
 
+  it("does not misclassify a missing source listing as an inventory lock race", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem({ accountId: "account-1" })],
+      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
+    });
+    prisma.marketplaceListing.update = async () => {
+      throw Object.assign(new Error("Record to update not found."), { code: "P2025" });
+    };
+
+    await expect(
+      markItemSold(prisma, {
+        inventoryItemId: "item-1",
+        accountId: "account-1",
+        userId: "user-1",
+        soldMarketplace: "ebay",
+        soldListingId: "e1",
+        sourceMarketplaceListingId: "l-ebay",
+        source: "api",
+      }),
+    ).rejects.toMatchObject({ code: "P2025" });
+
+    expect(prisma._store.items[0]).toMatchObject({
+      status: "LISTED",
+      quantityAvailable: 1,
+      soldSourceMarketplace: null,
+      lockVersion: 0,
+    });
+    expect(prisma._store.events).toHaveLength(0);
+    expect(prisma._store.syncJobs).toHaveLength(0);
+  });
+
   it("handles a sold item with no recorded source: conflict, never overwrite", async () => {
     const prisma = createInventoryFakePrisma({
       items: [baseItem({ status: "SOLD", quantityAvailable: 0, lockVersion: 1 })],

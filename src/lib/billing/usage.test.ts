@@ -9,9 +9,12 @@ import {
   billingPeriodStart,
   getUsage,
   incrementUsage,
+  markUsageWorkStarted,
+  reconcileStaleUsageReservations,
   releaseUsageReservation,
   reserveUsage,
   settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation,
 } from "./usage";
 
 describe("billingPeriodStart", () => {
@@ -131,6 +134,12 @@ type ReservationTestRow = {
   status: "reserved" | "settled" | "released" | "expired" | "denied";
   limitSnapshot: number;
   denialReason: string | null;
+  operationType: string;
+  operationId: string;
+  expiresAt: Date | null;
+  workStartedAt: Date | null;
+  reconciliationRequiredAt: Date | null;
+  lastErrorCode: string | null;
 };
 
 function reservationPrisma(opts: {
@@ -197,6 +206,22 @@ function reservationPrisma(opts: {
       }),
     },
     usageReservation: {
+      findMany: vi.fn().mockImplementation(async ({ where, take }: {
+        where: {
+          status: ReservationTestRow["status"];
+          expiresAt: { lte: Date };
+          accountId?: string;
+        };
+        take: number;
+      }) => [...reservations.values()]
+        .filter((row) =>
+          row.status === where.status &&
+          row.expiresAt !== null &&
+          row.expiresAt <= where.expiresAt.lte &&
+          (!where.accountId || row.accountId === where.accountId),
+        )
+        .slice(0, take)
+        .map((row) => ({ id: row.id, workStartedAt: row.workStartedAt }))),
       findUnique: vi.fn().mockImplementation(async ({ where }: {
         where:
           | { id: string }
@@ -214,7 +239,14 @@ function reservationPrisma(opts: {
         data: Omit<ReservationTestRow, "id"> & Record<string, unknown>;
       }) => {
         const id = `reservation-${nextId++}`;
-        reservations.set(id, { id, ...data });
+        reservations.set(id, {
+          id,
+          ...data,
+          expiresAt: data.expiresAt ?? null,
+          workStartedAt: data.workStartedAt ?? null,
+          reconciliationRequiredAt: data.reconciliationRequiredAt ?? null,
+          lastErrorCode: data.lastErrorCode ?? null,
+        });
         return { id };
       }),
       updateMany: vi.fn().mockImplementation(async ({ where, data }: {
@@ -237,7 +269,7 @@ function reservationPrisma(opts: {
     },
   } as never;
 
-  return { prisma, account, counters, reservations, counterKey };
+  return { prisma, tx, account, counters, reservations, counterKey };
 }
 
 describe("atomic usage reservations", () => {
@@ -248,6 +280,8 @@ describe("atomic usage reservations", () => {
         accountId: "acc-1",
         metric: "ai_listing",
         idempotencyKey: "request-final-a",
+        operationType: "listing_draft",
+        operationId: "draft-final-a",
         now,
         user: { id: "member-1" },
       }, state.prisma),
@@ -255,6 +289,8 @@ describe("atomic usage reservations", () => {
         accountId: "acc-1",
         metric: "ai_listing",
         idempotencyKey: "request-final-b",
+        operationType: "listing_draft",
+        operationId: "draft-final-b",
         now,
         user: { id: "member-2" },
       }, state.prisma),
@@ -270,6 +306,8 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing" as const,
       idempotencyKey: "same-request-key",
+      operationType: "listing_draft" as const,
+      operationId: "same-draft",
       now,
       user: { id: "member-1" },
     };
@@ -291,6 +329,8 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "member-one-request",
+      operationType: "listing_draft",
+      operationId: "member-one-draft",
       now,
       user: { id: "member-1" },
     }, state.prisma);
@@ -298,6 +338,8 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "member-two-request",
+      operationType: "listing_draft",
+      operationId: "member-two-draft",
       now,
       user: { id: "member-2" },
     }, state.prisma);
@@ -312,6 +354,8 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "release-after-claim",
+      operationType: "listing_draft",
+      operationId: "release-draft",
       now,
     }, state.prisma);
     expect(reserved.allowed).toBe(true);
@@ -322,6 +366,8 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "replacement-claim",
+      operationType: "listing_draft",
+      operationId: "replacement-draft",
       now,
     }, state.prisma);
     expect(replacement.allowed).toBe(true);
@@ -335,6 +381,8 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "pro-before-downgrade",
+      operationType: "listing_draft",
+      operationId: "pro-draft",
       now,
     }, state.prisma);
     expect(reserved.allowed).toBe(true);
@@ -346,6 +394,8 @@ describe("atomic usage reservations", () => {
         accountId: "acc-1",
         metric: "ai_listing",
         idempotencyKey: "free-after-downgrade",
+        operationType: "listing_draft",
+        operationId: "free-draft",
         now,
       }, state.prisma),
     ).resolves.toMatchObject({ allowed: false, reason: "USAGE_LIMIT_EXCEEDED" });
@@ -358,6 +408,8 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "admin-reservation",
+      operationType: "listing_draft",
+      operationId: "admin-draft",
       now,
       user: { id: "admin-1", email: "owner@example.com" },
     }, state.prisma);
@@ -373,16 +425,108 @@ describe("atomic usage reservations", () => {
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "july-request-key",
+      operationType: "listing_draft",
+      operationId: "july-draft",
       now,
     }, state.prisma);
     const august = await reserveUsage({
       accountId: "acc-1",
       metric: "ai_listing",
       idempotencyKey: "august-request-key",
+      operationType: "listing_draft",
+      operationId: "august-draft",
       now: new Date("2026-08-01T00:00:00Z"),
     }, state.prisma);
 
     expect(july.allowed).toBe(false);
     expect(august).toMatchObject({ allowed: true, used: 1 });
+  });
+
+  it("expires a crashed reservation only when work never started", async () => {
+    const state = reservationPrisma({ count: 9 });
+    const reserved = await reserveUsage({
+      accountId: "acc-1",
+      metric: "ai_listing",
+      idempotencyKey: "crash-before-work",
+      operationType: "listing_draft",
+      operationId: "draft-before-work",
+      now,
+      expiresAt: new Date("2026-06-25T12:01:00Z"),
+    }, state.prisma);
+    expect(reserved.allowed).toBe(true);
+
+    const summary = await reconcileStaleUsageReservations({
+      now: new Date("2026-06-25T12:02:00Z"),
+    }, state.prisma);
+
+    expect(summary).toEqual({ inspected: 1, expiredBeforeWork: 1, requiresReconciliation: 0 });
+    expect(state.reservations.get(reserved.reservationId)?.status).toBe("expired");
+    expect(Math.max(...state.counters.values())).toBe(9);
+  });
+
+  it("retains capacity and flags reconciliation after a crash during work", async () => {
+    const state = reservationPrisma({ count: 9 });
+    const reserved = await reserveUsage({
+      accountId: "acc-1",
+      metric: "ai_listing",
+      idempotencyKey: "crash-during-work",
+      operationType: "marketplace_publish",
+      operationId: "item-1:ebay",
+      now,
+      expiresAt: new Date("2026-06-25T12:01:00Z"),
+    }, state.prisma);
+    expect(reserved.allowed).toBe(true);
+    await markUsageWorkStarted(reserved.reservationId, now, state.prisma);
+
+    const summary = await reconcileStaleUsageReservations({
+      now: new Date("2026-06-25T12:02:00Z"),
+    }, state.prisma);
+
+    expect(summary).toEqual({ inspected: 1, expiredBeforeWork: 0, requiresReconciliation: 1 });
+    expect(state.reservations.get(reserved.reservationId)).toMatchObject({
+      status: "reserved",
+      lastErrorCode: "USAGE_WORK_OUTCOME_UNKNOWN",
+    });
+    expect(Math.max(...state.counters.values())).toBe(10);
+    await expect(
+      releaseUsageReservation(reserved.reservationId, now, state.prisma),
+    ).resolves.toBe(false);
+  });
+
+  it("makes a settlement failure durable and recoverable without releasing quota", async () => {
+    const state = reservationPrisma();
+    const reserved = await reserveUsage({
+      accountId: "acc-1",
+      metric: "ai_listing",
+      idempotencyKey: "crash-at-settle",
+      operationType: "listing_draft",
+      operationId: "draft-at-settle",
+      now,
+    }, state.prisma);
+    expect(reserved.allowed).toBe(true);
+    await markUsageWorkStarted(reserved.reservationId, now, state.prisma);
+    const implementation = state.tx.usageReservation.updateMany.getMockImplementation();
+    state.tx.usageReservation.updateMany
+      .mockRejectedValueOnce(new Error("temporary write failure"))
+      .mockImplementation(implementation!);
+
+    await expect(
+      settleUsageReservationOrRequireReconciliation(
+        reserved.reservationId,
+        now,
+        "AI_LISTING_SETTLEMENT_FAILED",
+        state.prisma,
+      ),
+    ).resolves.toBe("reconciliation_required");
+    expect(state.reservations.get(reserved.reservationId)).toMatchObject({
+      status: "reserved",
+      operationType: "listing_draft",
+      operationId: "draft-at-settle",
+      lastErrorCode: "AI_LISTING_SETTLEMENT_FAILED",
+    });
+    expect(Math.max(...state.counters.values())).toBe(1);
+    await expect(
+      settleUsageReservation(reserved.reservationId, new Date(now.getTime() + 1), state.prisma),
+    ).resolves.toBe(true);
   });
 });

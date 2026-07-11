@@ -8,13 +8,14 @@ import {
   evaluateRefreshCooldown,
 } from "@/lib/comps/cooldown";
 import { isAdminUser } from "@/lib/auth/admin";
-import { requireFeatureAccess } from "@/lib/auth/feature-access";
-import { getActiveAccount } from "@/lib/billing/account";
+import { requireRuntimeFeatureAccess } from "@/lib/auth/feature-access";
 import { accountScope } from "@/lib/billing/scope";
 import {
+  markUsageReconciliationRequired,
+  markUsageWorkStarted,
   releaseUsageReservation,
   reserveUsageOrThrow,
-  settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation,
 } from "@/lib/billing/usage";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
@@ -29,9 +30,10 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   let usageReservationId: string | null = null;
   let prisma: ReturnType<typeof getPrisma> | null = null;
+  let workStarted = false;
+  let meteredWorkCompleted = false;
   try {
     const user = await requireSupabaseUser(request);
-    requireFeatureAccess(user, "paidComps");
     const body = await request.json();
     const inventoryItemId: unknown = body?.inventoryItemId;
     if (typeof inventoryItemId !== "string" || !inventoryItemId) {
@@ -44,9 +46,14 @@ export async function POST(request: Request) {
         "PAID_COMPS_DISABLED",
       );
     }
-
     prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const runtimeEntitlements = await requireRuntimeFeatureAccess(
+      user,
+      "paidComps",
+      prisma,
+    );
+
+    const account = runtimeEntitlements.account;
     const item = await prisma.inventoryItem.findFirst({
       where: { id: inventoryItemId, ...accountScope(account) },
       select: { id: true },
@@ -61,6 +68,8 @@ export async function POST(request: Request) {
       metric: "comp_refresh",
       idempotencyKey: requestIdempotencyKey,
       now: new Date(),
+      operationType: "comp_refresh",
+      operationId: inventoryItemId,
       user,
     }, prisma);
     if (reservation.idempotent) {
@@ -92,7 +101,11 @@ export async function POST(request: Request) {
         cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: false }),
       });
       if (!cooldown.allowed) {
-        await releaseUsageReservation(usageReservationId, new Date(), prisma);
+        try {
+          await releaseUsageReservation(usageReservationId, new Date(), prisma);
+        } catch (usageError) {
+          logUnexpectedError("comp_refresh_usage_release", usageError);
+        }
         return NextResponse.json(
           {
             error: `Comps were just refreshed. Try again in ${cooldown.retryAfterSeconds}s.`,
@@ -103,6 +116,14 @@ export async function POST(request: Request) {
       }
     }
 
+    workStarted = await markUsageWorkStarted(usageReservationId, new Date(), prisma);
+    if (!workStarted) {
+      throw new AppError(
+        "Comp refresh could not start because its usage reservation is no longer active.",
+        409,
+        "USAGE_RESERVATION_NOT_ACTIVE",
+      );
+    }
     const result = await runCompFetch(prisma, inventoryItemId, user.id, {
       force: true,
       paidProvidersAllowed: true,
@@ -110,19 +131,32 @@ export async function POST(request: Request) {
       adminOverride: isOwner,
       idempotencyKey: requestIdempotencyKey,
     });
+    meteredWorkCompleted = true;
 
-    try {
-      await settleUsageReservation(usageReservationId, new Date(), prisma);
-    } catch (usageError) {
-      logUnexpectedError("comp_refresh_usage_settlement", usageError);
-    }
+    await settleUsageReservationOrRequireReconciliation(
+      usageReservationId,
+      new Date(),
+      "COMP_REFRESH_SETTLEMENT_FAILED",
+      prisma,
+    );
 
     return NextResponse.json(result);
   } catch (error) {
     if (usageReservationId && prisma) {
-      await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
-        (usageError) => logUnexpectedError("comp_refresh_usage_release", usageError),
-      );
+      if (workStarted || meteredWorkCompleted) {
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          meteredWorkCompleted
+            ? "COMP_REFRESH_SETTLEMENT_FAILED"
+            : "COMP_REFRESH_OUTCOME_UNKNOWN",
+          prisma,
+        ).catch((usageError) => logUnexpectedError("comp_refresh_usage_reconcile", usageError));
+      } else {
+        await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
+          (usageError) => logUnexpectedError("comp_refresh_usage_release", usageError),
+        );
+      }
     }
     // Sanitized: an unexpected failure (e.g. a Prisma/DB error) never leaks raw
     // internals. AppError keeps its code/message; everything else collapses to a

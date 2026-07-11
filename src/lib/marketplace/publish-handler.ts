@@ -204,6 +204,7 @@ export type PublishPrismaLike = {
       update: Record<string, never>;
       create: {
         userId: string;
+        accountId: string;
         type: "detect_status";
         status: "queued";
         inventoryItemId: string;
@@ -1109,6 +1110,13 @@ async function enqueueStockXStatusSyncJob(
   result: StockXPublishResult,
 ) {
   if (result.status !== "submitted" || !prisma.syncJob?.upsert) return;
+  if (!input.accountId) {
+    throw new AppError(
+      "An active account is required to schedule marketplace status checks.",
+      403,
+      "ACCOUNT_REQUIRED",
+    );
+  }
   const syncKey = result.operationId ?? result.listingId;
   await prisma.syncJob.upsert({
     where: {
@@ -1117,6 +1125,7 @@ async function enqueueStockXStatusSyncJob(
     update: {},
     create: {
       userId: input.userId,
+      accountId: input.accountId,
       type: "detect_status",
       status: "queued",
       inventoryItemId: input.inventoryItemId,

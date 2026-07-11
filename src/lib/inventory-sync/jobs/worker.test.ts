@@ -16,8 +16,43 @@ import {
   retrySyncJobForAdmin,
   runQueuedSyncJobs,
   runSyncJob,
+  type RunSyncJobDeps,
+  type SyncJobControlPrismaLike,
   type SyncWorkerPrismaLike,
 } from "./worker";
+
+function allowed(deps: RunSyncJobDeps = {}): RunSyncJobDeps {
+  return {
+    ...deps,
+    authorizeExecution: async () => ({
+      allowed: true,
+      code: "ALLOWED",
+      sellerCopy: "Access granted.",
+    }),
+  };
+}
+
+function deferred() {
+  let resolvePromise: () => void = () => {
+    throw new Error("deferred promise was not initialized");
+  };
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: () => resolvePromise() };
+}
+
+function stockxStatusResult() {
+  return {
+    status: "active" as const,
+    code: "STOCKX_STATUS_SYNCED" as const,
+    marketplace: "stockx" as const,
+    environment: "production" as const,
+    listingId: "stockx-listing-1",
+    remoteStatus: "ACTIVE",
+    operationStatus: null,
+  };
+}
 
 // The worker fake mirrors the engine fake's casting pattern. executeEbayDelist is
 // always injected as a mock so no eBay adapter/route code or live call is touched.
@@ -25,10 +60,24 @@ function workerDb(prisma: FakePrisma): SyncWorkerPrismaLike {
   return prisma as unknown as SyncWorkerPrismaLike;
 }
 
+function controlDb(prisma: FakePrisma): SyncJobControlPrismaLike {
+  const worker = workerDb(prisma);
+  return {
+    syncJob: worker.syncJob,
+    inventoryEvent: worker.inventoryEvent,
+    $transaction: async (callback) =>
+      prisma.$transaction(async () => callback({
+        syncJob: worker.syncJob,
+        inventoryEvent: worker.inventoryEvent,
+      })),
+  };
+}
+
 function item(overrides: Partial<FakeItem> = {}): FakeItem {
   return {
     id: "item-1",
     sellerId: "user-1",
+    accountId: "account-1",
     productName: "Nike Air Max 1",
     status: "LISTED",
     soldAt: null,
@@ -119,8 +168,8 @@ describe("claimQueuedSyncJobs", () => {
   });
 });
 
-describe("runSyncJob — maxAttempts (no endless retry)", () => {
-  it("a failing job at attempts >= maxAttempts ends 'failed', not re-queued", async () => {
+describe("runSyncJob — ambiguous external outcome", () => {
+  it("parks an attempted delist for review even at max attempts", async () => {
     const prisma = createInventoryFakePrisma({
       items: [item()],
       listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
@@ -151,11 +200,18 @@ describe("runSyncJob — maxAttempts (no endless retry)", () => {
     );
 
     const [claimed] = await claimQueuedSyncJobs(db, { limit: 10 });
-    const result = await runSyncJob(db, claimed.id, { ebayDelist });
+    if (!claimed.leaseOwner) throw new Error("claim did not receive a lease");
+    const result = await runSyncJob(
+      db,
+      claimed.id,
+      claimed.leaseOwner,
+      allowed({ ebayDelist }),
+    );
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("needs_review");
     const job = prisma._store.syncJobs.find((j) => j.id === "j-1");
-    expect(job?.status).toBe("failed");
+    expect(job?.status).toBe("needs_review");
+    expect(job?.errorCode).toBe("DELIST_MANUAL_REVIEW_REQUIRED");
     expect(job?.attempts).toBe(5);
   });
 });
@@ -188,7 +244,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     const db = workerDb(prisma);
     const ebayDelist = vi.fn().mockResolvedValue({ ok: true });
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(ebayDelist).toHaveBeenCalledTimes(1);
@@ -226,7 +282,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
       return { ok: true };
     });
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(ebayDelist).toHaveBeenCalledTimes(1);
@@ -249,7 +305,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
       return { ok: true };
     });
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     // No sold source => the worker must NOT force SOLD; the delist result stands.
@@ -267,7 +323,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
       new EbayIntegrationError("EBAY_DELIST_FAILED", "No published eBay listing", 409),
     );
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
     expect(prisma._store.syncJobs[0].status).toBe("needs_review");
@@ -278,7 +334,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     expect(task).toBeTruthy();
     expect(prisma._store.notifications).toEqual([
       expect.objectContaining({
-        accountId: null,
+        accountId: "account-1",
         kind: "delist_failed",
         inventoryItemId: "item-1",
       }),
@@ -296,7 +352,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
       new Error('Bearer abc.def secret token at /app/x.ts:1:2 {"k":1}'),
     );
 
-    await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     const job = prisma._store.syncJobs[0];
     expect(job.errorMessage).not.toContain("Bearer");
@@ -314,7 +370,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     const db = workerDb(prisma);
     const ebayDelist = vi.fn();
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(ebayDelist).not.toHaveBeenCalled();
@@ -341,7 +397,7 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     const db = workerDb(prisma);
     const ebayDelist = vi.fn();
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, skipped: 1 });
     expect(ebayDelist).not.toHaveBeenCalled();
@@ -357,14 +413,122 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     const db = workerDb(prisma);
     const ebayDelist = vi.fn().mockResolvedValue({ ok: true });
 
-    await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
-    const second = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
+    const second = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     // Nothing left to claim; eBay called exactly once total.
     expect(second.claimed).toBe(0);
     expect(ebayDelist).toHaveBeenCalledTimes(1);
     const delistEvents = prisma._store.events.filter((e) => e.type === "delist_succeeded");
     expect(delistEvents).toHaveLength(1);
+  });
+
+  it("uses persisted references authoritatively and parks mismatched payload references", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [listing({ id: "l-ebay", externalListingId: "e1" })],
+      syncJobs: [{
+        ...ebayJobSeed(),
+        payload: {
+          inventoryItemId: "attacker-item",
+          marketplaceListingId: "l-ebay",
+          marketplace: "ebay",
+        },
+      }],
+    });
+    const ebayDelist = vi.fn();
+
+    const summary = await runQueuedSyncJobs(
+      workerDb(prisma),
+      { limit: 10 },
+      allowed({ ebayDelist }),
+    );
+
+    expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
+    expect(ebayDelist).not.toHaveBeenCalled();
+    expect(prisma._store.syncJobs[0].errorCode).toBe(
+      "JOB_PAYLOAD_REFERENCE_MISMATCH",
+    );
+    expect(prisma._store.reviewTasks[0]).toMatchObject({
+      accountId: "account-1",
+      type: "sync_conflict",
+    });
+  });
+
+  it("parks a missing authoritative listing instead of silently succeeding", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [ebayJobSeed()],
+    });
+    const ebayDelist = vi.fn();
+
+    const summary = await runQueuedSyncJobs(
+      workerDb(prisma),
+      { limit: 10 },
+      allowed({ ebayDelist }),
+    );
+
+    expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
+    expect(ebayDelist).not.toHaveBeenCalled();
+    expect(prisma._store.syncJobs[0].errorCode).toBe(
+      "AUTHORITATIVE_LISTING_NOT_FOUND",
+    );
+  });
+
+  it.each([
+    "ACCOUNT_DISABLED",
+    "PROVIDER_KILL_SWITCH_ACTIVE",
+    "MARKETPLACE_APPROVAL_REQUIRED",
+  ])("denies %s before any marketplace adapter call", async (code) => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [listing({ id: "l-ebay", externalListingId: "e1" })],
+      syncJobs: [ebayJobSeed()],
+    });
+    const ebayDelist = vi.fn();
+
+    const summary = await runQueuedSyncJobs(workerDb(prisma), { limit: 10 }, {
+      ebayDelist,
+      authorizeExecution: async () => ({
+        allowed: false,
+        code,
+        sellerCopy: "This automatic action is not authorized.",
+      }),
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
+    expect(ebayDelist).not.toHaveBeenCalled();
+    expect(prisma._store.syncJobs[0].errorCode).toBe(code);
+    expect(prisma._store.notifications[0]).toMatchObject({
+      accountId: "account-1",
+      kind: "sync_conflict",
+    });
+  });
+
+  it("parks an unknown delist outcome and never calls the adapter twice", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [listing({ id: "l-ebay", externalListingId: "e1" })],
+      syncJobs: [ebayJobSeed()],
+    });
+    const ebayDelist = vi.fn().mockRejectedValue(
+      new EbayIntegrationError("EBAY_DELIST_FAILED", "request timed out", 504),
+    );
+    const db = workerDb(prisma);
+
+    const first = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
+    const second = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
+
+    expect(first).toMatchObject({ claimed: 1, needsReview: 1, retryWait: 0 });
+    expect(second.claimed).toBe(0);
+    expect(ebayDelist).toHaveBeenCalledTimes(1);
+    expect(prisma._store.syncJobs[0]).toMatchObject({
+      status: "needs_review",
+      errorCode: "DELIST_OUTCOME_UNKNOWN",
+      retryClass: "external_reconciliation",
+    });
+    expect(await retrySyncJobForAdmin(controlDb(prisma), "j-1", "admin-1"))
+      .toBe(false);
   });
 });
 
@@ -402,7 +566,7 @@ describe("runSyncJob — delist_marketplace_listing (StockX)", () => {
     const db = workerDb(prisma);
     const stockxDelist = vi.fn().mockResolvedValue({ ok: true });
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ stockxDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(stockxDelist).toHaveBeenCalledTimes(1);
@@ -444,7 +608,7 @@ describe("runSyncJob — delist_marketplace_listing (StockX)", () => {
     const db = workerDb(prisma);
     const stockxDelist = vi.fn().mockResolvedValue({ ok: true });
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ stockxDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(stockxDelist).toHaveBeenCalledWith(
@@ -476,10 +640,10 @@ describe("runSyncJob — delist_marketplace_listing (StockX)", () => {
       new Error("StockX provider text token=secret"),
     );
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ stockxDelist }));
 
-    expect(summary).toMatchObject({ claimed: 1, retryWait: 1 });
-    expect(prisma._store.syncJobs[0].status).toBe("retry_wait");
+    expect(summary).toMatchObject({ claimed: 1, needsReview: 1, retryWait: 0 });
+    expect(prisma._store.syncJobs[0].status).toBe("needs_review");
     expect(prisma._store.events.some((e) => e.type === "delist_failed")).toBe(true);
     expect(prisma._store.listings[0].endedAt).toBeNull();
     const task = prisma._store.reviewTasks.find((t) => t.type === "manual_delist_required");
@@ -512,7 +676,7 @@ describe("runSyncJob — delist_marketplace_listing (StockX)", () => {
     const db = workerDb(prisma);
     const stockxDelist = vi.fn();
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ stockxDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, skipped: 1 });
     expect(stockxDelist).not.toHaveBeenCalled();
@@ -551,7 +715,7 @@ describe("runSyncJob — delist_marketplace_listing (non-eBay defensive)", () =>
     const db = workerDb(prisma);
     const ebayDelist = vi.fn();
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { ebayDelist });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
 
     expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
     expect(ebayDelist).not.toHaveBeenCalled();
@@ -773,7 +937,7 @@ describe("runSyncJob — detect_status (StockX)", () => {
       listingId: "stockx-listing-1",
     });
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxStatusSync });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ stockxStatusSync }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(stockxStatusSync).toHaveBeenCalledWith(
@@ -818,7 +982,7 @@ describe("runSyncJob — detect_status (StockX)", () => {
       listingId: "stockx-listing-1",
     });
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxStatusSync });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ stockxStatusSync }));
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
     expect(stockxStatusSync).toHaveBeenCalledWith(
@@ -850,7 +1014,7 @@ describe("runSyncJob — detect_status (StockX)", () => {
       new Error("provider secret Bearer abc.def at /app/src/token.ts:1"),
     );
 
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, { stockxStatusSync });
+    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ stockxStatusSync }));
 
     expect(summary).toMatchObject({ claimed: 1, retryWait: 1 });
     const job = prisma._store.syncJobs[0];
@@ -873,7 +1037,7 @@ describe("runSyncJob — idempotent no-op", () => {
     });
     const db = workerDb(prisma);
 
-    const result = await runSyncJob(db, "j-1");
+    const result = await runSyncJob(db, "j-1", "not-the-lease");
     expect(result.status).toBe("succeeded");
     // Untouched.
     expect(prisma._store.notifications).toHaveLength(0);
@@ -1058,6 +1222,11 @@ describe("requeueStaleRunningSyncJobs", () => {
 
     await requeueStaleRunningSyncJobs(db, { olderThanMinutes: 15, limit: 10 });
 
+    expect(prisma._store.syncJobs[0]).toMatchObject({
+      status: "needs_review",
+      errorCode: "DELIST_OUTCOME_UNKNOWN",
+      retryClass: "external_reconciliation",
+    });
     expect(prisma._store.reviewTasks).toHaveLength(0);
     expect(prisma._store.events).toHaveLength(0);
     expect(prisma._store.notifications).toHaveLength(0);
@@ -1065,6 +1234,106 @@ describe("requeueStaleRunningSyncJobs", () => {
 });
 
 describe("worker leases, backoff, and admin recovery", () => {
+  it("heartbeats a live executor so the stale reaper leaves its lease alone", async () => {
+    const blocked = deferred();
+    const stockxStatusSync = vi.fn(async () => {
+      await blocked.promise;
+      return stockxStatusResult();
+    });
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [listing({
+        id: "l-stockx",
+        marketplace: "stockx",
+        externalListingId: "stockx-listing-1",
+      })],
+      syncJobs: [{
+        id: "heartbeat-job",
+        userId: "user-1",
+        type: "detect_status",
+        inventoryItemId: "item-1",
+        marketplaceListingId: "l-stockx",
+        payload: {},
+      }],
+    });
+    const db = workerDb(prisma);
+    const [claimed] = await claimQueuedSyncJobs(db, { workerId: "worker-a" });
+    if (!claimed.leaseOwner) throw new Error("claim did not receive a lease");
+    prisma._store.syncJobs[0].updatedAt = new Date(Date.now() - 60 * 60_000);
+
+    const running = runSyncJob(
+      db,
+      claimed.id,
+      claimed.leaseOwner,
+      allowed({ stockxStatusSync }),
+    );
+    await vi.waitFor(() => expect(stockxStatusSync).toHaveBeenCalledTimes(1));
+    const reaped = await requeueStaleRunningSyncJobs(db, {
+      olderThanMinutes: 5,
+    });
+    expect(reaped).toEqual({ requeued: 0, failed: 0 });
+
+    blocked.resolve();
+    await expect(running).resolves.toEqual({ status: "succeeded" });
+  });
+
+  it("prevents a stale executor from overwriting a replacement lease", async () => {
+    const blocked = deferred();
+    const firstStatusSync = vi.fn(async () => {
+      await blocked.promise;
+      return stockxStatusResult();
+    });
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      listings: [listing({
+        id: "l-stockx",
+        marketplace: "stockx",
+        externalListingId: "stockx-listing-1",
+      })],
+      syncJobs: [{
+        id: "fenced-job",
+        userId: "user-1",
+        type: "detect_status",
+        inventoryItemId: "item-1",
+        marketplaceListingId: "l-stockx",
+        payload: {},
+      }],
+    });
+    const db = workerDb(prisma);
+    const [firstClaim] = await claimQueuedSyncJobs(db, { workerId: "worker-a" });
+    if (!firstClaim.leaseOwner) throw new Error("first claim did not receive a lease");
+    const firstRun = runSyncJob(
+      db,
+      firstClaim.id,
+      firstClaim.leaseOwner,
+      allowed({ stockxStatusSync: firstStatusSync }),
+    );
+    await vi.waitFor(() => expect(firstStatusSync).toHaveBeenCalledTimes(1));
+
+    prisma._store.syncJobs[0].updatedAt = new Date(Date.now() - 60 * 60_000);
+    expect(await requeueStaleRunningSyncJobs(db, { olderThanMinutes: 5 }))
+      .toEqual({ requeued: 1, failed: 0 });
+    prisma._store.syncJobs[0].runAfter = new Date(Date.now() - 1_000);
+    const [replacement] = await claimQueuedSyncJobs(db, { workerId: "worker-b" });
+    if (!replacement.leaseOwner) throw new Error("replacement did not receive a lease");
+
+    blocked.resolve();
+    await firstRun;
+    expect(prisma._store.syncJobs[0]).toMatchObject({
+      status: "running",
+      leaseOwner: replacement.leaseOwner,
+    });
+
+    const replacementSync = vi.fn().mockResolvedValue(stockxStatusResult());
+    await expect(runSyncJob(
+      db,
+      replacement.id,
+      replacement.leaseOwner,
+      allowed({ stockxStatusSync: replacementSync }),
+    )).resolves.toEqual({ status: "succeeded" });
+    expect(replacementSync).toHaveBeenCalledTimes(1);
+  });
+
   it("claims retry-wait work only when due and records the lease owner", async () => {
     const prisma = createInventoryFakePrisma({
       items: [item()],
@@ -1092,12 +1361,14 @@ describe("worker leases, backoff, and admin recovery", () => {
       limit: 10,
     });
     expect(claimed.map((job) => job.id)).toEqual(["due"]);
-    expect(claimed[0]).toMatchObject({ accountId: "account-1", leaseOwner: "worker-a" });
+    expect(claimed[0]).toMatchObject({ accountId: "account-1" });
+    expect(claimed[0].leaseOwner).toMatch(/^worker-a:/);
     expect(prisma._store.syncJobs.find((job) => job.id === "due")).toMatchObject({
       status: "running",
-      leaseOwner: "worker-a",
       lockedAt: expect.any(Date),
     });
+    expect(prisma._store.syncJobs.find((job) => job.id === "due")?.leaseOwner)
+      .toMatch(/^worker-a:/);
     expect(prisma._store.syncJobs.find((job) => job.id === "future")?.status).toBe("retry_wait");
   });
 
@@ -1123,13 +1394,37 @@ describe("worker leases, backoff, and admin recovery", () => {
         inventoryItemId: "item-1",
       }],
     });
-    expect(await retrySyncJobForAdmin(workerDb(prisma), "failed-job", "admin-1")).toBe(true);
+    expect(await retrySyncJobForAdmin(controlDb(prisma), "failed-job", "admin-1")).toBe(true);
     expect(prisma._store.syncJobs[0]).toMatchObject({
       status: "queued",
       retryClass: "admin_retry",
       runAfter: expect.any(Date),
     });
     expect(prisma._store.events[0].payload).toMatchObject({ action: "admin_retry" });
+  });
+
+  it("rolls back the admin transition when audit persistence fails", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [{
+        id: "failed-job",
+        userId: "user-1",
+        type: "notify_user",
+        status: "failed",
+        attempts: 1,
+        maxAttempts: 5,
+        inventoryItemId: "item-1",
+      }],
+    });
+    const db = controlDb(prisma);
+    vi.spyOn(db.inventoryEvent, "create").mockRejectedValue(
+      new Error("audit write failed"),
+    );
+
+    await expect(retrySyncJobForAdmin(db, "failed-job", "admin-1"))
+      .rejects.toThrow("audit write failed");
+    expect(prisma._store.syncJobs[0].status).toBe("failed");
+    expect(prisma._store.events).toHaveLength(0);
   });
 
   it("refuses admin retry after attempt exhaustion", async () => {
@@ -1144,7 +1439,7 @@ describe("worker leases, backoff, and admin recovery", () => {
         maxAttempts: 5,
       }],
     });
-    expect(await retrySyncJobForAdmin(workerDb(prisma), "exhausted-job", "admin-1")).toBe(false);
+    expect(await retrySyncJobForAdmin(controlDb(prisma), "exhausted-job", "admin-1")).toBe(false);
     expect(prisma._store.syncJobs[0].status).toBe("failed");
   });
 
@@ -1156,8 +1451,8 @@ describe("worker leases, backoff, and admin recovery", () => {
         { id: "running", userId: "user-1", type: "notify_user", status: "running" },
       ],
     });
-    expect(await cancelSyncJob(workerDb(prisma), "waiting", "admin-1")).toBe(true);
-    expect(await cancelSyncJob(workerDb(prisma), "running", "admin-1")).toBe(false);
+    expect(await cancelSyncJob(controlDb(prisma), "waiting", "admin-1")).toBe(true);
+    expect(await cancelSyncJob(controlDb(prisma), "running", "admin-1")).toBe(false);
     expect(prisma._store.syncJobs[0]).toMatchObject({ status: "canceled", retryClass: "canceled" });
     expect(prisma._store.syncJobs[1].status).toBe("running");
   });

@@ -1,5 +1,7 @@
 export type EbayEnvironment = "sandbox" | "production";
 export type EbayMarketplaceId = "EBAY_US";
+export const EBAY_FULFILLMENT_SCOPE =
+  "https://api.ebay.com/oauth/api_scope/sell.fulfillment";
 
 export type EbayConfig = {
   environment: EbayEnvironment;

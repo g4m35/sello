@@ -4,15 +4,17 @@ This is a runbook for a separately authorized rollout. Do not run it as part of 
 
 ## Current verified migration state
 
-At implementation time, the workspace was at `origin/develop` and the configured Prisma direct target was remote/shared. A read-only `prisma migrate status` reported:
+At implementation time, a read-only `prisma migrate status` against the explicitly identified production project reported:
 
 - `20260710010000_add_bulk_intake` was not applied.
-- the target ledger contained `20260709000000_enable_app_table_rls`, which was absent from repository migration history;
-- the last common migration was `20260701010000_stockx_foundation`.
+- `20260711010000_paid_beta_p0_readiness` was not applied.
+- the target ledger contained `20260709000000_enable_app_table_rls`, which was initially absent from repository migration history.
 
-GitHub recorded no deployment for the bulk commit or then-current `develop`. This evidence is sufficient to avoid editing the existing bulk migration, but it does not prove every Preview/staging/production ledger. The corrections therefore live in forward migration `20260711010000_paid_beta_p0_readiness`.
+The missing migration was recovered byte-for-byte from the archived source checkout and independently reconstructed from the original recorded authoring session. Its SHA-256, `be74518339e786761816721db2b3aaabffb8d4801024bc6dcc4c5cb0e6a1c10b`, exactly matches the successful production Prisma ledger row. That row started at `2026-07-09T05:32:03.906371Z`, finished at `2026-07-09T05:32:04.754266Z`, has one applied step, and was not rolled back. The recovered file is now restored at `prisma/migrations/20260709000000_enable_app_table_rls/migration.sql`.
 
-The unknown `20260709000000_enable_app_table_rls` ledger entry is a rollout blocker. Recover its exact SQL and checksum from the system that applied it, add the authoritative migration to Git in correct order if approved, and compare actual metadata. Do not use `prisma migrate resolve`, mark it applied, delete the row, or invent replacement SQL.
+No Git commit or PR containing that migration exists: it was authored and applied from an uncommitted `develop` working tree after explicit owner authorization. The original local deploy command and the final three authoring revisions are preserved in the session record; exhaustive retained Git/GitHub searches found no source object. This is a provenance gap, not a byte or ledger ambiguity. Never use `prisma migrate resolve`, edit/delete the ledger row, or substitute reconstructed SQL: only the restored checksum-matching file is authoritative.
+
+The recovered migration and the two pending migrations do not contain `BEGIN`/`COMMIT`; Prisma's PostgreSQL migration execution does not make each entire file atomic by default. A failed deploy can therefore leave earlier statements applied even when the migration ledger row is unfinished. Recovery must inspect both the ledger and actual catalog state before any retry.
 
 ## Authorization, target identity, and restore point
 
@@ -53,7 +55,7 @@ After the ledger divergence is resolved and approval is recorded:
 9. Re-enable internal workers at minimum concurrency and inspect sanitized job/audit state.
 10. Enable each provider/marketplace capability only under its separate approval and smoke plan.
 
-The migration-first gap is compatible: database triggers populate bulk child account IDs for the old application, while all other new columns/tables are additive or nullable for legacy writes. Rolling the application back after the migration is also compatible.
+The migration-first gap is compatible with the immediate predecessor application: database triggers populate account IDs for legacy bulk-child, job, event, review-task, and notification writes. Inventory account ownership has been populated by the earlier account-scope migration and becomes required here. Rolling the application back after the migration is supported only to that reviewed predecessor commit.
 
 ## Metadata verification
 
@@ -111,7 +113,7 @@ Use a fresh Sello-owned account with synthetic photos and no real customer or ma
 8. Race two test requests for the final quota unit using the same account and different members; verify exactly one reservation is accepted.
 9. Repeat a request with the same idempotency key; verify no second provider/marketplace operation.
 10. With marketplace writes still disabled, submit synthetic eBay `PAID`, canceled, refunded, duplicate, and uncertain signals through the approved internal test harness. Verify sold/delist jobs only for the confirmed exact match and review tasks for uncertain/unmatched signals.
-11. Run one synthetic worker job through transient failure, `retry_wait`, stale recovery, success, admin retry, and cancellation. Confirm no raw provider text appears.
+11. Use three separate synthetic worker jobs: run one through transient failure, `retry_wait`, stale recovery, and success; place a second in `failed` or `needs_review` and verify admin retry; cancel a third while it is still `queued` or `retry_wait`, before external work begins. Confirm no raw provider text appears in any job, event, task, notification, or response.
 12. Inspect account-scoped admin counts and audit events. Verify the other test account sees none of them.
 
 No production marketplace publish/delist or paid provider call is part of this smoke test unless separately authorized.
@@ -127,12 +129,14 @@ Application regression with healthy migration:
 - verify old bulk writes receive child account IDs from triggers;
 - prepare a forward application fix.
 
-Migration failure before commit:
+Migration failure before the final statement:
 
 - do not mark the migration applied;
 - preserve the error and target identity privately;
-- verify PostgreSQL rolled back the failed migration transaction;
-- prepare a corrected forward migration or retry only after independent review.
+- assume earlier statements may have committed because these migration files are not wrapped in one transaction;
+- compare the ledger, columns, constraints, indexes, triggers, functions, and policies to the reviewed SQL;
+- do not blindly retry a non-idempotent `ALTER`/`CREATE` sequence;
+- prepare an independently reviewed forward recovery or a catalog-aware retry plan.
 
 Migration committed but application unhealthy:
 

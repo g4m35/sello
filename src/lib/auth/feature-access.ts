@@ -1,8 +1,24 @@
 import "server-only";
 
 import { isAdminUser } from "@/lib/auth/admin";
-import { decideEntitlement } from "@/lib/auth/entitlement-decision";
+import {
+  decideEntitlement,
+  type EntitlementDecision,
+} from "@/lib/auth/entitlement-decision";
+import { getActiveAccount, type AccountRecord } from "@/lib/billing/account";
+import {
+  effectiveFeaturesForUser,
+  effectiveLimitsForUser,
+  effectivePlanForUser,
+} from "@/lib/billing/effective-plan";
+import type { PlanFeatures, PlanLimits } from "@/lib/billing/plans";
+import { isApifyEbaySoldEnabled, isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { AppError } from "@/lib/errors";
+import { getEbayConfig, isEbayProductionPublishEnabled } from "@/lib/marketplace/adapters/ebay/config";
+import { isEtsyApiEnabled } from "@/lib/marketplace/adapters/etsy/config";
+import { getPrisma } from "@/lib/prisma";
+
+type Db = ReturnType<typeof getPrisma>;
 
 export type FeatureEntitlement =
   | "liveEbayPublish"
@@ -54,6 +70,15 @@ const FEATURE_DENIAL_CODES: Record<FeatureEntitlement, string> = {
 
 const FEATURE_ENTITLEMENTS = Object.keys(FEATURE_ENV_KEYS) as FeatureEntitlement[];
 
+export type RuntimeEntitlements = {
+  account: AccountRecord;
+  access: FeatureAccess;
+  decisions: Record<FeatureEntitlement, EntitlementDecision>;
+  plan: AccountRecord["plan"];
+  limits: PlanLimits;
+  features: PlanFeatures;
+};
+
 function normalizedEmails(value: string | undefined): string[] {
   return [
     ...new Set(
@@ -104,6 +129,128 @@ export function featureAccessForUser(
       }).allowed,
     ]),
   ) as FeatureAccess;
+}
+
+function ebayProviderAvailable(env: Record<string, string | undefined>): boolean {
+  try {
+    getEbayConfig(env);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function runtimeSafetyGates(
+  entitlement: FeatureEntitlement,
+  env: Record<string, string | undefined>,
+): Pick<
+  Parameters<typeof decideEntitlement>[0],
+  "featureEnabled" | "providerRequired" | "providerAvailable" | "environmentCapable"
+> {
+  if (entitlement === "paidComps") {
+    return {
+      featureEnabled: isCompsPaidProvidersEnabled(env),
+      providerRequired: true,
+      providerAvailable: isApifyEbaySoldEnabled(env),
+      environmentCapable: true,
+    };
+  }
+  if (entitlement.startsWith("etsy")) {
+    const enabled = isEtsyApiEnabled(env);
+    return {
+      featureEnabled: enabled,
+      providerRequired: true,
+      providerAvailable: enabled,
+      environmentCapable: true,
+    };
+  }
+  if (entitlement === "liveEbayPublish") {
+    return {
+      featureEnabled: isEbayProductionPublishEnabled(env),
+      providerRequired: true,
+      providerAvailable: ebayProviderAvailable(env),
+      environmentCapable: env.EBAY_ENV === "production",
+    };
+  }
+  return {
+    featureEnabled: true,
+    providerRequired: true,
+    providerAvailable: ebayProviderAvailable(env),
+    environmentCapable: true,
+  };
+}
+
+/**
+ * The server-side source of truth for account, billing, plan, allowlist, and
+ * runtime capability decisions. UI capability responses and action routes use
+ * this same resolver, so explanatory state cannot drift from enforcement.
+ */
+export async function resolveRuntimeEntitlements(
+  user: { id: string; email?: string | null },
+  prisma: Db = getPrisma(),
+  env: Record<string, string | undefined> = process.env,
+  now = new Date(),
+): Promise<RuntimeEntitlements> {
+  const account = await getActiveAccount(user.id, prisma);
+  const subscription = await prisma.subscription.findUnique({
+    where: { accountId: account.id },
+    select: { status: true, graceEndsAt: true },
+  });
+  const configured = configuredFeatureEmails(env);
+  const email = user.email?.trim().toLowerCase();
+  const adminOverride = isAdminUser(user, env);
+  const decisions = Object.fromEntries(
+    FEATURE_ENTITLEMENTS.map((entitlement) => {
+      const gates = runtimeSafetyGates(entitlement, env);
+      const decision = decideEntitlement({
+        plan: account.plan,
+        now,
+        accountEnabled: true,
+        subscriptionRequired: account.plan !== "free",
+        subscriptionStatus: subscription?.status ?? null,
+        graceEndsAt: subscription?.graceEndsAt ?? null,
+        adminOverride,
+        planGranted: true,
+        allowlistRequired: true,
+        allowlisted: email ? configured[entitlement].includes(email) : false,
+        globalEnabled: true,
+        providerEnabled: true,
+        ...gates,
+      });
+      return [entitlement, decision];
+    }),
+  ) as Record<FeatureEntitlement, EntitlementDecision>;
+  return {
+    account,
+    decisions,
+    access: Object.fromEntries(
+      FEATURE_ENTITLEMENTS.map((entitlement) => [entitlement, decisions[entitlement].allowed]),
+    ) as FeatureAccess,
+    plan: effectivePlanForUser(account, user, env),
+    limits: effectiveLimitsForUser(account, user, env),
+    features: effectiveFeaturesForUser(account, user, env),
+  };
+}
+
+export async function requireRuntimeFeatureAccess(
+  user: { id: string; email?: string | null },
+  entitlement: FeatureEntitlement,
+  prisma: Db = getPrisma(),
+  env: Record<string, string | undefined> = process.env,
+): Promise<RuntimeEntitlements> {
+  const resolved = await resolveRuntimeEntitlements(user, prisma, env);
+  const decision = resolved.decisions[entitlement];
+  if (decision.allowed) return resolved;
+  // Preserve feature-specific alpha denial codes/copy at the API boundary while
+  // keeping the shared decision reason available on resolved.decisions.
+  if (decision.reason === "ALPHA_OR_BETA_ACCESS_REQUIRED") {
+    throw new AppError(
+      FEATURE_ACCESS_COPY[entitlement],
+      403,
+      FEATURE_DENIAL_CODES[entitlement],
+    );
+  }
+  throw new AppError(decision.sellerCopy, 403, decision.reason);
 }
 
 export function requireFeatureAccess(

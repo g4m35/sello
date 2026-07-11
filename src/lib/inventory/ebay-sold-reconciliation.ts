@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
 import { recordInventoryEvent, type InventoryEventPrismaLike } from "@/lib/inventory/events";
@@ -76,7 +78,13 @@ type SignalRow = {
   outcome: string | null;
   inventoryItemId: string | null;
   processedAt: Date | null;
+  processingStartedAt: Date | null;
+  externalOrderId: string | null;
+  externalLineItemId: string | null;
+  externalListingId: string | null;
 };
+
+const DEFAULT_PROCESSING_LEASE_MS = 5 * 60 * 1000;
 
 export type EbaySoldReconciliationPrismaLike = MarkSoldPrismaLike &
   ReviewTaskPrismaLike &
@@ -86,6 +94,7 @@ export type EbaySoldReconciliationPrismaLike = MarkSoldPrismaLike &
       findFirst(args: {
         where: {
           marketplace: "ebay";
+          environment: string;
           externalListingId: string;
           inventoryItem: { accountId: string };
         };
@@ -112,6 +121,9 @@ export type EbaySoldReconciliationPrismaLike = MarkSoldPrismaLike &
           externalListingId: string;
           state: string;
           sanitizedPayload: Prisma.InputJsonValue;
+          processingStartedAt: Date;
+          processingOwner: string;
+          processingAttempts: number;
         };
         select: { id: true };
       }): Promise<{ id: string }>;
@@ -130,17 +142,31 @@ export type EbaySoldReconciliationPrismaLike = MarkSoldPrismaLike &
           outcome: true;
           inventoryItemId: true;
           processedAt: true;
+          processingStartedAt: true;
+          externalOrderId: true;
+          externalLineItemId: true;
+          externalListingId: true;
         };
       }): Promise<SignalRow | null>;
-      update(args: {
-        where: { id: string };
+      updateMany(args: {
+        where: {
+          id: string;
+          processedAt: null;
+          processingOwner?: string;
+          OR?: Array<
+            { processingStartedAt: null } | { processingStartedAt: { lte: Date } }
+          >;
+        };
         data: {
           inventoryItemId?: string | null;
           state?: string;
-          outcome: string;
-          processedAt: Date;
+          outcome?: string;
+          processedAt?: Date;
+          processingStartedAt?: Date | null;
+          processingOwner?: string | null;
+          processingAttempts?: { increment: number };
         };
-      }): Promise<{ id: string }>;
+      }): Promise<{ count: number }>;
     };
   };
 
@@ -162,11 +188,57 @@ function isUniqueViolation(error: unknown): boolean {
   );
 }
 
+function signalIdentityMatches(row: SignalRow, input: EbaySoldSignal, state: EbaySignalState) {
+  return (
+    row.state === state &&
+    row.externalOrderId === input.externalOrderId &&
+    row.externalLineItemId === input.externalLineItemId &&
+    row.externalListingId === input.externalListingId
+  );
+}
+
+async function completeSaleSignal(
+  db: EbaySoldReconciliationPrismaLike,
+  args: {
+    signalId: string;
+    processingOwner: string;
+    now: Date;
+    outcome: string;
+    inventoryItemId?: string | null;
+  },
+): Promise<void> {
+  const completed = await db.marketplaceSaleSignal.updateMany({
+    where: {
+      id: args.signalId,
+      processedAt: null,
+      processingOwner: args.processingOwner,
+    },
+    data: {
+      inventoryItemId: args.inventoryItemId,
+      outcome: args.outcome,
+      processedAt: args.now,
+      processingStartedAt: null,
+      processingOwner: null,
+    },
+  });
+  if (completed.count !== 1) {
+    throw new AppError(
+      "Sale signal processing lease was lost.",
+      409,
+      "SALE_SIGNAL_PROCESSING_LEASE_LOST",
+    );
+  }
+}
+
 export async function reconcileEbaySoldSignal(
   db: EbaySoldReconciliationPrismaLike = getPrisma(),
   input: EbaySoldSignal,
+  options: { now?: Date; processingLeaseMs?: number; processingOwner?: string } = {},
 ): Promise<EbayReconciliationResult> {
   const state = classifyEbaySoldSignal(input);
+  const now = options.now ?? new Date();
+  const processingOwner = options.processingOwner ?? randomUUID();
+  const leaseMs = options.processingLeaseMs ?? DEFAULT_PROCESSING_LEASE_MS;
   let signalId: string;
   try {
     const created = await db.marketplaceSaleSignal.create({
@@ -179,6 +251,9 @@ export async function reconcileEbaySoldSignal(
         externalLineItemId: input.externalLineItemId,
         externalListingId: input.externalListingId,
         state,
+        processingStartedAt: now,
+        processingOwner,
+        processingAttempts: 1,
         sanitizedPayload: {
           paymentStatus: input.paymentStatus,
           fulfillmentStatus: input.fulfillmentStatus,
@@ -208,15 +283,55 @@ export async function reconcileEbaySoldSignal(
         outcome: true,
         inventoryItemId: true,
         processedAt: true,
+        processingStartedAt: true,
+        externalOrderId: true,
+        externalLineItemId: true,
+        externalListingId: true,
       },
     });
     if (!duplicate) throw new AppError("Sale signal deduplication failed.", 409, "SALE_SIGNAL_DEDUPE_FAILED");
-    return { outcome: "duplicate", signalId: duplicate.id, priorOutcome: duplicate.outcome };
+    if (duplicate.processedAt && duplicate.outcome) {
+      return { outcome: "duplicate", signalId: duplicate.id, priorOutcome: duplicate.outcome };
+    }
+    if (duplicate.processedAt || duplicate.outcome) {
+      throw new AppError(
+        "Sale signal has inconsistent processing state.",
+        409,
+        "SALE_SIGNAL_STATE_INVALID",
+      );
+    }
+    if (!signalIdentityMatches(duplicate, input, state)) {
+      throw new AppError(
+        "Sale signal replay does not match the original event.",
+        409,
+        "SALE_SIGNAL_REPLAY_MISMATCH",
+      );
+    }
+    const claimed = await db.marketplaceSaleSignal.updateMany({
+      where: {
+        id: duplicate.id,
+        processedAt: null,
+        OR: [
+          { processingStartedAt: null },
+          { processingStartedAt: { lte: new Date(now.getTime() - leaseMs) } },
+        ],
+      },
+      data: {
+        processingStartedAt: now,
+        processingOwner,
+        processingAttempts: { increment: 1 },
+      },
+    });
+    if (claimed.count !== 1) {
+      return { outcome: "duplicate", signalId: duplicate.id, priorOutcome: null };
+    }
+    signalId = duplicate.id;
   }
 
   const listing = await db.marketplaceListing.findFirst({
     where: {
       marketplace: "ebay",
+      environment: input.environment,
       externalListingId: input.externalListingId,
       inventoryItem: { accountId: input.accountId },
     },
@@ -235,6 +350,7 @@ export async function reconcileEbaySoldSignal(
       accountId: input.accountId,
       type: "sync_conflict",
       marketplace: "ebay",
+      dedupeKey: `ebay-unmatched:${input.environment}:${input.externalOrderId}:${input.externalLineItemId}`,
       title: "Review an unmatched eBay order",
       description: "A verified eBay order signal could not be matched to an account listing.",
       payload: {
@@ -244,9 +360,11 @@ export async function reconcileEbaySoldSignal(
         state,
       },
     });
-    await db.marketplaceSaleSignal.update({
-      where: { id: signalId },
-      data: { outcome: "review_unmatched", processedAt: new Date() },
+    await completeSaleSignal(db, {
+      signalId,
+      processingOwner,
+      now,
+      outcome: "review_unmatched",
     });
     return { outcome: "review_unmatched", signalId, reviewTaskId: task.id };
   }
@@ -264,13 +382,12 @@ export async function reconcileEbaySoldSignal(
       payload: { saleSignalId: signalId, state, externalOrderId: input.externalOrderId },
     });
     const outcome = state === "canceled" ? "ignored_canceled" : "ignored_refunded";
-    await db.marketplaceSaleSignal.update({
-      where: { id: signalId },
-      data: {
-        inventoryItemId: listing.inventoryItemId,
-        outcome,
-        processedAt: new Date(),
-      },
+    await completeSaleSignal(db, {
+      signalId,
+      processingOwner,
+      now,
+      inventoryItemId: listing.inventoryItemId,
+      outcome,
     });
     return { outcome, signalId, inventoryItemId: listing.inventoryItemId };
   }
@@ -296,13 +413,12 @@ export async function reconcileEbaySoldSignal(
         marketplace: "ebay",
       }),
     });
-    await db.marketplaceSaleSignal.update({
-      where: { id: signalId },
-      data: {
-        inventoryItemId: listing.inventoryItemId,
-        outcome: "review_uncertain",
-        processedAt: new Date(),
-      },
+    await completeSaleSignal(db, {
+      signalId,
+      processingOwner,
+      now,
+      inventoryItemId: listing.inventoryItemId,
+      outcome: "review_uncertain",
     });
     return { outcome: "review_uncertain", signalId, reviewTaskId: task.id };
   }
@@ -318,13 +434,12 @@ export async function reconcileEbaySoldSignal(
     soldPriceCents: input.soldPriceCents ?? null,
     source: "api",
   });
-  await db.marketplaceSaleSignal.update({
-    where: { id: signalId },
-    data: {
-      inventoryItemId: listing.inventoryItemId,
-      outcome: markSold.outcome,
-      processedAt: new Date(),
-    },
+  await completeSaleSignal(db, {
+    signalId,
+    processingOwner,
+    now,
+    inventoryItemId: listing.inventoryItemId,
+    outcome: markSold.outcome,
   });
   return {
     outcome: markSold.outcome,

@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   downloadListingPhotos: vi.fn(),
   generateListingDraftWithGemini: vi.fn(),
   getPrisma: vi.fn(),
+  markUsageReconciliationRequired: vi.fn(),
+  markUsageWorkStarted: vi.fn(),
   releaseUsageReservation: vi.fn(),
   reserveUsageOrThrow: vi.fn(),
-  settleUsageReservation: vi.fn(),
+  settleUsageReservationOrRequireReconciliation: vi.fn(),
   prepareListingPhotos: vi.fn(),
   uploadListingPhotos: vi.fn(),
 }));
@@ -24,9 +26,12 @@ vi.mock("@/lib/ai/gemini", () => ({
   generateListingDraftWithGemini: mocks.generateListingDraftWithGemini,
 }));
 vi.mock("@/lib/billing/usage", () => ({
+  markUsageReconciliationRequired: mocks.markUsageReconciliationRequired,
+  markUsageWorkStarted: mocks.markUsageWorkStarted,
   releaseUsageReservation: mocks.releaseUsageReservation,
   reserveUsageOrThrow: mocks.reserveUsageOrThrow,
-  settleUsageReservation: mocks.settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation:
+    mocks.settleUsageReservationOrRequireReconciliation,
 }));
 vi.mock("@/lib/storage/listing-photos", () => ({
   downloadListingPhotos: mocks.downloadListingPhotos,
@@ -131,7 +136,9 @@ describe("bulk intake service", () => {
       status: "reserved",
     });
     mocks.releaseUsageReservation.mockResolvedValue(true);
-    mocks.settleUsageReservation.mockResolvedValue(true);
+    mocks.markUsageWorkStarted.mockResolvedValue(true);
+    mocks.markUsageReconciliationRequired.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
     mocks.downloadListingPhotos.mockResolvedValue([]);
   });
 
@@ -323,6 +330,7 @@ describe("bulk intake service", () => {
       now,
       prisma,
       "expired",
+      { allowStartedWork: true },
     );
   });
 
@@ -476,9 +484,10 @@ describe("bulk intake service", () => {
     expect(tx.aiOutput.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ provider: "gemini" }) }),
     );
-    expect(mocks.settleUsageReservation).toHaveBeenCalledWith(
+    expect(mocks.settleUsageReservationOrRequireReconciliation).toHaveBeenCalledWith(
       "usage-reservation-1",
       expect.any(Date),
+      "BULK_AI_LISTING_SETTLEMENT_FAILED",
       prisma,
     );
   });
@@ -521,6 +530,12 @@ describe("bulk intake service", () => {
     };
     const prisma = {
       bulkBatch: { findFirst },
+      bulkItem: {
+        findMany: vi.fn().mockResolvedValue([{ id: unfinished.id }]),
+      },
+      usageReservation: {
+        findMany: vi.fn().mockResolvedValue([{ id: "canceled-reservation-1" }]),
+      },
       $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => callback(tx)),
     };
     mocks.getPrisma.mockReturnValue(prisma);
@@ -535,6 +550,13 @@ describe("bulk intake service", () => {
     );
     expect(JSON.stringify(tx.bulkItem.updateMany.mock.calls[0]?.[0])).not.toContain(
       "listing_ready\"",
+    );
+    expect(mocks.releaseUsageReservation).toHaveBeenCalledWith(
+      "canceled-reservation-1",
+      expect.any(Date),
+      prisma,
+      "released",
+      { allowStartedWork: true },
     );
   });
 

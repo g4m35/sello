@@ -23,6 +23,20 @@ export async function POST(
     const { jobId } = await context.params;
     const { action } = BodySchema.parse(await request.json());
     const prisma = getPrisma();
+    const transactionAdapter = (
+      tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+    ) => ({
+      syncJob: {
+        findFirst: (args: Parameters<SyncJobControlPrismaLike["syncJob"]["findFirst"]>[0]) =>
+          tx.syncJob.findFirst(args),
+        updateMany: (args: Parameters<SyncJobControlPrismaLike["syncJob"]["updateMany"]>[0]) =>
+          tx.syncJob.updateMany(args),
+      },
+      inventoryEvent: {
+        create: (args: Parameters<SyncJobControlPrismaLike["inventoryEvent"]["create"]>[0]) =>
+          tx.inventoryEvent.create(args),
+      },
+    });
     const db: SyncJobControlPrismaLike = {
       syncJob: {
         findFirst: (args) => prisma.syncJob.findFirst(args),
@@ -31,6 +45,8 @@ export async function POST(
       inventoryEvent: {
         create: (args) => prisma.inventoryEvent.create(args),
       },
+      $transaction: (callback) =>
+        prisma.$transaction((tx) => callback(transactionAdapter(tx))),
     };
     const changed = action === "retry"
       ? await retrySyncJobForAdmin(db, jobId, admin.id)

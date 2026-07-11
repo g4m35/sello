@@ -10,9 +10,12 @@ const mocks = vi.hoisted(() => ({
   runCompFetch: vi.fn(),
   uploadListingPhotos: vi.fn(),
   getActiveAccount: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
+  markUsageReconciliationRequired: vi.fn(),
+  markUsageWorkStarted: vi.fn(),
   releaseUsageReservation: vi.fn(),
   reserveUsageOrThrow: vi.fn(),
-  settleUsageReservation: vi.fn(),
+  settleUsageReservationOrRequireReconciliation: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -23,10 +26,16 @@ vi.mock("@/lib/ai/gemini", () => ({
 vi.mock("@/lib/comps/fetch", () => ({ runCompFetch: mocks.runCompFetch }));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
+}));
 vi.mock("@/lib/billing/usage", () => ({
+  markUsageReconciliationRequired: mocks.markUsageReconciliationRequired,
+  markUsageWorkStarted: mocks.markUsageWorkStarted,
   releaseUsageReservation: mocks.releaseUsageReservation,
   reserveUsageOrThrow: mocks.reserveUsageOrThrow,
-  settleUsageReservation: mocks.settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation:
+    mocks.settleUsageReservationOrRequireReconciliation,
 }));
 vi.mock("@/lib/storage/listing-photos", () => ({
   prepareListingPhotos: mocks.prepareListingPhotos,
@@ -50,7 +59,13 @@ describe("listing draft API auth boundaries", () => {
       status: "reserved",
     });
     mocks.releaseUsageReservation.mockResolvedValue(true);
-    mocks.settleUsageReservation.mockResolvedValue(true);
+    mocks.markUsageWorkStarted.mockResolvedValue(true);
+    mocks.markUsageReconciliationRequired.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
+    mocks.resolveRuntimeEntitlements.mockResolvedValue({
+      account: { id: "acc-1", ownerUserId: "user-1", plan: "free" },
+      access: { paidComps: false },
+    });
     mocks.requireSupabaseUser.mockRejectedValue(
       new AppError("Sign in before creating a listing draft.", 401),
     );
@@ -113,6 +128,10 @@ describe("listing draft API auth boundaries", () => {
       vi.stubEnv("PAID_COMPS_EMAILS", "allowed@example.com");
       mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email });
       mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+      mocks.resolveRuntimeEntitlements.mockResolvedValue({
+        account: { id: "acc-1", ownerUserId: "user-1", plan: "free" },
+        access: { paidComps: paidProvidersAllowed },
+      });
       mocks.prepareListingPhotos.mockResolvedValue([]);
       mocks.uploadListingPhotos.mockResolvedValue([]);
       mocks.generateListingDraftWithGemini.mockResolvedValue({
@@ -249,7 +268,7 @@ describe("listing draft AI quota enforcement", () => {
       status: "reserved",
     });
     mocks.releaseUsageReservation.mockResolvedValue(true);
-    mocks.settleUsageReservation.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
   });
 
   it("returns 402 and does not call Gemini when over the monthly AI-listing quota", async () => {
@@ -270,6 +289,6 @@ describe("listing draft AI quota enforcement", () => {
 
     expect(response.status).toBe(402);
     expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
-    expect(mocks.settleUsageReservation).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
   });
 });

@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     const result = await markItemSold(prisma, {
       inventoryItemId: body.inventoryItemId,
       userId: user.id,
+      accountId: account.id,
       inventoryOwnerUserId: item.sellerId,
       soldMarketplace: body.soldMarketplace,
       soldListingId: body.soldListingId ?? null,

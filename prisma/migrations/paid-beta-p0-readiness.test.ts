@@ -22,6 +22,7 @@ describe("paid-beta P0 readiness migration", () => {
     );
     expect(sql).toContain('"BulkPhoto_batchId_accountId_fkey"');
     expect(sql).toContain('"BulkPhoto_item_ownership_trigger"');
+    expect(sql).toContain('"BulkItem_protect_photo_ownership_trigger"');
     expect(sql).toContain('"BulkItem_populate_account_trigger"');
     expect(sql).toContain('"BulkPhoto_populate_account_trigger"');
   });
@@ -30,6 +31,16 @@ describe("paid-beta P0 readiness migration", () => {
     expect(sql).toContain('CREATE TABLE "UsageReservation"');
     expect(sql).toContain('"UsageReservation_accountId_metric_idempotencyKey_key"');
     expect(sql).toContain('"UsageReservation_units_check"');
+    for (const field of [
+      "operationType",
+      "operationId",
+      "expiresAt",
+      "workStartedAt",
+      "reconciliationRequiredAt",
+      "lastErrorCode",
+    ]) {
+      expect(sql).toContain(`"${field}"`);
+    }
     expect(sql).toContain('"ProviderCallLedger_accountId_idempotencyKey_key"');
   });
 
@@ -39,11 +50,28 @@ describe("paid-beta P0 readiness migration", () => {
     for (const column of ["accountId", "lockedAt", "leaseOwner", "retryClass", "completedAt"]) {
       expect(sql).toContain(`ALTER TABLE "SyncJob" ADD COLUMN "${column}"`);
     }
+    expect(sql).toContain('"SyncJob_populate_account_trigger"');
+    expect(sql).toContain('"SyncJob_validate_account_ownership_trigger"');
+    expect(sql).toContain('ALTER TABLE "SyncJob" ALTER COLUMN "accountId" SET NOT NULL');
+  });
+
+  it("makes root and safety records account-required after fail-closed backfills", () => {
+    expect(sql).toContain("InventoryItem contains rows without an owning account");
+    expect(sql).toContain('ALTER TABLE "InventoryItem" ALTER COLUMN "accountId" SET NOT NULL');
+    for (const table of ["InventoryEvent", "ReviewTask", "Notification"]) {
+      expect(sql).toContain(`ALTER TABLE "${table}" ALTER COLUMN "accountId" SET NOT NULL`);
+      expect(sql).toContain(`"${table}_accountId_fkey"`);
+    }
+    expect(sql).toContain('"populate_inventory_record_account_id"');
   });
 
   it("adds account-scoped sale-signal deduplication with deny-all RLS", () => {
     expect(sql).toContain('CREATE TABLE "MarketplaceSaleSignal"');
     expect(sql).toContain('"MarketplaceSaleSignal_account_marketplace_environment_event_key"');
+    expect(sql).toContain('"MarketplaceSaleSignal_processedAt_processingStartedAt_idx"');
+    expect(sql).toContain('"processingOwner" TEXT');
+    expect(sql).toContain('"processingAttempts" INTEGER NOT NULL DEFAULT 0');
+    expect(sql).toContain('"MarketplaceListing_market_env_externalListingId_key"');
     expect(sql).toContain('ALTER TABLE "MarketplaceSaleSignal" ENABLE ROW LEVEL SECURITY');
     expect(sql).not.toContain("CREATE POLICY");
   });

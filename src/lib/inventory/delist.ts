@@ -64,7 +64,7 @@ export type DelistPrismaLike = SyncJobPrismaLike &
       findFirst(args: {
         where: { id: string; sellerId?: string; accountId?: string };
         select: { id: true; accountId: true; productName: true };
-      }): Promise<{ id: string; accountId: string | null; productName: string } | null>;
+      }): Promise<{ id: string; accountId: string; productName: string } | null>;
     };
   };
 
@@ -148,7 +148,7 @@ export async function queueDelistOtherListings(
         soldMarketplace,
         useAdapter: adapterAvailable,
         externalUrl: listing.externalUrl,
-        accountId: item.accountId ?? null,
+        accountId: item.accountId,
       } as Prisma.InputJsonValue,
     });
     // Only adapter-available (eBay) jobs are auto-executable, so only those count

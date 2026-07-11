@@ -11,9 +11,12 @@ const mocks = vi.hoisted(() => ({
     | undefined
     | ((...args: unknown[]) => Promise<unknown>),
   getActiveAccount: vi.fn(),
+  requireRuntimeFeatureAccess: vi.fn(),
+  markUsageReconciliationRequired: vi.fn(),
+  markUsageWorkStarted: vi.fn(),
   releaseUsageReservation: vi.fn(),
   reserveUsageOrThrow: vi.fn(),
-  settleUsageReservation: vi.fn(),
+  settleUsageReservationOrRequireReconciliation: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -27,10 +30,16 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  requireRuntimeFeatureAccess: mocks.requireRuntimeFeatureAccess,
+}));
 vi.mock("@/lib/billing/usage", () => ({
+  markUsageReconciliationRequired: mocks.markUsageReconciliationRequired,
+  markUsageWorkStarted: mocks.markUsageWorkStarted,
   releaseUsageReservation: mocks.releaseUsageReservation,
   reserveUsageOrThrow: mocks.reserveUsageOrThrow,
-  settleUsageReservation: mocks.settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation:
+    mocks.settleUsageReservationOrRequireReconciliation,
 }));
 
 vi.mock("@/lib/marketplace/publish-handler", async (importOriginal) => {
@@ -51,13 +60,18 @@ describe("publish API auth boundaries", () => {
     mocks.executePublish.mockReset();
     mocks.executePublish.mockImplementation(mocks.executePublishActual!);
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "kingpin" });
+    mocks.requireRuntimeFeatureAccess.mockResolvedValue({
+      account: { id: "acc-1", ownerUserId: "user-1", plan: "kingpin" },
+    });
     mocks.reserveUsageOrThrow.mockResolvedValue({
       reservationId: "usage-reservation-1",
       idempotent: false,
       status: "reserved",
     });
     mocks.releaseUsageReservation.mockResolvedValue(true);
-    mocks.settleUsageReservation.mockResolvedValue(true);
+    mocks.markUsageWorkStarted.mockResolvedValue(true);
+    mocks.markUsageReconciliationRequired.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
   });
 
   afterEach(() => {
@@ -84,7 +98,7 @@ describe("publish API auth boundaries", () => {
     expect(response.status).toBe(402);
     expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_AUTOPUBLISH");
     expect(mocks.executePublish).not.toHaveBeenCalled();
-    expect(mocks.settleUsageReservation).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
   });
 
   it("does not release the original reservation for a duplicate request", async () => {
@@ -93,6 +107,13 @@ describe("publish API auth boundaries", () => {
       email: "allowed@example.com",
     });
     mocks.getPrisma.mockReturnValue({});
+    mocks.requireRuntimeFeatureAccess.mockRejectedValueOnce(
+      new AppError(
+        "This feature is currently available to selected beta accounts.",
+        403,
+        "ALPHA_OR_BETA_ACCESS_REQUIRED",
+      ),
+    );
     mocks.reserveUsageOrThrow.mockResolvedValue({
       reservationId: "usage-reservation-in-flight",
       idempotent: true,
@@ -167,13 +188,12 @@ describe("publish API auth boundaries", () => {
     expect(response.status).toBe(403);
     expect(payload).toEqual({
       error: {
-        code: "LIVE_EBAY_PUBLISH_ALPHA_ONLY",
-        message:
-          "Live eBay publishing is currently enabled for selected alpha accounts.",
+        code: "ALPHA_OR_BETA_ACCESS_REQUIRED",
+        message: "This feature is currently available to selected beta accounts.",
       },
     });
     expect(mocks.executePublish).not.toHaveBeenCalled();
-    expect(mocks.getPrisma).not.toHaveBeenCalled();
+    expect(mocks.getPrisma).toHaveBeenCalledOnce();
     expect(prismaWrite).not.toHaveBeenCalled();
     expect(outboundAdapter).not.toHaveBeenCalled();
   });
@@ -253,6 +273,36 @@ describe("publish API auth boundaries", () => {
       inventoryItemId: "22222222-2222-4222-8222-222222222222",
       marketplace: "grailed",
     });
+  });
+
+  it("preserves a non-2xx publish outcome when usage release fails", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+    mocks.getPrisma.mockReturnValue({});
+    mocks.releaseUsageReservation.mockRejectedValue(new Error("temporary database failure"));
+    mocks.executePublish.mockResolvedValueOnce({
+      outcome: {
+        status: "not_implemented",
+        code: "NOT_IMPLEMENTED",
+        marketplace: "grailed",
+        reason: "Draft-only marketplace.",
+      },
+      httpStatus: 501,
+      marketplaceListingId: "listing-2",
+      publishAttemptId: "attempt-2",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "22222222-2222-4222-8222-222222222222",
+          marketplace: "grailed",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(501);
+    expect((await response.json()).code).toBe("NOT_IMPLEMENTED");
   });
 
   it("returns a typed setup error when publish persistence tables are missing", async () => {

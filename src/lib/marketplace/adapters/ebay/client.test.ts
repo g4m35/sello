@@ -7,6 +7,7 @@ import {
   type EbayTokenPrismaLike,
 } from "./client";
 import { decryptEbayToken, encryptEbayToken } from "./token-crypto";
+import { EBAY_FULFILLMENT_SCOPE } from "./types";
 
 const key =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -231,6 +232,7 @@ describe("eBay sandbox client", () => {
 
   it("refreshes expired access tokens and stores encrypted replacement tokens", async () => {
     const update = vi.fn().mockResolvedValue({});
+    let refreshBody = "";
     const prisma: EbayTokenPrismaLike = {
       marketplaceConnection: { update },
     };
@@ -244,8 +246,9 @@ describe("eBay sandbox client", () => {
         accessTokenExpiresAt: new Date(Date.now() - 60_000),
       },
       config,
-      async () =>
-        new Response(
+      async (_url, init) => {
+        refreshBody = String(init?.body ?? "");
+        return new Response(
           JSON.stringify({
             access_token: "fresh-access-token",
             refresh_token: "fresh-refresh-token",
@@ -254,7 +257,8 @@ describe("eBay sandbox client", () => {
             scope: "scope-a scope-b",
           }),
           { status: 200 },
-        ),
+        );
+      },
     );
 
     expect(accessToken).toBe("fresh-access-token");
@@ -264,6 +268,8 @@ describe("eBay sandbox client", () => {
     expect(decryptEbayToken(data.refreshTokenEnc, key)).toBe(
       "fresh-refresh-token",
     );
+    expect(refreshBody).toContain("grant_type=refresh_token");
+    expect(refreshBody).not.toContain("scope=");
   });
 
   it("gets an application access token for read-only Taxonomy calls", async () => {
@@ -300,9 +306,31 @@ describe("eBay sandbox publish methods", () => {
       i += 1;
       return response;
     }) as unknown as typeof fetch;
-    const client = new EbaySandboxClient("secret-access-token", "EBAY_US", fetchImpl);
+    const client = new EbaySandboxClient(
+      "secret-access-token",
+      "EBAY_US",
+      fetchImpl,
+      "sandbox",
+      [EBAY_FULFILLMENT_SCOPE],
+    );
     return { client, calls };
   }
+
+  it("requires a reconnect before legacy-scope connections can read fulfillment orders", async () => {
+    const fetchImpl = vi.fn();
+    const client = new EbaySandboxClient(
+      "secret-access-token",
+      "EBAY_US",
+      fetchImpl,
+      "production",
+      ["https://api.ebay.com/oauth/api_scope/sell.inventory"],
+    );
+
+    await expect(
+      client.getOrdersModifiedSince(new Date("2026-07-10T00:00:00Z")),
+    ).rejects.toMatchObject({ code: "EBAY_RECONNECT_REQUIRED", status: 409 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
 
   it("reads fulfillment orders from a bounded modified-date cursor", async () => {
     const { client, calls } = recordingClient([
@@ -325,6 +353,53 @@ describe("eBay sandbox publish methods", () => {
     expect(calls[0].url).toContain("lastmodifieddate%3A%5B2026-07-10T00%3A00%3A00.000Z..%5D");
     expect(calls[0].url).toContain("limit=200");
     expect(calls[0].url).toContain("offset=0");
+  });
+
+  it("projects fulfillment orders and strips buyer or shipping-address data", async () => {
+    const { client } = recordingClient([
+      new Response(
+        JSON.stringify({
+          orders: [
+            {
+              orderId: "order-1",
+              orderPaymentStatus: "PAID",
+              buyer: { username: "private-buyer" },
+              fulfillmentStartInstructions: [
+                { shippingStep: { shipTo: { fullName: "Private Name", contactAddress: {} } } },
+              ],
+              lineItems: [{ lineItemId: "line-1", quantity: 1, privateField: "remove" }],
+            },
+          ],
+          total: 1,
+        }),
+        { status: 200 },
+      ),
+    ]);
+
+    const page = await client.getOrdersModifiedSince(new Date("2026-07-10T00:00:00Z"));
+    expect(page.orders[0]).toEqual({
+      orderId: "order-1",
+      orderPaymentStatus: "PAID",
+      lineItems: [{ lineItemId: "line-1", quantity: 1 }],
+    });
+    expect(JSON.stringify(page)).not.toContain("Private");
+    expect(JSON.stringify(page)).not.toContain("private-buyer");
+  });
+
+  it("fails closed for malformed fulfillment quantities", async () => {
+    const { client } = recordingClient([
+      new Response(
+        JSON.stringify({
+          orders: [{ orderId: "order-1", lineItems: [{ lineItemId: "line-1", quantity: -1 }] }],
+          total: 1,
+        }),
+        { status: 200 },
+      ),
+    ]);
+
+    await expect(
+      client.getOrdersModifiedSince(new Date("2026-07-10T00:00:00Z")),
+    ).rejects.toMatchObject({ code: "EBAY_API_FAILED", status: 502 });
   });
 
   it("PUTs createOrReplaceInventoryItem to the inventory_item/{sku} path", async () => {

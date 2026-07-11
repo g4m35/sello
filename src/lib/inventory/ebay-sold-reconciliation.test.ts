@@ -63,7 +63,13 @@ type SignalCreateData = {
   marketplace: "ebay";
   environment: string;
   externalEventId: string;
+  externalOrderId: string;
+  externalLineItemId: string;
+  externalListingId: string;
   state: string;
+  processingStartedAt: Date;
+  processingOwner: string;
+  processingAttempts: number;
 };
 type SignalUniqueWhere = {
   accountId_marketplace_environment_externalEventId: {
@@ -75,14 +81,18 @@ type SignalUniqueWhere = {
 };
 type SignalUpdateData = {
   state?: string;
-  outcome: string;
+  outcome?: string;
   inventoryItemId?: string | null;
-  processedAt: Date;
+  processedAt?: Date;
+  processingStartedAt?: Date | null;
+  processingOwner?: string | null;
+  processingAttempts?: { increment: number };
 };
 
 function reconciliationDb(opts: {
   items?: FakeItem[];
   listings?: FakeListing[];
+  failListingLookupOnce?: boolean;
 } = {}) {
   const prisma = createInventoryFakePrisma({
     items: opts.items ?? [item()],
@@ -102,10 +112,16 @@ function reconciliationDb(opts: {
     marketplace: "ebay";
     environment: string;
     externalEventId: string;
+    externalOrderId: string;
+    externalLineItemId: string;
+    externalListingId: string;
     state: string;
     outcome: string | null;
     inventoryItemId: string | null;
     processedAt: Date | null;
+    processingStartedAt: Date | null;
+    processingOwner: string | null;
+    processingAttempts: number;
   }> = [];
   const marketplaceSaleSignal = {
     async create({ data }: { data: SignalCreateData }) {
@@ -123,10 +139,16 @@ function reconciliationDb(opts: {
         marketplace: "ebay" as const,
         environment: data.environment,
         externalEventId: data.externalEventId,
+        externalOrderId: data.externalOrderId,
+        externalLineItemId: data.externalLineItemId,
+        externalListingId: data.externalListingId,
         state: data.state,
         outcome: null,
         inventoryItemId: null,
         processedAt: null,
+        processingStartedAt: data.processingStartedAt,
+        processingOwner: data.processingOwner,
+        processingAttempts: data.processingAttempts,
       };
       rows.push(row);
       return { id: row.id };
@@ -140,11 +162,35 @@ function reconciliationDb(opts: {
         row.externalEventId === key.externalEventId
       ) ?? null;
     },
-    async update({ where, data }: { where: { id: string }; data: SignalUpdateData }) {
+    async updateMany({
+      where,
+      data,
+    }: {
+      where: {
+        id: string;
+        processedAt: null;
+        processingOwner?: string;
+        OR?: Array<{ processingStartedAt: null } | { processingStartedAt: { lte: Date } }>;
+      };
+      data: SignalUpdateData;
+    }) {
       const row = rows.find((entry) => entry.id === where.id);
-      if (!row) throw new Error("missing signal");
-      Object.assign(row, data);
-      return { id: row.id };
+      if (!row || row.processedAt !== null) return { count: 0 };
+      if (where.processingOwner && row.processingOwner !== where.processingOwner) {
+        return { count: 0 };
+      }
+      if (where.OR) {
+        const eligible = where.OR.some((condition) =>
+          condition.processingStartedAt === null
+            ? row.processingStartedAt === null
+            : row.processingStartedAt !== null &&
+              row.processingStartedAt <= condition.processingStartedAt.lte
+        );
+        if (!eligible) return { count: 0 };
+      }
+      const attempts = data.processingAttempts?.increment ?? 0;
+      Object.assign(row, { ...data, processingAttempts: row.processingAttempts + attempts });
+      return { count: 1 };
     },
   };
   const transactionDb: MarkSoldTransaction = {
@@ -156,7 +202,11 @@ function reconciliationDb(opts: {
           (where.sellerId === undefined || candidate.sellerId === where.sellerId)
         );
         return found
-          ? { id: found.id, accountId: found.accountId ?? null, productName: found.productName }
+          ? {
+              id: found.id,
+              accountId: found.accountId ?? `account-${found.sellerId}`,
+              productName: found.productName,
+            }
           : null;
       },
       update: async ({ where, data }) => {
@@ -192,8 +242,13 @@ function reconciliationDb(opts: {
     marketplaceListing: {
       findMany: (args) => prisma.marketplaceListing.findMany(args),
       findFirst: async ({ where }) => {
+        if (opts.failListingLookupOnce) {
+          opts.failListingLookupOnce = false;
+          throw new Error("temporary local lookup failure");
+        }
         const match = prisma._store.listings.find((candidate) => {
           if (candidate.marketplace !== where.marketplace) return false;
+          if ((candidate.environment ?? "production") !== where.environment) return false;
           if (candidate.externalListingId !== where.externalListingId) return false;
           const owner = prisma._store.items.find(
             (candidateItem) => candidateItem.id === candidate.inventoryItemId,
@@ -283,6 +338,69 @@ describe("reconcileEbaySoldSignal", () => {
     expect(prisma._store.syncJobs).toHaveLength(1);
   });
 
+  it("lets only one concurrent delivery hold a fresh processing lease", async () => {
+    const { db, prisma } = reconciliationDb();
+    const results = await Promise.all([
+      reconcileEbaySoldSignal(db, baseSignal, {
+        now: new Date("2026-07-11T12:00:00Z"),
+        processingOwner: "worker-a",
+      }),
+      reconcileEbaySoldSignal(db, baseSignal, {
+        now: new Date("2026-07-11T12:00:01Z"),
+        processingOwner: "worker-b",
+      }),
+    ]);
+    expect(results.map((result) => result.outcome)).toEqual(
+      expect.arrayContaining(["marked_sold", "duplicate"]),
+    );
+    expect(prisma._store.events.filter((event) => event.type === "sale_confirmed")).toHaveLength(1);
+  });
+
+  it("reclaims an incomplete signal only after its processing lease expires", async () => {
+    const { db, prisma, rows } = reconciliationDb({ failListingLookupOnce: true });
+    const startedAt = new Date("2026-07-11T12:00:00Z");
+    await expect(
+      reconcileEbaySoldSignal(db, baseSignal, {
+        now: startedAt,
+        processingOwner: "crashed-worker",
+      }),
+    ).rejects.toThrow("temporary local lookup failure");
+
+    const stillLeased = await reconcileEbaySoldSignal(db, baseSignal, {
+      now: new Date("2026-07-11T12:04:00Z"),
+      processingOwner: "early-retry",
+    });
+    expect(stillLeased).toMatchObject({ outcome: "duplicate", priorOutcome: null });
+
+    const recovered = await reconcileEbaySoldSignal(db, baseSignal, {
+      now: new Date("2026-07-11T12:06:00Z"),
+      processingOwner: "recovery-worker",
+    });
+    expect(recovered.outcome).toBe("marked_sold");
+    expect(prisma._store.events.filter((event) => event.type === "sale_confirmed")).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      outcome: "marked_sold",
+      processingOwner: null,
+      processingAttempts: 2,
+    });
+  });
+
+  it("rejects an event-id replay whose immutable order identity changed", async () => {
+    const { db } = reconciliationDb({ failListingLookupOnce: true });
+    const now = new Date("2026-07-11T12:00:00Z");
+    await expect(
+      reconcileEbaySoldSignal(db, baseSignal, { now, processingOwner: "worker-a" }),
+    ).rejects.toThrow("temporary local lookup failure");
+
+    await expect(
+      reconcileEbaySoldSignal(
+        db,
+        { ...baseSignal, externalOrderId: "different-order" },
+        { now: new Date("2026-07-11T12:06:00Z"), processingOwner: "worker-b" },
+      ),
+    ).rejects.toMatchObject({ code: "SALE_SIGNAL_REPLAY_MISMATCH" });
+  });
+
   it("keeps one winner when two distinct sold signals race", async () => {
     const { db, prisma } = reconciliationDb();
     const results = await Promise.all([
@@ -335,6 +453,55 @@ describe("reconcileEbaySoldSignal", () => {
     expect(result.outcome).toBe("review_unmatched");
     expect(prisma._store.items[0].status).toBe("LISTED");
     expect(prisma._store.syncJobs).toHaveLength(0);
+  });
+
+  it("matches an external listing only within the signal environment", async () => {
+    const { db, prisma } = reconciliationDb({
+      items: [
+        item({ id: "production-item", accountId: "account-1" }),
+        item({ id: "sandbox-item", accountId: "account-1", productName: "Sandbox item" }),
+      ],
+      listings: [
+        listing({
+          id: "production-listing",
+          inventoryItemId: "production-item",
+          marketplace: "ebay",
+          environment: "production",
+          externalListingId: "shared-external-id",
+        }),
+        listing({
+          id: "sandbox-listing",
+          inventoryItemId: "sandbox-item",
+          marketplace: "ebay",
+          environment: "sandbox",
+          externalListingId: "shared-external-id",
+        }),
+      ],
+    });
+
+    const result = await reconcileEbaySoldSignal(db, {
+      ...baseSignal,
+      environment: "sandbox",
+      externalListingId: "shared-external-id",
+    });
+    expect(result).toMatchObject({ outcome: "marked_sold", inventoryItemId: "sandbox-item" });
+    expect(prisma._store.items.find((row) => row.id === "production-item")?.status).toBe("LISTED");
+    expect(prisma._store.items.find((row) => row.id === "sandbox-item")?.status).toBe("SOLD");
+  });
+
+  it("keeps distinct unmatched eBay orders as distinct review tasks", async () => {
+    const { db, prisma } = reconciliationDb({ listings: [] });
+    await reconcileEbaySoldSignal(db, baseSignal);
+    await reconcileEbaySoldSignal(db, {
+      ...baseSignal,
+      externalEventId: "order-2:line-1:v1",
+      externalOrderId: "order-2",
+    });
+    expect(prisma._store.reviewTasks).toHaveLength(2);
+    expect(prisma._store.reviewTasks.map((task) => task.dedupeKey)).toEqual([
+      "ebay-unmatched:production:order-1:line-1",
+      "ebay-unmatched:production:order-2:line-1",
+    ]);
   });
 
   it("does not overwrite a listing already marked sold manually without a source", async () => {

@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
   getPrisma: vi.fn(),
+  markUsageReconciliationRequired: vi.fn(),
+  markUsageWorkStarted: vi.fn(),
   releaseUsageReservation: vi.fn(),
   reserveUsageOrThrow: vi.fn(),
-  settleUsageReservation: vi.fn(),
+  settleUsageReservationOrRequireReconciliation: vi.fn(),
   executePublish: vi.fn(),
 }));
 
@@ -24,9 +26,12 @@ vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: mocks.getActiveAccount,
 }));
 vi.mock("@/lib/billing/usage", () => ({
+  markUsageReconciliationRequired: mocks.markUsageReconciliationRequired,
+  markUsageWorkStarted: mocks.markUsageWorkStarted,
   releaseUsageReservation: mocks.releaseUsageReservation,
   reserveUsageOrThrow: mocks.reserveUsageOrThrow,
-  settleUsageReservation: mocks.settleUsageReservation,
+  settleUsageReservationOrRequireReconciliation:
+    mocks.settleUsageReservationOrRequireReconciliation,
 }));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: mocks.getPrisma,
@@ -61,7 +66,9 @@ describe("StockX publish route", () => {
       status: "reserved",
     });
     mocks.releaseUsageReservation.mockResolvedValue(true);
-    mocks.settleUsageReservation.mockResolvedValue(true);
+    mocks.markUsageWorkStarted.mockResolvedValue(true);
+    mocks.markUsageReconciliationRequired.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
     mocks.executePublish.mockResolvedValue({
       outcome: {
         status: "submitted",
@@ -146,11 +153,37 @@ describe("StockX publish route", () => {
       }),
       { db: true },
     );
-    expect(mocks.settleUsageReservation).toHaveBeenCalledWith(
+    expect(mocks.settleUsageReservationOrRequireReconciliation).toHaveBeenCalledWith(
       "usage-reservation-1",
       expect.any(Date),
+      "STOCKX_AUTOPUBLISH_SETTLEMENT_FAILED",
       { db: true },
     );
+  });
+
+  it("preserves a non-2xx publish outcome when usage release fails", async () => {
+    mocks.releaseUsageReservation.mockRejectedValue(new Error("temporary database failure"));
+    mocks.executePublish.mockResolvedValue({
+      outcome: {
+        status: "not_enabled",
+        code: "STOCKX_PUBLISH_NOT_ENABLED",
+        marketplace: "stockx",
+        environment: "production",
+      },
+      httpStatus: 409,
+      marketplaceListingId: "listing-1",
+      publishAttemptId: "attempt-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/marketplaces/stockx/publish", {
+        method: "POST",
+        body: JSON.stringify({ inventoryItemId: itemId, confirmLivePublish: true }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("STOCKX_PUBLISH_NOT_ENABLED");
   });
 
   it("returns safe StockX provider failure details for live publish diagnostics", async () => {
@@ -178,6 +211,6 @@ describe("StockX publish route", () => {
       message: "StockX API request failed.",
       details: { status: 400 },
     });
-    expect(mocks.settleUsageReservation).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
   });
 });

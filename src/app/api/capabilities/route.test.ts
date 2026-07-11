@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
+  subscriptionFindUnique: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -13,7 +14,9 @@ vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: mocks.getActiveAccount,
 }));
 vi.mock("@/lib/prisma", () => ({
-  getPrisma: vi.fn(() => ({ prisma: true })),
+  getPrisma: vi.fn(() => ({
+    subscription: { findUnique: mocks.subscriptionFindUnique },
+  })),
 }));
 
 import { AppError } from "@/lib/errors";
@@ -31,6 +34,7 @@ describe("GET /api/capabilities", () => {
       ownerUserId: "user-1",
       plan: "pro",
     });
+    mocks.subscriptionFindUnique.mockResolvedValue({ status: "active", graceEndsAt: null });
   });
 
   it("requires authentication", async () => {
@@ -46,6 +50,15 @@ describe("GET /api/capabilities", () => {
     vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "owner@example.com");
     vi.stubEnv("EBAY_DELIST_EMAILS", "beta@example.com");
     vi.stubEnv("PAID_COMPS_EMAILS", "OWNER@example.com");
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("COMPS_APIFY_EBAY_SOLD_ENABLED", "true");
+    vi.stubEnv("APIFY_TOKEN", "configured-test-placeholder");
+    vi.stubEnv("EBAY_ENV", "production");
+    vi.stubEnv("EBAY_PRODUCTION_PUBLISH_ENABLED", "true");
+    vi.stubEnv("EBAY_CLIENT_ID", "configured-test-placeholder");
+    vi.stubEnv("EBAY_CLIENT_SECRET", "configured-test-placeholder");
+    vi.stubEnv("EBAY_REDIRECT_URI_NAME", "configured-test-placeholder");
+    vi.stubEnv("EBAY_TOKEN_ENCRYPTION_KEY", "configured-test-placeholder");
     mocks.requireSupabaseUser.mockResolvedValue({
       id: "user-1",
       email: "owner@example.com",

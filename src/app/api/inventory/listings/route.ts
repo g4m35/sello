@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import type { MarketplaceListingStatus, Prisma } from "@/generated/prisma/client";
+import { getActiveAccount } from "@/lib/billing/account";
+import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import { recordInventoryEvent } from "@/lib/inventory/events";
 import { getPrisma } from "@/lib/prisma";
@@ -57,11 +59,12 @@ export async function POST(request: Request) {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
     const body = BodySchema.parse(await request.json());
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     // Ownership: never attach a listing to another seller's item.
     const item = await prisma.inventoryItem.findFirst({
-      where: { id: body.inventoryItemId, sellerId: user.id },
-      select: { id: true },
+      where: { id: body.inventoryItemId, ...accountScope(account) },
+      select: { id: true, accountId: true },
     });
     if (!item) {
       throw new AppError("Inventory item not found.", 404);
@@ -94,6 +97,7 @@ export async function POST(request: Request) {
     await recordInventoryEvent(prisma, {
       inventoryItemId: item.id,
       userId: user.id,
+      accountId: item.accountId,
       type: "listing_created",
       source: "manual",
       marketplace: body.marketplace,

@@ -11,6 +11,7 @@ import { createReviewTask, type ReviewTaskPrismaLike } from "./review-tasks";
 type FakeTask = {
   id: string;
   userId: string;
+  accountId: string;
   type: ReviewTaskType;
   status: ReviewTaskStatus;
   inventoryItemId: string | null;
@@ -27,7 +28,7 @@ function createFakePrisma(seed: FakeTask[] = []): ReviewTaskPrismaLike & {
       async findFirst({ where }) {
         const found = tasks.find(
           (t) =>
-            t.userId === where.userId &&
+            t.accountId === where.accountId &&
             t.type === where.type &&
             t.status === where.status &&
             t.inventoryItemId === where.inventoryItemId &&
@@ -39,6 +40,7 @@ function createFakePrisma(seed: FakeTask[] = []): ReviewTaskPrismaLike & {
         const task: FakeTask = {
           id: `task-${tasks.length + 1}`,
           userId: data.userId,
+          accountId: data.accountId,
           type: data.type,
           status: "open",
           inventoryItemId: data.inventoryItemId ?? null,
@@ -57,6 +59,7 @@ describe("createReviewTask", () => {
 
     const result = await createReviewTask(prisma, {
       userId: "user-1",
+      accountId: "account-1",
       type: "confirm_possible_sale",
       inventoryItemId: "item-1",
       marketplace: "grailed",
@@ -72,6 +75,7 @@ describe("createReviewTask", () => {
     const prisma = createFakePrisma();
     const input = {
       userId: "user-1",
+      accountId: "account-1",
       type: "manual_delist_required" as const,
       inventoryItemId: "item-1",
       marketplace: "poshmark" as const,
@@ -92,6 +96,7 @@ describe("createReviewTask", () => {
     const prisma = createFakePrisma();
     const base = {
       userId: "user-1",
+      accountId: "account-1",
       type: "manual_delist_required" as const,
       inventoryItemId: "item-1",
       title: "t",
@@ -110,6 +115,7 @@ describe("createReviewTask", () => {
       {
         id: "old",
         userId: "user-1",
+        accountId: "account-1",
         type: "confirm_possible_sale",
         status: "resolved",
         inventoryItemId: "item-1",
@@ -119,6 +125,7 @@ describe("createReviewTask", () => {
 
     const result = await createReviewTask(prisma, {
       userId: "user-1",
+      accountId: "account-1",
       type: "confirm_possible_sale",
       inventoryItemId: "item-1",
       marketplace: "grailed",
