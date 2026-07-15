@@ -89,9 +89,8 @@ try {
     const result = startTask(repoRoot, taskArg);
     if (flags.json) printJson(result);
     else {
-      const verb = result.adopted ? "Adopted" : result.reused ? "Reused" : "Created";
+      const verb = result.reused ? "Reused" : "Created";
       console.log(`${verb} task worktree: ${result.worktree}`);
-      console.log(`Mode: ${result.mode}`);
       console.log(`Branch: ${result.branch}`);
       console.log(`Base: ${result.base_ref} (${result.base_commit})`);
       console.log(`Task: ${result.task_file}`);

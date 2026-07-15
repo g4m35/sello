@@ -75,79 +75,6 @@ export function findRepoRoot(cwd = process.cwd()): string {
   return runGit(cwd, ["rev-parse", "--show-toplevel"]).stdout.trim();
 }
 
-export type ConductorEnvironment = {
-  active: boolean;
-  workspacePath: string | null;
-  rootPath: string | null;
-  port: string | null;
-  isLocal: boolean | null;
-  workspaceName: string | null;
-  defaultBranch: string | null;
-};
-
-export const CONDUCTOR_WORKSPACE_PATH_TOKEN = "$CONDUCTOR_WORKSPACE_PATH";
-
-/** Detect Conductor workspace context from supported environment variables. */
-export function detectConductorEnvironment(
-  env: Record<string, string | undefined> = process.env,
-): ConductorEnvironment {
-  const workspacePath = env.CONDUCTOR_WORKSPACE_PATH?.trim() || null;
-  const rootPath = env.CONDUCTOR_ROOT_PATH?.trim() || null;
-  const port = env.CONDUCTOR_PORT?.trim() || null;
-  const workspaceName = env.CONDUCTOR_WORKSPACE_NAME?.trim() || null;
-  const defaultBranch = env.CONDUCTOR_DEFAULT_BRANCH?.trim() || null;
-  const isLocalRaw = env.CONDUCTOR_IS_LOCAL?.trim();
-  const isLocal =
-    isLocalRaw === undefined || isLocalRaw === ""
-      ? null
-      : isLocalRaw === "1" || isLocalRaw.toLowerCase() === "true";
-  return {
-    active: Boolean(workspacePath),
-    workspacePath,
-    rootPath,
-    port,
-    isLocal,
-    workspaceName,
-    defaultBranch,
-  };
-}
-
-function conductorWorkspacesRoot(env: Record<string, string | undefined> = process.env): string | null {
-  const home = env.HOME?.trim();
-  if (!home) return null;
-  return resolve(home, "conductor", "workspaces");
-}
-
-/** True when a path is the active Conductor workspace or under ~/conductor/workspaces. */
-export function isConductorManagedPath(
-  path: string,
-  env: Record<string, string | undefined> = process.env,
-): boolean {
-  const conductor = detectConductorEnvironment(env);
-  if (conductor.workspacePath && samePath(path, conductor.workspacePath)) return true;
-  const workspacesRoot = conductorWorkspacesRoot(env);
-  if (!workspacesRoot) return false;
-  const normalized = resolve(path);
-  return normalized === workspacesRoot || normalized.startsWith(`${workspacesRoot}${sep}`);
-}
-
-function assertNotNestedConductorWorktree(
-  targetPath: string,
-  env: Record<string, string | undefined> = process.env,
-): void {
-  const conductor = detectConductorEnvironment(env);
-  if (!conductor.active || !conductor.workspacePath) return;
-  const workspace = resolve(conductor.workspacePath);
-  const target = resolve(targetPath);
-  if (target === workspace) return;
-  if (target.startsWith(`${workspace}${sep}`)) {
-    throw new WorkflowError(
-      "Refusing to create a nested Git worktree inside a Conductor workspace. Use the current Conductor workspace as the task worktree.",
-      "CONDUCTOR_NESTED_WORKTREE",
-    );
-  }
-}
-
 function processIsAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -270,41 +197,6 @@ function validateBranchName(repoRoot: string, branch: string, field: string): vo
   }
 }
 
-function isConductorPlaceholderBranch(branch: string, worktreePath: string): boolean {
-  return (
-    worktreePath === CONDUCTOR_WORKSPACE_PATH_TOKEN &&
-    /^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/.test(branch)
-  );
-}
-
-function resolveDeclaredWorktreePath(
-  worktreePath: string,
-  env: Record<string, string | undefined> = process.env,
-  fallbackPath?: string,
-): string | null {
-  if (worktreePath !== CONDUCTOR_WORKSPACE_PATH_TOKEN) return worktreePath;
-  const conductor = detectConductorEnvironment(env);
-  if (conductor.active && conductor.workspacePath) return conductor.workspacePath;
-  // Conductor agents sometimes omit CONDUCTOR_WORKSPACE_PATH. Infer only when the
-  // current path is already under ~/conductor/workspaces (or the active token path).
-  if (fallbackPath && isConductorManagedPath(fallbackPath, env)) {
-    return resolve(fallbackPath);
-  }
-  return null;
-}
-
-function sameDeclaredWorktree(
-  left: string,
-  right: string,
-  env: Record<string, string | undefined> = process.env,
-  fallbackPath?: string,
-): boolean {
-  if (left === right) return true;
-  const resolvedLeft = resolveDeclaredWorktreePath(left, env, fallbackPath);
-  const resolvedRight = resolveDeclaredWorktreePath(right, env, fallbackPath);
-  return Boolean(resolvedLeft && resolvedRight && samePath(resolvedLeft, resolvedRight));
-}
-
 export function validateTaskContract(raw: unknown, repoRoot: string): TaskContract {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new WorkflowError("Task contract must be a YAML mapping.", "INVALID_TASK");
@@ -356,29 +248,17 @@ export function validateTaskContract(raw: unknown, repoRoot: string): TaskContra
     }
   }
 
-  if (
-    !isAbsolute(value.worktree_path as string) &&
-    value.worktree_path !== CONDUCTOR_WORKSPACE_PATH_TOKEN
-  ) {
-    throw new WorkflowError(
-      `Task field 'worktree_path' must be an absolute path or ${CONDUCTOR_WORKSPACE_PATH_TOKEN}.`,
-      "INVALID_TASK",
-    );
+  if (!isAbsolute(value.worktree_path as string)) {
+    throw new WorkflowError("Task field 'worktree_path' must be an absolute path.", "INVALID_TASK");
   }
   validateBranchName(repoRoot, value.base_branch as string, "base_branch");
   validateBranchName(repoRoot, value.working_branch as string, "working_branch");
   if (["main", "develop"].includes(value.working_branch as string)) {
     throw new WorkflowError("A task working branch cannot be main or develop.", "INVALID_TASK");
   }
-  if (
-    !/^(feature|fix|chore|security|docs|test)\//.test(value.working_branch as string) &&
-    !isConductorPlaceholderBranch(
-      value.working_branch as string,
-      value.worktree_path as string,
-    )
-  ) {
+  if (!/^(feature|fix|chore|security|docs|test)\//.test(value.working_branch as string)) {
     throw new WorkflowError(
-      "Task working_branch must use an approved prefix, or be a Conductor placeholder branch paired with $CONDUCTOR_WORKSPACE_PATH.",
+      "Task working_branch must start with feature/, fix/, chore/, security/, docs/, or test/.",
       "INVALID_TASK",
     );
   }
@@ -558,8 +438,6 @@ function moveTaskToActive(targetRoot: string, task: TaskContract): string {
 export type StartResult = {
   task_id: string;
   reused: boolean;
-  adopted: boolean;
-  mode: "conductor" | "manual";
   branch: string;
   worktree: string;
   base_ref: string;
@@ -569,89 +447,6 @@ export type StartResult = {
   next_instructions: string[];
 };
 
-function adoptConductorWorkspace(
-  repoRoot: string,
-  task: TaskContract,
-  baseRef: string,
-  baseCommit: string,
-  conductor: ConductorEnvironment,
-): StartResult {
-  const workspace = conductor.workspacePath!;
-  if (!samePath(repoRoot, workspace)) {
-    throw new WorkflowError(
-      `Conductor workspace is '${workspace}' but the current repository root is '${repoRoot}'. Run workflow commands inside the Conductor workspace.`,
-      "CONDUCTOR_WORKSPACE_MISMATCH",
-    );
-  }
-
-  // Ensure the task branch exists in this workspace without creating another worktree.
-  let branch = currentBranch(repoRoot);
-  if (branch !== task.working_branch) {
-    const localBranchExists =
-      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${task.working_branch}`], {
-        allowFailure: true,
-      }).status === 0;
-    const remoteBranchExists =
-      runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${task.working_branch}`], {
-        allowFailure: true,
-      }).status === 0;
-    if (localBranchExists) {
-      runGit(repoRoot, ["checkout", task.working_branch]);
-    } else if (remoteBranchExists) {
-      runGit(repoRoot, ["checkout", "-b", task.working_branch, "--track", `origin/${task.working_branch}`]);
-    } else {
-      runGit(repoRoot, ["checkout", "-b", task.working_branch, baseRef]);
-    }
-    branch = currentBranch(repoRoot);
-  }
-  if (branch !== task.working_branch) {
-    throw new WorkflowError(
-      `Failed to adopt Conductor workspace onto task branch '${task.working_branch}' (current '${branch}').`,
-      "CONDUCTOR_BRANCH_MISMATCH",
-    );
-  }
-
-  const activeFile = moveTaskToActive(repoRoot, task);
-  updateTaskFile(activeFile, {
-    status: "active",
-    worktree_path: workspace,
-    working_branch: branch,
-  });
-  const now = new Date().toISOString();
-  const state = writeTaskState(repoRoot, {
-    task_id: task.id,
-    task_file: relative(repoRoot, activeFile),
-    base_branch: task.base_branch,
-    base_commit: baseCommit,
-    working_branch: branch,
-    worktree_path: workspace,
-    created_at: now,
-    updated_at: now,
-    started_by: userInfo().username,
-    status: "active",
-  });
-
-  return {
-    task_id: task.id,
-    reused: true,
-    adopted: true,
-    mode: "conductor",
-    branch,
-    worktree: workspace,
-    base_ref: baseRef,
-    base_commit: baseCommit,
-    task_file: activeFile,
-    state_file: state,
-    next_instructions: [
-      "Conductor workspace adopted. Do not create another worktree.",
-      `Read AGENTS.md and ${relative(repoRoot, activeFile)} before editing.`,
-      "Commit task-start metadata when a contract is in use, then implement in this workspace.",
-      `Optional evidence: npm run agent:check -- ${task.id}`,
-      "Use Conductor Diff, Checks, Review, Create PR, Merge, and Archive as the normal interface.",
-    ],
-  };
-}
-
 export function startTask(repoRoot: string, taskArg: string): StartResult {
   const { task } = resolveTask(repoRoot, taskArg);
   if (!(["backlog", "ready"] as string[]).includes(task.status)) {
@@ -660,29 +455,9 @@ export function startTask(repoRoot: string, taskArg: string): StartResult {
 
   const releaseLock = acquireTaskLock(repoRoot, task.id, "start");
   try {
-    const conductor = detectConductorEnvironment();
     runGit(repoRoot, ["fetch", "origin"]);
     const baseRef = resolveBaseRef(repoRoot, task.base_branch);
     const baseCommit = runGit(repoRoot, ["rev-parse", baseRef]).stdout.trim();
-
-    if (conductor.active) {
-      return adoptConductorWorkspace(repoRoot, task, baseRef, baseCommit, conductor);
-    }
-
-    if (task.worktree_path === CONDUCTOR_WORKSPACE_PATH_TOKEN) {
-      throw new WorkflowError(
-        "This task requires a verified Conductor workspace, but no Conductor workspace environment is active.",
-        "CONDUCTOR_WORKSPACE_UNVERIFIED",
-      );
-    }
-
-    assertNotNestedConductorWorktree(task.worktree_path);
-    if (isConductorManagedPath(task.worktree_path)) {
-      throw new WorkflowError(
-        `Refusing to create or claim Conductor-managed path '${task.worktree_path}' from outside Conductor. Open the workspace in Conductor instead.`,
-        "CONDUCTOR_PATH_RESERVED",
-      );
-    }
 
     const worktrees = listWorktrees(repoRoot);
     const pathRecord = worktrees.find((record) => samePath(record.worktree, task.worktree_path));
@@ -753,8 +528,6 @@ export function startTask(repoRoot: string, taskArg: string): StartResult {
     return {
       task_id: task.id,
       reused,
-      adopted: false,
-      mode: "manual",
       branch: task.working_branch,
       worktree: task.worktree_path,
       base_ref: baseRef,
@@ -913,20 +686,16 @@ export function checkTask(
     });
   }
   if (!ciMode) {
-    const declaredWorktree = resolveDeclaredWorktreePath(task.worktree_path, process.env, repoRoot);
     const registered = listWorktrees(repoRoot).find(
       (record) =>
-        declaredWorktree &&
-        samePath(record.worktree, declaredWorktree) &&
+        samePath(record.worktree, task.worktree_path) &&
         record.branch === task.working_branch,
     );
-    if (!declaredWorktree || !samePath(repoRoot, declaredWorktree) || !registered) {
+    if (!samePath(repoRoot, task.worktree_path) || !registered) {
       issues.push({
-        code: declaredWorktree ? "WORKTREE_MISMATCH" : "CONDUCTOR_WORKSPACE_UNVERIFIED",
+        code: "WORKTREE_MISMATCH",
         severity: "P0",
-        message: declaredWorktree
-          ? `Current worktree '${repoRoot}' is not the registered '${task.working_branch}' worktree declared by '${task.worktree_path}'.`
-          : "The task requires verified Conductor workspace metadata, but CONDUCTOR_WORKSPACE_PATH is unavailable.",
+        message: `Current worktree '${repoRoot}' is not the registered '${task.working_branch}' worktree declared by '${task.worktree_path}'.`,
       });
     }
   }
@@ -985,15 +754,7 @@ export function checkTask(
         message: `Recorded base ${state.base_commit} is missing or is not an ancestor of merge base ${mergeBase}.`,
       });
     }
-    if (
-      state.working_branch !== task.working_branch ||
-      !sameDeclaredWorktree(
-        state.worktree_path,
-        task.worktree_path,
-        process.env,
-        repoRoot,
-      )
-    ) {
+    if (state.working_branch !== task.working_branch || !samePath(state.worktree_path, task.worktree_path)) {
       issues.push({
         code: "TASK_STATE_CONFLICT",
         severity: "P0",
@@ -1342,13 +1103,6 @@ export function cleanupTask(
   const { task } = resolveTask(repoRoot, taskArg);
   const releaseLock = acquireTaskLock(repoRoot, task.id, "cleanup");
   try {
-    const conductor = detectConductorEnvironment();
-    if (conductor.active || isConductorManagedPath(task.worktree_path)) {
-      throw new WorkflowError(
-        "Cleanup refused: Conductor manages this workspace lifecycle. Use Conductor Archive after merge instead of agent:cleanup.",
-        "CONDUCTOR_CLEANUP_REFUSED",
-      );
-    }
     const record = listWorktrees(repoRoot).find((entry) => samePath(entry.worktree, task.worktree_path));
   if (!record) throw new WorkflowError(`Declared worktree is not registered: ${task.worktree_path}`, "WORKTREE_MISSING");
   if (record.branch !== task.working_branch) {

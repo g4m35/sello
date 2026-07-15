@@ -8,21 +8,17 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 This file is the canonical instruction source for every coding agent. Git history, repository code, tests, architecture documents, ADRs, task contracts, completion records, review records, and GitHub CI are authoritative. `HANDOFF.md` is informational only and may be stale.
 
-## Primary interface: Conductor
+## Preferred development workflow
 
-Day-to-day Sello development should happen in Conductor:
+Codex is the primary implementation, review, integration, and sensitive-backend agent. Cursor or Grok may implement a bounded task or continue work when Codex usage is exhausted. Every concurrent task uses a separate native Git worktree and branch. Git commits, PRs, tests, CI, review threads, architecture documents, and repository evidence are the durable shared state.
 
-1. Open Conductor → select Sello → create a workspace → choose a model → type a normal product request.
-2. Use Conductor Diff, Checks, Review, Create PR, Merge, and Archive.
-3. Do not ask the user to manage worktrees, branches, task YAML, completion reports, or `agent:*` commands.
-
-See `docs/operations/conductor-development.md`. The Conductor workspace is already the isolated task worktree — never create a nested worktree inside it.
+Agents inspect current Git and worktree state before continuing existing work, never edit another agent's dirty checkout, and do not require users to create branches, worktrees, task YAML, or evidence files. Task contracts and the `agent:*` CLI remain optional safeguards for high-risk or explicitly contracted work.
 
 ## Repository and architecture map
 
 - Canonical clone: `~/dev/resale-crosslister-clean`; the `perc 30/resale-crosslister` workspace path is a symlink to it.
 - Never develop in `resale-crosslister-ARCHIVED-NO-GIT`.
-- Conductor workspaces are the default isolated worktrees. Manual task worktrees under `~/dev/` remain supported outside Conductor via `npm run agent:start`.
+- Native Git worktrees under `~/dev/` are the default isolation mechanism; `npm run agent:start` can create or safely reuse a contract-declared worktree.
 - `src/app/`: Next.js App Router pages, layouts, and route handlers.
 - `src/components/`: reusable product and app UI.
 - `src/lib/ai/`: Gemini request/response boundaries and Zod validation.
@@ -32,8 +28,7 @@ See `docs/operations/conductor-development.md`. The Conductor workspace is alrea
 - `src/lib/inventory/` and `src/lib/inventory-sync/`: sold-state safety, audit events, review tasks, delist jobs, and workers.
 - `src/lib/auth/`: authentication-adjacent authorization and feature access.
 - `prisma/`: schema and forward-only migration history.
-- `.agent/`: optional/manual task contracts, state, completion evidence, review evidence, and reusable prompts.
-- `.conductor/`: shared Conductor setup, Run actions, and permanent prompts.
+- `.agent/`: optional task contracts, state, completion evidence, review evidence, and reusable prompts.
 - `docs/architecture/` and `docs/operations/`: verified system design and operating procedures.
 
 The fuller architecture map is in `docs/architecture/overview.md`; mandatory guarantees are in `docs/architecture/invariants.md`.
@@ -42,7 +37,7 @@ The fuller architecture map is in `docs/architecture/overview.md`; mandatory gua
 
 - Package manager: npm, using the committed `package-lock.json`.
 - Install: `npm ci` for reproducible installs; use `npm install` only when intentionally changing dependencies.
-- Develop: `npm run dev` (or Conductor Run → Start Sello with `$CONDUCTOR_PORT`).
+- Develop: `npm run dev`.
 - Focused tests: `npm test -- --run <test-files>`.
 - Fast repository gate: `npm run validate:scoped`.
 - Full integration gate: `npm run validate:full`.
@@ -52,9 +47,9 @@ Do not run `db:migrate`, `db:deploy`, production provider calls, live marketplac
 
 ## Task contracts
 
-Task contracts are optional for low-risk bounded Conductor work. They remain required or strongly recommended for Prisma migrations, billing, auth, marketplace publishing, inventory sync, production configuration, destructive refactors, and cross-system architecture changes.
+Task contracts are optional for ordinary bounded work. They remain strongly recommended for Prisma migrations, billing, auth, marketplace publishing, inventory sync, production configuration, destructive refactors, and cross-system architecture changes.
 
-When a contract is used, it lives under `.agent/tasks/` and defines owner, reviewer, branches, worktree, allowed/protected paths, acceptance, validation, and authorization. Inside Conductor, `agent:start` adopts the current workspace and must never create a nested worktree. Outside Conductor, the manual CLI remains available:
+When a contract is used, it lives under `.agent/tasks/` and defines owner, reviewer, branches, worktree, allowed/protected paths, acceptance, validation, and authorization. The repository CLI is available:
 
 ```bash
 npm run agent:start -- <task-id-or-file>
@@ -65,13 +60,13 @@ npm run agent:review -- <task-id-or-file>
 npm run agent:cleanup -- <task-id-or-file>
 ```
 
-JSON is available with `--json`. `agent:cleanup` never deletes a Conductor-managed workspace; use Conductor Archive after merge.
+JSON is available with `--json`. `agent:cleanup` refuses dirty, unpushed, unmerged, mismatched, or incomplete worktrees.
 
 ## Branches, worktrees, and ownership
 
 - Integration branch: `develop`. Production branch: `main`.
 - Branch names: `feature/*`, `fix/*`, `chore/*`, `security/*`, `docs/*`, or `test/*`.
-- Exactly one primary implementation owner and one dedicated worktree/workspace per task.
+- Exactly one primary implementation owner and one dedicated native worktree per task.
 - Never edit in the canonical integration checkout for a feature task.
 - Never share one worktree between concurrent agents.
 - Never switch, reset, clean, stash, rebase, merge, commit, or discard work in another task's worktree.
@@ -83,7 +78,7 @@ JSON is available with `--json`. `agent:cleanup` never deletes a Conductor-manag
 
 - Commit coherent implementation changes on the task/workspace branch. Do not mix unrelated cleanup.
 - Before claiming completion, review the full diff, fix introduced failures, and run required validation.
-- Independent review (Conductor Review or `agent:review`) must inspect functional behavior, security, architecture, accessibility, performance, and tests.
+- Independent review (another Codex review agent, GitHub reviewer, or `agent:review`) must inspect functional behavior, security, architecture, accessibility, performance, and tests.
 - Integrate the latest base semantically. Never resolve a conflict by blindly choosing `ours` or `theirs`.
 - Do not call a failure pre-existing without a clean-base run or equivalent exact evidence.
 - GitHub CI is the final merge authority. Local success is necessary but not sufficient.

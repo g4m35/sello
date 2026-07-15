@@ -1,14 +1,6 @@
 # Worktree workflow
 
-Sello prefers Conductor workspaces for day-to-day isolation. Manual Git worktrees remain available outside Conductor.
-
-## Conductor-native (recommended)
-
-Conductor creates an isolated workspace and branch for each task. Agents must treat that workspace as the task worktree and must not run `agent:start` to create another nested worktree. Archive through Conductor after merge; `agent:cleanup` refuses Conductor-managed paths.
-
-See `docs/operations/conductor-development.md`.
-
-## Manual worktrees (fallback)
+Sello uses native Git worktrees for task isolation.
 
 ```text
 canonical clone / integration inspection
@@ -17,12 +9,12 @@ canonical clone / integration inspection
   └── reviewer/integrator → evidence + CI → develop
 ```
 
-Create worktrees through the repository CLI only when not using Conductor:
+For high-risk or explicitly contracted tasks, create worktrees through the repository CLI:
 
 ```bash
 npm run agent:start -- <task-id-or-file>
 ```
 
-The command fetches without moving another local branch, validates branch/path state, refuses unrelated collisions, records the exact base commit, and prints the assigned worktree. Never switch, stash, reset, clean, merge, or delete another task's worktree. Cleanup is allowed only through `npm run agent:cleanup -- <task-id>` after the task is complete, pushed, merged, and clean; destructive exceptions require explicit `--dangerous` intent.
+The command fetches without moving another local branch, validates branch/path state, refuses unrelated collisions, records the exact base commit, and prints the assigned worktree. A bounded task may also use an equivalent worktree created directly with `git worktree add` after the same collision and dirty-state checks. Never switch, stash, reset, clean, merge, or delete another task's worktree. Cleanup is allowed only after the task is complete, pushed, merged, and clean; `npm run agent:cleanup -- <task-id>` enforces those checks for contracted tasks, and destructive exceptions require explicit `--dangerous` intent.
 
 Branch flow remains `feature/*|fix/*|chore/*|security/*|docs/*|test/* → develop → main → production`. Merge and deployment are separate authorizations.

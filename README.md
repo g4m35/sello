@@ -4,14 +4,11 @@ AI-native resale operating system for fashion sellers.
 
 Sello helps sellers turn raw item photos into structured listings, pricing guidance, channel-specific listing content, and publishing workflows. The product is focused on fashion resale first: streetwear, sneakers, vintage, designer, and hype-driven inventory.
 
-## Develop with Conductor (recommended)
+## Develop with isolated Git worktrees
 
-1. Open Conductor and select Sello.
-2. Create a workspace.
-3. Choose a model and type a normal product request.
-4. Use Diff, Checks, Review, Create PR, Merge, and Archive.
+Use one native Git worktree and branch per concurrent task. Codex normally owns implementation, review, integration, and sensitive backend work; Cursor or Grok can take bounded tasks in a separately assigned worktree. Repository state, PRs, CI, and review evidence are the shared source of truth.
 
-You should not normally manage worktrees, branches, task YAML, or workflow CLI commands. Details: [`docs/operations/conductor-development.md`](docs/operations/conductor-development.md). Manual multi-agent fallback: [`docs/operations/multi-agent-development.md`](docs/operations/multi-agent-development.md).
+The optional `agent:*` workflow can create and validate contract-declared worktrees for high-risk work. Details: [`docs/operations/multi-agent-development.md`](docs/operations/multi-agent-development.md).
 
 ## Current Status
 

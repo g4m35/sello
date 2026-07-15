@@ -10,6 +10,7 @@ working_branch: chore/multi-agent-development-system
 worktree_path: /Users/jheller/dev/resale-crosslister-multi-agent-system
 created_at: 2026-07-10T17:55:00.000Z
 goal: Replace handoff-driven coordination with isolated worktrees, machine-readable contracts, deterministic policy and validation, evidence-backed completion/review, and CI authority.
+historical_note: This record predates removal of the retired Conductor integration. References below describe the original reviewed scope and are retained only as historical audit evidence; current workflow rules live in AGENTS.md and docs/operations/multi-agent-development.md.
 context: Another agent owns concurrent landing-page work. This task is isolated from origin/develop and must not modify product behavior or any other worktree.
 non_goals:
   - No Sello product behavior changes.
