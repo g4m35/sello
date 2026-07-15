@@ -39,7 +39,33 @@ describe("getPrisma", () => {
 
     expect(getPrisma()).toBe(client);
     expect(getPrisma()).toBe(client);
+    expect(mocks.PrismaPg).toHaveBeenCalledWith({
+      connectionString: "postgresql://example.invalid/sello",
+      max: 5,
+    });
     expect(mocks.PrismaPg).toHaveBeenCalledTimes(1);
     expect(mocks.PrismaClient).toHaveBeenCalledTimes(1);
+  });
+
+  it("honors an explicit pool cap without creating another client", async () => {
+    vi.stubEnv("DATABASE_POOL_MAX", "2");
+    mocks.PrismaClient.mockImplementation(function PrismaClientMock() {
+      return { client: true };
+    });
+    const { getPrisma } = await import("./prisma");
+
+    getPrisma();
+    expect(mocks.PrismaPg).toHaveBeenCalledWith({
+      connectionString: "postgresql://example.invalid/sello",
+      max: 2,
+    });
+  });
+
+  it("uses a bounded connection_limit query parameter and rejects unsafe values", async () => {
+    const { resolveDatabasePoolMax } = await import("./prisma");
+
+    expect(resolveDatabasePoolMax("postgresql://db/sello?connection_limit=1", {})).toBe(1);
+    expect(resolveDatabasePoolMax("postgresql://db/sello?connection_limit=500", {})).toBe(5);
+    expect(resolveDatabasePoolMax("not-a-url", { DATABASE_POOL_MAX: "nope" })).toBe(5);
   });
 });
