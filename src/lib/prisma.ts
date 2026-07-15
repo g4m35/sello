@@ -16,9 +16,9 @@ export function getPrisma() {
   const adapter = new PrismaPg(getRequiredEnv("DATABASE_URL"));
   const prisma = new PrismaClient({ adapter });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = prisma;
-  }
+  // A warm serverless runtime can handle many requests. Reusing one client per
+  // runtime prevents each request from creating another adapter-owned pg pool.
+  globalForPrisma.prisma = prisma;
 
   return prisma;
 }
