@@ -179,7 +179,7 @@ describe("bulk intake service", () => {
   it("enforces the plan item cap before creating a batch", async () => {
     mocks.getPrisma.mockReturnValue({ bulkBatch: { findFirst: vi.fn(), create: vi.fn() } });
     await expect(
-      createBulkBatch({ account, user, expectedItems: 6 }),
+      createBulkBatch({ account, user, expectedItems: 11 }),
     ).rejects.toMatchObject({ code: "BULK_BATCH_TOO_LARGE" });
   });
 

@@ -114,7 +114,7 @@ describe("bulk publish preflight route", () => {
   it("rejects selections over the account plan cap before preflight work", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
     const res = await POST(
-      req({ itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)] }),
+      req({ itemIds: Array.from({ length: 11 }, (_, i) => u(i + 1)) }),
     );
 
     expect(res.status).toBe(400);
@@ -149,10 +149,30 @@ describe("bulk publish preflight route", () => {
   it("blocks StockX preflight over plan cap before marketplace work", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "nope@example.com" });
     const res = await POST(
-      req({ itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)], marketplace: "stockx" }),
+      req({
+        itemIds: Array.from({ length: 11 }, (_, i) => u(i + 1)),
+        marketplace: "stockx",
+      }),
     );
 
     expect(res.status).toBe(400);
     expect(mocks.preflightBulkStockXPublish).not.toHaveBeenCalled();
+  });
+
+  it("uses the commercially effective plan rather than the stored paid tier", async () => {
+    const account = { id: "acc-pro", ownerUserId: "user-1", plan: "pro" };
+    mocks.resolveRuntimeEntitlements.mockResolvedValue(
+      entitlements(account, false),
+    );
+    mocks.resolveRuntimeEntitlements.mockResolvedValueOnce({
+      ...entitlements(account, false),
+      plan: "free",
+    });
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+
+    const res = await POST(req({ itemIds: Array.from({ length: 11 }, (_, i) => u(i + 1)) }));
+
+    expect(res.status).toBe(400);
+    expect(mocks.preflightBulkEbayPublish).not.toHaveBeenCalled();
   });
 });

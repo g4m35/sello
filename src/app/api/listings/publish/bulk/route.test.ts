@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   executeBulkStockXPublish: vi.fn(),
   getActiveAccount: vi.fn(),
   requireRuntimeFeatureAccess: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -21,6 +22,7 @@ vi.mock("@/lib/marketplace/bulk-publish", () => ({
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/auth/feature-access", () => ({
   requireRuntimeFeatureAccess: mocks.requireRuntimeFeatureAccess,
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
 }));
 
 import { POST } from "./route";
@@ -50,7 +52,12 @@ describe("bulk publish execution route", () => {
           "LIVE_EBAY_PUBLISH_ALPHA_ONLY",
         );
       }
-      return { account: await mocks.getActiveAccount() };
+      const account = await mocks.getActiveAccount();
+      return { account, plan: account.plan };
+    });
+    mocks.resolveRuntimeEntitlements.mockImplementation(async () => {
+      const account = await mocks.getActiveAccount();
+      return { account, plan: account.plan };
     });
     mocks.executeBulkEbayPublish.mockResolvedValue({
       bulkRunId: u(999),
@@ -75,9 +82,9 @@ describe("bulk publish execution route", () => {
 
   it("rejects a batch larger than the plan's bulk limit before publishing", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
-    // free plan caps bulk batches at 5; send 6.
+    // free plan caps bulk batches at 10; send 11.
     const res = await POST(
-      req({ itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)], confirmLivePublish: true }),
+      req({ itemIds: Array.from({ length: 11 }, (_, i) => u(i + 1)), confirmLivePublish: true }),
     );
 
     expect(res.status).toBe(400);
@@ -88,7 +95,7 @@ describe("bulk publish execution route", () => {
   it("allows a Pro batch at the plan cap and forwards the active account", async () => {
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-pro", ownerUserId: "owner-1", plan: "pro" });
     mocks.requireSupabaseUser.mockResolvedValue({ id: "member-1", email: "allowed@example.com" });
-    const itemIds = Array.from({ length: 25 }, (_, i) => u(i + 1));
+    const itemIds = Array.from({ length: 50 }, (_, i) => u(i + 1));
     const res = await POST(req({ itemIds, confirmLivePublish: true, bulkRunId: u(999) }));
 
     expect(res.status).toBe(200);
@@ -105,7 +112,7 @@ describe("bulk publish execution route", () => {
   it("blocks a Pro batch above the plan cap before publishing", async () => {
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-pro", ownerUserId: "owner-1", plan: "pro" });
     mocks.requireSupabaseUser.mockResolvedValue({ id: "member-1", email: "allowed@example.com" });
-    const itemIds = Array.from({ length: 26 }, (_, i) => u(i + 1));
+    const itemIds = Array.from({ length: 51 }, (_, i) => u(i + 1));
     const res = await POST(req({ itemIds, confirmLivePublish: true }));
 
     expect(res.status).toBe(400);
@@ -210,11 +217,27 @@ describe("bulk publish execution route", () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "nope@example.com" });
     const res = await POST(
       req({
-        itemIds: [u(1), u(2), u(3), u(4), u(5), u(6)],
+        itemIds: Array.from({ length: 11 }, (_, i) => u(i + 1)),
         marketplace: "stockx",
         confirmLivePublish: true,
       }),
     );
+
+    expect(res.status).toBe(400);
+    expect(mocks.executeBulkStockXPublish).not.toHaveBeenCalled();
+  });
+
+  it("uses the commercially effective plan for StockX execution", async () => {
+    const account = { id: "acc-pro", ownerUserId: "user-1", plan: "pro" };
+    mocks.getActiveAccount.mockResolvedValue(account);
+    mocks.resolveRuntimeEntitlements.mockResolvedValue({ account, plan: "free" });
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+
+    const res = await POST(req({
+      itemIds: Array.from({ length: 11 }, (_, i) => u(i + 1)),
+      marketplace: "stockx",
+      confirmLivePublish: true,
+    }));
 
     expect(res.status).toBe(400);
     expect(mocks.executeBulkStockXPublish).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getActiveAccount } from "@/lib/billing/account";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { bulkIntakeErrorResponse } from "@/lib/bulk-intake/http";
 import { generateBulkItem } from "@/lib/bulk-intake/service";
 import { getPrisma } from "@/lib/prisma";
@@ -17,7 +17,8 @@ export async function POST(
     const user = await requireSupabaseUser(request);
     const { batchId, itemId } = await params;
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const resolved = await resolveRuntimeEntitlements(user, prisma);
+    const account = { ...resolved.account, plan: resolved.plan };
     return NextResponse.json({
       item: await generateBulkItem({ batchId, itemId, account, user }, prisma),
     });

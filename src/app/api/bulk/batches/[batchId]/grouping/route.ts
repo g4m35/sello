@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getActiveAccount } from "@/lib/billing/account";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { bulkIntakeErrorResponse } from "@/lib/bulk-intake/http";
 import { groupBulkPhotos } from "@/lib/bulk-intake/service";
 import { bulkGroupingSchema } from "@/lib/bulk-intake/validation";
@@ -18,7 +18,8 @@ export async function PUT(
     const { batchId } = await params;
     const body = bulkGroupingSchema.parse(await request.json());
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const resolved = await resolveRuntimeEntitlements(user, prisma);
+    const account = { ...resolved.account, plan: resolved.plan };
     const batch = await groupBulkPhotos(
       { batchId, account, user, groups: body.groups },
       prisma,
