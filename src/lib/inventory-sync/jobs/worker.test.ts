@@ -995,6 +995,93 @@ describe("runSyncJob — detect_status (StockX)", () => {
     expect(prisma._store.syncJobs[0].status).toBe("succeeded");
   });
 
+  it("retries a non-terminal StockX status instead of finalizing the poll", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item({ accountId: "account-1" })],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          status: "LISTING",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [stockxStatusJobSeed()],
+    });
+    const stockxStatusSync = vi.fn().mockResolvedValue({ status: "unknown" });
+
+    const summary = await runQueuedSyncJobs(
+      workerDb(prisma),
+      { limit: 10 },
+      allowed({ stockxStatusSync }),
+    );
+
+    expect(summary).toMatchObject({ claimed: 1, retryWait: 1, succeeded: 0 });
+    expect(prisma._store.syncJobs[0]).toMatchObject({
+      status: "retry_wait",
+      errorCode: "STOCKX_STATUS_PENDING",
+      retryClass: "transient",
+      completedAt: null,
+    });
+    expect(prisma._store.syncJobs[0].runAfter).toBeInstanceOf(Date);
+  });
+
+  it("parks repeated pending StockX status at max attempts for seller review", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item({ accountId: "account-1" })],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          status: "LISTING",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [{ ...stockxStatusJobSeed(), attempts: 4, maxAttempts: 5 }],
+    });
+    const stockxStatusSync = vi.fn().mockResolvedValue({ status: "unknown" });
+
+    const summary = await runQueuedSyncJobs(
+      workerDb(prisma),
+      { limit: 10 },
+      allowed({ stockxStatusSync }),
+    );
+
+    expect(summary).toMatchObject({ claimed: 1, needsReview: 1, succeeded: 0 });
+    expect(prisma._store.syncJobs[0]).toMatchObject({
+      status: "needs_review",
+      errorCode: "STOCKX_STATUS_REVIEW_REQUIRED",
+      retryClass: "manual_review",
+    });
+    expect(prisma._store.reviewTasks).toHaveLength(1);
+    expect(prisma._store.notifications).toHaveLength(1);
+  });
+
+  it("reconciles a source listing marked sold when the canonical item is not sold", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item({ accountId: "account-1", status: "LISTED" })],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          status: "SOLD",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+      syncJobs: [stockxStatusJobSeed()],
+    });
+    const stockxStatusSync = vi.fn().mockResolvedValue({ status: "sold" });
+
+    const summary = await runQueuedSyncJobs(
+      workerDb(prisma),
+      { limit: 10 },
+      allowed({ stockxStatusSync }),
+    );
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    expect(stockxStatusSync).toHaveBeenCalledTimes(1);
+  });
+
   it("runs StockX status sync jobs scoped to a shared account", async () => {
     const prisma = createInventoryFakePrisma({
       items: [item({ sellerId: "owner-1", accountId: "account-1" })],

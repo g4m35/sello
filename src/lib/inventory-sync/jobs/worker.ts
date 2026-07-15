@@ -257,7 +257,12 @@ type WorkerListingRow = {
   marketplace: Marketplace;
   status: MarketplaceListingStatus;
   externalUrl: string | null;
-  inventoryItem: { accountId: string; sellerId: string; productName: string };
+  inventoryItem: {
+    accountId: string;
+    sellerId: string;
+    productName: string;
+    status?: InventoryStatus;
+  };
 };
 
 type WorkerListingDelegate = {
@@ -271,7 +276,14 @@ type WorkerListingDelegate = {
       marketplace: true;
       status: true;
       externalUrl: true;
-      inventoryItem: { select: { accountId: true; sellerId: true; productName: true } };
+      inventoryItem: {
+        select: {
+          accountId: true;
+          sellerId: true;
+          productName: true;
+          status?: true;
+        };
+      };
     };
   }): Promise<WorkerListingRow | null>;
   update(args: {
@@ -780,7 +792,13 @@ async function execDelist(
       marketplace: true,
       status: true,
       externalUrl: true,
-      inventoryItem: { select: { accountId: true, sellerId: true, productName: true } },
+      inventoryItem: {
+        select: {
+          accountId: true,
+          sellerId: true,
+          productName: true,
+        },
+      },
     },
   });
 
@@ -1129,14 +1147,27 @@ async function execDetectStatus(
       marketplace: true,
       status: true,
       externalUrl: true,
-      inventoryItem: { select: { accountId: true, sellerId: true, productName: true } },
+      inventoryItem: {
+        select: {
+          accountId: true,
+          sellerId: true,
+          productName: true,
+          status: true,
+        },
+      },
     },
   });
 
   if (!listing) {
     return parkJobIntegrityReview(db, job, "AUTHORITATIVE_LISTING_NOT_FOUND");
   }
-  if (TERMINAL_LISTING_STATUSES.has(listing.status)) {
+  // A source listing can have been marked SOLD by an older split write while
+  // the canonical item and its required delist jobs were never committed. Only
+  // short-circuit SOLD when the master item confirms the reconciliation.
+  if (
+    TERMINAL_LISTING_STATUSES.has(listing.status) &&
+    (listing.status !== "SOLD" || listing.inventoryItem.status === "SOLD")
+  ) {
     return finalizeSucceeded(db, job);
   }
 
@@ -1162,12 +1193,15 @@ async function execDetectStatus(
   if (gate) return gate;
   if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
   try {
-    await stockxStatusSync(db as unknown as StockXStatusSyncPrismaLike, {
+    const result = await stockxStatusSync(db as unknown as StockXStatusSyncPrismaLike, {
       userId: job.userId,
       accountId: listing.inventoryItem.accountId,
       inventoryItemId,
       marketplaceListingId,
     });
+    if (result.status === "unknown") {
+      return finalizePendingStockXStatus(db, job, listing);
+    }
   } catch (error) {
     await recordInventoryEvent(db, {
       inventoryItemId,
@@ -1191,6 +1225,61 @@ async function execDetectStatus(
   }
 
   return finalizeSucceeded(db, job);
+}
+
+async function finalizePendingStockXStatus(
+  db: SyncWorkerPrismaLike,
+  job: ClaimedSyncJob,
+  listing: WorkerListingRow,
+): Promise<RunSummary> {
+  if (job.attempts < job.maxAttempts) {
+    const result = await db.syncJob.updateMany({
+      where: { id: job.id, status: "running", leaseOwner: requiredLease(job) },
+      data: {
+        status: "retry_wait",
+        errorCode: "STOCKX_STATUS_PENDING",
+        errorMessage: "StockX is still processing this listing. Sello will check again.",
+        runAfter: new Date(Date.now() + retryDelayMs(job.attempts, job.id)),
+        lockedAt: null,
+        leaseOwner: null,
+        retryClass: "transient",
+        completedAt: null,
+      },
+    });
+    return result.count === 1
+      ? { status: "retry_wait" }
+      : currentJobSummary(db, job.id);
+  }
+
+  if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+  const dedupeKey = `sync-job:${job.id}:stockx-status-pending`;
+  await createReviewTask(db, {
+    userId: job.userId,
+    accountId: job.accountId,
+    type: "sync_conflict",
+    inventoryItemId: job.inventoryItemId,
+    marketplace: "stockx",
+    title: "Review pending StockX listing status",
+    description:
+      "StockX has not returned a final listing status after repeated checks. Review the listing before taking further action.",
+    dedupeKey,
+    payload: {
+      syncJobId: job.id,
+      marketplaceListingId: listing.id,
+      reasonCode: "STOCKX_STATUS_PENDING",
+    } as Prisma.InputJsonValue,
+  });
+  await createNotification(db, {
+    userId: job.userId,
+    accountId: job.accountId,
+    inventoryItemId: job.inventoryItemId,
+    kind: "sync_conflict",
+    title: "StockX listing status needs review",
+    body:
+      "StockX is still processing this listing after repeated checks. Review it before making another marketplace change.",
+    dedupeKey,
+  });
+  return finalizeNeedsReview(db, job, "STOCKX_STATUS_REVIEW_REQUIRED");
 }
 
 // --- Executor: notify_user ---------------------------------------------------
