@@ -317,6 +317,8 @@ describe("authoritative runtime entitlements", () => {
       new Date("2026-07-11T12:00:00Z"),
     );
     expect(inactive.decisions.paidComps.reason).toBe("SUBSCRIPTION_INACTIVE");
+    expect(inactive.plan).toBe("free");
+    expect(inactive.limits.aiListingsPerMonth).toBe(10);
 
     const grace = await resolveRuntimeEntitlements(
       { id: "user-1", email: "seller@example.com" },
@@ -332,6 +334,27 @@ describe("authoritative runtime entitlements", () => {
       allowed: true,
       gracePeriodActive: true,
     });
+    expect(grace.plan).toBe("pro");
+  });
+
+  it("keeps marketplace safety actions available during commercial suspension", async () => {
+    const resolved = await resolveRuntimeEntitlements(
+      { id: "user-1", email: "seller@example.com" },
+      runtimePrisma({ plan: "pro", subscriptionStatus: "past_due" }),
+      {
+        EBAY_DELIST_EMAILS: "seller@example.com",
+        EBAY_CLIENT_ID: "test-client",
+        EBAY_CLIENT_SECRET: "test-secret",
+        EBAY_REDIRECT_URI_NAME: "test-redirect",
+        EBAY_TOKEN_ENCRYPTION_KEY:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        EBAY_ENV: "sandbox",
+      },
+      new Date("2026-07-15T12:00:00Z"),
+    );
+
+    expect(resolved.plan).toBe("free");
+    expect(resolved.decisions.ebayDelist).toMatchObject({ allowed: true, reason: "ALLOWED" });
   });
 
   it("rejects a disabled active account before evaluating commercial access", async () => {

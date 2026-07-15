@@ -33,6 +33,7 @@ beforeEach(() => {
     currentPeriodStart: new Date("2026-06-01T00:00:00Z"),
     currentPeriodEnd: new Date("2026-07-01T00:00:00Z"),
     cancelAtPeriodEnd: false,
+    graceEndsAt: null,
   });
   mocks.usageFindMany.mockResolvedValue([
     { metric: "ai_listing", count: 7 },
@@ -72,6 +73,21 @@ describe("GET /api/billing/usage", () => {
     expect(body.plan).toBe("free");
     expect(body.limits.aiListingsPerMonth).toBe(10);
     expect(body.status).toBe("active");
+  });
+
+  it("shows free limits after a paid subscription leaves its grace window", async () => {
+    mocks.subscriptionFind.mockResolvedValue({
+      status: "past_due",
+      currentPeriodStart: new Date("2026-06-01T00:00:00Z"),
+      currentPeriodEnd: new Date("2026-07-01T00:00:00Z"),
+      cancelAtPeriodEnd: false,
+      graceEndsAt: new Date("2020-01-01T00:00:00Z"),
+    });
+
+    const body = await (await GET(new Request("http://localhost/api/billing/usage"))).json();
+    expect(body.plan).toBe("free");
+    expect(body.limits.aiListingsPerMonth).toBe(10);
+    expect(body.status).toBe("past_due");
   });
 
   it("shows effective kingpin limits for admin users on a free account", async () => {

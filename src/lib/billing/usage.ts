@@ -6,7 +6,7 @@ import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 
 import { quotaExceeded, type UsageMetricKey } from "./errors";
-import { effectiveLimitsForUser } from "./effective-plan";
+import { effectiveLimitsForUser, effectivePlanForUser } from "./effective-plan";
 import { limitsFor, type PlanId, type PlanLimits } from "./plans";
 
 type Db = ReturnType<typeof getPrisma>;
@@ -172,7 +172,7 @@ export async function reserveUsage(
   return prisma.$transaction(async (tx) => {
     const subscription = await tx.subscription.findUnique({
       where: { accountId: args.accountId },
-      select: { currentPeriodStart: true },
+      select: { currentPeriodStart: true, status: true, graceEndsAt: true },
     });
     const periodStart = billingPeriodStart(args.now, subscription);
     await tx.$executeRawUnsafe(
@@ -218,9 +218,19 @@ export async function reserveUsage(
     if (!account) {
       throw new AppError("Account not found.", 404, "ACCOUNT_NOT_FOUND");
     }
-    const limit = effectiveLimitsForUser(account, args.user ?? {})[
-      METRIC_LIMIT_FIELD[args.metric]
-    ];
+    const effectivePlanOptions = { subscription, now: args.now };
+    const effectivePlan = effectivePlanForUser(
+      account,
+      args.user ?? {},
+      process.env,
+      effectivePlanOptions,
+    );
+    const limit = effectiveLimitsForUser(
+      account,
+      args.user ?? {},
+      process.env,
+      effectivePlanOptions,
+    )[METRIC_LIMIT_FIELD[args.metric]];
     const counter = await tx.usageCounter.upsert({
       where: {
         accountId_metric_periodStart: {
@@ -243,7 +253,7 @@ export async function reserveUsage(
           idempotencyKey,
           units,
           status: "denied",
-          planSnapshot: account.plan,
+          planSnapshot: effectivePlan,
           limitSnapshot: limit,
           denialReason: "USAGE_LIMIT_EXCEEDED",
           reservedByUserId: args.user?.id ?? null,
@@ -272,7 +282,7 @@ export async function reserveUsage(
         idempotencyKey,
         units,
         status: "reserved",
-        planSnapshot: account.plan,
+        planSnapshot: effectivePlan,
         limitSnapshot: limit,
         denialReason: null,
         reservedByUserId: args.user?.id ?? null,
