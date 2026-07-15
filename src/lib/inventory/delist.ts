@@ -151,9 +151,9 @@ export async function queueDelistOtherListings(
         accountId: item.accountId,
       } as Prisma.InputJsonValue,
     });
-    // Only adapter-available (eBay) jobs are auto-executable, so only those count
-    // as a queued automatic delist. A non-eBay job is parked needs_review and
-    // tracked via manualReviewTaskIds below — never a fake "we're removing it".
+    // Only adapter-available jobs are auto-executable, so only those count as a
+    // queued automatic delist. Unsupported marketplaces park in needs_review and
+    // are tracked below — never a fake "we're removing it".
     if (adapterAvailable) {
       result.queuedJobIds.push(job.id);
     }

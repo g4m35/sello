@@ -305,6 +305,51 @@ describe("publish API auth boundaries", () => {
     expect((await response.json()).code).toBe("NOT_IMPLEMENTED");
   });
 
+  it("preserves a successful publish outcome and flags reconciliation when settlement fails", async () => {
+    const prisma = {};
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.settleUsageReservationOrRequireReconciliation.mockRejectedValue(
+      new AppError(
+        "Usage settlement could not be recorded.",
+        503,
+        "USAGE_SETTLEMENT_NOT_DURABLE",
+      ),
+    );
+    mocks.executePublish.mockResolvedValueOnce({
+      outcome: {
+        status: "published",
+        code: "EBAY_LISTING_PUBLISHED",
+        marketplace: "ebay",
+        environment: "sandbox",
+      },
+      httpStatus: 200,
+      marketplaceListingId: "listing-1",
+      publishAttemptId: "attempt-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        headers: { "idempotency-key": "publish-request-1" },
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).code).toBe("EBAY_LISTING_PUBLISHED");
+    expect(mocks.markUsageReconciliationRequired).toHaveBeenCalledWith(
+      "usage-reservation-1",
+      expect.any(Date),
+      "AUTOPUBLISH_SETTLEMENT_FAILED",
+      prisma,
+    );
+    expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
+  });
+
   it("returns a typed setup error when publish persistence tables are missing", async () => {
     const inventoryItemId = "11111111-1111-4111-8111-111111111111";
 

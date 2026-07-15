@@ -499,16 +499,20 @@ describe("Conductor-native workflow", () => {
 
     process.env.CONDUCTOR_WORKSPACE_PATH = root;
     process.env.CONDUCTOR_ROOT_PATH = root;
-    expect(checkTask(root, task).ok).toBe(true);
+    try {
+      expect(checkTask(root, task).ok).toBe(true);
 
-    process.env.CONDUCTOR_WORKSPACE_PATH = join(dirname(root), "wrong-workspace");
-    const mismatch = checkTask(root, task);
-    expect(mismatch.ok).toBe(false);
-    expect(
-      mismatch.issues.some((issue) =>
-        ["WORKTREE_MISMATCH", "CONDUCTOR_WORKSPACE_UNVERIFIED"].includes(issue.code),
-      ),
-    ).toBe(true);
+      process.env.CONDUCTOR_WORKSPACE_PATH = join(dirname(root), "wrong-workspace");
+      const mismatch = checkTask(root, task);
+      expect(mismatch.ok).toBe(false);
+      expect(
+        mismatch.issues.some((issue) =>
+          ["WORKTREE_MISMATCH", "CONDUCTOR_WORKSPACE_UNVERIFIED"].includes(issue.code),
+        ),
+      ).toBe(true);
+    } finally {
+      clearConductorEnv();
+    }
   });
 
   it("infers a Conductor workspace path for placeholder tasks when the env var is absent", () => {
@@ -533,7 +537,7 @@ describe("Conductor-native workflow", () => {
       base_branch: task.base_branch,
       base_commit: git(root, "rev-parse", "origin/develop"),
       working_branch: task.working_branch,
-      worktree_path: CONDUCTOR_WORKSPACE_PATH_TOKEN,
+      worktree_path: root,
       created_at: "2026-07-10T00:00:00.000Z",
       updated_at: "2026-07-10T00:00:00.000Z",
       started_by: "test",

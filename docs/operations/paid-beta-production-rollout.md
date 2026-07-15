@@ -8,13 +8,66 @@ At implementation time, a read-only `prisma migrate status` against the explicit
 
 - `20260710010000_add_bulk_intake` was not applied.
 - `20260711010000_paid_beta_p0_readiness` was not applied.
+- `20260712012000_create_account_scoped_notification_dedupe` builds the
+  account-scoped replacement, then
+  `20260712012100_drop_global_notification_dedupe` removes the global index.
 - the target ledger contained `20260709000000_enable_app_table_rls`, which was initially absent from repository migration history.
 
 The missing migration was recovered byte-for-byte from the archived source checkout and independently reconstructed from the original recorded authoring session. Its SHA-256, `be74518339e786761816721db2b3aaabffb8d4801024bc6dcc4c5cb0e6a1c10b`, exactly matches the successful production Prisma ledger row. That row started at `2026-07-09T05:32:03.906371Z`, finished at `2026-07-09T05:32:04.754266Z`, has one applied step, and was not rolled back. The recovered file is now restored at `prisma/migrations/20260709000000_enable_app_table_rls/migration.sql`.
 
 No Git commit or PR containing that migration exists: it was authored and applied from an uncommitted `develop` working tree after explicit owner authorization. The original local deploy command and the final three authoring revisions are preserved in the session record; exhaustive retained Git/GitHub searches found no source object. This is a provenance gap, not a byte or ledger ambiguity. Never use `prisma migrate resolve`, edit/delete the ledger row, or substitute reconstructed SQL: only the restored checksum-matching file is authoritative.
 
-The recovered migration and the two pending migrations do not contain `BEGIN`/`COMMIT`; Prisma's PostgreSQL migration execution does not make each entire file atomic by default. A failed deploy can therefore leave earlier statements applied even when the migration ledger row is unfinished. Recovery must inspect both the ledger and actual catalog state before any retry.
+The recovered migration and the four pending migrations do not contain `BEGIN`/`COMMIT`; Prisma's PostgreSQL migration execution does not make each entire file atomic by default. A failed deploy can therefore leave earlier statements applied even when the migration ledger row is unfinished. Recovery must inspect both the ledger and actual catalog state before any retry.
+
+## Lock analysis and expected production scale
+
+The reviewed target is Supabase project `xkovtxrdxparbkuysunh`, database
+`postgres`, reached through the direct port-5432 Supabase pooler class. On
+2026-07-11, a metadata-only probe confirmed PostgreSQL 17.6, the expected project
+reference in the configured connection identity, no active schema-change
+session, and no granted advisory lock. Re-prove all of those facts immediately
+before rollout; this observation is not a permanent readiness claim.
+
+The same probe read only catalog/statistics estimates, never seller rows. The
+largest affected existing relation was `ProviderCallLedger` at about 27 live
+rows / 80 KiB. Estimates were: `Account` 2, `InventoryItem` 2,
+`MarketplaceListing` 1, `SyncJob` 1, `Subscription` 1, `UsageCounter` 2, and
+zero for `InventoryEvent`, `ReviewTask`, and `Notification`; every listed
+relation was at most 112 KiB. `BulkBatch`, `BulkItem`, `BulkPhoto`,
+`UsageReservation`, and `MarketplaceSaleSignal` did not yet exist, so their
+initial indexes and constraints operate on new empty tables.
+
+PostgreSQL/Prisma behavior relevant to this range:
+
+- Prisma 7.8 does not wrap a PostgreSQL migration file in one transaction unless
+  the SQL explicitly contains `BEGIN`/`COMMIT`; these files do not. Locks release
+  after each statement, but a failure can leave a partial migration.
+- Backfill `UPDATE`s take ordinary write/row locks only for matched rows.
+- Most `ALTER TABLE` forms, including `SET NOT NULL`, take `ACCESS EXCLUSIVE`;
+  `SET NOT NULL` scans the table unless a validated check proves nulls impossible.
+- `ADD FOREIGN KEY ... NOT VALID` takes `SHARE ROW EXCLUSIVE` on both referencing
+  and referenced tables. `VALIDATE CONSTRAINT` takes `SHARE UPDATE EXCLUSIVE`
+  on the referencing table plus `ROW SHARE` on the referenced table and permits
+  concurrent writes.
+- A normal `CREATE INDEX` permits reads but blocks writes for its build. Given
+  the measured sub-112-KiB relations, each scan/build is expected to finish in
+  well under one second after acquiring its lock; allow up to 30 seconds for the
+  complete four-migration range excluding lock waits and network latency.
+- The notification repair uses two ordered, single-statement migrations: first
+  `CREATE UNIQUE INDEX CONCURRENTLY`, then `DROP INDEX CONCURRENTLY`. Keeping
+  each nontransactional statement alone avoids Prisma/PostgreSQL multi-statement
+  transaction ambiguity. Ordinary reads/writes remain available, although the
+  build may wait for old transactions and performs two scans.
+
+Run only in a low-traffic window with inventory/sold-reconciliation workers
+paused and marketplace/provider writes disabled. Stop before starting if any
+affected existing relation is estimated above 10,000 rows or 100 MiB, any
+ownership/null/duplicate preflight fails, another migration/schema-change
+session is active, or a migration advisory lock is already held. During deploy,
+abort on a lock wait over 5 seconds, total runtime over 60 seconds, an invalid
+concurrent index, or any unexpected catalog/error state. Because statements may
+already have committed, an abort enters the forward-recovery procedure below;
+never blindly rerun or mark the migration applied.
 
 ## Authorization, target identity, and restore point
 
@@ -47,7 +100,7 @@ After the ledger divergence is resolved and approval is recorded:
    npm run db:deploy
    ```
 
-4. Verify both migration rows are finished with reviewed checksums and no rolled-back row.
+4. Verify all four pending migration rows are finished with reviewed checksums and no rolled-back row.
 5. Run the metadata checks below.
 6. Deploy the reviewed application commit through the normal Vercel promotion workflow.
 7. Keep paid-provider and live marketplace writes disabled.
@@ -84,8 +137,17 @@ WHERE schemaname = 'public'
   AND indexname IN (
     'UsageReservation_accountId_metric_idempotencyKey_key',
     'ProviderCallLedger_accountId_idempotencyKey_key',
+    'Notification_accountId_dedupeKey_key',
     'MarketplaceSaleSignal_account_marketplace_environment_event_key'
   );
+
+SELECT i.relname AS index_name, x.indisvalid, x.indisready
+FROM pg_index x
+JOIN pg_class i ON i.oid = x.indexrelid
+WHERE i.relname IN (
+  'Notification_accountId_dedupeKey_key',
+  'Notification_dedupeKey_key'
+);
 
 SELECT tgname
 FROM pg_trigger
@@ -95,7 +157,23 @@ WHERE NOT tgisinternal
     'BulkPhoto_populate_account_trigger',
     'BulkPhoto_item_ownership_trigger'
   );
+
+SELECT table_name, grantee, privilege_type
+FROM information_schema.role_table_grants
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'BulkBatch', 'BulkItem', 'BulkPhoto', 'UsageReservation',
+    'MarketplaceSaleSignal', 'Notification'
+  )
+  AND grantee IN ('anon', 'authenticated', 'service_role')
+ORDER BY table_name, grantee, privilege_type;
 ```
+
+The compound notification index must be valid/ready and the old global index
+must be absent. Diff grants against the pre-deploy metadata snapshot; the
+migrations must not introduce an unreviewed `anon` or `authenticated` grant.
+RLS must remain enabled on every new/exposed public table, with no permissive
+policy added by this migration range.
 
 Do not run data-fixing SQL automatically if a constraint, index, trigger, or migration row is missing. Stop and prepare a reviewed forward migration.
 

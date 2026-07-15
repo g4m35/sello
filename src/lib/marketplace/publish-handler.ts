@@ -1135,7 +1135,7 @@ async function enqueueStockXStatusSyncJob(
         inventoryItemId: input.inventoryItemId,
         marketplaceListingId,
         marketplace: "stockx",
-        accountId: input.accountId ?? null,
+        accountId: input.accountId,
         listingId: result.listingId,
         operationId: result.operationId,
         operationStatus: result.operationStatus,

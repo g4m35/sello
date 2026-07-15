@@ -878,10 +878,11 @@ model Notification {
   title           String
   body            String
   inventoryItemId String?   @db.Uuid
-  dedupeKey       String?   @unique
+  dedupeKey       String?
   readAt          DateTime?
   createdAt       DateTime  @default(now())
 
+  @@unique([accountId, dedupeKey], map: "Notification_accountId_dedupeKey_key")
   @@index([userId, createdAt])
   @@index([accountId, createdAt])
   @@index([userId, readAt])

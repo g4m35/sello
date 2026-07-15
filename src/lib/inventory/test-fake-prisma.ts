@@ -86,12 +86,14 @@ export type FakeEvent = {
 };
 
 export type FakeNotification = {
+  id: string;
   userId: string;
   accountId: string | null;
   kind: string;
   title: string;
   body: string;
   inventoryItemId: string | null;
+  dedupeKey: string | null;
   readAt: Date | null;
 };
 
@@ -351,7 +353,7 @@ export function createInventoryFakePrisma(seed: {
         type: string;
         status: string;
         inventoryItemId: string | null;
-        marketplace: Marketplace | null;
+        marketplace?: Marketplace | null;
         dedupeKey?: string;
       };
       select: { id: true };
@@ -363,7 +365,7 @@ export function createInventoryFakePrisma(seed: {
           t.type === where.type &&
           t.status === where.status &&
           t.inventoryItemId === where.inventoryItemId &&
-          t.marketplace === where.marketplace &&
+          (where.marketplace === undefined || t.marketplace === where.marketplace) &&
           (where.dedupeKey === undefined || t.dedupeKey === where.dedupeKey),
       );
       return found ? { id: found.id } : null;
@@ -383,10 +385,20 @@ export function createInventoryFakePrisma(seed: {
         dedupeKey?: string | null;
       };
     }) {
+      const accountId = data.accountId ?? null;
+      const dedupeKey = data.dedupeKey ?? null;
+      if (
+        dedupeKey !== null &&
+        store.reviewTasks.some(
+          (task) => task.accountId === accountId && task.dedupeKey === dedupeKey,
+        )
+      ) {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      }
       const task: FakeReviewTask = {
         id: `task-${store.reviewTasks.length + 1}`,
         userId: data.userId,
-        accountId: data.accountId ?? null,
+        accountId,
         type: data.type,
         status: "open",
         inventoryItemId: data.inventoryItemId ?? null,
@@ -394,7 +406,7 @@ export function createInventoryFakePrisma(seed: {
         title: data.title,
         description: data.description,
         payload: data.payload,
-        dedupeKey: data.dedupeKey ?? null,
+        dedupeKey,
       };
       store.reviewTasks.push(task);
       return { id: task.id };
@@ -673,7 +685,7 @@ export function createInventoryFakePrisma(seed: {
           n.inventoryItemId === where.inventoryItemId &&
           n.readAt === null,
       );
-      return index === -1 ? null : { id: `notif-${index + 1}` };
+      return index === -1 ? null : { id: store.notifications[index].id };
     },
     async create({
       data,
@@ -685,18 +697,60 @@ export function createInventoryFakePrisma(seed: {
         title: string;
         body: string;
         inventoryItemId?: string | null;
+        dedupeKey?: string | null;
       };
     }) {
+      const accountId = data.accountId ?? null;
+      const dedupeKey = data.dedupeKey ?? null;
+      if (
+        dedupeKey !== null &&
+        store.notifications.some(
+          (notification) =>
+            notification.accountId === accountId && notification.dedupeKey === dedupeKey,
+        )
+      ) {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      }
+      const id = `notif-${store.notifications.length + 1}`;
       store.notifications.push({
+        id,
         userId: data.userId,
-        accountId: data.accountId ?? null,
+        accountId,
         kind: data.kind,
         title: data.title,
         body: data.body,
         inventoryItemId: data.inventoryItemId ?? null,
+        dedupeKey,
         readAt: null,
       });
-      return { id: `notif-${store.notifications.length}` };
+      return { id };
+    },
+    async upsert({
+      where,
+      create,
+    }: {
+      where: {
+        accountId_dedupeKey: { accountId: string; dedupeKey: string };
+      };
+      update: Record<string, never>;
+      create: {
+        userId: string;
+        accountId: string;
+        kind: string;
+        title: string;
+        body: string;
+        inventoryItemId?: string | null;
+        dedupeKey?: string | null;
+      };
+    }) {
+      const key = where.accountId_dedupeKey;
+      const existing = store.notifications.find(
+        (notification) =>
+          notification.accountId === key.accountId &&
+          notification.dedupeKey === key.dedupeKey,
+      );
+      if (existing) return { id: existing.id };
+      return notification.create({ data: create });
     },
   };
 

@@ -404,6 +404,49 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     expect(prisma._store.syncJobs[0].status).toBe("skipped");
   });
 
+  it("parks queued cleanup when any marketplace has an open sold-source conflict", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item({ status: "SOLD", soldSourceMarketplace: "grailed" })],
+      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
+      syncJobs: [ebayJobSeed()],
+    });
+    await prisma.reviewTask.create({
+      data: {
+        userId: "user-1",
+        accountId: "account-1",
+        type: "sync_conflict",
+        inventoryItemId: "item-1",
+        // Deliberately differs from the queued cleanup marketplace. The conflict
+        // concerns the master item, so it must hold every automated delist.
+        marketplace: "stockx",
+        title: "Conflicting sold sources",
+        description: "Review the sale evidence before continuing.",
+        payload: {},
+        dedupeKey: "sold-source-conflict:item-1:grailed:stockx",
+      },
+    });
+    const ebayDelist = vi.fn();
+    const authorizeExecution = vi.fn().mockResolvedValue({
+      allowed: true,
+      code: "ALLOWED",
+      sellerCopy: "Access granted.",
+    });
+
+    const summary = await runQueuedSyncJobs(workerDb(prisma), { limit: 10 }, {
+      ebayDelist,
+      authorizeExecution,
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, needsReview: 1 });
+    expect(ebayDelist).not.toHaveBeenCalled();
+    expect(authorizeExecution).not.toHaveBeenCalled();
+    expect(prisma._store.syncJobs[0]).toMatchObject({
+      status: "needs_review",
+      errorCode: "OPEN_SYNC_CONFLICT_REVIEW_REQUIRED",
+      retryClass: "manual_review",
+    });
+  });
+
   it("idempotent: a second worker run does not re-run a terminal job", async () => {
     const prisma = createInventoryFakePrisma({
       items: [item()],

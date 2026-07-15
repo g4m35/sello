@@ -37,10 +37,10 @@ import { getPrisma } from "@/lib/prisma";
 // delist, sale-signal) only RECORDS intent as durable SyncJobs; this module
 // CLAIMS those jobs and EXECUTES them. It is pure and db-injectable like the
 // engine (default getPrisma()) so the whole thing is unit-testable with the
-// in-memory fake. The only live side effect ever performed here is the eBay
-// delist, and that goes exclusively through the existing, ownership-scoped
-// executeEbayDelist (never reimplemented). No secrets are logged; every error is
-// scrubbed via safeFailureText before it is persisted to a job/event/task.
+// in-memory fake. Live delists go exclusively through the existing,
+// ownership-scoped eBay and StockX handlers (never reimplemented). No secrets
+// are logged; every error is scrubbed via safeFailureText before it is persisted
+// to a job/event/task.
 
 // --- Defaults ----------------------------------------------------------------
 
@@ -807,6 +807,13 @@ async function execDelist(
     );
   }
 
+  // A second marketplace can report the same item sold after the first signal
+  // has already queued cleanup. Re-check the durable, account-scoped review
+  // state immediately before any adapter execution so that queued work cannot
+  // turn a sold-source conflict into an automated destructive follow-up.
+  const conflictHold = await parkIfOpenSyncConflict(db, job, inventoryItemId);
+  if (conflictHold) return conflictHold;
+
   if (listing.marketplace === "ebay") {
     const gate = await authorizeOrPark(
       db,
@@ -840,6 +847,25 @@ async function execDelist(
   // no adapter.
   await parkForManualDelist(db, job, listing, soldMarketplace, false);
   return finalizeNeedsReview(db, job, "MANUAL_DELIST_REQUIRED");
+}
+
+async function parkIfOpenSyncConflict(
+  db: SyncWorkerPrismaLike,
+  job: ClaimedSyncJob,
+  inventoryItemId: string,
+): Promise<RunSummary | null> {
+  if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+  const conflict = await db.reviewTask.findFirst({
+    where: {
+      accountId: job.accountId,
+      type: "sync_conflict",
+      status: "open",
+      inventoryItemId,
+    },
+    select: { id: true },
+  });
+  if (!conflict) return null;
+  return finalizeNeedsReview(db, job, "OPEN_SYNC_CONFLICT_REVIEW_REQUIRED");
 }
 
 async function execEbayDelist(

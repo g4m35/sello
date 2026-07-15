@@ -78,12 +78,24 @@ export async function POST(request: Request) {
     });
 
     if (result.httpStatus >= 200 && result.httpStatus < 300) {
-      await settleUsageReservationOrRequireReconciliation(
-        usageReservationId,
-        new Date(),
-        "STOCKX_AUTOPUBLISH_SETTLEMENT_FAILED",
-        prisma,
-      );
+      try {
+        await settleUsageReservationOrRequireReconciliation(
+          usageReservationId,
+          new Date(),
+          "STOCKX_AUTOPUBLISH_SETTLEMENT_FAILED",
+          prisma,
+        );
+      } catch (usageError) {
+        logUnexpectedError("stockx_autopublish_usage_settle", usageError);
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          "STOCKX_AUTOPUBLISH_SETTLEMENT_FAILED",
+          prisma,
+        ).catch((reconciliationError) =>
+          logUnexpectedError("stockx_autopublish_usage_reconcile", reconciliationError),
+        );
+      }
     } else {
       try {
         await releaseUsageReservation(

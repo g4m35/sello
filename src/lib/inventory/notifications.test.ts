@@ -15,12 +15,24 @@ function createFakePrisma(): NotificationPrismaLike & {
   _notifications: Array<Record<string, unknown>>;
 } {
   const notifications: Array<Record<string, unknown>> = [];
+  const create = async ({ data }: Parameters<NotificationPrismaLike["notification"]["create"]>[0]) => {
+    const id = `notif-${notifications.length + 1}`;
+    notifications.push({ id, ...data });
+    return { id };
+  };
   return {
     _notifications: notifications,
     notification: {
-      async create({ data }) {
-        notifications.push(data as Record<string, unknown>);
-        return { id: `notif-${notifications.length}` };
+      create,
+      async upsert({ where, create: data }) {
+        const key = where.accountId_dedupeKey;
+        const existing = notifications.find(
+          (notification) =>
+            notification.accountId === key.accountId &&
+            notification.dedupeKey === key.dedupeKey,
+        );
+        if (existing) return { id: String(existing.id) };
+        return create({ data });
       },
     },
   };
@@ -41,11 +53,57 @@ describe("createNotification", () => {
 
     expect(prisma._notifications[0]).toMatchObject({
       userId: "user-1",
+      accountId: "account-1",
       kind: "sold_delisting",
       title: "t",
       body: "b",
       inventoryItemId: "item-1",
     });
+  });
+
+  it("dedupes the same key inside one account", async () => {
+    const prisma = createFakePrisma();
+    const input = {
+      userId: "user-1",
+      accountId: "account-1",
+      kind: "sync_conflict",
+      title: "Conflict",
+      body: "Review it.",
+      dedupeKey: "conflict:item-1",
+    };
+
+    const first = await createNotification(prisma, input);
+    const second = await createNotification(prisma, input);
+
+    expect(second.id).toBe(first.id);
+    expect(prisma._notifications).toHaveLength(1);
+  });
+
+  it("allows the same dedupe key in separate accounts", async () => {
+    const prisma = createFakePrisma();
+    const shared = {
+      kind: "sync_conflict",
+      title: "Conflict",
+      body: "Review it.",
+      dedupeKey: "conflict:item-1",
+    };
+
+    await createNotification(prisma, {
+      ...shared,
+      userId: "user-1",
+      accountId: "account-1",
+    });
+    await createNotification(prisma, {
+      ...shared,
+      userId: "user-2",
+      accountId: "account-2",
+    });
+
+    expect(prisma._notifications).toHaveLength(2);
+    expect(prisma._notifications.map((notification) => notification.accountId)).toEqual([
+      "account-1",
+      "account-2",
+    ]);
   });
 });
 

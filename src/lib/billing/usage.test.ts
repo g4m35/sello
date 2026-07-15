@@ -529,4 +529,38 @@ describe("atomic usage reservations", () => {
       settleUsageReservation(reserved.reservationId, new Date(now.getTime() + 1), state.prisma),
     ).resolves.toBe(true);
   });
+
+  it("keeps a started reservation charged when settlement and its immediate marker both fail", async () => {
+    const state = reservationPrisma();
+    const reserved = await reserveUsage({
+      accountId: "acc-1",
+      metric: "autopublish",
+      idempotencyKey: "publish-settlement-outage",
+      operationType: "marketplace_publish",
+      operationId: "item-1:ebay",
+      now,
+    }, state.prisma);
+    expect(reserved.allowed).toBe(true);
+    await markUsageWorkStarted(reserved.reservationId, now, state.prisma);
+    const implementation = state.tx.usageReservation.updateMany.getMockImplementation();
+    state.tx.usageReservation.updateMany
+      .mockRejectedValueOnce(new Error("settlement write unavailable"))
+      .mockRejectedValueOnce(new Error("reconciliation marker unavailable"))
+      .mockImplementation(implementation!);
+
+    await expect(
+      settleUsageReservationOrRequireReconciliation(
+        reserved.reservationId,
+        now,
+        "AUTOPUBLISH_SETTLEMENT_FAILED",
+        state.prisma,
+      ),
+    ).rejects.toThrow("reconciliation marker unavailable");
+
+    expect(state.reservations.get(reserved.reservationId)).toMatchObject({
+      status: "reserved",
+      workStartedAt: now,
+    });
+    expect(Math.max(...state.counters.values())).toBe(1);
+  });
 });

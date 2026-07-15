@@ -21,7 +21,7 @@ export type ReviewTaskPrismaLike = {
         type: ReviewTaskType;
         status: ReviewTaskStatus;
         inventoryItemId: string | null;
-        marketplace: Marketplace | null;
+        marketplace?: Marketplace | null;
         dedupeKey?: string;
       };
       select: { id: true };

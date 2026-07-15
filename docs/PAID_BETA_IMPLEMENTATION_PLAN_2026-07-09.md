@@ -188,7 +188,7 @@ Do not perform cosmetic table renames during paid beta. The logical names below 
 | `BulkUploadBatch` | New fields below | `(accountId,status,updatedAt)`; unique client idempotency key | owner account; plan reserved at creation |
 | `BulkUploadItem` | New fields below | unique `(batchId,position)` and optional `inventoryItemId`; `(batchId,status)` | item cannot move across accounts |
 | `ReviewTask` | Keep; add `accountId`, `priority`, `dueAt`, `dedupeKey`, `resolution`, `resolvedBy` | unique open dedupe key; `(accountId,status,priority,dueAt)` | seller/member scope; admin actions audited |
-| `Notification` | Keep; add `accountId`, `dedupeKey`, `channel`, `deliveryStatus`, `actionUrl` | unique dedupe key; unread index | body is seller-safe; no provider payload |
+| `Notification` | Keep; add `accountId`, `dedupeKey`, `channel`, `deliveryStatus`, `actionUrl` | unique `(accountId,dedupeKey)`; unread index | body is seller-safe; no provider payload |
 | `EmailSignal` | Keep; add `accountId`, `provider`, `signatureVerified`, `rawObjectRef?`, `eventTime` | existing message-id unique; `(accountId,processedAt)` | provider signature required upstream; minimize snippets |
 | `BillingSubscription` | Evolve `Subscription`; add `lastStripeEventCreated`, `graceEndsAt` | Stripe customer/subscription unique | owner/admin reads; server webhook writes |
 | `UsageMeterEvent` | New append-only reservation/settlement record | unique idempotency key; `(accountId,metric,periodStart,status)` | atomic quota authority; no client writes |

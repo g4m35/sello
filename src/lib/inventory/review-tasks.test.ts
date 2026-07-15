@@ -16,6 +16,7 @@ type FakeTask = {
   status: ReviewTaskStatus;
   inventoryItemId: string | null;
   marketplace: Marketplace | null;
+  dedupeKey?: string | null;
 };
 
 function createFakePrisma(seed: FakeTask[] = []): ReviewTaskPrismaLike & {
@@ -32,7 +33,8 @@ function createFakePrisma(seed: FakeTask[] = []): ReviewTaskPrismaLike & {
             t.type === where.type &&
             t.status === where.status &&
             t.inventoryItemId === where.inventoryItemId &&
-            t.marketplace === where.marketplace,
+            (where.marketplace === undefined || t.marketplace === where.marketplace) &&
+            (where.dedupeKey === undefined || t.dedupeKey === where.dedupeKey),
         );
         return found ? { id: found.id } : null;
       },
@@ -45,6 +47,7 @@ function createFakePrisma(seed: FakeTask[] = []): ReviewTaskPrismaLike & {
           status: "open",
           inventoryItemId: data.inventoryItemId ?? null,
           marketplace: data.marketplace ?? null,
+          dedupeKey: data.dedupeKey ?? null,
         };
         tasks.push(task);
         return { id: task.id };
@@ -134,6 +137,36 @@ describe("createReviewTask", () => {
     });
 
     expect(result.deduped).toBe(false);
+    expect(prisma._tasks).toHaveLength(2);
+  });
+
+  it("keeps account-level tasks with different dedupe keys distinct", async () => {
+    const prisma = createFakePrisma();
+    const base = {
+      userId: "user-1",
+      accountId: "account-1",
+      type: "sync_conflict" as const,
+      marketplace: "ebay" as const,
+      title: "Review an unmatched order",
+      description: "d",
+    };
+
+    const first = await createReviewTask(prisma, {
+      ...base,
+      dedupeKey: "ebay-unmatched:order-1",
+    });
+    const second = await createReviewTask(prisma, {
+      ...base,
+      dedupeKey: "ebay-unmatched:order-2",
+    });
+    const repeated = await createReviewTask(prisma, {
+      ...base,
+      dedupeKey: "ebay-unmatched:order-1",
+    });
+
+    expect(first.deduped).toBe(false);
+    expect(second.deduped).toBe(false);
+    expect(repeated).toEqual({ id: first.id, deduped: true });
     expect(prisma._tasks).toHaveLength(2);
   });
 });

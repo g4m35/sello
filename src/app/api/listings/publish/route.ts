@@ -92,14 +92,29 @@ export async function POST(request: Request) {
     });
 
     // Count only a real, successful publish (2xx). Draft-only NOT_IMPLEMENTED
-    // (501) and failures never burn quota. Best-effort, logged on failure.
+    // (501) and failures never burn quota. If settlement is temporarily
+    // unavailable, the already-started reservation stays charged and is marked
+    // for reconciliation; the successful external outcome is still returned so
+    // a seller is not encouraged to publish the same listing again.
     if (result.httpStatus >= 200 && result.httpStatus < 300) {
-      await settleUsageReservationOrRequireReconciliation(
-        usageReservationId,
-        new Date(),
-        "AUTOPUBLISH_SETTLEMENT_FAILED",
-        prisma,
-      );
+      try {
+        await settleUsageReservationOrRequireReconciliation(
+          usageReservationId,
+          new Date(),
+          "AUTOPUBLISH_SETTLEMENT_FAILED",
+          prisma,
+        );
+      } catch (usageError) {
+        logUnexpectedError("autopublish_usage_settle", usageError);
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          "AUTOPUBLISH_SETTLEMENT_FAILED",
+          prisma,
+        ).catch((reconciliationError) =>
+          logUnexpectedError("autopublish_usage_reconcile", reconciliationError),
+        );
+      }
     } else {
       try {
         await releaseUsageReservation(

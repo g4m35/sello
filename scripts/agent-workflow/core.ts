@@ -987,7 +987,12 @@ export function checkTask(
     }
     if (
       state.working_branch !== task.working_branch ||
-      !sameDeclaredWorktree(state.worktree_path, task.worktree_path)
+      !sameDeclaredWorktree(
+        state.worktree_path,
+        task.worktree_path,
+        process.env,
+        repoRoot,
+      )
     ) {
       issues.push({
         code: "TASK_STATE_CONFLICT",

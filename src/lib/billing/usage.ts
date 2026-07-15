@@ -389,7 +389,10 @@ export async function markUsageReconciliationRequired(
 /**
  * Settlement is part of the durable operation lifecycle. A transient failure
  * leaves the reserved unit charged and marks it for reconciliation; it never
- * turns a completed operation into free usage.
+ * turns a completed operation into free usage. If both immediate writes fail,
+ * callers that already completed irreversible external work must preserve that
+ * external outcome, keep the started reservation charged, and retry/repair the
+ * reconciliation marker rather than releasing the reservation.
  */
 export async function settleUsageReservationOrRequireReconciliation(
   reservationId: string,

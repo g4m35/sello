@@ -186,6 +186,34 @@ describe("StockX publish route", () => {
     expect((await response.json()).code).toBe("STOCKX_PUBLISH_NOT_ENABLED");
   });
 
+  it("preserves a successful publish outcome and flags reconciliation when settlement fails", async () => {
+    mocks.settleUsageReservationOrRequireReconciliation.mockRejectedValue(
+      new AppError(
+        "Usage settlement could not be recorded.",
+        503,
+        "USAGE_SETTLEMENT_NOT_DURABLE",
+      ),
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/marketplaces/stockx/publish", {
+        method: "POST",
+        headers: { "idempotency-key": "stockx-publish-request-1" },
+        body: JSON.stringify({ inventoryItemId: itemId, confirmLivePublish: true }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect((await response.json()).code).toBe("STOCKX_LISTING_SUBMITTED");
+    expect(mocks.markUsageReconciliationRequired).toHaveBeenCalledWith(
+      "usage-reservation-1",
+      expect.any(Date),
+      "STOCKX_AUTOPUBLISH_SETTLEMENT_FAILED",
+      { db: true },
+    );
+    expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
+  });
+
   it("returns safe StockX provider failure details for live publish diagnostics", async () => {
     mocks.executePublish.mockRejectedValue(
       new StockXIntegrationError(

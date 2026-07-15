@@ -140,6 +140,103 @@ describe("markItemSold", () => {
     expect(prisma._store.syncJobs).toHaveLength(2);
   });
 
+  it("treats simultaneous signals from the same marketplace as one sale plus one duplicate", async () => {
+    const prisma = createInventoryFakePrisma({ items: [baseItem()], listings: [] });
+    const input = {
+      inventoryItemId: "item-1",
+      userId: "user-1",
+      accountId: "account-user-1",
+      soldMarketplace: "ebay" as const,
+      soldListingId: "ebay-listing-1",
+      source: "api" as const,
+    };
+
+    const results = await Promise.all([
+      markItemSold(prisma, input),
+      markItemSold(prisma, input),
+    ]);
+
+    expect(results.map((result) => result.outcome).sort()).toEqual([
+      "already_sold",
+      "marked_sold",
+    ]);
+    expect(prisma._store.events.filter((event) => event.type === "sale_confirmed")).toHaveLength(1);
+    expect(prisma._store.events.filter((event) => event.type === "sync_conflict")).toHaveLength(0);
+    expect(prisma._store.reviewTasks).toHaveLength(0);
+  });
+
+  it("creates one account-scoped conflict trail when different marketplaces race", async () => {
+    const prisma = createInventoryFakePrisma({ items: [baseItem()], listings: [] });
+
+    const results = await Promise.all([
+      markItemSold(prisma, {
+        inventoryItemId: "item-1",
+        userId: "user-1",
+        accountId: "account-user-1",
+        soldMarketplace: "ebay",
+        soldListingId: "ebay-listing-1",
+        source: "api",
+      }),
+      markItemSold(prisma, {
+        inventoryItemId: "item-1",
+        userId: "user-1",
+        accountId: "account-user-1",
+        soldMarketplace: "grailed",
+        soldListingId: "grailed-listing-1",
+        source: "api",
+      }),
+    ]);
+
+    expect(results.map((result) => result.outcome).sort()).toEqual([
+      "conflict",
+      "marked_sold",
+    ]);
+    expect(prisma._store.reviewTasks).toHaveLength(1);
+    expect(prisma._store.reviewTasks[0]).toMatchObject({
+      accountId: "account-user-1",
+      type: "sync_conflict",
+      dedupeKey: "sold-source-conflict:item-1:ebay:grailed",
+    });
+    expect(prisma._store.events.filter((event) => event.type === "sync_conflict")).toHaveLength(1);
+    expect(prisma._store.notifications.filter((row) => row.kind === "sync_conflict")).toHaveLength(1);
+    expect(prisma._store.syncJobs).toHaveLength(0);
+  });
+
+  it("routes a manual-versus-marketplace sold race to review without overwriting the winner", async () => {
+    const prisma = createInventoryFakePrisma({ items: [baseItem()], listings: [] });
+
+    const results = await Promise.all([
+      markItemSold(prisma, {
+        inventoryItemId: "item-1",
+        userId: "user-1",
+        accountId: "account-user-1",
+        soldMarketplace: null,
+        source: "manual",
+      }),
+      markItemSold(prisma, {
+        inventoryItemId: "item-1",
+        userId: "user-1",
+        accountId: "account-user-1",
+        soldMarketplace: "ebay",
+        soldListingId: "ebay-listing-1",
+        source: "api",
+      }),
+    ]);
+
+    expect(results.map((result) => result.outcome).sort()).toEqual([
+      "conflict",
+      "marked_sold",
+    ]);
+    expect(prisma._store.reviewTasks).toHaveLength(1);
+    expect(prisma._store.reviewTasks[0]).toMatchObject({
+      accountId: "account-user-1",
+      type: "sync_conflict",
+      dedupeKey: "sold-source-conflict:item-1:ebay:manual",
+    });
+    expect(prisma._store.events.filter((event) => event.type === "sync_conflict")).toHaveLength(1);
+    expect(prisma._store.syncJobs).toHaveLength(0);
+  });
+
   it("creates a sync_conflict review task when already sold from a DIFFERENT source and never overwrites", async () => {
     const prisma = createInventoryFakePrisma({
       items: [
@@ -167,6 +264,7 @@ describe("markItemSold", () => {
     // A sync_conflict review task was created (not a delist).
     const conflict = prisma._store.reviewTasks.find((t) => t.type === "sync_conflict");
     expect(conflict).toBeTruthy();
+    expect(conflict?.dedupeKey).toBe("sold-source-conflict:item-1:ebay:grailed");
     expect(prisma._store.syncJobs).toHaveLength(0);
     expect(prisma._store.events.some((e) => e.type === "sync_conflict")).toBe(true);
   });
