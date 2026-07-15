@@ -85,6 +85,8 @@ export type ConductorEnvironment = {
   defaultBranch: string | null;
 };
 
+export const CONDUCTOR_WORKSPACE_PATH_TOKEN = "$CONDUCTOR_WORKSPACE_PATH";
+
 /** Detect Conductor workspace context from supported environment variables. */
 export function detectConductorEnvironment(
   env: Record<string, string | undefined> = process.env,
@@ -268,6 +270,41 @@ function validateBranchName(repoRoot: string, branch: string, field: string): vo
   }
 }
 
+function isConductorPlaceholderBranch(branch: string, worktreePath: string): boolean {
+  return (
+    worktreePath === CONDUCTOR_WORKSPACE_PATH_TOKEN &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*-v[1-9][0-9]*$/.test(branch)
+  );
+}
+
+function resolveDeclaredWorktreePath(
+  worktreePath: string,
+  env: Record<string, string | undefined> = process.env,
+  fallbackPath?: string,
+): string | null {
+  if (worktreePath !== CONDUCTOR_WORKSPACE_PATH_TOKEN) return worktreePath;
+  const conductor = detectConductorEnvironment(env);
+  if (conductor.active && conductor.workspacePath) return conductor.workspacePath;
+  // Conductor agents sometimes omit CONDUCTOR_WORKSPACE_PATH. Infer only when the
+  // current path is already under ~/conductor/workspaces (or the active token path).
+  if (fallbackPath && isConductorManagedPath(fallbackPath, env)) {
+    return resolve(fallbackPath);
+  }
+  return null;
+}
+
+function sameDeclaredWorktree(
+  left: string,
+  right: string,
+  env: Record<string, string | undefined> = process.env,
+  fallbackPath?: string,
+): boolean {
+  if (left === right) return true;
+  const resolvedLeft = resolveDeclaredWorktreePath(left, env, fallbackPath);
+  const resolvedRight = resolveDeclaredWorktreePath(right, env, fallbackPath);
+  return Boolean(resolvedLeft && resolvedRight && samePath(resolvedLeft, resolvedRight));
+}
+
 export function validateTaskContract(raw: unknown, repoRoot: string): TaskContract {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new WorkflowError("Task contract must be a YAML mapping.", "INVALID_TASK");
@@ -319,17 +356,29 @@ export function validateTaskContract(raw: unknown, repoRoot: string): TaskContra
     }
   }
 
-  if (!isAbsolute(value.worktree_path as string)) {
-    throw new WorkflowError("Task field 'worktree_path' must be an absolute path.", "INVALID_TASK");
+  if (
+    !isAbsolute(value.worktree_path as string) &&
+    value.worktree_path !== CONDUCTOR_WORKSPACE_PATH_TOKEN
+  ) {
+    throw new WorkflowError(
+      `Task field 'worktree_path' must be an absolute path or ${CONDUCTOR_WORKSPACE_PATH_TOKEN}.`,
+      "INVALID_TASK",
+    );
   }
   validateBranchName(repoRoot, value.base_branch as string, "base_branch");
   validateBranchName(repoRoot, value.working_branch as string, "working_branch");
   if (["main", "develop"].includes(value.working_branch as string)) {
     throw new WorkflowError("A task working branch cannot be main or develop.", "INVALID_TASK");
   }
-  if (!/^(feature|fix|chore|security|docs|test)\//.test(value.working_branch as string)) {
+  if (
+    !/^(feature|fix|chore|security|docs|test)\//.test(value.working_branch as string) &&
+    !isConductorPlaceholderBranch(
+      value.working_branch as string,
+      value.worktree_path as string,
+    )
+  ) {
     throw new WorkflowError(
-      "Task working_branch must start with feature/, fix/, chore/, security/, docs/, or test/.",
+      "Task working_branch must use an approved prefix, or be a Conductor placeholder branch paired with $CONDUCTOR_WORKSPACE_PATH.",
       "INVALID_TASK",
     );
   }
@@ -620,6 +669,13 @@ export function startTask(repoRoot: string, taskArg: string): StartResult {
       return adoptConductorWorkspace(repoRoot, task, baseRef, baseCommit, conductor);
     }
 
+    if (task.worktree_path === CONDUCTOR_WORKSPACE_PATH_TOKEN) {
+      throw new WorkflowError(
+        "This task requires a verified Conductor workspace, but no Conductor workspace environment is active.",
+        "CONDUCTOR_WORKSPACE_UNVERIFIED",
+      );
+    }
+
     assertNotNestedConductorWorktree(task.worktree_path);
     if (isConductorManagedPath(task.worktree_path)) {
       throw new WorkflowError(
@@ -856,12 +912,23 @@ export function checkTask(
       message: `Current branch '${branch}' does not match task branch '${task.working_branch}'.`,
     });
   }
-  if (!ciMode && !samePath(repoRoot, task.worktree_path)) {
-    issues.push({
-      code: "WORKTREE_MISMATCH",
-      severity: "P0",
-      message: `Current worktree '${repoRoot}' does not match '${task.worktree_path}'.`,
-    });
+  if (!ciMode) {
+    const declaredWorktree = resolveDeclaredWorktreePath(task.worktree_path, process.env, repoRoot);
+    const registered = listWorktrees(repoRoot).find(
+      (record) =>
+        declaredWorktree &&
+        samePath(record.worktree, declaredWorktree) &&
+        record.branch === task.working_branch,
+    );
+    if (!declaredWorktree || !samePath(repoRoot, declaredWorktree) || !registered) {
+      issues.push({
+        code: declaredWorktree ? "WORKTREE_MISMATCH" : "CONDUCTOR_WORKSPACE_UNVERIFIED",
+        severity: "P0",
+        message: declaredWorktree
+          ? `Current worktree '${repoRoot}' is not the registered '${task.working_branch}' worktree declared by '${task.worktree_path}'.`
+          : "The task requires verified Conductor workspace metadata, but CONDUCTOR_WORKSPACE_PATH is unavailable.",
+      });
+    }
   }
   if (options.requireClean !== false && dirty.length > 0) {
     issues.push({
@@ -918,7 +985,15 @@ export function checkTask(
         message: `Recorded base ${state.base_commit} is missing or is not an ancestor of merge base ${mergeBase}.`,
       });
     }
-    if (state.working_branch !== task.working_branch || !samePath(state.worktree_path, task.worktree_path)) {
+    if (
+      state.working_branch !== task.working_branch ||
+      !sameDeclaredWorktree(
+        state.worktree_path,
+        task.worktree_path,
+        process.env,
+        repoRoot,
+      )
+    ) {
       issues.push({
         code: "TASK_STATE_CONFLICT",
         severity: "P0",

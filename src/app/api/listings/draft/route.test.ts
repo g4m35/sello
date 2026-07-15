@@ -10,8 +10,12 @@ const mocks = vi.hoisted(() => ({
   runCompFetch: vi.fn(),
   uploadListingPhotos: vi.fn(),
   getActiveAccount: vi.fn(),
-  assertWithinQuota: vi.fn(),
-  incrementUsage: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
+  markUsageReconciliationRequired: vi.fn(),
+  markUsageWorkStarted: vi.fn(),
+  releaseUsageReservation: vi.fn(),
+  reserveUsageOrThrow: vi.fn(),
+  settleUsageReservationOrRequireReconciliation: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -22,9 +26,16 @@ vi.mock("@/lib/ai/gemini", () => ({
 vi.mock("@/lib/comps/fetch", () => ({ runCompFetch: mocks.runCompFetch }));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
+}));
 vi.mock("@/lib/billing/usage", () => ({
-  assertWithinQuota: mocks.assertWithinQuota,
-  incrementUsage: mocks.incrementUsage,
+  markUsageReconciliationRequired: mocks.markUsageReconciliationRequired,
+  markUsageWorkStarted: mocks.markUsageWorkStarted,
+  releaseUsageReservation: mocks.releaseUsageReservation,
+  reserveUsageOrThrow: mocks.reserveUsageOrThrow,
+  settleUsageReservationOrRequireReconciliation:
+    mocks.settleUsageReservationOrRequireReconciliation,
 }));
 vi.mock("@/lib/storage/listing-photos", () => ({
   prepareListingPhotos: mocks.prepareListingPhotos,
@@ -42,6 +53,19 @@ import { POST as ACTION } from "./[draftId]/route";
 describe("listing draft API auth boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.markUsageWorkStarted.mockResolvedValue(true);
+    mocks.markUsageReconciliationRequired.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
+    mocks.resolveRuntimeEntitlements.mockResolvedValue({
+      account: { id: "acc-1", ownerUserId: "user-1", plan: "free" },
+      access: { paidComps: false },
+    });
     mocks.requireSupabaseUser.mockRejectedValue(
       new AppError("Sign in before creating a listing draft.", 401),
     );
@@ -104,8 +128,10 @@ describe("listing draft API auth boundaries", () => {
       vi.stubEnv("PAID_COMPS_EMAILS", "allowed@example.com");
       mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email });
       mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
-      mocks.assertWithinQuota.mockResolvedValue(undefined);
-      mocks.incrementUsage.mockResolvedValue(undefined);
+      mocks.resolveRuntimeEntitlements.mockResolvedValue({
+        account: { id: "acc-1", ownerUserId: "user-1", plan: "free" },
+        access: { paidComps: paidProvidersAllowed },
+      });
       mocks.prepareListingPhotos.mockResolvedValue([]);
       mocks.uploadListingPhotos.mockResolvedValue([]);
       mocks.generateListingDraftWithGemini.mockResolvedValue({
@@ -161,7 +187,12 @@ describe("listing draft API auth boundaries", () => {
         prisma,
         expect.any(String),
         "user-1",
-        { paidProvidersAllowed, adminOverride: false },
+        {
+          paidProvidersAllowed,
+          adminOverride: false,
+          accountId: "acc-1",
+          idempotencyKey: expect.any(String),
+        },
       );
     },
   );
@@ -169,8 +200,6 @@ describe("listing draft API auth boundaries", () => {
   it("defaults quantity to 1 and infers a high-confidence eBay category on the new draft", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
-    mocks.assertWithinQuota.mockResolvedValue(undefined);
-    mocks.incrementUsage.mockResolvedValue(undefined);
     mocks.prepareListingPhotos.mockResolvedValue([]);
     mocks.uploadListingPhotos.mockResolvedValue([]);
     mocks.generateListingDraftWithGemini.mockResolvedValue({
@@ -233,10 +262,17 @@ describe("listing draft AI quota enforcement", () => {
     vi.clearAllMocks();
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
   });
 
   it("returns 402 and does not call Gemini when over the monthly AI-listing quota", async () => {
-    mocks.assertWithinQuota.mockRejectedValue(
+    mocks.reserveUsageOrThrow.mockRejectedValue(
       new AppError(
         "You have used all of your AI listings for this billing period. Upgrade your plan for more.",
         402,
@@ -253,6 +289,6 @@ describe("listing draft AI quota enforcement", () => {
 
     expect(response.status).toBe(402);
     expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
-    expect(mocks.incrementUsage).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
   });
 });

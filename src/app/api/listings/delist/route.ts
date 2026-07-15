@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { safeErrorResponse } from "@/lib/errors";
-import { requireFeatureAccess } from "@/lib/auth/feature-access";
+import { requireRuntimeFeatureAccess } from "@/lib/auth/feature-access";
 import { getActiveAccount } from "@/lib/billing/account";
 import { DelistRequestSchema } from "@/lib/marketplace/delist-request";
 import { EbayIntegrationError } from "@/lib/marketplace/adapters/ebay/errors";
@@ -21,12 +21,11 @@ export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const parsed = DelistRequestSchema.parse(await request.json());
-    if (parsed.marketplace === "ebay") {
-      requireFeatureAccess(user, "ebayDelist");
-    }
-
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const resolved = parsed.marketplace === "ebay"
+      ? await requireRuntimeFeatureAccess(user, "ebayDelist", prisma)
+      : null;
+    const account = resolved?.account ?? (await getActiveAccount(user.id, prisma));
 
     const result =
       parsed.marketplace === "ebay"

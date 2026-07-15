@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(() => ({})),
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
   preflightBulkEbayDelist: vi.fn(),
   preflightBulkStockXDelist: vi.fn(),
 }));
@@ -12,6 +13,9 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
+}));
 vi.mock("@/lib/marketplace/bulk-delist", () => ({
   preflightBulkEbayDelist: mocks.preflightBulkEbayDelist,
   preflightBulkStockXDelist: mocks.preflightBulkStockXDelist,
@@ -34,7 +38,16 @@ describe("bulk delist preflight route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "owner@example.com" });
-    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    const account = { id: "acc-1", ownerUserId: "user-1", plan: "free" };
+    mocks.getActiveAccount.mockResolvedValue(account);
+    mocks.resolveRuntimeEntitlements.mockResolvedValue({
+      account,
+      access: { ebayDelist: false },
+      decisions: {},
+      plan: account.plan,
+      limits: {},
+      features: {},
+    });
     mocks.preflightBulkEbayDelist.mockResolvedValue({
       liveDelistAllowed: false,
       total: 1,

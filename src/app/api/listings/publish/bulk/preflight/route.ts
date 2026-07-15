@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { featureAccessForUser } from "@/lib/auth/feature-access";
-import { getActiveAccount } from "@/lib/billing/account";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
 import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { AppError, safeErrorResponse } from "@/lib/errors";
@@ -36,7 +35,8 @@ export async function POST(request: Request) {
     }
 
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const resolved = await resolveRuntimeEntitlements(user, prisma);
+    const account = resolved.account;
     assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length, user);
     const result =
       marketplace === "stockx"
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
             userId: user.id,
             accountId: account.id,
             itemIds,
-            livePublishAllowed: featureAccessForUser(user).liveEbayPublish,
+            livePublishAllowed: resolved.access.liveEbayPublish,
           });
 
     return NextResponse.json(result, { status: 200 });

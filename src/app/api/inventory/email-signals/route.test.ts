@@ -141,7 +141,7 @@ describe("POST /api/inventory/email-signals — processing", () => {
       listingRow: {
         id: "ml-1",
         inventoryItemId: "item-1",
-        inventoryItem: { sellerId: "owner-1" },
+        inventoryItem: { sellerId: "owner-1", accountId: "account-1" },
       },
     });
     mocks.getPrisma.mockReturnValue(db);
@@ -162,6 +162,7 @@ describe("POST /api/inventory/email-signals — processing", () => {
     const engineArgs = mocks.handleSaleSignal.mock.calls[0][1];
     expect(engineArgs).toMatchObject({
       userId: "owner-1",
+      accountId: "account-1",
       marketplace: "ebay",
       source: "email",
       externalListingId: "285012345678",
@@ -225,7 +226,7 @@ describe("POST /api/inventory/email-signals — processing", () => {
       listingRow: {
         id: "ml-2",
         inventoryItemId: "item-2",
-        inventoryItem: { sellerId: "owner-2" },
+        inventoryItem: { sellerId: "owner-2", accountId: "account-2" },
       },
     });
     mocks.getPrisma.mockReturnValue(db);
@@ -258,8 +259,8 @@ describe("POST /api/inventory/email-signals — processing", () => {
     };
     const db = fakeDb({
       listingRows: [
-        { id: "ml-a", inventoryItemId: "item-a", inventoryItem: { sellerId: "seller-a" } },
-        { id: "ml-b", inventoryItemId: "item-b", inventoryItem: { sellerId: "seller-b" } },
+        { id: "ml-a", inventoryItemId: "item-a", inventoryItem: { sellerId: "seller-a", accountId: "account-a" } },
+        { id: "ml-b", inventoryItemId: "item-b", inventoryItem: { sellerId: "seller-b", accountId: "account-b" } },
       ],
     });
     mocks.getPrisma.mockReturnValue(db);
@@ -312,7 +313,7 @@ describe("POST /api/inventory/email-signals — processing", () => {
       listingRow: {
         id: "ml-3",
         inventoryItemId: "item-3",
-        inventoryItem: { sellerId: "owner-3" },
+        inventoryItem: { sellerId: "owner-3", accountId: "account-3" },
       },
     });
     mocks.getPrisma.mockReturnValue(db);

@@ -2,14 +2,8 @@ import { NextResponse } from "next/server";
 
 import {
   FEATURE_ACCESS_COPY,
-  featureAccessForUser,
+  resolveRuntimeEntitlements,
 } from "@/lib/auth/feature-access";
-import { getActiveAccount } from "@/lib/billing/account";
-import {
-  effectiveFeaturesForUser,
-  effectiveLimitsForUser,
-  effectivePlanForUser,
-} from "@/lib/billing/effective-plan";
 import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
@@ -20,14 +14,13 @@ export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
-    const plan = effectivePlanForUser(account, user);
+    const resolved = await resolveRuntimeEntitlements(user, prisma);
     return NextResponse.json({
-      access: featureAccessForUser(user),
+      access: resolved.access,
       copy: FEATURE_ACCESS_COPY,
-      plan,
-      limits: effectiveLimitsForUser(account, user),
-      features: effectiveFeaturesForUser(account, user),
+      plan: resolved.plan,
+      limits: resolved.limits,
+      features: resolved.features,
     });
   } catch (error) {
     if (error instanceof AppError) {

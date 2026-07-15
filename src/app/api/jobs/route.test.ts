@@ -6,12 +6,16 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
+}));
 
 import { GET } from "./route";
 
@@ -48,7 +52,27 @@ function stubStockXEnv() {
 describe("jobs API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" });
+    const account = { id: "acc-1", ownerUserId: "u1", plan: "free" };
+    mocks.getActiveAccount.mockResolvedValue(account);
+    mocks.resolveRuntimeEntitlements.mockImplementation(async (user: { email?: string | null }) => {
+      const email = user.email?.trim().toLowerCase() ?? "";
+      const allowlist = (process.env.LIVE_EBAY_PUBLISH_EMAILS ?? "")
+        .split(",")
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean);
+      return {
+        account,
+        access: {
+          liveEbayPublish: Boolean(email && allowlist.includes(email)),
+          ebayDelist: false,
+          paidComps: false,
+        },
+        decisions: {},
+        plan: account.plan,
+        limits: {},
+        features: {},
+      };
+    });
     mocks.getPrisma.mockReturnValue(prisma());
   });
   afterEach(() => vi.unstubAllEnvs());

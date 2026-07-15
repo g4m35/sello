@@ -300,8 +300,14 @@ function createEbayFakePrisma(opts?: {
   const prisma = {
     _state: state,
     inventoryItem: {
-      async findFirst({ where }: { where: { id: string; sellerId: string } }) {
-        if (where.id !== "item-1" || where.sellerId !== "user-1") return null;
+      async findFirst({
+        where,
+      }: {
+        where: { id: string; sellerId?: string; accountId?: string };
+      }) {
+        if (where.id !== "item-1") return null;
+        if (where.sellerId && where.sellerId !== "user-1") return null;
+        if (where.accountId && where.accountId !== "acc-1") return null;
         return { id: "item-1", status: "APPROVED" as InventoryStatus };
       },
       async update({
@@ -1026,6 +1032,7 @@ describe("executePublish — eBay dispatch", () => {
 describe("executePublish — StockX dispatch", () => {
   const input = {
     userId: "user-1",
+    accountId: "acc-1",
     inventoryItemId: "item-1",
     marketplace: "stockx" as const,
     confirmLivePublish: true,

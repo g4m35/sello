@@ -5,8 +5,12 @@ const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   runCompFetch: vi.fn(),
   getActiveAccount: vi.fn(),
-  assertWithinQuota: vi.fn(),
-  incrementUsage: vi.fn(),
+  requireRuntimeFeatureAccess: vi.fn(),
+  markUsageReconciliationRequired: vi.fn(),
+  markUsageWorkStarted: vi.fn(),
+  releaseUsageReservation: vi.fn(),
+  reserveUsageOrThrow: vi.fn(),
+  settleUsageReservationOrRequireReconciliation: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -24,9 +28,16 @@ vi.mock("@/lib/comps/fetch", () => ({
 }));
 
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  requireRuntimeFeatureAccess: mocks.requireRuntimeFeatureAccess,
+}));
 vi.mock("@/lib/billing/usage", () => ({
-  assertWithinQuota: mocks.assertWithinQuota,
-  incrementUsage: mocks.incrementUsage,
+  markUsageReconciliationRequired: mocks.markUsageReconciliationRequired,
+  markUsageWorkStarted: mocks.markUsageWorkStarted,
+  releaseUsageReservation: mocks.releaseUsageReservation,
+  reserveUsageOrThrow: mocks.reserveUsageOrThrow,
+  settleUsageReservationOrRequireReconciliation:
+    mocks.settleUsageReservationOrRequireReconciliation,
 }));
 
 import { AppError } from "@/lib/errors";
@@ -43,8 +54,18 @@ describe("explicit comp refresh route", () => {
       email: "allowed@example.com",
     });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
-    mocks.assertWithinQuota.mockResolvedValue(undefined);
-    mocks.incrementUsage.mockResolvedValue(undefined);
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.markUsageWorkStarted.mockResolvedValue(true);
+    mocks.markUsageReconciliationRequired.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
+    mocks.requireRuntimeFeatureAccess.mockResolvedValue({
+      account: { id: "acc-1", ownerUserId: "user-1", plan: "free" },
+    });
   });
 
   afterEach(() => {
@@ -57,7 +78,7 @@ describe("explicit comp refresh route", () => {
       compSearchRun: { findFirst: vi.fn().mockResolvedValue(null) },
     };
     mocks.getPrisma.mockReturnValue(prisma);
-    mocks.assertWithinQuota.mockRejectedValue(
+    mocks.reserveUsageOrThrow.mockRejectedValue(
       new AppError(
         "You have used all of your comp refreshes for this billing period. Upgrade your plan for more.",
         402,
@@ -75,7 +96,7 @@ describe("explicit comp refresh route", () => {
     expect(response.status).toBe(402);
     expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_COMP_REFRESH");
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
-    expect(mocks.incrementUsage).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
   });
 
   it("returns 403 before database reads or provider work for a nonallowlisted seller", async () => {
@@ -83,6 +104,13 @@ describe("explicit comp refresh route", () => {
       id: "user-1",
       email: "not-allowed@example.com",
     });
+    mocks.requireRuntimeFeatureAccess.mockRejectedValueOnce(
+      new AppError(
+        "This feature is currently available to selected beta accounts.",
+        403,
+        "ALPHA_OR_BETA_ACCESS_REQUIRED",
+      ),
+    );
 
     const response = await POST(
       new Request("http://localhost/api/listings/comps/refresh", {
@@ -94,11 +122,11 @@ describe("explicit comp refresh route", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({
       error: {
-        code: "PAID_COMPS_ALPHA_ONLY",
-        message: "Fresh sold comps are currently enabled for selected alpha accounts.",
+        code: "ALPHA_OR_BETA_ACCESS_REQUIRED",
+        message: "This feature is currently available to selected beta accounts.",
       },
     });
-    expect(mocks.getPrisma).not.toHaveBeenCalled();
+    expect(mocks.getPrisma).toHaveBeenCalledOnce();
     expect(mocks.runCompFetch).not.toHaveBeenCalled();
   });
 
@@ -156,6 +184,7 @@ describe("explicit comp refresh route", () => {
         paidProvidersAllowed: true,
         accountId: "acc-1",
         adminOverride: false,
+        idempotencyKey: expect.any(String),
       },
     );
   });

@@ -58,6 +58,14 @@ enum ProviderCallStatus {
   skipped
 }
 
+enum UsageReservationStatus {
+  reserved
+  settled
+  released
+  expired
+  denied
+}
+
 enum FeedbackType {
   bug
   feature_request
@@ -158,17 +166,16 @@ enum BulkItemStatus {
 }
 
 model InventoryItem {
-  id                    String               @id @default(uuid()) @db.Uuid
-  sellerId              String               @db.Uuid
-  // Owning account (shared workspace). Nullable during backfill; the app scopes
-  // reads by account once present. sellerId stays as the creating member.
-  accountId             String?              @db.Uuid
-  account               Account?             @relation(fields: [accountId], references: [id])
-  status                InventoryStatus      @default(DRAFTING)
+  id                    String                  @id @default(uuid()) @db.Uuid
+  sellerId              String                  @db.Uuid
+  // Owning account (shared workspace). sellerId stays as the creating member.
+  accountId             String                  @db.Uuid
+  account               Account                 @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  status                InventoryStatus         @default(DRAFTING)
   productName           String
   brand                 String?
-  category              ProductCategory      @default(other)
-  condition             ItemCondition        @default(unknown)
+  category              ProductCategory         @default(other)
+  condition             ItemCondition           @default(unknown)
   styleCode             String?
   colorway              String?
   size                  String?
@@ -177,14 +184,14 @@ model InventoryItem {
   pricingRationale      String?
   soldAt                DateTime?
   // Inventory safety / double-sell prevention (source of truth).
-  quantityAvailable     Int                  @default(1)
+  quantityAvailable     Int                     @default(1)
   soldSourceMarketplace Marketplace?
   soldSourceListingId   String?
   // Optimistic-concurrency guard: bumped on every sold/quantity mutation so two
   // concurrent sale signals cannot both win. See lib/inventory/mark-sold.
-  lockVersion           Int                  @default(0)
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  lockVersion           Int                     @default(0)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
   photos                ItemPhoto[]
   marketplaceImages     MarketplaceImage[]
   aiOutputs             AiOutput[]
@@ -196,7 +203,9 @@ model InventoryItem {
   inventoryEvents       InventoryEvent[]
   reviewTasks           ReviewTask[]
   bulkItem              BulkItem?
+  saleSignals           MarketplaceSaleSignal[]
 
+  @@unique([id, accountId])
   @@index([sellerId, status])
   @@index([accountId, status])
   @@index([createdAt])
@@ -222,6 +231,7 @@ model BulkBatch {
   items             BulkItem[]
   photos            BulkPhoto[]
 
+  @@unique([id, accountId])
   @@unique([accountId, idempotencyKey])
   @@index([accountId, createdAt])
   @@index([accountId, status, updatedAt])
@@ -231,6 +241,7 @@ model BulkBatch {
 model BulkItem {
   id                  String         @id @default(uuid()) @db.Uuid
   batchId             String         @db.Uuid
+  accountId           String         @db.Uuid
   batch               BulkBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
   inventoryItemId     String?        @unique @db.Uuid
   inventoryItem       InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
@@ -250,12 +261,15 @@ model BulkItem {
   photos              BulkPhoto[]
 
   @@unique([batchId, position])
+  @@unique([id, batchId])
+  @@index([accountId, status, updatedAt])
   @@index([batchId, status, position])
 }
 
 model BulkPhoto {
   id            String    @id @default(uuid()) @db.Uuid
   batchId       String    @db.Uuid
+  accountId     String    @db.Uuid
   batch         BulkBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   bulkItemId    String?   @db.Uuid
   bulkItem      BulkItem? @relation(fields: [bulkItemId], references: [id], onDelete: SetNull)
@@ -269,6 +283,7 @@ model BulkPhoto {
 
   @@unique([storageBucket, storagePath])
   @@unique([batchId, position])
+  @@index([accountId, createdAt])
   @@index([batchId, bulkItemId, itemPosition])
 }
 
@@ -408,6 +423,8 @@ model CompSearchRun {
 model ProviderCallLedger {
   id                 String             @id @default(uuid()) @db.Uuid
   userId             String             @db.Uuid
+  accountId          String?            @db.Uuid
+  account            Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
   draftId            String?            @db.Uuid
   inventoryItemId    String?            @db.Uuid
   provider           String
@@ -418,9 +435,14 @@ model ProviderCallLedger {
   acceptedCount      Int                @default(0)
   rejectedCount      Int                @default(0)
   queryHash          String?
+  idempotencyKey     String?
+  actualCostCents    Int?
+  settledAt          DateTime?
   createdAt          DateTime           @default(now())
 
+  @@unique([accountId, idempotencyKey], map: "ProviderCallLedger_accountId_idempotencyKey_key")
   @@index([userId, createdAt])
+  @@index([accountId, createdAt])
   @@index([createdAt])
   @@index([draftId, createdAt])
 }
@@ -471,6 +493,7 @@ model MarketplaceListing {
   events            MarketplaceEvent[]
 
   @@unique([inventoryItemId, marketplace, environment])
+  @@unique([marketplace, environment, externalListingId], map: "MarketplaceListing_market_env_externalListingId_key")
   @@index([marketplace, status])
   @@index([marketplace, environment, status])
 }
@@ -723,10 +746,12 @@ enum SyncJobType {
 enum SyncJobStatus {
   queued
   running
+  retry_wait
   succeeded
   failed
   skipped
   needs_review
+  canceled
 }
 
 enum EmailSignalType {
@@ -745,21 +770,29 @@ model InventoryEvent {
   inventoryItemId String             @db.Uuid
   inventoryItem   InventoryItem      @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
   userId          String             @db.Uuid
+  accountId       String             @db.Uuid
+  account         Account            @relation(fields: [accountId], references: [id], onDelete: Cascade)
   type            InventoryEventType
   source          SignalSource
   marketplace     Marketplace?
   confidence      Float?
   payload         Json
+  externalEventId String?
+  correlationId   String?
   createdAt       DateTime           @default(now())
 
   @@index([inventoryItemId, createdAt])
   @@index([userId, createdAt])
+  @@index([accountId, createdAt])
+  @@index([marketplace, externalEventId])
 }
 
 // System-generated tasks requiring seller action (never auto-resolved).
 model ReviewTask {
   id              String           @id @default(uuid()) @db.Uuid
   userId          String           @db.Uuid
+  accountId       String           @db.Uuid
+  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   inventoryItemId String?          @db.Uuid
   inventoryItem   InventoryItem?   @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
   marketplace     Marketplace?
@@ -768,10 +801,13 @@ model ReviewTask {
   title           String
   description     String
   payload         Json
+  dedupeKey       String?
   createdAt       DateTime         @default(now())
   resolvedAt      DateTime?
 
+  @@unique([accountId, dedupeKey], map: "ReviewTask_accountId_dedupeKey_key")
   @@index([userId, status])
+  @@index([accountId, status, createdAt])
   @@index([inventoryItemId])
 }
 
@@ -781,6 +817,8 @@ model ReviewTask {
 model SyncJob {
   id                   String        @id @default(uuid()) @db.Uuid
   userId               String        @db.Uuid
+  accountId            String        @db.Uuid
+  account              Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   inventoryItemId      String?       @db.Uuid
   marketplaceListingId String?       @db.Uuid
   type                 SyncJobType
@@ -792,11 +830,16 @@ model SyncJob {
   errorMessage         String?
   payload              Json
   runAfter             DateTime?
+  lockedAt             DateTime?
+  leaseOwner           String?
+  retryClass           String?
+  completedAt          DateTime?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
   @@index([status, runAfter])
   @@index([userId, createdAt])
+  @@index([accountId, status, runAfter])
   @@index([inventoryItemId])
   @@index([marketplaceListingId])
 }
@@ -829,14 +872,19 @@ model EmailSignal {
 model Notification {
   id              String    @id @default(uuid()) @db.Uuid
   userId          String    @db.Uuid
+  accountId       String    @db.Uuid
+  account         Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   kind            String
   title           String
   body            String
   inventoryItemId String?   @db.Uuid
+  dedupeKey       String?
   readAt          DateTime?
   createdAt       DateTime  @default(now())
 
+  @@unique([accountId, dedupeKey], map: "Notification_accountId_dedupeKey_key")
   @@index([userId, createdAt])
+  @@index([accountId, createdAt])
   @@index([userId, readAt])
 }
 
@@ -880,11 +928,13 @@ enum UsageMetric {
 }
 
 model Account {
-  id          String   @id @default(uuid()) @db.Uuid
-  ownerUserId String   @unique @db.Uuid
-  plan        PlanTier @default(free)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(uuid()) @db.Uuid
+  ownerUserId   String    @unique @db.Uuid
+  plan          PlanTier  @default(free)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  disabledAt    DateTime?
+  disableReason String?
 
   members                AccountMember[]
   subscription           Subscription?
@@ -894,6 +944,13 @@ model Account {
   ebaySellerConfigs      EbaySellerConfig[]
   tiktokShopConfigs      TikTokShopConfig[]
   bulkBatches            BulkBatch[]
+  providerCalls          ProviderCallLedger[]
+  usageReservations      UsageReservation[]
+  inventoryEvents        InventoryEvent[]
+  reviewTasks            ReviewTask[]
+  syncJobs               SyncJob[]
+  notifications          Notification[]
+  saleSignals            MarketplaceSaleSignal[]
 }
 
 model AccountMember {
@@ -923,6 +980,7 @@ model Subscription {
   currentPeriodStart   DateTime?
   currentPeriodEnd     DateTime?
   cancelAtPeriodEnd    Boolean            @default(false)
+  graceEndsAt          DateTime?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
@@ -942,6 +1000,66 @@ model UsageCounter {
 
   @@unique([accountId, metric, periodStart])
   @@index([accountId, periodStart])
+}
+
+model UsageReservation {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  accountId                String                 @db.Uuid
+  account                  Account                @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  metric                   UsageMetric
+  periodStart              DateTime               @db.Date
+  idempotencyKey           String
+  units                    Int                    @default(1)
+  status                   UsageReservationStatus @default(reserved)
+  planSnapshot             PlanTier
+  limitSnapshot            Int
+  denialReason             String?
+  reservedByUserId         String?                @db.Uuid
+  operationType            String
+  operationId              String
+  expiresAt                DateTime?
+  workStartedAt            DateTime?
+  reconciliationRequiredAt DateTime?
+  lastErrorCode            String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  settledAt                DateTime?
+  releasedAt               DateTime?
+
+  @@unique([accountId, metric, idempotencyKey])
+  @@index([accountId, metric, periodStart, status])
+  @@index([accountId, status, expiresAt])
+  @@index([accountId, operationType, operationId])
+  @@index([status, createdAt])
+}
+
+model MarketplaceSaleSignal {
+  id                  String         @id @default(uuid()) @db.Uuid
+  accountId           String         @db.Uuid
+  account             Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  inventoryItemId     String?        @db.Uuid
+  inventoryItem       InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  marketplace         Marketplace
+  environment         String         @default("production")
+  externalEventId     String
+  externalOrderId     String?
+  externalLineItemId  String?
+  externalListingId   String?
+  state               String
+  outcome             String?
+  sanitizedPayload    Json
+  processingStartedAt DateTime?
+  processingOwner     String?
+  processingAttempts  Int            @default(0)
+  processedAt         DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([accountId, marketplace, environment, externalEventId], map: "MarketplaceSaleSignal_account_marketplace_environment_event_key")
+  @@index([accountId, marketplace, createdAt])
+  @@index([processedAt, processingStartedAt])
+  @@index([inventoryItemId, createdAt])
+  @@index([externalOrderId, externalLineItemId])
 }
 
 model StripeEvent {

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
   preflightBulkEbayPublish: vi.fn(),
   preflightBulkStockXPublish: vi.fn(),
 }));
@@ -14,6 +15,9 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
+}));
 vi.mock("@/lib/marketplace/bulk-publish", () => ({
   preflightBulkEbayPublish: mocks.preflightBulkEbayPublish,
   preflightBulkStockXPublish: mocks.preflightBulkStockXPublish,
@@ -31,11 +35,26 @@ function req(body: unknown): Request {
   });
 }
 
+function entitlements(account: { id: string; ownerUserId: string; plan: string }, liveEbayPublish: boolean) {
+  return {
+    account,
+    access: { liveEbayPublish },
+    decisions: {},
+    plan: account.plan,
+    limits: {},
+    features: {},
+  };
+}
+
 describe("bulk publish preflight route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "allowed@example.com");
-    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    const account = { id: "acc-1", ownerUserId: "user-1", plan: "free" };
+    mocks.getActiveAccount.mockResolvedValue(account);
+    mocks.resolveRuntimeEntitlements.mockImplementation(async (user: { email?: string | null }) =>
+      entitlements(account, user.email === "allowed@example.com"),
+    );
     mocks.getPrisma.mockReturnValue({});
     mocks.preflightBulkEbayPublish.mockResolvedValue({
       livePublishAllowed: false,

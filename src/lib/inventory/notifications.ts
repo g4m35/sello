@@ -6,16 +6,27 @@ import { getPrisma } from "@/lib/prisma";
 // flow stay consistent and never embed raw provider text. `kind` is a stable
 // machine string (used for grouping/badging); title/body are human copy.
 
+type NotificationWriteData = {
+  userId: string;
+  accountId: string;
+  kind: string;
+  title: string;
+  body: string;
+  inventoryItemId?: string | null;
+  dedupeKey?: string | null;
+};
+
 export type NotificationPrismaLike = {
   notification: {
     create(args: {
-      data: {
-        userId: string;
-        kind: string;
-        title: string;
-        body: string;
-        inventoryItemId?: string | null;
+      data: NotificationWriteData;
+    }): Promise<{ id: string }>;
+    upsert?(args: {
+      where: {
+        accountId_dedupeKey: { accountId: string; dedupeKey: string };
       };
+      update: Record<string, never>;
+      create: NotificationWriteData;
     }): Promise<{ id: string }>;
   };
 };
@@ -141,23 +152,38 @@ export function syncConflictCopy(input: {
 
 export type CreateNotificationInput = {
   userId: string;
+  accountId: string;
   kind: string;
   title: string;
   body: string;
   inventoryItemId?: string | null;
+  dedupeKey?: string | null;
 };
 
 export async function createNotification(
   db: NotificationPrismaLike = getPrisma(),
   input: CreateNotificationInput,
 ): Promise<{ id: string }> {
-  return db.notification.create({
-    data: {
-      userId: input.userId,
-      kind: input.kind,
-      title: input.title,
-      body: input.body,
-      inventoryItemId: input.inventoryItemId ?? null,
-    },
-  });
+  const dedupeKey = input.dedupeKey ?? null;
+  const data: NotificationWriteData = {
+    userId: input.userId,
+    accountId: input.accountId,
+    kind: input.kind,
+    title: input.title,
+    body: input.body,
+    inventoryItemId: input.inventoryItemId ?? null,
+    dedupeKey,
+  };
+
+  if (dedupeKey !== null && db.notification.upsert) {
+    return db.notification.upsert({
+      where: {
+        accountId_dedupeKey: { accountId: input.accountId, dedupeKey },
+      },
+      update: {},
+      create: data,
+    });
+  }
+
+  return db.notification.create({ data });
 }
