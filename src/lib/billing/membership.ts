@@ -93,7 +93,10 @@ export async function assertCanManageAccount(
 }
 
 // A pending invite OR an active member both consume a seat. Revoked rows do not.
-async function seatsUsed(accountId: string, prisma: Db): Promise<number> {
+async function seatsUsed(
+  accountId: string,
+  prisma: Pick<Db, "accountMember">,
+): Promise<number> {
   return prisma.accountMember.count({
     where: { accountId, status: { in: ["active", "invited"] } },
   });
@@ -113,28 +116,38 @@ export async function inviteMember(
     throw new AppError("Cannot invite a second owner.", 400, "INVALID_INVITE_ROLE");
   }
 
-  const existing = await prisma.accountMember.findFirst({
-    where: {
-      accountId: account.id,
-      invitedEmail,
-      status: { in: ["active", "invited"] },
-    },
-  });
-  if (existing) return toRecord(existing);
-
-  const limit = seatLimit(account.plan);
-  if ((await seatsUsed(account.id, prisma)) >= limit) {
-    throw new AppError(
-      `Your plan includes ${limit} seat${limit === 1 ? "" : "s"}. Upgrade to add more.`,
-      403,
-      "SEAT_LIMIT_REACHED",
+  return prisma.$transaction(async (transaction) => {
+    // Serialize the duplicate check, final-seat count, and insert per account.
+    // A normal transaction at READ COMMITTED still permits two callers to both
+    // observe the last seat as free, so the database lock is the race guard.
+    await transaction.$executeRawUnsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+      `account-member-invite:${account.id}`,
     );
-  }
 
-  const member = await prisma.accountMember.create({
-    data: { accountId: account.id, invitedEmail, role, status: "invited" },
+    const existing = await transaction.accountMember.findFirst({
+      where: {
+        accountId: account.id,
+        invitedEmail,
+        status: { in: ["active", "invited"] },
+      },
+    });
+    if (existing) return toRecord(existing);
+
+    const limit = seatLimit(account.plan);
+    if ((await seatsUsed(account.id, transaction)) >= limit) {
+      throw new AppError(
+        `Your plan includes ${limit} seat${limit === 1 ? "" : "s"}. Upgrade to add more.`,
+        403,
+        "SEAT_LIMIT_REACHED",
+      );
+    }
+
+    const member = await transaction.accountMember.create({
+      data: { accountId: account.id, invitedEmail, role, status: "invited" },
+    });
+    return toRecord(member);
   });
-  return toRecord(member);
 }
 
 // Binds a signed-in user to a matching pending invite. Returns null when there
@@ -145,30 +158,59 @@ export async function acceptInvite(
   prisma: Db = getPrisma(),
 ): Promise<MemberRecord | null> {
   const invitedEmail = normalizeEmail(email);
-  const invite = await prisma.accountMember.findFirst({
-    where: { invitedEmail, status: "invited" },
-    orderBy: { createdAt: "asc" },
-  });
-  if (!invite) return null;
+  return prisma.$transaction(async (transaction) => {
+    // Authentication can hit several routes in parallel. Serialize acceptance
+    // by normalized email and make the state transition conditional so a
+    // concurrent revoke can never be overwritten back to active.
+    await transaction.$executeRawUnsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+      `account-member-accept:${invitedEmail}`,
+    );
 
-  if (invite.accountId) {
-    const active = await prisma.accountMember.findFirst({
-      where: { accountId: invite.accountId, userId, status: "active" },
+    const invite = await transaction.accountMember.findFirst({
+      where: { invitedEmail, status: "invited" },
+      orderBy: { createdAt: "asc" },
     });
-    if (active) {
-      await prisma.accountMember.update({
-        where: { id: invite.id },
-        data: { status: "revoked", userId: null },
-      });
-      return toRecord(active);
-    }
-  }
+    if (!invite) return null;
 
-  const member = await prisma.accountMember.update({
-    where: { id: invite.id },
-    data: { userId, status: "active" },
+    if (invite.accountId) {
+      const active = await transaction.accountMember.findFirst({
+        where: { accountId: invite.accountId, userId, status: "active" },
+      });
+      if (active) {
+        await transaction.accountMember.updateMany({
+          where: { id: invite.id, status: "invited" },
+          data: { status: "revoked", userId: null },
+        });
+        return toRecord(active);
+      }
+    }
+
+    const accepted = await transaction.accountMember.updateMany({
+      where: { id: invite.id, status: "invited" },
+      data: { userId, status: "active" },
+    });
+    if (accepted.count !== 1) {
+      const active = invite.accountId
+        ? await transaction.accountMember.findFirst({
+            where: { accountId: invite.accountId, userId, status: "active" },
+          })
+        : null;
+      return active ? toRecord(active) : null;
+    }
+
+    const member = await transaction.accountMember.findUnique({
+      where: { id: invite.id },
+    });
+    if (!member) {
+      throw new AppError(
+        "The invitation could not be accepted. Please try again.",
+        409,
+        "INVITE_ACCEPTANCE_CONFLICT",
+      );
+    }
+    return toRecord(member);
   });
-  return toRecord(member);
 }
 
 export async function revokeMember(
