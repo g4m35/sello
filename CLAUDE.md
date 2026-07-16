@@ -28,18 +28,6 @@ All of cross-listing, real marketplace publishing, automatic comps, inventory
 sync, and monetization are now in scope. Build them properly (gated, tested,
 honest) rather than stubbing them out.
 
-## Tech Stack
-
-- Next.js (App Router) + TypeScript (strict) + Tailwind v4
-- Supabase Auth / Postgres / Storage
-- Prisma
-- Gemini API (structured JSON output only)
-- Zod (validate all external + AI data at boundaries)
-- BullMQ + Redis / Upstash (background jobs)
-- Marketplace APIs (eBay, StockX, etc.); Playwright only where no official API exists
-- Stripe (subscriptions / billing)
-- Vercel (hosting)
-
 ## Database Notes
 
 - DATABASE_URL intentionally uses the Supabase transaction pooler.
@@ -85,34 +73,3 @@ These are about honesty and safety, not scope — they stay no matter how big we
 - Prefer clear loading/empty/error states over decoration.
 - Run the gate before finishing: `npm run lint`, `npm test`, `npx prisma validate`,
   `npm run build`.
-
-## Current State
-
-Shipped and verified (Phase 0 + Phase 1 live; T1–T7 on `develop`):
-
-- Full app UI: dashboard, inventory (list/grid, sort, pagination, bulk
-  delete/price/CSV), listing detail/editor (autosave, editable fields, photo
-  add/remove/reorder/cover), publish history, marketplaces, new listing
-  (photo -> Gemini), responsive layout, consistent states.
-- Seller-scoped API: listings, listing detail, history, CSV import, item update,
-  bulk price/delete, photos, comps + comps refresh.
-- Honest publish flow (records real attempts; returns 501 NOT_IMPLEMENTED).
-- Automatic comps pipeline (sources, dedupe/outlier, fetch job, refresh,
-  auto-fetch on identify/load). Dormant until a comp source key is configured.
-- Lifecycle actions (mark sold / delist).
-
-Dormant/blocked on credentials or decisions (not on more code):
-
-- Real comp data (needs StockX partner access, an eBay Browse prod keyset, or a
-  third-party aggregator key — eBay Marketplace Insights is no longer available).
-- Real eBay publishing (needs eBay production keyset + OAuth).
-- Stripe monetization (needs Stripe keys).
-- Always-on background worker host for queues.
-
-## Next Up
-
-1. Light up automatic pricing with a real comp source.
-2. Real eBay publishing (production keyset + OAuth + Sell APIs), then expand to
-   other channels behind capability-gated adapters.
-3. Stripe subscriptions.
-4. Background worker host + inventory sync.
