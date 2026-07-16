@@ -10,8 +10,8 @@ describe("plan catalog", () => {
     expect(limitsFor("pro").marketplaceConnections).toBe(3);
     expect(limitsFor("kingpin").bulkBatchSize).toBe(250);
     expect(limitsFor("kingpin").teamSeats).toBe(5);
-    expect(limitsFor("free").bulkBatchSize).toBe(10);
-    expect(limitsFor("pro").bulkBatchSize).toBe(50);
+    expect(limitsFor("free").bulkBatchSize).toBe(5);
+    expect(limitsFor("pro").bulkBatchSize).toBe(25);
   });
 
   it("encodes prices in cents", () => {

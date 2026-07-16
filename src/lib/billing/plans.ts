@@ -70,7 +70,7 @@ export const PLAN_CATALOG: Record<PlanId, Plan> = {
       autopublishesPerMonth: 10,
       compRefreshesPerMonth: 10,
       marketplaceConnections: 1,
-      bulkBatchSize: 10,
+      bulkBatchSize: 5,
       teamSeats: 1,
     },
     features: { ...NO_FEATURES },
@@ -85,7 +85,7 @@ export const PLAN_CATALOG: Record<PlanId, Plan> = {
       autopublishesPerMonth: 125,
       compRefreshesPerMonth: 100,
       marketplaceConnections: 3,
-      bulkBatchSize: 50,
+      bulkBatchSize: 25,
       teamSeats: 1,
     },
     features: {

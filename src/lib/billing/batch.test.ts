@@ -8,15 +8,15 @@ describe("assertBulkBatchSize", () => {
   });
 
   it("allows a batch within the plan limit", () => {
-    expect(() => assertBulkBatchSize({ plan: "free" }, 10)).not.toThrow();
-    expect(() => assertBulkBatchSize({ plan: "pro" }, 50)).not.toThrow();
+    expect(() => assertBulkBatchSize({ plan: "free" }, 5)).not.toThrow();
+    expect(() => assertBulkBatchSize({ plan: "pro" }, 25)).not.toThrow();
     expect(() => assertBulkBatchSize({ plan: "kingpin" }, 250)).not.toThrow();
   });
 
   it("throws BULK_BATCH_TOO_LARGE above the plan limit", () => {
-    expect(() => assertBulkBatchSize({ plan: "free" }, 11)).toThrow();
+    expect(() => assertBulkBatchSize({ plan: "free" }, 6)).toThrow();
     try {
-      assertBulkBatchSize({ plan: "pro" }, 51);
+      assertBulkBatchSize({ plan: "pro" }, 26);
       throw new Error("expected throw");
     } catch (error) {
       expect((error as { code?: string }).code).toBe("BULK_BATCH_TOO_LARGE");

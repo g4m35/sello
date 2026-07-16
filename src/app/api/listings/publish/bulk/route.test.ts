@@ -95,7 +95,7 @@ describe("bulk publish execution route", () => {
   it("allows a Pro batch at the plan cap and forwards the active account", async () => {
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-pro", ownerUserId: "owner-1", plan: "pro" });
     mocks.requireSupabaseUser.mockResolvedValue({ id: "member-1", email: "allowed@example.com" });
-    const itemIds = Array.from({ length: 50 }, (_, i) => u(i + 1));
+    const itemIds = Array.from({ length: 25 }, (_, i) => u(i + 1));
     const res = await POST(req({ itemIds, confirmLivePublish: true, bulkRunId: u(999) }));
 
     expect(res.status).toBe(200);
