@@ -38,7 +38,7 @@ export default function RootLayout({
       lang="en"
       data-density="regular"
       suppressHydrationWarning
-      className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full`}
+      className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
         {/* Apply the color theme before paint to avoid a flash. Mirrors

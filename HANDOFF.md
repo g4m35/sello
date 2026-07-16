@@ -12,6 +12,124 @@ before finishing.**
   it accurate over exhaustive. Never put secrets here.
 
 ## Last updated
+2026-07-05 — Codex. Addressed the owner’s 17 browser comments on preview
+`https://resale-crosslister-jeo2bdik8-jaky.vercel.app`, using two read-only
+subagents plus web research on integration/marketplace landing sections before
+editing. Scope stayed in isolated worktree
+`/Users/jheller/Desktop/perc 30/worktrees/landing-page`; no production
+promotion, backend, env, StockX automation, or live marketplace work was touched.
+Hero is now copy/CTA only: removed `<MockDashboard />`, removed the secondary
+`Watch demo`, and removed the nav `Start listing` button. Nav links now point to
+`Demo`, `Automation`, `Marketplaces`, and `/contact`. Demo changes: removed the
+upload helper copy and generic pricing sentence, added richer listing fields,
+pricing metrics (`Sold median`, `Comp range`, `Confidence`, `Est. payout`),
+changed routing to `Chosen marketplaces` with filled status cards, removed the
+bottom guardrail text, removed the demo bottom CTA, and made the mock eBay
+ending one image card instead of two. Feature summary now says `Sello is an
+automated listing system for resellers.` with no `What it is` eyebrow or intro
+paragraph. Marketplace table was replaced with a showcase: featured eBay card,
+StockX/Grailed/Depop/Poshmark workflow cards, and a `More coming` tile for
+Vinted, TikTok Shop, and more. Added `/contact` and wired footer/privacy contact
+to `PUBLIC_CONTACT_EMAIL`. Local validation passed: `npm run lint` with only the
+two known `draft-actions.test.ts` warnings, `npm test` (210 files / 1371 tests),
+`npx prisma validate`, `git diff --check`, and `npm run build`. Browser QA on
+`http://127.0.0.1:3020` confirmed no horizontal overflow at 919px or 390px,
+zero hero mock, zero nav CTA, no `Watch demo`/`See demo`, one eBay image card,
+chosen marketplace and pricing data present, no old filler text, no feature
+eyebrow/intro paragraph, marketplace showcase with six cards and no table rows,
+and `/contact` rendering the mailto. New Vercel preview deploy completed READY:
+`dpl_6Nv8zE1deyTbC45RskP27b5wdw5N` at
+`https://resale-crosslister-gfgjm6p0r-jaky.vercel.app`.
+
+2026-07-05 — Codex. Simplified the landing page per owner request and deployed
+a Vercel preview from the isolated landing-page worktree. Rendered landing page
+now has only five content sections: hero, animated demo, compact capability
+summary, marketplace workflow section, and beta CTA, followed by the footer.
+Removed the rendered problem/solution/trust/FAQ sections, removed the duplicate
+hero marketplace badge row, and pruned nav links to only `Demo` and
+`Marketplaces`. Preserved the actual animated demo and the stricter marketplace
+wording: direct publishing only where technically and policy-wise available.
+Validation before deployment: `npm run lint` passed with only the two known
+`draft-actions.test.ts` warnings, `npm test` passed (209 files / 1370 tests),
+`npx prisma validate` passed, `git diff --check` passed, and `npm run build`
+passed. Browser QA on `http://127.0.0.1:3020` confirmed five rendered sections,
+nav links only to `#demo` and `#marketplaces`, no horizontal overflow, zero
+rendered `.feature-card`, `.demo-step`, and `.landing-marketplace-row`
+elements, and active `motionScan` animation. Deployment note: the first Vercel
+CLI deploy auto-linked this isolated worktree to a new `jaky/landing-page`
+project and produced `https://landing-page-pvpnp1og2-jaky.vercel.app`; after
+checking the existing Sello project linkage, the worktree `.vercel/project.json`
+was corrected locally to `jaky/resale-crosslister` and the real preview deploy
+completed READY as `dpl_HqcmMbuu2CbGZpWWtrHH9PqxwHRL` at
+`https://resale-crosslister-jeo2bdik8-jaky.vercel.app`. No production
+`sello.wtf` promotion, backend, env, StockX automation, or live marketplace work
+was done.
+
+2026-07-04 — Codex. Reworked the landing page again after owner feedback that
+the mock-browser scene transitions still felt like card transitions, and that
+the feature cards were too big, empty, and indirect. Scope stayed in isolated
+worktree `/Users/jheller/Desktop/perc 30/worktrees/landing-page`; no StockX
+automation, backend, env, deploy, or live marketplace work was touched. Replaced
+the React timed-scene demo with one continuous CSS-animated mock browser surface:
+photos, scan beam, AI fields, pricing bars, marketplace chips, moving rail dots,
+and a final mock eBay draft are visible in one flow, with a pause/play control
+that pauses the animation state. Replaced the 12-card feature grid with a direct
+six-row capability summary headed `Sello is an AI listing system for resale
+sellers.` Also simplified the hero paragraph. Validation after this pass:
+focused landing test passed (9 tests), `npm run lint` passed with only the two
+known `draft-actions.test.ts` warnings, full `npm test` passed (209 files / 1369
+tests), `npx prisma validate` passed, `git diff --check` passed, and `npm run
+build` passed. Browser QA on `http://127.0.0.1:3020` confirmed desktop and
+mobile had no horizontal overflow, rendered zero `.feature-card`, `.tour-screen`,
+and `.demo-step` elements, motion keyframes were active, pause toggled
+`.motion-panel--paused`, and the compact feature rows rendered six items.
+
+2026-07-04 — Codex. Reworked the landing demo section after browser feedback
+that the stepped flow felt slow, sloppy, and ugly. Researched interactive demo
+patterns from Arcade/Navattic-style product tours, then replaced the rendered
+five-step tabbed demo with a single mock-browser product tour panel. The new
+section uses a compressed autoplaying flow with browser chrome, progress bars,
+scene captions, photo/listing/pricing/channel screens, and an eBay-ready draft
+ending that says `Draft ready for seller review` plus `Seller approval gate
+required before publishing`. The old `.demo-step` controls no longer render.
+Scope stayed landing UI only; no backend, env, marketplace, StockX automation,
+deploy, or live action work was touched.
+
+2026-07-04 — Codex. Ran a `make-interfaces-feel-better` polish pass on the
+landing-page worktree after the owner explicitly requested that skill for the
+landing page. Scope stayed UI-only. Added root font smoothing, landing text-wrap
+rules, 40px+ hit areas for landing nav/CTA/demo controls, `scale(0.96)` press
+feedback, tabular numerals for mock prices/counts, theme-adaptive image outlines
+and shadow-ring surfaces, and CSS-only Play/Pause icon crossfade while preserving
+the Sello red/neutral token palette. Added regression coverage in
+`src/app/landing.test.ts`; no backend, env, marketplace, StockX, deploy, or live
+actions were touched.
+
+2026-07-04 — Codex. Built the new premium Sello landing page in isolated
+worktree `/Users/jheller/Desktop/perc 30/worktrees/landing-page` on branch
+`feature/sello-landing-page`, based on locally fetched `origin/develop` because
+GitHub auth was unavailable for `git pull`. Scope stayed landing-only:
+`src/app/page.tsx`, `src/components/landing/*`, `src/app/globals.css`, and
+`src/app/landing.test.ts`. The page now follows the supplied plan with
+Sello-native color/theme tokens: red accent, serif Sello wordmark, dark neutral
+product stage, status-token marketplace states, and no violet/blue SaaS palette.
+It includes the hero, clickable five-step deterministic demo flow, problem,
+solution, feature grid, marketplace workflow section, trust/safety proof, beta
+CTA, FAQ, and footer. No backend, database, marketplace adapter, env, live
+publish, StockX automation, Stripe checkout, or production deploy work was done.
+
+Validation: baseline before edits passed (`npm run lint` with the two known
+`draft-actions.test.ts` warnings, `npx prisma validate`, `npm test` 209 files /
+1367 tests, `npm run build`). Final validation passed: `npm run lint` (same two
+known warnings only), `npm test` 209 files / 1367 tests, `npx prisma validate`,
+`git diff --check`, and `npm run build`. Browser QA used local dev server
+`http://127.0.0.1:3020` and system Chrome via Playwright fallback; desktop and
+mobile screenshots were inspected, mobile had no horizontal overflow
+(`scrollWidth === clientWidth === 390`), demo step click to Price worked, and
+computed landing accent was Sello dark accent `#e5413c`. Figma app connection
+returned `UNAUTHORIZED` / reauthentication required, so no Figma file/capture was
+created in this pass.
+
 2026-07-04 — Codex. Continued StockX full-automation development after the owner
 re-added production env values and redeployed outside this local pass. Added the
 StockX reconciliation/status-sync slice:
@@ -2055,6 +2173,11 @@ next step: sign in on sello.wtf → Settings → Connect eBay and complete conse
 on auth.ebay.com.
 
 ## Current state
+- A separate, not-yet-committed landing page branch exists at
+  `/Users/jheller/Desktop/perc 30/worktrees/landing-page` on
+  `feature/sello-landing-page`. It is validated locally and not deployed. It
+  should be reviewed/committed/merged through the normal feature -> develop flow
+  if the owner wants the new landing page live.
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
   `dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh` from commit `c300b01`, aliased to
@@ -2129,6 +2252,26 @@ on auth.ebay.com.
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
 
 ## Recent work (newest first)
+- 2026-07-04 (Codex): Replaced the landing demo stepper with a mock-browser
+  product tour video panel. It now compresses photo capture, AI listing, pricing,
+  marketplace routing, and an eBay-ready seller-review draft into a single
+  autoplaying panel. Browser QA confirmed no `.demo-step` controls render,
+  desktop/mobile have no horizontal overflow, and the eBay ending shows
+  `/marketplaces/ebay/draft`, `Draft ready for seller review`, and the seller
+  approval gate.
+- 2026-07-04 (Codex): Applied `make-interfaces-feel-better` landing polish:
+  font smoothing, balanced/pretty wrapping, 40px+ hit areas, 0.96 press scale,
+  tabular mock numerals, theme-adaptive image outlines, CSS-only Play/Pause icon
+  crossfade, and shadow-ring surface treatment. Scope remained landing UI only.
+- 2026-07-04 (Codex): Built the planned Sello landing page in isolated worktree
+  `worktrees/landing-page` on `feature/sello-landing-page`. The implementation
+  is componentized under `src/components/landing`, uses the existing Sello
+  theme/status tokens, includes a client-side deterministic five-step demo, and
+  touches no backend/schema/marketplace/env code. Final gate passed: lint
+  (known two warnings only), tests 209 files / 1367 tests, Prisma validate,
+  build, and diff check. Local Chrome/Playwright visual QA covered desktop,
+  mobile, and demo click-to-Price. Figma capture was blocked by app
+  reauthentication.
 - 2026-07-04 (Codex): Added StockX listing-status reconciliation in commit
   this commit. The
   StockX client can fetch a stored listing's current status, submitted StockX
@@ -2408,6 +2551,9 @@ on auth.ebay.com.
 - 2026-06-08 (Claude): Phase 0 + Phase 1 built, verified, deployed to prod; magic-link + env-config fixes; comps pipeline.
 
 ## Blocked on owner (credentials / decisions — not code)
+- **Figma app reauthentication:** The Figma connector returned
+  `UNAUTHORIZED` / reauthentication required during the landing pass, so optional
+  Figma file/capture creation is blocked until the app connection is refreshed.
 - **Production StockX env/runtime verification:** Owner said the StockX Vercel
   envs were re-added and production was redeployed on 2026-07-04. Do not print
   values. Verify readiness through safe runtime booleans/UI/logs before any live
@@ -2456,26 +2602,29 @@ on auth.ebay.com.
   hardening.
 
 ## Next up (priority order)
-1. Deploy the 2026-07-04 StockX status-sync slice only if the owner wants it
+1. Review, commit, and merge/deploy `feature/sello-landing-page` if the owner
+   wants the new landing page live. Reauthenticate Figma first only if a Figma
+   capture/file is required.
+2. Deploy the 2026-07-04 StockX status-sync slice only if the owner wants it
    live.
-2. Verify production StockX runtime readiness after the owner's env redeploy via
+3. Verify production StockX runtime readiness after the owner's env redeploy via
    safe UI/API/log checks: `/api/jobs`/`/channels` should report StockX live API
    + auto-delist readiness. Keep values out of logs/chat.
-3. Connect the seller's StockX account, match one inventory item to an exact
+4. Connect the seller's StockX account, match one inventory item to an exact
    StockX product/variant, then run one controlled live create/activate smoke
    followed immediately by the StockX delist/deactivate smoke.
-4. Monitor production after the StockX automation deploy
+5. Monitor production after the StockX automation deploy
    (`dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh`) for any delayed runtime errors; initial
    error/fatal/500 log filters were clean.
-5. If an authenticated production owner session is available, run a
+6. If an authenticated production owner session is available, run a
    non-destructive seller smoke for plan/quota visibility, authenticated
    `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
    without payment completion, and Free portal safety.
-6. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+7. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
    revalidate manual Refresh before considering draft auto-discovery again.
-7. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+8. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
-8. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+9. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
 9. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.

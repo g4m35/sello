@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { PUBLIC_CONTACT_EMAIL } from "@/lib/contact";
+
 export const metadata: Metadata = {
   title: "Privacy Notice | sello",
   description:
@@ -59,7 +61,13 @@ export default function PrivacyPage() {
           </p>
 
           <h2 className="text-xl font-semibold text-zinc-100">Contact</h2>
-          <p>Contact information will be added before production launch.</p>
+          <p>
+            For privacy or support questions, email{" "}
+            <a className="underline underline-offset-4" href={`mailto:${PUBLIC_CONTACT_EMAIL}`}>
+              {PUBLIC_CONTACT_EMAIL}
+            </a>
+            .
+          </p>
         </section>
       </div>
     </main>
