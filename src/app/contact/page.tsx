@@ -10,25 +10,27 @@ export const metadata: Metadata = {
 
 export default function ContactPage() {
   return (
-    <main className="contact-page">
-      <section className="contact-panel">
-        <Link href="/" className="landing-brand" aria-label="Sello home">
-          Sello<span>.</span>
+    <main className="lp-contact">
+      <section className="lp-contact__panel">
+        <Link href="/" className="lp-contact__brand" aria-label="Sello home">
+          Sello<em>.</em>
         </Link>
         <div>
-          <p className="contact-panel__eyebrow">Contact</p>
+          <p className="lp-contact__eyebrow">Contact</p>
           <h1>Talk to Sello.</h1>
           <p>
             For early access, seller questions, support, or partnership notes,
             email the owner directly.
           </p>
         </div>
-        <a className="landing-button landing-button--primary" href={`mailto:${PUBLIC_CONTACT_EMAIL}`}>
-          {PUBLIC_CONTACT_EMAIL}
-        </a>
-        <Link href="/" className="landing-button landing-button--secondary">
-          Back to landing page
-        </Link>
+        <div className="lp-contact__actions">
+          <a className="lp-btn lp-btn--red" href={`mailto:${PUBLIC_CONTACT_EMAIL}`}>
+            {PUBLIC_CONTACT_EMAIL}
+          </a>
+          <Link href="/" className="lp-btn lp-btn--line">
+            Back to landing page
+          </Link>
+        </div>
       </section>
     </main>
   );
