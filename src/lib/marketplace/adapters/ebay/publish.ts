@@ -439,11 +439,24 @@ async function runStep<T>(
           .map((event) => event.step),
       });
     }
+    // Raw (non-typed) errors — socket resets, truncated bodies, JSON parse
+    // failures — can strike after the request was transmitted. Carry the
+    // started/succeeded step evidence so the publish handler can classify the
+    // failure as ambiguous instead of replayable.
     throw new EbayIntegrationError(
       ebayErrorCodes.publishFailed,
       "eBay sandbox publish step failed.",
       502,
-      { step, stepEvents },
+      {
+        step,
+        stepEvents,
+        startedSteps: stepEvents
+          .filter((event) => event.status === "started")
+          .map((event) => event.step),
+        succeededSteps: stepEvents
+          .filter((event) => event.status === "succeeded")
+          .map((event) => event.step),
+      },
     );
   }
 }

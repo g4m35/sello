@@ -146,6 +146,8 @@ function reservationPrisma(opts: {
   plan?: Plan;
   count?: number;
   periodStart?: Date | null;
+  subscriptionStatus?: "active" | "trialing" | "past_due" | "canceled" | "unpaid";
+  graceEndsAt?: Date | null;
 } = {}) {
   const account = { id: "acc-1", plan: opts.plan ?? "free" };
   const periodStart = opts.periodStart ?? null;
@@ -161,9 +163,16 @@ function reservationPrisma(opts: {
   const tx = {
     $executeRawUnsafe: vi.fn().mockResolvedValue(0),
     subscription: {
-      findUnique: vi.fn().mockImplementation(async () =>
-        periodStart === null ? null : { currentPeriodStart: periodStart },
-      ),
+      findUnique: vi.fn().mockImplementation(async () => {
+        if (account.plan === "free" && periodStart === null && !opts.subscriptionStatus) {
+          return null;
+        }
+        return {
+          currentPeriodStart: periodStart,
+          status: opts.subscriptionStatus ?? "active",
+          graceEndsAt: opts.graceEndsAt ?? null,
+        };
+      }),
     },
     account: {
       findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) =>
@@ -399,6 +408,29 @@ describe("atomic usage reservations", () => {
         now,
       }, state.prisma),
     ).resolves.toMatchObject({ allowed: false, reason: "USAGE_LIMIT_EXCEEDED" });
+  });
+
+  it("uses free quota for paid accounts outside their commercial grace window", async () => {
+    const state = reservationPrisma({
+      plan: "pro",
+      count: 10,
+      subscriptionStatus: "past_due",
+      graceEndsAt: new Date("2026-06-25T11:59:59Z"),
+    });
+    await expect(
+      reserveUsage({
+        accountId: "acc-1",
+        metric: "ai_listing",
+        idempotencyKey: "expired-grace-request",
+        operationType: "listing_draft",
+        operationId: "expired-grace-draft",
+        now,
+      }, state.prisma),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "USAGE_LIMIT_EXCEEDED",
+      limit: 10,
+    });
   });
 
   it("allows configured admins without bypassing durable accounting", async () => {

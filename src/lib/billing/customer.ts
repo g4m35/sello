@@ -8,6 +8,10 @@ import { getStripe } from "./stripe";
 
 type Db = ReturnType<typeof getPrisma>;
 
+function customerIdempotencyKey(accountId: string): string {
+  return `sello:billing:customer:${accountId}`;
+}
+
 // Find-or-create the Stripe customer for an account and persist its id on the
 // account's Subscription row (the billing record). Idempotent: once a customer
 // id is stored we reuse it, so repeat checkouts never spawn duplicate customers.
@@ -24,10 +28,13 @@ export async function ensureStripeCustomer(
   });
   if (existing?.stripeCustomerId) return existing.stripeCustomerId;
 
-  const customer = await stripe.customers.create({
-    email: email ?? undefined,
-    metadata: { accountId: account.id },
-  });
+  const customer = await stripe.customers.create(
+    {
+      email: email ?? undefined,
+      metadata: { accountId: account.id },
+    },
+    { idempotencyKey: customerIdempotencyKey(account.id) },
+  );
 
   await prisma.subscription.upsert({
     where: { accountId: account.id },
@@ -37,7 +44,10 @@ export async function ensureStripeCustomer(
       plan: "free",
       status: "active",
     },
-    update: { stripeCustomerId: customer.id },
+    // Concurrent first checkouts receive the same Stripe customer because the
+    // create request is account-idempotent. Avoid a needless write when the
+    // other request won the upsert race.
+    update: {},
   });
 
   return customer.id;

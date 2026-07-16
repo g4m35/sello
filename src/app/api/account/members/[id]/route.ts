@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getActiveAccount } from "@/lib/billing/account";
-import { revokeMember } from "@/lib/billing/membership";
+import { assertCanManageAccount, revokeMember } from "@/lib/billing/membership";
 import { safeErrorResponse } from "@/lib/errors";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
@@ -14,6 +14,7 @@ export async function DELETE(
   try {
     const user = await requireSupabaseUser(request);
     const account = await getActiveAccount(user.id);
+    await assertCanManageAccount(account, user.id);
     const { id } = await params;
     await revokeMember(account, id);
     return NextResponse.json({ ok: true });

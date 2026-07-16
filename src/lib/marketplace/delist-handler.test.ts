@@ -133,6 +133,7 @@ function createPrisma(opts: {
           idempotencyKey: data.idempotencyKey ?? null,
         };
         state.attempts.push(attempt);
+        state.listing?.publishAttempts.push(attempt);
         return { id: attempt.id };
       },
       async update({ where, data }) {
@@ -310,6 +311,7 @@ describe("executeEbayDelist", () => {
             ebayErrorCodes.delistFailed,
             "eBay could not end this listing.",
             502,
+            { status: 400 },
           ),
         ),
       ),
@@ -337,6 +339,7 @@ describe("executeEbayDelist", () => {
             ebayErrorCodes.delistFailed,
             'eBay delist request failed: {"errors":[{"message":"Authorization: Bearer secret.token"}]}',
             502,
+            { status: 400 },
           ),
         ),
       ),
@@ -349,6 +352,38 @@ describe("executeEbayDelist", () => {
     expect(serialized).not.toContain("Bearer");
     expect(serialized).not.toContain("secret.token");
     expect(serialized).not.toMatch(/\{"errors"/);
+  });
+
+  it("keeps an ambiguous eBay delist RUNNING and blocks a replay until reconciliation", async () => {
+    const prisma = createPrisma({});
+    const delist = vi.fn().mockRejectedValue(
+      new EbayIntegrationError(
+        ebayErrorCodes.delistFailed,
+        "eBay delist timed out.",
+        502,
+        { status: 504 },
+      ),
+    );
+
+    await expect(executeEbayDelist(prisma, input, delist)).rejects.toMatchObject({
+      code: ebayErrorCodes.delistFailed,
+    });
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "RUNNING",
+      code: "EBAY_DELIST_OUTCOME_UNKNOWN",
+    });
+    expect(prisma._state.listing).toMatchObject({
+      status: "NEEDS_REVIEW",
+      lastError:
+        "eBay may have ended this listing. Reconcile it before retrying the delist.",
+    });
+    expect(prisma._state.events.some((event) => event.kind === "delist_outcome_unknown"))
+      .toBe(true);
+
+    await expect(executeEbayDelist(prisma, input, delist)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(delist).toHaveBeenCalledTimes(1);
   });
 
   it("blocks duplicate delist while a delist attempt is running", async () => {
@@ -498,6 +533,7 @@ describe("executeStockXDelist", () => {
             stockxErrorCodes.delistFailed,
             "StockX could not end this listing.",
             502,
+            { status: 400 },
           ),
         ),
       ),
@@ -511,6 +547,38 @@ describe("executeStockXDelist", () => {
     expect(prisma._state.listing?.status).toBe("LISTED");
     expect(prisma._state.listing?.lastError).toBe("StockX could not end this listing.");
     expect(prisma._state.events.some((e) => e.kind === "delist_failed")).toBe(true);
+  });
+
+  it("keeps an ambiguous StockX delist RUNNING and blocks a replay until reconciliation", async () => {
+    const prisma = createPrisma({ listing: stockxListing });
+    const delist = vi.fn().mockRejectedValue(
+      new StockXIntegrationError(
+        stockxErrorCodes.delistFailed,
+        "StockX delist timed out.",
+        502,
+        { status: 504 },
+      ),
+    );
+
+    await expect(executeStockXDelist(prisma, input, delist)).rejects.toMatchObject({
+      code: stockxErrorCodes.delistFailed,
+    });
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "RUNNING",
+      code: "STOCKX_DELIST_OUTCOME_UNKNOWN",
+    });
+    expect(prisma._state.listing).toMatchObject({
+      status: "NEEDS_REVIEW",
+      lastError:
+        "StockX may have ended this listing. Reconcile it before retrying the delist.",
+    });
+    expect(prisma._state.events.some((event) => event.kind === "delist_outcome_unknown"))
+      .toBe(true);
+
+    await expect(executeStockXDelist(prisma, input, delist)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(delist).toHaveBeenCalledTimes(1);
   });
 
   it("blocks duplicate StockX delist while a delist attempt is running", async () => {

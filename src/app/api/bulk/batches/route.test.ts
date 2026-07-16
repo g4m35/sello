@@ -8,9 +8,13 @@ const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   listBulkBatches: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
 }));
 
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
+}));
 vi.mock("@/lib/bulk-intake/service", () => ({
   createBulkBatch: mocks.createBulkBatch,
   listBulkBatches: mocks.listBulkBatches,
@@ -26,6 +30,10 @@ describe("/api/bulk/batches", () => {
     mocks.getPrisma.mockReturnValue({});
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
     mocks.getActiveAccount.mockResolvedValue({ id: "account-1", ownerUserId: "user-1", plan: "free" });
+    mocks.resolveRuntimeEntitlements.mockResolvedValue({
+      account: { id: "account-1", ownerUserId: "user-1", plan: "pro" },
+      plan: "free",
+    });
     mocks.listBulkBatches.mockResolvedValue([]);
     mocks.createBulkBatch.mockResolvedValue({ id: "batch-1" });
   });
@@ -58,6 +66,7 @@ describe("/api/bulk/batches", () => {
       }),
       expect.anything(),
     );
+    expect(mocks.createBulkBatch.mock.calls[0][0].account.plan).toBe("free");
   });
 
   it("lists only through the active account scope", async () => {

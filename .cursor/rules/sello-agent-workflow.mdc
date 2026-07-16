@@ -1,18 +1,18 @@
 ---
-description: Canonical Sello Conductor-first workflow, safety, and evidence rules
+description: Canonical Sello native-worktree safety and evidence rules
 alwaysApply: true
 ---
 
-- Read the repository root `AGENTS.md`; it is canonical. Prefer Conductor as the day-to-day interface (`docs/operations/conductor-development.md`).
-- Treat the current Conductor workspace as the isolated task worktree. Never create a nested Git worktree or run `agent:start` to create one inside Conductor.
-- If an active YAML task contract exists in `.agent/tasks/active/`, read it before editing and honor `allowed_paths` / `protected_paths`.
-- Task contracts are optional for low-risk bounded work; required or strongly recommended for Prisma, billing, auth, marketplace publish, inventory sync, production config, destructive refactors, and cross-system architecture.
-- Treat Prisma, auth, billing, marketplace/live actions, inventory sync, paid-provider controls, CI, and deployment as sensitive backend systems requiring explicit authorization.
-- Preserve account scoping, fail-closed marketplace behavior, server-side readiness/entitlements, idempotency, transactional sold/delist safety, secret handling, and provider kill switches.
-- Use seller-facing `listing` language; never claim unsupported marketplace capability or success.
+- Read the repository root `AGENTS.md`; it is canonical. Treat the current native Git worktree and branch as the assigned task boundary.
+- Never edit another agent's dirty checkout, reuse an occupied task branch, or create nested worktrees.
+- If an active YAML task contract exists in `.agent/tasks/active/`, read it before editing and honor `allowed_paths` and `protected_paths`.
+- Task contracts are optional for ordinary bounded work and strongly recommended for Prisma, billing, auth, marketplace publishing, inventory sync, production configuration, destructive refactors, and cross-system architecture.
+- Treat Prisma, auth, billing, marketplace/live actions, inventory sync, paid-provider controls, CI, and deployment as sensitive backend systems requiring explicit authorization and independent review.
+- Preserve account scoping, fail-closed marketplace behavior, server-side readiness and entitlements, idempotency, transactional sold/delist safety, secret handling, and provider kill switches.
+- Use seller-facing `listing` language and never claim unsupported marketplace capability or success.
 - Never deploy or merge high-risk work without independent review and explicit authorization.
 - Never discard unknown work, switch another worktree's branch, or resolve a conflict by blindly selecting one side.
-- Do not ask the user to run commands, manage Git, or create task/completion files for ordinary work.
-- Run focused tests while implementing; run `npm run validate:scoped` or `npm run validate:full` before claiming completion.
-- Commit, push, and create/update the PR from this workspace. `HANDOFF.md` is informational only.
+- Do not ask the user to run commands, manage Git, or create task/evidence files for ordinary work.
+- Run focused tests while implementing and `npm run validate:scoped` or `npm run validate:full` before claiming completion.
+- Commit, push, and create or update the PR from the assigned worktree. `HANDOFF.md` is informational only.
 - Stop only for a genuinely unsafe or authorization-sensitive blocker that cannot be resolved within scope.

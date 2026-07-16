@@ -16,6 +16,7 @@ import {
 import {
   createNotification,
   delistFailedCopy,
+  marketplaceLabel,
   type NotificationPrismaLike,
 } from "@/lib/inventory/notifications";
 import {
@@ -115,7 +116,12 @@ type ClaimUpdateMany = {
 // Race-safe reaper writes: each conditional on status:'running' so a row that a
 // real worker already moved on is never clobbered. attempts is NOT reset.
 type RequeueStaleUpdateMany = {
-  where: { id: string; status: "running"; leaseOwner: string };
+  where: {
+    id: string;
+    status: "running";
+    leaseOwner: string;
+    updatedAt: { lte: Date };
+  };
   data: {
     status: "retry_wait";
     runAfter: Date;
@@ -126,7 +132,12 @@ type RequeueStaleUpdateMany = {
 };
 
 type FailStaleUpdateMany = {
-  where: { id: string; status: "running"; leaseOwner: string };
+  where: {
+    id: string;
+    status: "running";
+    leaseOwner: string;
+    updatedAt: { lte: Date };
+  };
   data: {
     status: "failed";
     errorCode: string;
@@ -139,7 +150,12 @@ type FailStaleUpdateMany = {
 };
 
 type ParkStaleExternalUpdateMany = {
-  where: { id: string; status: "running"; leaseOwner: string };
+  where: {
+    id: string;
+    status: "running";
+    leaseOwner: string;
+    updatedAt: { lte: Date };
+  };
   data: {
     status: "needs_review";
     errorCode: string;
@@ -257,7 +273,12 @@ type WorkerListingRow = {
   marketplace: Marketplace;
   status: MarketplaceListingStatus;
   externalUrl: string | null;
-  inventoryItem: { accountId: string; sellerId: string; productName: string };
+  inventoryItem: {
+    accountId: string;
+    sellerId: string;
+    productName: string;
+    status?: InventoryStatus;
+  };
 };
 
 type WorkerListingDelegate = {
@@ -271,7 +292,14 @@ type WorkerListingDelegate = {
       marketplace: true;
       status: true;
       externalUrl: true;
-      inventoryItem: { select: { accountId: true; sellerId: true; productName: true } };
+      inventoryItem: {
+        select: {
+          accountId: true;
+          sellerId: true;
+          productName: true;
+          status?: true;
+        };
+      };
     };
   }): Promise<WorkerListingRow | null>;
   update(args: {
@@ -301,6 +329,60 @@ type WorkerInventoryItemDelegate = {
   }): Promise<{ id: string }>;
 };
 
+type RecoverableMarketplaceAttemptRow = {
+  id: string;
+  code: string;
+  requestedBy: string;
+  startedAt: Date;
+  marketplaceListing: {
+    id: string;
+    marketplace: Marketplace;
+    inventoryItemId: string;
+    inventoryItem: {
+      accountId: string;
+    };
+  };
+};
+
+type WorkerPublishAttemptDelegate = {
+  findMany(args: {
+    where: { status: "RUNNING"; startedAt: { lte: Date } };
+    select: {
+      id: true;
+      code: true;
+      requestedBy: true;
+      startedAt: true;
+      marketplaceListing: {
+        select: {
+          id: true;
+          marketplace: true;
+          inventoryItemId: true;
+          inventoryItem: {
+            select: {
+              accountId: true;
+            };
+          };
+        };
+      };
+    };
+    take: number;
+    orderBy: { startedAt: "asc" };
+  }): Promise<RecoverableMarketplaceAttemptRow[]>;
+  updateMany(args: {
+    where: {
+      id: string;
+      status: "RUNNING";
+      code: string;
+      startedAt: { lte: Date };
+    };
+    data: {
+      code: string;
+      reason: string;
+      completedAt: null;
+    };
+  }): Promise<{ count: number }>;
+};
+
 type WorkerNotificationDelegate = NotificationPrismaLike["notification"] & {
   findFirst(args: {
     where: {
@@ -321,6 +403,7 @@ export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
     marketplaceListing: WorkerListingDelegate;
     inventoryItem: WorkerInventoryItemDelegate;
     notification: WorkerNotificationDelegate;
+    publishAttempt?: WorkerPublishAttemptDelegate;
   };
 
 export type SyncJobControlPrismaLike = InventoryEventPrismaLike & {
@@ -604,7 +687,12 @@ export async function requeueStaleRunningSyncJobs(
     if (!job.leaseOwner) continue;
     if (job.type === "delist_marketplace_listing") {
       const result = await db.syncJob.updateMany({
-        where: { id: job.id, status: "running", leaseOwner: job.leaseOwner },
+        where: {
+          id: job.id,
+          status: "running",
+          leaseOwner: job.leaseOwner,
+          updatedAt: { lte: cutoff },
+        },
         data: {
           status: "needs_review",
           errorCode: "DELIST_OUTCOME_UNKNOWN",
@@ -623,7 +711,12 @@ export async function requeueStaleRunningSyncJobs(
     if (job.attempts < job.maxAttempts) {
       const runAfter = new Date(now.getTime() + retryDelayMs(job.attempts, job.id));
       const result = await db.syncJob.updateMany({
-        where: { id: job.id, status: "running", leaseOwner: job.leaseOwner },
+        where: {
+          id: job.id,
+          status: "running",
+          leaseOwner: job.leaseOwner,
+          updatedAt: { lte: cutoff },
+        },
         data: {
           status: "retry_wait",
           runAfter,
@@ -635,7 +728,12 @@ export async function requeueStaleRunningSyncJobs(
       if (result.count === 1) summary.requeued += 1;
     } else {
       const result = await db.syncJob.updateMany({
-        where: { id: job.id, status: "running", leaseOwner: job.leaseOwner },
+        where: {
+          id: job.id,
+          status: "running",
+          leaseOwner: job.leaseOwner,
+          updatedAt: { lte: cutoff },
+        },
         data: {
           status: "failed",
           errorCode: "MAX_ATTEMPTS_EXHAUSTED",
@@ -653,6 +751,159 @@ export async function requeueStaleRunningSyncJobs(
     }
   }
   return summary;
+}
+
+export type RecoverStaleMarketplaceAttemptsSummary = {
+  reconciliationRequired: number;
+};
+
+/**
+ * Converts abandoned RUNNING marketplace mutations into an explicit, still
+ * non-replayable reconciliation state. PublishAttempt has no updatedAt or
+ * dedicated unknown-outcome enum today, so RUNNING + a stable reconciliation
+ * code is the safest state the current schema can represent: the partial unique
+ * index continues blocking duplicate writes while a deduped seller task makes
+ * the recovery work visible.
+ */
+export async function recoverStaleRunningMarketplaceAttempts(
+  db: SyncWorkerPrismaLike = getPrisma() as unknown as SyncWorkerPrismaLike,
+  opts: { olderThanMinutes?: number; limit?: number } = {},
+): Promise<RecoverStaleMarketplaceAttemptsSummary> {
+  if (!db.publishAttempt) return { reconciliationRequired: 0 };
+
+  const limit = clampLimit(opts.limit);
+  const minutes = clampStaleMinutes(opts.olderThanMinutes);
+  const cutoff = new Date(Date.now() - minutes * 60_000);
+  const attempts = await db.publishAttempt.findMany({
+    where: { status: "RUNNING", startedAt: { lte: cutoff } },
+    select: {
+      id: true,
+      code: true,
+      requestedBy: true,
+      startedAt: true,
+      marketplaceListing: {
+        select: {
+          id: true,
+          marketplace: true,
+          inventoryItemId: true,
+          inventoryItem: {
+            select: {
+              accountId: true,
+            },
+          },
+        },
+      },
+    },
+    take: limit,
+    orderBy: { startedAt: "asc" },
+  });
+
+  let reconciliationRequired = 0;
+  for (const attempt of attempts) {
+    const descriptor = reconciliationDescriptor(
+      attempt.code,
+      attempt.marketplaceListing.marketplace,
+    );
+    if (!descriptor) continue;
+    const newlyRequiresReconciliation = attempt.code !== descriptor.code;
+
+    const result = await db.publishAttempt.updateMany({
+      where: {
+        id: attempt.id,
+        status: "RUNNING",
+        code: attempt.code,
+        startedAt: { lte: cutoff },
+      },
+      data: {
+        code: descriptor.code,
+        reason: descriptor.reason,
+        completedAt: null,
+      },
+    });
+    if (result.count !== 1) continue;
+
+    const dedupeKey = `publish-attempt:${attempt.id}:reconciliation`;
+    const listing = attempt.marketplaceListing;
+    await createReviewTask(db, {
+      userId: attempt.requestedBy,
+      accountId: listing.inventoryItem.accountId,
+      type: "sync_conflict",
+      inventoryItemId: listing.inventoryItemId,
+      marketplace: listing.marketplace,
+      title: descriptor.title,
+      description: descriptor.description,
+      dedupeKey,
+      payload: {
+        publishAttemptId: attempt.id,
+        marketplaceListingId: listing.id,
+        reasonCode: descriptor.code,
+      } as Prisma.InputJsonValue,
+    });
+    await createNotification(db, {
+      userId: attempt.requestedBy,
+      accountId: listing.inventoryItem.accountId,
+      inventoryItemId: listing.inventoryItemId,
+      kind: "sync_conflict",
+      title: descriptor.title,
+      body: descriptor.notification,
+      dedupeKey,
+    });
+
+    if (newlyRequiresReconciliation) reconciliationRequired += 1;
+  }
+
+  return { reconciliationRequired };
+}
+
+function reconciliationDescriptor(
+  code: string,
+  marketplace: Marketplace,
+): {
+  code: string;
+  reason: string;
+  title: string;
+  description: string;
+  notification: string;
+} | null {
+  if (marketplace !== "ebay" && marketplace !== "stockx") return null;
+  if (
+    !code.endsWith("_STARTED") &&
+    !code.endsWith("_OUTCOME_UNKNOWN") &&
+    !code.endsWith("_RECONCILIATION_REQUIRED")
+  ) {
+    return null;
+  }
+
+  const operation = code.includes("DELIST")
+    ? "delist"
+    : code.includes("PUBLISH") || code.includes("LISTING")
+      ? "publish"
+      : null;
+  if (!operation) return null;
+
+  const prefix = marketplace === "ebay" ? "EBAY" : "STOCKX";
+  const family = operation === "delist"
+    ? "DELIST"
+    : marketplace === "ebay"
+      ? "PUBLISH"
+      : "LISTING";
+  const reconciliationCode = `${prefix}_${family}_RECONCILIATION_REQUIRED`;
+  const label = marketplaceLabel(marketplace);
+  const action = operation === "delist" ? "ending" : "publishing";
+
+  return {
+    code: reconciliationCode,
+    reason:
+      `${label} may have applied the ${operation} request. ` +
+      "Reconcile the marketplace state before retrying.",
+    title: `Review possible ${label} ${operation}`,
+    description:
+      `A prior attempt at ${action} this listing may have reached ${label}. ` +
+      "Sello has blocked another automatic attempt until the marketplace state is reconciled.",
+    notification:
+      `${label} may have applied an earlier ${operation} request. ` +
+      "Review the marketplace listing before trying again.",
+  };
 }
 
 export async function retrySyncJobForAdmin(
@@ -780,7 +1031,13 @@ async function execDelist(
       marketplace: true,
       status: true,
       externalUrl: true,
-      inventoryItem: { select: { accountId: true, sellerId: true, productName: true } },
+      inventoryItem: {
+        select: {
+          accountId: true,
+          sellerId: true,
+          productName: true,
+        },
+      },
     },
   });
 
@@ -1129,14 +1386,27 @@ async function execDetectStatus(
       marketplace: true,
       status: true,
       externalUrl: true,
-      inventoryItem: { select: { accountId: true, sellerId: true, productName: true } },
+      inventoryItem: {
+        select: {
+          accountId: true,
+          sellerId: true,
+          productName: true,
+          status: true,
+        },
+      },
     },
   });
 
   if (!listing) {
     return parkJobIntegrityReview(db, job, "AUTHORITATIVE_LISTING_NOT_FOUND");
   }
-  if (TERMINAL_LISTING_STATUSES.has(listing.status)) {
+  // A source listing can have been marked SOLD by an older split write while
+  // the canonical item and its required delist jobs were never committed. Only
+  // short-circuit SOLD when the master item confirms the reconciliation.
+  if (
+    TERMINAL_LISTING_STATUSES.has(listing.status) &&
+    (listing.status !== "SOLD" || listing.inventoryItem.status === "SOLD")
+  ) {
     return finalizeSucceeded(db, job);
   }
 
@@ -1162,12 +1432,15 @@ async function execDetectStatus(
   if (gate) return gate;
   if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
   try {
-    await stockxStatusSync(db as unknown as StockXStatusSyncPrismaLike, {
+    const result = await stockxStatusSync(db as unknown as StockXStatusSyncPrismaLike, {
       userId: job.userId,
       accountId: listing.inventoryItem.accountId,
       inventoryItemId,
       marketplaceListingId,
     });
+    if (result.status === "unknown") {
+      return finalizePendingStockXStatus(db, job, listing);
+    }
   } catch (error) {
     await recordInventoryEvent(db, {
       inventoryItemId,
@@ -1191,6 +1464,61 @@ async function execDetectStatus(
   }
 
   return finalizeSucceeded(db, job);
+}
+
+async function finalizePendingStockXStatus(
+  db: SyncWorkerPrismaLike,
+  job: ClaimedSyncJob,
+  listing: WorkerListingRow,
+): Promise<RunSummary> {
+  if (job.attempts < job.maxAttempts) {
+    const result = await db.syncJob.updateMany({
+      where: { id: job.id, status: "running", leaseOwner: requiredLease(job) },
+      data: {
+        status: "retry_wait",
+        errorCode: "STOCKX_STATUS_PENDING",
+        errorMessage: "StockX is still processing this listing. Sello will check again.",
+        runAfter: new Date(Date.now() + retryDelayMs(job.attempts, job.id)),
+        lockedAt: null,
+        leaseOwner: null,
+        retryClass: "transient",
+        completedAt: null,
+      },
+    });
+    return result.count === 1
+      ? { status: "retry_wait" }
+      : currentJobSummary(db, job.id);
+  }
+
+  if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+  const dedupeKey = `sync-job:${job.id}:stockx-status-pending`;
+  await createReviewTask(db, {
+    userId: job.userId,
+    accountId: job.accountId,
+    type: "sync_conflict",
+    inventoryItemId: job.inventoryItemId,
+    marketplace: "stockx",
+    title: "Review pending StockX listing status",
+    description:
+      "StockX has not returned a final listing status after repeated checks. Review the listing before taking further action.",
+    dedupeKey,
+    payload: {
+      syncJobId: job.id,
+      marketplaceListingId: listing.id,
+      reasonCode: "STOCKX_STATUS_PENDING",
+    } as Prisma.InputJsonValue,
+  });
+  await createNotification(db, {
+    userId: job.userId,
+    accountId: job.accountId,
+    inventoryItemId: job.inventoryItemId,
+    kind: "sync_conflict",
+    title: "StockX listing status needs review",
+    body:
+      "StockX is still processing this listing after repeated checks. Review it before making another marketplace change.",
+    dedupeKey,
+  });
+  return finalizeNeedsReview(db, job, "STOCKX_STATUS_REVIEW_REQUIRED");
 }
 
 // --- Executor: notify_user ---------------------------------------------------

@@ -3,24 +3,30 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { safeErrorResponse, ValidationError } from "@/lib/errors";
+import { requireRuntimeFeatureAccess } from "@/lib/auth/feature-access";
+import { getActiveAccount } from "@/lib/billing/account";
+import { AppError, safeErrorResponse, ValidationError } from "@/lib/errors";
 import {
+  recoverStaleRunningMarketplaceAttempts,
   requeueStaleRunningSyncJobs,
   runQueuedSyncJobs,
+  type SyncJobExecutionGate,
+  type SyncJobExecutionGateDecision,
   type SyncWorkerPrismaLike,
 } from "@/lib/inventory-sync/jobs/worker";
 import { getPrisma } from "@/lib/prisma";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 // Internal-only worker trigger. A trusted scheduler/worker (not the public
 // internet) POSTs here to claim + execute a batch of queued SyncJobs. This route:
 //   1. fails closed on an internal shared secret (503 if unset, 401 on mismatch);
-//   2. optionally requeues stale 'running' jobs, then claims a bounded batch and
-//      runs each via the engine's worker;
+//   2. optionally recovers stale jobs/attempts, then claims a bounded batch and
+//      runs each via the engine's worker behind the production authorization gate;
 //   3. returns ONLY a sanitized summary — never job payloads, errors, or secrets.
-// The only live side effect any job can perform is the eBay delist, executed via
-// the existing ownership-scoped delist handler. No secrets are logged.
+// Marketplace side effects stay account-scoped and execute only through the
+// existing handlers. No secrets are logged.
 
 const BodySchema = z
   .object({
@@ -48,6 +54,79 @@ function secretMatches(provided: string, expected: string): boolean {
   const left = Buffer.from(provided);
   const right = Buffer.from(expected);
   return left.length === right.length && timingSafeEqual(left, right);
+}
+
+type WorkerIdentity = { id: string; email?: string | null };
+
+type ProductionExecutionGateDeps = {
+  resolveUserById(userId: string): Promise<WorkerIdentity | null>;
+  requireEbayDelistAccess(user: WorkerIdentity): Promise<{ id: string }>;
+  resolveActiveAccount(userId: string): Promise<{ id: string }>;
+};
+
+export function createProductionExecutionGate(
+  db: SyncWorkerPrismaLike,
+  deps: Partial<ProductionExecutionGateDeps> = {},
+): SyncJobExecutionGate {
+  const resolved: ProductionExecutionGateDeps = {
+    resolveUserById: async (userId) => {
+      const { data, error } = await createSupabaseServiceClient().auth.admin.getUserById(
+        userId,
+      );
+      if (error || !data.user) return null;
+      return { id: data.user.id, email: data.user.email };
+    },
+    requireEbayDelistAccess: async (user) => {
+      const runtime = await requireRuntimeFeatureAccess(
+        user,
+        "ebayDelist",
+        db as never,
+      );
+      return runtime.account;
+    },
+    resolveActiveAccount: (userId) => getActiveAccount(userId, db as never),
+    ...deps,
+  };
+
+  return async (input): Promise<SyncJobExecutionGateDecision> => {
+    try {
+      const user = await resolved.resolveUserById(input.userId);
+      if (!user || user.id !== input.userId) {
+        return {
+          allowed: false,
+          code: "WORKER_IDENTITY_UNAVAILABLE",
+          sellerCopy: "Automatic marketplace actions are temporarily unavailable.",
+        };
+      }
+
+      const account =
+        input.marketplace === "ebay" && input.operation === "delist"
+          ? await resolved.requireEbayDelistAccess(user)
+          : await resolved.resolveActiveAccount(user.id);
+      if (account.id !== input.accountId) {
+        return {
+          allowed: false,
+          code: "WORKER_ACCOUNT_SCOPE_MISMATCH",
+          sellerCopy: "This marketplace action no longer matches the active account.",
+        };
+      }
+
+      return {
+        allowed: true,
+        code: "WORKER_EXECUTION_AUTHORIZED",
+        sellerCopy: "Marketplace action authorized.",
+      };
+    } catch (error) {
+      if (error instanceof AppError) {
+        return {
+          allowed: false,
+          code: error.code ?? "WORKER_EXECUTION_NOT_AUTHORIZED",
+          sellerCopy: error.message,
+        };
+      }
+      throw error;
+    }
+  };
 }
 
 export async function POST(request: Request) {
@@ -84,6 +163,7 @@ export async function run(request: Request, db: SyncWorkerPrismaLike) {
     // worker clamps staleOlderThanMinutes server-side; limit stays bounded too.
     let requeuedStale = 0;
     let failedStale = 0;
+    let reconciliationRequiredAttempts = 0;
     if (parsed.requeueStale) {
       const stale = await requeueStaleRunningSyncJobs(db, {
         olderThanMinutes: parsed.staleOlderThanMinutes,
@@ -91,15 +171,25 @@ export async function run(request: Request, db: SyncWorkerPrismaLike) {
       });
       requeuedStale = stale.requeued;
       failedStale = stale.failed;
+      const attempts = await recoverStaleRunningMarketplaceAttempts(db, {
+        olderThanMinutes: parsed.staleOlderThanMinutes,
+        limit: parsed.limit,
+      });
+      reconciliationRequiredAttempts = attempts.reconciliationRequired;
     }
 
-    const summary = await runQueuedSyncJobs(db, { limit: parsed.limit });
+    const summary = await runQueuedSyncJobs(
+      db,
+      { limit: parsed.limit },
+      { authorizeExecution: createProductionExecutionGate(db) },
+    );
 
     // Sanitized summary only — counts, never job payloads/errors/secrets.
     return NextResponse.json({
       ok: true,
       requeuedStale,
       failedStale,
+      reconciliationRequiredAttempts,
       claimed: summary.claimed,
       succeeded: summary.succeeded,
       failed: summary.failed,

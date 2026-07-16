@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import { NextResponse } from "next/server";
 
-import { requireRuntimeFeatureAccess } from "@/lib/auth/feature-access";
-import { getActiveAccount } from "@/lib/billing/account";
+import {
+  requireRuntimeFeatureAccess,
+  resolveRuntimeEntitlements,
+} from "@/lib/auth/feature-access";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
-import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import {
   executeBulkEbayPublish,
@@ -44,9 +45,9 @@ export async function POST(request: Request) {
     const prisma = getPrisma();
     const resolved = marketplace === "ebay"
       ? await requireRuntimeFeatureAccess(user, "liveEbayPublish", prisma)
-      : null;
-    const account = resolved?.account ?? (await getActiveAccount(user.id, prisma));
-    assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length, user);
+      : await resolveRuntimeEntitlements(user, prisma);
+    const account = { ...resolved.account, plan: resolved.plan };
+    assertBulkBatchSize(account, itemIds.length, user);
 
     const result =
       marketplace === "stockx"

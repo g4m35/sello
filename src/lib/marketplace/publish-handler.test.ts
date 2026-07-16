@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { InventoryStatus } from "@/generated/prisma/client";
 
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
-import { stockxErrorCodes } from "./adapters/stockx/errors";
+import { StockXIntegrationError, stockxErrorCodes } from "./adapters/stockx/errors";
 import {
   executePublish,
   publishingMigrationMissingCode,
@@ -407,6 +407,7 @@ function createEbayFakePrisma(opts?: {
         data,
       }: {
         data: {
+          marketplaceListingId: string;
           status: string;
           code: string;
           reason: string | null;
@@ -423,14 +424,20 @@ function createEbayFakePrisma(opts?: {
           );
         }
         const id = `attempt-${state.attempts.length + 1}`;
-        state.attempts.push({
+        const attempt = {
           id,
           status: data.status,
           code: data.code,
           reason: data.reason ?? null,
           idempotencyKey: data.idempotencyKey ?? null,
           adapterResult: "adapterResult" in data ? data.adapterResult : null,
-        });
+        };
+        state.attempts.push(attempt);
+        for (const listing of state.listings.values()) {
+          if (listing.id === data.marketplaceListingId) {
+            listing.publishAttempts?.push(attempt);
+          }
+        }
         return { id };
       },
       async update({
@@ -1027,6 +1034,85 @@ describe("executePublish — eBay dispatch", () => {
       ]),
     );
   });
+
+  it("keeps an ambiguous eBay publish RUNNING and blocks a replay until reconciliation", async () => {
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockRejectedValue(
+      new EbayIntegrationError(
+        ebayErrorCodes.publishFailed,
+        "eBay publish timed out.",
+        502,
+        {
+          step: "publish",
+          stepEvents: [
+            { step: "inventory_item", status: "started" },
+            { step: "inventory_item", status: "succeeded" },
+            { step: "offer", status: "started" },
+            { step: "offer", status: "succeeded" },
+            { step: "publish", status: "started" },
+            { step: "publish", status: "failed" },
+          ],
+          startedSteps: ["inventory_item", "offer", "publish"],
+          succeededSteps: ["inventory_item", "offer"],
+          ebayError: { status: 504, message: "Gateway timeout." },
+        },
+      ),
+    );
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.publishFailed });
+
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "RUNNING",
+      code: "EBAY_PUBLISH_OUTCOME_UNKNOWN",
+    });
+    expect(prisma._state.events.some((event) => event.kind === "publish_outcome_unknown"))
+      .toBe(true);
+    expect(prisma._state.updates.at(-1)?.data).toMatchObject({
+      status: "NEEDS_REVIEW",
+      lastError:
+        "eBay may have applied the publish request. Reconcile the offer and listing before retrying.",
+    });
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.alreadyPublished, status: 409 });
+    expect(ebayPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a raw transport failure during a mutating step as ambiguous even when startedSteps is missing", async () => {
+    // Regression: runStep's fallback wrap for non-typed errors (socket reset,
+    // truncated body, JSON parse failure) used to omit startedSteps, letting
+    // an in-flight publish be recorded as replayable FAILED.
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockRejectedValue(
+      new EbayIntegrationError(
+        ebayErrorCodes.publishFailed,
+        "eBay sandbox publish step failed.",
+        502,
+        {
+          step: "publish",
+          stepEvents: [
+            { step: "inventory_item", status: "started" },
+            { step: "inventory_item", status: "succeeded" },
+            { step: "publish", status: "started" },
+            { step: "publish", status: "failed" },
+          ],
+          // no startedSteps / succeededSteps: simulates the fallback wrap
+        },
+      ),
+    );
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.publishFailed });
+
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "RUNNING",
+      code: "EBAY_PUBLISH_OUTCOME_UNKNOWN",
+    });
+  });
 });
 
 describe("executePublish — StockX dispatch", () => {
@@ -1113,6 +1199,39 @@ describe("executePublish — StockX dispatch", () => {
       code: stockxErrorCodes.listingNotEnabled,
     });
     expect(prisma._state.updates).toHaveLength(0);
+  });
+
+  it("keeps an ambiguous StockX publish RUNNING and blocks a replay until reconciliation", async () => {
+    const prisma = createEbayFakePrisma();
+    const stockxPublish = vi.fn().mockRejectedValue(
+      new StockXIntegrationError(
+        stockxErrorCodes.listingFailed,
+        "StockX API request failed.",
+        502,
+        { status: 504 },
+      ),
+    );
+
+    await expect(
+      executePublish(prisma, input, undefined, undefined, stockxPublish),
+    ).rejects.toMatchObject({ code: stockxErrorCodes.listingFailed });
+
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "RUNNING",
+      code: "STOCKX_LISTING_OUTCOME_UNKNOWN",
+    });
+    expect(prisma._state.events.some((event) => event.kind === "publish_outcome_unknown"))
+      .toBe(true);
+    expect(prisma._state.updates.at(-1)?.data).toMatchObject({
+      status: "NEEDS_REVIEW",
+      lastError:
+        "StockX may have accepted the listing request. Reconcile its status before retrying.",
+    });
+
+    await expect(
+      executePublish(prisma, input, undefined, undefined, stockxPublish),
+    ).rejects.toMatchObject({ code: stockxErrorCodes.alreadyPublished, status: 409 });
+    expect(stockxPublish).toHaveBeenCalledTimes(1);
   });
 
   it("blocks duplicate StockX publish when a listing id already exists", async () => {
