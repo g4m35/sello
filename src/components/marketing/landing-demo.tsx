@@ -25,7 +25,7 @@ const STEPS = [
     id: "publish",
     label: "Publish",
     title: "Ship to channels",
-    blurb: "Publish across marketplaces. Sync inventory and delist when sold.",
+    blurb: "Publish where supported; export assisted listings elsewhere.",
   },
 ] as const;
 
@@ -226,7 +226,7 @@ function ScenePublish() {
       <article className="demo-publish__card demo-publish__card--primary">
         <span className="demo-publish__badge">Automated</span>
         <h4>eBay</h4>
-        <p>Publish directly through official APIs.</p>
+        <p>Publish through official APIs when access and eligibility allow.</p>
         <span className="demo-publish__cta">Publish listing</span>
       </article>
       <article className="demo-publish__card">

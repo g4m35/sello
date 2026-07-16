@@ -20,11 +20,14 @@ export type InventoryEventPrismaLike = {
       data: {
         inventoryItemId: string;
         userId: string;
+        accountId: string;
         type: InventoryEventType;
         source: SignalSource;
         marketplace?: Marketplace | null;
         confidence?: number | null;
         payload: Prisma.InputJsonValue;
+        externalEventId?: string | null;
+        correlationId?: string | null;
       };
     }): Promise<{ id: string }>;
   };
@@ -33,11 +36,14 @@ export type InventoryEventPrismaLike = {
 export type RecordInventoryEventInput = {
   inventoryItemId: string;
   userId: string;
+  accountId: string;
   type: InventoryEventType;
   source: SignalSource;
   marketplace?: Marketplace | null;
   confidence?: number | null;
   payload?: Prisma.InputJsonValue;
+  externalEventId?: string | null;
+  correlationId?: string | null;
 };
 
 export async function recordInventoryEvent(
@@ -48,11 +54,14 @@ export async function recordInventoryEvent(
     data: {
       inventoryItemId: input.inventoryItemId,
       userId: input.userId,
+      accountId: input.accountId,
       type: input.type,
       source: input.source,
       marketplace: input.marketplace ?? null,
       confidence: input.confidence ?? null,
       payload: input.payload ?? {},
+      externalEventId: input.externalEventId ?? null,
+      correlationId: input.correlationId ?? null,
     },
   });
 }

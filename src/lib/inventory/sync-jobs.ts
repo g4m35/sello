@@ -30,6 +30,7 @@ export type SyncJobPrismaLike = {
       update: Record<string, never>;
       create: {
         userId: string;
+        accountId: string;
         type: SyncJobType;
         status: SyncJobStatus;
         inventoryItemId?: string | null;
@@ -60,6 +61,7 @@ export type SyncJobPrismaLike = {
 
 export type EnqueueSyncJobInput = {
   userId: string;
+  accountId: string;
   type: SyncJobType;
   idempotencyKey: string;
   inventoryItemId?: string | null;
@@ -80,6 +82,7 @@ export async function enqueueSyncJob(
     update: {},
     create: {
       userId: input.userId,
+      accountId: input.accountId,
       type: input.type,
       status: input.status ?? "queued",
       inventoryItemId: input.inventoryItemId ?? null,

@@ -1,48 +1,33 @@
 # Local development rules
 
-## Use this repo only
+## Recommended: Conductor
 
-```text
-~/dev/resale-crosslister-clean
-```
+1. Open Conductor and select Sello.
+2. Create a workspace (setup runs `npm ci` + Prisma generate).
+3. Choose a model and type a normal product request.
+4. Use Run → Start Sello for the app preview.
+5. Use Diff, Checks, Review, Create PR, Merge, and Archive.
 
-Under the Cursor workspace `perc 30`, `resale-crosslister` is a **symlink** to that path.
+You do not need to manage worktrees, branches, task YAML, or `agent:*` commands for ordinary work. Details: `docs/operations/conductor-development.md`.
 
-## Do not develop from
+## Manual fallback
 
-```text
-~/Desktop/perc 30/resale-crosslister-ARCHIVED-NO-GIT
-```
-
-That folder is the old iCloud Desktop checkout (no `.git`). Edits there cannot be pushed and only create drift.
-
-## Before starting work
+Use the canonical clone at `~/dev/resale-crosslister-clean` only to inspect/integrate repository state and to start isolated tasks. Never develop from the archived iCloud checkout.
 
 ```bash
-cd ~/dev/resale-crosslister-clean
-git checkout develop
-git pull --ff-only origin develop
-git checkout -b <new-branch-name>
+npm ci
+npm run agent:start -- <task-id-or-file>
+npm run agent:status
 ```
 
-## Before committing / merging
+Do not switch the canonical checkout to start a task. `agent:start` fetches `origin`, validates the contract, and safely creates or reuses the declared task worktree. Inside Conductor it adopts the current workspace instead.
+
+Before completion outside Conductor, use:
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm test
-npm run build
+npm run agent:check -- <task-id>
+npm run agent:finish -- <task-id>
+npm run agent:review -- <task-id>
 ```
 
-## Git identity
-
-Must use a GitHub-verified email:
-
-```bash
-git config user.email
-git config user.name
-```
-
-## Deploy
-
-Preview deploys are fine on request. Production (`vercel --prod` / promote `main`) only with explicit owner approval.
+GitHub CI is the final authority. Deployment remains a separate, explicitly authorized operation.

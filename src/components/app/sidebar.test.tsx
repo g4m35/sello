@@ -122,4 +122,19 @@ describe("Sidebar brand", () => {
     (billing?.props.onClick as () => void)();
     expect(mocks.push).toHaveBeenCalledWith("/settings/billing");
   });
+
+  it("provides direct access to durable bulk intake", () => {
+    reactHarness.cursor = 0;
+    const tree = Sidebar();
+    const bulk = findElement(
+      tree,
+      (el) =>
+        typeof el.props.onClick === "function" &&
+        textContent(el.props.children as ReactNode).includes("Bulk intake"),
+    );
+
+    expect(bulk).not.toBeNull();
+    (bulk?.props.onClick as () => void)();
+    expect(mocks.push).toHaveBeenCalledWith("/inventory/bulk");
+  });
 });

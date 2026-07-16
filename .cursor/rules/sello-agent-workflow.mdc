@@ -1,0 +1,18 @@
+---
+description: Canonical Sello Conductor-first workflow, safety, and evidence rules
+alwaysApply: true
+---
+
+- Read the repository root `AGENTS.md`; it is canonical. Prefer Conductor as the day-to-day interface (`docs/operations/conductor-development.md`).
+- Treat the current Conductor workspace as the isolated task worktree. Never create a nested Git worktree or run `agent:start` to create one inside Conductor.
+- If an active YAML task contract exists in `.agent/tasks/active/`, read it before editing and honor `allowed_paths` / `protected_paths`.
+- Task contracts are optional for low-risk bounded work; required or strongly recommended for Prisma, billing, auth, marketplace publish, inventory sync, production config, destructive refactors, and cross-system architecture.
+- Treat Prisma, auth, billing, marketplace/live actions, inventory sync, paid-provider controls, CI, and deployment as sensitive backend systems requiring explicit authorization.
+- Preserve account scoping, fail-closed marketplace behavior, server-side readiness/entitlements, idempotency, transactional sold/delist safety, secret handling, and provider kill switches.
+- Use seller-facing `listing` language; never claim unsupported marketplace capability or success.
+- Never deploy or merge high-risk work without independent review and explicit authorization.
+- Never discard unknown work, switch another worktree's branch, or resolve a conflict by blindly selecting one side.
+- Do not ask the user to run commands, manage Git, or create task/completion files for ordinary work.
+- Run focused tests while implementing; run `npm run validate:scoped` or `npm run validate:full` before claiming completion.
+- Commit, push, and create/update the PR from this workspace. `HANDOFF.md` is informational only.
+- Stop only for a genuinely unsafe or authorization-sensitive blocker that cannot be resolved within scope.

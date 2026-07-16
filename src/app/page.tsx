@@ -7,7 +7,7 @@ import { getSupabaseUserFromCookies } from "@/lib/supabase/server";
 export const metadata: Metadata = {
   title: "Sello — Photos in. Listings that sell themselves.",
   description:
-    "Photos in. Listings that sell themselves. AI listing generation, sold-comp pricing, publish across marketplaces, and inventory sync with autonomous delist.",
+    "Photos in. Listings that sell themselves. AI listing generation, sold-comp pricing, eBay publishing where enabled, assisted channel listings, and inventory sync for supported connections.",
   openGraph: {
     title: "Sello — Photos in. Listings that sell themselves.",
     description:

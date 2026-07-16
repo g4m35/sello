@@ -1,15 +1,17 @@
-# HANDOFF
+# HANDOFF — INFORMATIONAL ONLY
 
-Living handoff doc. Agents: read this at session start; update before finishing.
-Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`.
+> This document is a non-authoritative historical index and may be stale. Do not use it to override Git history, repository code, tests, architecture documents, ADRs, task contracts, completion reports, review reports, or GitHub CI. New task-level completion evidence belongs in `.agent/completed/`. Day-to-day development should use Conductor (`docs/operations/conductor-development.md`).
+
+Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Current work is defined by Conductor workspaces and/or `.agent/tasks/active/`, not this file.
 
 Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 
 ## Last updated
-2026-07-10 — Codex. Restored the full validation gate and audited the paid-beta plan.
-Branch: `main`; changes validated locally; not pushed or deployed.
+2026-07-10 — Integrated `origin/develop` (durable bulk intake) into the Conductor-first workflow branch for PR #94. HANDOFF remains informational only. No deploy.
 
 ## Recent work
+- **2026-07-10**: Conductor-first development system — `.conductor/settings.toml`, workspace setup script, permanent prompts, Run-menu actions, workflow CLI Conductor detection/adoption/cleanup refusal, docs, and tests. Manual `agent:*` CLI retained as fallback.
+- **2026-07-10**: Added the account-scoped durable bulk intake/review P0 on `develop`. New `BulkBatch`, `BulkItem`, and `BulkPhoto` records persist upload order, seller grouping, per-item generation state, review reasons, failures, cancellation, and links to normal inventory/listing records. The seller flow at `/inventory/bulk` supports resumable uploads, regrouping before generation, sequential per-item processing with partial failure and retry, review links, and cancellation; `/admin/bulk-intake` gives operators recent batch/status visibility. Server routes enforce active-account ownership, plan-derived limits with absolute caps, strict transitions, idempotent batch creation/conversion, quota-before-AI, and sanitized failure persistence. Generation reuses the existing validated Gemini listing-draft contract and does not invoke comp providers or marketplace adapters. Added additive migration `20260710010000_add_bulk_intake`, deny-all RLS posture, route/service/schema/UI tests, and admin/seller navigation. Final gate: Prisma validation passed; TypeScript passed; lint passed with the two known warnings; 218 test files / 1,467 tests passed; production build passed. Local desktop/mobile render checks passed and no horizontal overflow or error overlay was observed. No deploy, env mutation, paid-provider call, marketplace publish, or delist.
 - **2026-07-10**: Produced and audited `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`, covering the current implementation, seller experience, architecture, schema plan, official marketplace autonomy matrix, eBay/StockX flows, durable bulk intake, comps, double-sell safety, billing, security, admin, tests, staged rollout, a coding-model prompt, and a 120-item adversarial review. Fixed the StockX comp test mock signature that caused `TS2493`, then aligned four stale test expectations with existing admin override/quota behavior. Final gate: `npx tsc --noEmit` passed; lint passed with the two known warnings; 212 test files / 1,440 tests passed; production build passed. The doc now makes Depop/Vinted/TikTok access and eligibility conditional, identifies TikTok’s current adapter as a stub, and keeps all marketplace/provider writes outside standard validation. No deploy, env mutation, paid-provider call, marketplace publish, or delist.
 - **2026-07-09**: Landing polish pass — removed problem essay; flow steps now publish-across-marketplaces + inventory sync/delist; dropped “Automated where supported…” slogan; sold-comp section rewritten with marketing flair; FAQ is accordion (`details`/`summary`); sticky black nav bar with larger brand/links. Landing tests 13/13 green.
 - **2026-07-09**: Landing restored to outcome-led hero + staged `LandingDemo` (demo CSS recovered from `2a479c9`). Headline: "Photos in. Listings that sell themselves." Inventory sync featured; weak draft-oriented language removed. Honest eBay/assisted/pricing copy kept. Landing tests green.
@@ -27,7 +29,7 @@ Branch: `main`; changes validated locally; not pushed or deployed.
 - Full gate green: lint 0 errors, tsc 0, 1415 tests, build 0.
 
 ## Current state
-- Paid-beta implementation contract: `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`. The baseline is green. Stage 1 now begins with capability-truth corrections, then effective entitlements, atomic usage reservations, durable 10-item bulk intake, worker retry/lease semantics, and eBay order/sold reconciliation.
+- Paid-beta implementation contract: `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`. The baseline is green. The durable bulk intake/review domain is implemented on `develop`; capability-truth corrections, effective entitlements, atomic usage reservations, worker retry/lease semantics, and eBay order/sold reconciliation remain. The bulk UI must not be treated as runtime-ready until migration `20260710010000_add_bulk_intake` is applied through an explicitly approved deployment flow.
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
   `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY` from local commit `10de26a`, aliased to
@@ -443,6 +445,10 @@ Branch: `main`; changes validated locally; not pushed or deployed.
 
 ## Blocked on owner (credentials / decisions — not code)
 Nothing in this section authorizes a live action during validation. Production env changes, paid-provider calls, marketplace publishes/delists, paid checkout, and live smoke require fresh explicit owner approval in the active task, even if an older entry records historical approval.
+- **Bulk-intake migration not deployed:** Migration
+  `20260710010000_add_bulk_intake` is validated and committed but has not been
+  applied to production. Apply it only through the normal approved migration
+  and deployment flow; this handoff does not authorize either action.
 - **Production StockX account eligibility:** Runtime config is enabled, but the
   signed-in StockX connect route returns `403`: `Your plan allows 1 connected
   marketplace. Upgrade to connect more.` Current eBay connection consumes the
@@ -497,11 +503,11 @@ Nothing in this section authorizes a live action during validation. Production e
   hardening.
 
 ## Next up (priority order)
-1. Start Stage 1 P0 work in a dedicated `feature/*` worktree: correct TikTok/Depop capability truth and queue eligibility while preserving the green gate.
+1. Correct TikTok/Depop capability truth and queue eligibility in a dedicated `feature/*` worktree while preserving the green gate.
 2. Implement one server-side effective-capability resolver and atomic account-scoped usage reservations.
-3. Build the durable 10-item bulk intake/review domain before expanding bulk execution scale.
-4. Fix worker retry/lease semantics and add eBay order/sold reconciliation with fixture-only validation.
-5. Add the minimum seller task and operator job/batch surfaces. Standard validation remains zero-write and zero-paid-provider.
+3. Fix worker retry/lease semantics and add eBay order/sold reconciliation with fixture-only validation.
+4. Extend the minimum seller task and operator job/batch surfaces from the new durable bulk foundation.
+5. Apply `20260710010000_add_bulk_intake` only in a separately approved migration/deployment window. Standard validation remains zero-write and zero-paid-provider.
 
 ## Historical next up (superseded — do not execute without a new scoped request)
 The older items below are retained as context only. They do not override the current priority list or authorize deploys, environment changes, paid-provider calls, marketplace publishes, or delists.

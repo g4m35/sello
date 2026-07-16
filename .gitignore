@@ -45,3 +45,6 @@ next-env.d.ts
 .env*.local
 
 .cursor/
+
+# Conductor machine-local overrides
+.conductor/settings.local.toml

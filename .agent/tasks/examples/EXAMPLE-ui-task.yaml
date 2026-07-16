@@ -1,0 +1,38 @@
+# EXAMPLE ONLY. agent:start refuses contracts under .agent/tasks/examples/.
+id: example-ui-task
+title: Example bounded UI task
+status: backlog
+owner: Cursor/Grok
+reviewer: Codex
+risk: low
+task_type: ui
+base_branch: develop
+working_branch: feature/example-ui-task
+worktree_path: /absolute/example/path/resale-crosslister-example-ui
+created_at: 2026-07-10T00:00:00.000Z
+goal: Demonstrate a valid task contract without representing active work.
+context: This file documents the schema and must never be started.
+non_goals:
+  - No product behavior changes.
+allowed_paths:
+  - src/components/example/**
+  - .agent/**
+protected_paths:
+  - prisma/**
+  - src/app/api/**
+  - src/lib/billing/**
+  - src/lib/marketplace/**
+required_reading:
+  - AGENTS.md
+  - docs/architecture/invariants.md
+acceptance:
+  - The example remains clearly labeled and outside active/backlog task directories.
+validation:
+  - npm run validate:scoped
+full_validation_required: false
+documentation: []
+review_requirements:
+  - Confirm that no real task or product behavior is implied.
+deployment_authorized: false
+merge_authorized: false
+notes: EXAMPLE ONLY. Replace all example values in a real backlog contract.

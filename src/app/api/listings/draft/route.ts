@@ -5,10 +5,16 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
 import { getActiveAccount } from "@/lib/billing/account";
-import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
-import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
+import {
+  markUsageReconciliationRequired,
+  markUsageWorkStarted,
+  releaseUsageReservation,
+  reserveUsageOrThrow,
+  settleUsageReservationOrRequireReconciliation,
+} from "@/lib/billing/usage";
 import { isAdminUser } from "@/lib/auth/admin";
-import { featureAccessForUser } from "@/lib/auth/feature-access";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
+import { accountScope } from "@/lib/billing/scope";
 import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
 import { asStringRecord } from "@/lib/listing/ebay-draft-fields";
 import { runCompFetch } from "@/lib/comps/fetch";
@@ -29,12 +35,11 @@ export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const prisma = getPrisma();
+    const account = await getActiveAccount(user.id, prisma);
 
     const draft = await prisma.listingDraft.findFirst({
       where: {
-        inventoryItem: {
-          sellerId: user.id,
-        },
+        inventoryItem: accountScope(account),
       },
       orderBy: { updatedAt: "desc" },
       include: {
@@ -77,27 +82,40 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   let inventoryItemId: string | null = null;
   let prisma: ReturnType<typeof getPrisma> | null = null;
+  let usageReservationId: string | null = null;
+  let usageIdempotencyKey: string | null = null;
+  let meteredWorkCompleted = false;
 
   try {
     const user = await requireSupabaseUser(request);
 
-    // Enforce the monthly AI-listing quota before doing any work (and before an
-    // inventory item exists), so an over-quota request fails fast with 402 and
-    // leaves nothing behind.
-    const account = await getActiveAccount(user.id);
-    await assertWithinQuota(
-      accountWithEffectivePlan(account, user),
-      "ai_listing",
-      new Date(),
-      { user },
-    );
+    prisma = getPrisma();
+    const runtimeEntitlements = await resolveRuntimeEntitlements(user, prisma);
+    const account = runtimeEntitlements.account;
+    inventoryItemId = randomUUID();
+    usageIdempotencyKey = request.headers.get("idempotency-key") ?? randomUUID();
+    const reservation = await reserveUsageOrThrow({
+      accountId: account.id,
+      metric: "ai_listing",
+      idempotencyKey: usageIdempotencyKey,
+      now: new Date(),
+      operationType: "listing_draft",
+      operationId: inventoryItemId,
+      user,
+    }, prisma);
+    if (reservation.idempotent) {
+      throw new AppError(
+        "This listing-generation request is already in progress or completed.",
+        409,
+        "USAGE_REQUEST_ALREADY_RESERVED",
+      );
+    }
+    usageReservationId = reservation.reservationId;
 
     const formData = await request.formData();
     const files = extractListingPhotos(formData);
     const photos = await prepareListingPhotos(files);
 
-    prisma = getPrisma();
-    inventoryItemId = randomUUID();
     const createdInventoryItemId = inventoryItemId;
 
     await prisma.inventoryItem.create({
@@ -126,6 +144,13 @@ export async function POST(request: Request) {
       })),
     });
 
+    if (!(await markUsageWorkStarted(usageReservationId, new Date(), prisma))) {
+      throw new AppError(
+        "Listing generation could not start because its usage reservation is no longer active.",
+        409,
+        "USAGE_RESERVATION_NOT_ACTIVE",
+      );
+    }
     const gemini = await generateListingDraftWithGemini(photos);
     const { identification, listingDraft } = gemini.draft;
 
@@ -192,21 +217,22 @@ export async function POST(request: Request) {
         },
       }),
     ]);
+    meteredWorkCompleted = true;
 
-    // Count the successful generation against the monthly quota. Best-effort:
-    // the draft already succeeded, so a counter-write failure is logged loudly
-    // rather than failing the response (which would wrongly mark the item).
-    try {
-      await incrementUsage(account.id, "ai_listing", new Date());
-    } catch (usageError) {
-      logUnexpectedError("ai_listing_usage_increment", usageError);
-    }
+    await settleUsageReservationOrRequireReconciliation(
+      usageReservationId,
+      new Date(),
+      "AI_LISTING_SETTLEMENT_FAILED",
+      prisma,
+    );
 
     // Best-effort: gather automatic comps now that the item is identified.
     // No-op (and fast) when no comp source is configured; never blocks the draft.
     await runCompFetch(prisma, createdInventoryItemId, user.id, {
-      paidProvidersAllowed: featureAccessForUser(user).paidComps,
+      paidProvidersAllowed: runtimeEntitlements.access.paidComps,
       adminOverride: isAdminUser(user),
+      accountId: account.id,
+      idempotencyKey: `${usageIdempotencyKey}:auto-comps`,
     }).catch(() => undefined);
 
     return NextResponse.json({
@@ -239,6 +265,25 @@ export async function POST(request: Request) {
           },
         })
         .catch(() => undefined);
+    }
+
+    if (usageReservationId && prisma) {
+      if (meteredWorkCompleted) {
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          "AI_LISTING_SETTLEMENT_FAILED",
+          prisma,
+        ).catch((usageError) => logUnexpectedError("ai_listing_usage_reconcile", usageError));
+      } else {
+        await releaseUsageReservation(
+          usageReservationId,
+          new Date(),
+          prisma,
+          "released",
+          { allowStartedWork: true },
+        ).catch((usageError) => logUnexpectedError("ai_listing_usage_release", usageError));
+      }
     }
 
     const status = error instanceof AppError ? error.status : 500;

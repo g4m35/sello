@@ -15,6 +15,7 @@ export type ProviderCallStatus = "attempted" | "succeeded" | "failed" | "skipped
 
 export type ProviderCallLedgerInput = {
   userId: string;
+  accountId?: string | null;
   draftId: string | null;
   inventoryItemId: string | null;
   provider: string;
@@ -25,6 +26,9 @@ export type ProviderCallLedgerInput = {
   acceptedCount: number;
   rejectedCount: number;
   queryHash: string | null;
+  idempotencyKey?: string | null;
+  actualCostCents?: number | null;
+  settledAt?: Date | null;
 };
 
 type ProviderCallLedgerUpdate = Pick<
@@ -32,9 +36,11 @@ type ProviderCallLedgerUpdate = Pick<
   | "status"
   | "skippedReason"
   | "estimatedCostCents"
+  | "actualCostCents"
   | "fetchedCount"
   | "acceptedCount"
   | "rejectedCount"
+  | "settledAt"
 >;
 
 export type ProviderLedgerTransaction = {
@@ -50,18 +56,14 @@ export type ProviderLedgerTransaction = {
     }): Promise<{ _sum: { estimatedCostCents: number | null } }>;
     count(args: {
       where: {
-        userId: string;
+        userId?: string;
+        accountId?: string;
         createdAt: { gte: Date };
         status: { in: readonly string[] };
       };
     }): Promise<number>;
     findFirst(args: {
-      where: {
-        userId: string;
-        draftId: string;
-        provider: string;
-        status: { in: readonly string[] };
-      };
+      where: Record<string, unknown>;
       orderBy: { createdAt: "desc" };
       select: { createdAt: true };
     }): Promise<{ createdAt: Date } | null>;
@@ -90,7 +92,13 @@ export function hashQueries(queries: string[]): string {
 
 export async function loadPaidGateUsage(
   prisma: ProviderLedgerTransaction,
-  args: { userId: string; draftId: string | null; provider: string; now: Date },
+  args: {
+    accountId?: string | null;
+    userId: string;
+    draftId: string | null;
+    provider: string;
+    now: Date;
+  },
 ): Promise<PaidGateUsage> {
   const dayStart = utcDayStart(args.now);
   const monthStart = utcMonthStart(args.now);
@@ -103,14 +111,14 @@ export async function loadPaidGateUsage(
       }),
       prisma.providerCallLedger.count({
         where: {
-          userId: args.userId,
+          ...(args.accountId ? { accountId: args.accountId } : { userId: args.userId }),
           createdAt: { gte: dayStart },
           status: { in: COSTING_STATUSES },
         },
       }),
       prisma.providerCallLedger.count({
         where: {
-          userId: args.userId,
+          ...(args.accountId ? { accountId: args.accountId } : { userId: args.userId }),
           createdAt: { gte: monthStart },
           status: { in: COSTING_STATUSES },
         },
@@ -118,7 +126,7 @@ export async function loadPaidGateUsage(
       args.draftId
         ? prisma.providerCallLedger.findFirst({
             where: {
-              userId: args.userId,
+              ...(args.accountId ? { accountId: args.accountId } : { userId: args.userId }),
               draftId: args.draftId,
               provider: args.provider,
               status: { in: COSTING_STATUSES },
@@ -138,6 +146,7 @@ export async function loadPaidGateUsage(
 }
 
 function reservationLockKeys(args: {
+  accountId?: string | null;
   userId: string;
   draftId: string | null;
   provider: string;
@@ -145,17 +154,24 @@ function reservationLockKeys(args: {
 }): string[] {
   const day = utcDayStart(args.now).toISOString().slice(0, 10);
   const month = utcMonthStart(args.now).toISOString().slice(0, 7);
+  const scope = args.accountId ? `account:${args.accountId}` : `legacy-user:${args.userId}`;
   return [
     `paid-comps:global:${day}`,
-    `paid-comps:user-day:${args.userId}:${day}`,
-    `paid-comps:user-month:${args.userId}:${month}`,
-    ...(args.draftId ? [`paid-comps:draft:${args.userId}:${args.provider}:${args.draftId}`] : []),
+    `paid-comps:scope-day:${scope}:${day}`,
+    `paid-comps:scope-month:${scope}:${month}`,
+    ...(args.draftId ? [`paid-comps:draft:${scope}:${args.provider}:${args.draftId}`] : []),
   ].sort();
 }
 
 async function acquireReservationLocks(
   tx: ProviderLedgerTransaction,
-  args: { userId: string; draftId: string | null; provider: string; now: Date },
+  args: {
+    accountId?: string | null;
+    userId: string;
+    draftId: string | null;
+    provider: string;
+    now: Date;
+  },
 ): Promise<void> {
   for (const lockKey of reservationLockKeys(args)) {
     // $executeRawUnsafe (not $queryRawUnsafe): pg_advisory_xact_lock returns void
@@ -171,16 +187,29 @@ export async function reservePaidProviderCall(
   prisma: ProviderLedgerPrismaLike,
   args: {
     config: PaidGateConfig;
+    accountId?: string | null;
     userId: string;
     draftId: string | null;
     inventoryItemId: string | null;
     provider: string;
     queryHash: string | null;
+    idempotencyKey?: string | null;
     now: Date;
   },
 ): Promise<PaidProviderReservation> {
   return prisma.$transaction(async (tx) => {
     await acquireReservationLocks(tx, args);
+    if (args.accountId && args.idempotencyKey) {
+      const duplicate = await tx.providerCallLedger.findFirst({
+        where: {
+          accountId: args.accountId,
+          idempotencyKey: args.idempotencyKey,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
+      if (duplicate) return { allowed: false, reason: "duplicate_request" };
+    }
     const usage = await loadPaidGateUsage(tx, args);
     const gate = evaluatePaidProviderGate({ config: args.config, usage, now: args.now });
 
@@ -188,6 +217,7 @@ export async function reservePaidProviderCall(
       await tx.providerCallLedger.create({
         data: {
           userId: args.userId,
+          accountId: args.accountId ?? null,
           draftId: args.draftId,
           inventoryItemId: args.inventoryItemId,
           provider: args.provider,
@@ -198,6 +228,9 @@ export async function reservePaidProviderCall(
           acceptedCount: 0,
           rejectedCount: 0,
           queryHash: args.queryHash,
+          idempotencyKey: args.idempotencyKey ?? null,
+          actualCostCents: 0,
+          settledAt: args.now,
         },
       });
       return { allowed: false, reason: gate.reason };
@@ -206,6 +239,7 @@ export async function reservePaidProviderCall(
     const reservation = await tx.providerCallLedger.create({
       data: {
         userId: args.userId,
+        accountId: args.accountId ?? null,
         draftId: args.draftId,
         inventoryItemId: args.inventoryItemId,
         provider: args.provider,
@@ -216,6 +250,9 @@ export async function reservePaidProviderCall(
         acceptedCount: 0,
         rejectedCount: 0,
         queryHash: args.queryHash,
+        idempotencyKey: args.idempotencyKey ?? null,
+        actualCostCents: null,
+        settledAt: null,
       },
     });
     return { allowed: true, reservationId: reservation.id };
@@ -247,9 +284,11 @@ export async function completeProviderCall(
       status: args.status,
       skippedReason,
       estimatedCostCents: args.estimatedCostCents,
+      actualCostCents: args.estimatedCostCents,
       fetchedCount: args.fetchedCount,
       acceptedCount: args.acceptedCount,
       rejectedCount: args.rejectedCount,
+      settledAt: new Date(),
     },
   });
 }

@@ -9,11 +9,11 @@ const FAQ = [
   ],
   [
     "Can Sello publish to every marketplace?",
-    "eBay gets the deepest automation: generate, price, and publish through official APIs. Grailed, Poshmark, and Depop get complete listing packages you can post in seconds — the heavy lifting is already done.",
+    "Where account access and eligibility allow, eBay gets the deepest automation through official APIs. Grailed, Poshmark, and Depop use assisted listing packages you post yourself.",
   ],
   [
     "Does inventory sync across channels?",
-    "Yes. One inventory for draft, live, sold, and delisted. When something sells, Sello helps you clean up elsewhere so you are not chasing stale listings by hand.",
+    "Sello keeps one inventory for draft, live, sold, and delisted items. When something sells, it helps clean up supported connected channels so you are not chasing stale listings by hand.",
   ],
   [
     "How does sold-comp pricing work?",
@@ -53,9 +53,9 @@ export function LandingPage() {
             Photos in. Listings that sell themselves.
           </h1>
           <p className="landing__lede landing__reveal landing__reveal--4">
-            AI writes the listing, sold comps set the price, you publish across
-            marketplaces, and inventory stays in sync — including autonomous
-            delist when something sells.
+            AI writes the listing, sold comps guide the price, Sello publishes
+            where supported, prepares listings for assisted channels, and keeps
+            supported connected inventory in sync.
           </p>
           <div className="landing__cta landing__reveal landing__reveal--4">
             <Link href="/dashboard" className="btn btn--accent btn--lg">
@@ -80,8 +80,8 @@ export function LandingPage() {
           From photo to <em>live</em>
         </h2>
         <p className="landing__section-sub">
-          One autonomous flow: upload → draft → sold-comp price → publish across
-          marketplaces → inventory sync.
+          One streamlined flow: upload → listing → sold-comp price → publish or
+          export → supported inventory sync.
         </p>
         <ol className="landing__flow">
           <li>
@@ -96,15 +96,14 @@ export function LandingPage() {
           </li>
           <li>
             <span>03</span>
-            <strong>Publish across marketplaces</strong>
-            <p>eBay publish plus ready-to-post packages for other channels.</p>
+            <strong>Publish or export listings</strong>
+            <p>Eligible eBay publishing plus ready-to-post packages for assisted channels.</p>
           </li>
           <li>
             <span>04</span>
-            <strong>Inventory sync</strong>
+            <strong>Inventory sync where supported</strong>
             <p>
-              Autonomously delist and manage inventory across every marketplace
-              you sell on.
+              Track status and delist supported connected channels when an item sells.
             </p>
           </li>
         </ol>
@@ -119,25 +118,24 @@ export function LandingPage() {
           <article className="landing__panel">
             <h3>eBay on autopilot</h3>
             <p>
-              Connect once. Sello generates the listing, prices from sold comps,
-              and publishes through official APIs — no developer account, no
-              copy-paste marathon.
+              When eBay access and publishing are enabled, Sello generates the
+              listing, prices from sold comps, and publishes through official APIs —
+              no developer account or copy-paste marathon.
             </p>
           </article>
           <article className="landing__panel">
-            <h3>Every other channel, ready</h3>
+            <h3>Assisted channels, ready</h3>
             <p>
-              Grailed, Poshmark, and Depop get complete listing packages built
-              for you. You post where direct APIs stop — Sello already did the
-              hard part.
+              Grailed, Poshmark, and Depop get listing packages built for you.
+              You review and post them where direct API access is unavailable.
             </p>
           </article>
           <article className="landing__panel">
             <h3>Inventory that cleans itself up</h3>
             <p>
               Draft, live, sold, delisted — one source of truth. When an item
-              sells, Sello helps you delist elsewhere so you never double-sell
-              or babysit stale stock.
+              sells, Sello helps you delist on supported connected channels so
+              you can avoid double-sales and stale stock.
             </p>
           </article>
         </div>

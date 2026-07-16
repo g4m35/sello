@@ -1,5 +1,7 @@
 export type EbayEnvironment = "sandbox" | "production";
 export type EbayMarketplaceId = "EBAY_US";
+export const EBAY_FULFILLMENT_SCOPE =
+  "https://api.ebay.com/oauth/api_scope/sell.fulfillment";
 
 export type EbayConfig = {
   environment: EbayEnvironment;
@@ -93,6 +95,32 @@ export type EbayOfferLookup = {
     soldQuantity?: number;
   };
   status?: string;
+};
+
+export type EbayFulfillmentOrderLineItem = {
+  lineItemId?: string;
+  legacyItemId?: string;
+  sku?: string;
+  title?: string;
+  quantity?: number;
+  lineItemCost?: { value?: string; currency?: string };
+};
+
+export type EbayFulfillmentOrder = {
+  orderId?: string;
+  creationDate?: string;
+  lastModifiedDate?: string;
+  orderPaymentStatus?: string;
+  orderFulfillmentStatus?: string;
+  cancelStatus?: { cancelState?: string; cancelledDate?: string };
+  paymentSummary?: { refunds?: Array<{ refundStatus?: string }> };
+  lineItems?: EbayFulfillmentOrderLineItem[];
+};
+
+export type EbayFulfillmentOrdersPage = {
+  orders: EbayFulfillmentOrder[];
+  total: number;
+  next: string | null;
 };
 
 // Request body for createInventoryLocation

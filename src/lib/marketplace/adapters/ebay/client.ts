@@ -1,5 +1,8 @@
+import { z } from "zod";
+
 import { getEbayConfig } from "./config";
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
+import { EBAY_FULFILLMENT_SCOPE } from "./types";
 import type {
   EbayInventoryItemPayload,
   EbayOfferPayload,
@@ -11,6 +14,7 @@ import type {
   EbayEnvironment,
   EbayInventoryItemLookup,
   EbayFulfillmentPolicy,
+  EbayFulfillmentOrdersPage,
   EbayInventoryLocation,
   EbayInventoryLocationPayload,
   EbayOfferLookup,
@@ -28,6 +32,40 @@ const tokenUrls: Record<EbayEnvironment, string> = {
   sandbox: "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
   production: "https://api.ebay.com/identity/v1/oauth2/token",
 };
+
+const EbayFulfillmentOrdersPageSchema = z.object({
+  orders: z.array(
+    z.object({
+      orderId: z.string().min(1).max(200).optional(),
+      creationDate: z.string().max(100).optional(),
+      lastModifiedDate: z.string().max(100).optional(),
+      orderPaymentStatus: z.string().min(1).max(100).optional(),
+      orderFulfillmentStatus: z.string().min(1).max(100).optional(),
+      cancelStatus: z.object({
+        cancelState: z.string().min(1).max(100).optional(),
+        cancelledDate: z.string().max(100).optional(),
+      }).optional(),
+      paymentSummary: z.object({
+        refunds: z.array(z.object({ refundStatus: z.string().max(100).optional() })).optional(),
+      }).optional(),
+      lineItems: z.array(
+        z.object({
+          lineItemId: z.string().min(1).max(200).optional(),
+          legacyItemId: z.string().min(1).max(200).optional(),
+          sku: z.string().max(200).optional(),
+          title: z.string().max(500).optional(),
+          quantity: z.number().int().positive().optional(),
+          lineItemCost: z.object({
+            value: z.string().max(100).optional(),
+            currency: z.string().max(20).optional(),
+          }).optional(),
+        }),
+      ).optional(),
+    }),
+  ).optional(),
+  total: z.number().int().nonnegative().optional(),
+  next: z.string().max(2_000).optional(),
+});
 
 type EbayTokenConnection = {
   id: string;
@@ -60,6 +98,7 @@ export class EbaySandboxClient implements EbayApiClient {
     private readonly fetchImpl: typeof fetch = fetch,
     // Sandbox by default: production must always be requested explicitly.
     private readonly environment: EbayEnvironment = "sandbox",
+    private readonly grantedScopes: readonly string[] = [],
   ) {}
 
   private get apiBaseUrl() {
@@ -94,6 +133,39 @@ export class EbaySandboxClient implements EbayApiClient {
       "/sell/inventory/v1/location",
     );
     return payload.locations ?? [];
+  }
+
+  async getOrdersModifiedSince(
+    modifiedSince: Date,
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<EbayFulfillmentOrdersPage> {
+    if (!this.grantedScopes.includes(EBAY_FULFILLMENT_SCOPE)) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.reconnectRequired,
+        "Reconnect your eBay account before enabling sold-order reconciliation.",
+        409,
+      );
+    }
+    const limit = Math.min(Math.max(Math.floor(opts.limit ?? 50), 1), 200);
+    const offset = Math.max(Math.floor(opts.offset ?? 0), 0);
+    const filter = `lastmodifieddate:[${modifiedSince.toISOString()}..]`;
+    const rawPayload = await this.get<unknown>(
+      `/sell/fulfillment/v1/order?filter=${encodeURIComponent(filter)}&limit=${limit}&offset=${offset}`,
+    );
+    const parsed = EbayFulfillmentOrdersPageSchema.safeParse(rawPayload);
+    if (!parsed.success) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.apiFailed,
+        "eBay returned an invalid order response.",
+        502,
+      );
+    }
+    const payload = parsed.data;
+    return {
+      orders: payload.orders ?? [],
+      total: payload.total ?? 0,
+      next: payload.next ?? null,
+    };
   }
 
   async getItemAspectsForCategory(categoryId: string): Promise<EbayTaxonomyAspect[]> {
@@ -496,10 +568,6 @@ export async function getUsableEbayAccessToken(
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      scope: [
-        "https://api.ebay.com/oauth/api_scope/sell.inventory",
-        "https://api.ebay.com/oauth/api_scope/sell.account",
-      ].join(" "),
     }),
   });
 

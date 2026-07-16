@@ -1,56 +1,28 @@
-# Worktree Workflow
+# Worktree workflow
 
-Use **one canonical clone** and optional sibling worktrees. Never develop from the archived Desktop checkout.
+Sello prefers Conductor workspaces for day-to-day isolation. Manual Git worktrees remain available outside Conductor.
 
-## Canonical paths
+## Conductor-native (recommended)
 
-| Role | Path | Notes |
-| --- | --- | --- |
-| Primary clone | `~/dev/resale-crosslister-clean` | Real git repo. Default for agents. |
-| Workspace symlink | `~/Desktop/perc 30/resale-crosslister` | Symlink → primary clone (so `perc 30` chats stay consistent). |
-| Archived (do not use) | `~/Desktop/perc 30/resale-crosslister-ARCHIVED-NO-GIT` | Old iCloud checkout with **no `.git`**. |
+Conductor creates an isolated workspace and branch for each task. Agents must treat that workspace as the task worktree and must not run `agent:start` to create another nested worktree. Archive through Conductor after merge; `agent:cleanup` refuses Conductor-managed paths.
 
-## Branch structure
+See `docs/operations/conductor-development.md`.
 
-- `main`: production-safe only. Do not push without explicit approval.
-- `develop`: active integration.
-- `feature/*`, `fix/*`, `chore/*`, `security/*`: short-lived work.
-
-## Merge flow
+## Manual worktrees (fallback)
 
 ```text
-feature/* → develop → main → production
+canonical clone / integration inspection
+  ├── task worktree A → one branch → one implementation owner
+  ├── task worktree B → one branch → one implementation owner
+  └── reviewer/integrator → evidence + CI → develop
 ```
 
-Never deploy automatically. Production deploys require explicit owner approval.
-
-## Worktrees (current)
-
-Create worktrees **under `~/dev/`**, not on iCloud Desktop:
+Create worktrees through the repository CLI only when not using Conductor:
 
 ```bash
-cd ~/dev/resale-crosslister-clean
-git fetch origin
-git worktree add ../resale-crosslister-<topic> -b feature/<topic> origin/develop
+npm run agent:start -- <task-id-or-file>
 ```
 
-| Area | Use for | Suggested path |
-| --- | --- | --- |
-| develop | migrations, deps, docs, integration | `~/dev/resale-crosslister-clean` or `~/dev/resale-crosslister-safety` |
-| ui / polish | dashboard, marketing, visual polish | `~/dev/resale-crosslister-ui` |
-| billing | Stripe / plans / metering | `~/dev/resale-crosslister-billing` |
-| marketplaces | adapters, OAuth, publish | `~/dev/resale-crosslister-marketplaces` |
-| comps | pricing comps / providers | `~/dev/resale-crosslister-comps` |
+The command fetches without moving another local branch, validates branch/path state, refuses unrelated collisions, records the exact base commit, and prints the assigned worktree. Never switch, stash, reset, clean, merge, or delete another task's worktree. Cleanup is allowed only through `npm run agent:cleanup -- <task-id>` after the task is complete, pushed, merged, and clean; destructive exceptions require explicit `--dangerous` intent.
 
-## Safety rules
-
-- One agent per worktree.
-- Never switch branches with uncommitted work.
-- Never delete a worktree with uncommitted work.
-- Migrations and dependency bumps: from `develop` (or a `chore/*` cut from `develop`).
-- Risky systems (publishing, inventory sync, Playwright, billing): feature branches only.
-- Never push `main` without approval.
-
-## Router
-
-If the task is ambiguous, stop and pick the safest worktree. If it spans areas, split into separate worktree tasks.
+Branch flow remains `feature/*|fix/*|chore/*|security/*|docs/*|test/* → develop → main → production`. Merge and deployment are separate authorizations.

@@ -52,7 +52,7 @@ type SaleSignalListingDelegate = {
   findFirst(args: {
     where: {
       marketplace: Marketplace;
-      inventoryItem: { sellerId: string };
+      inventoryItem: { accountId: string };
       externalListingId?: string;
       externalUrl?: string;
     };
@@ -61,7 +61,7 @@ type SaleSignalListingDelegate = {
   findMany(args: {
     where: {
       marketplace: Marketplace;
-      inventoryItem: { sellerId: string };
+      inventoryItem: { accountId: string };
     };
     select: typeof listingSelect;
   }): Promise<SaleSignalListingRow[]>;
@@ -77,6 +77,7 @@ export type SaleSignalPrismaLike = Omit<MarkSoldPrismaLike, "marketplaceListing"
 
 export type HandleSaleSignalInput = {
   userId: string;
+  accountId: string;
   marketplace: Marketplace;
   source: "api" | "email" | "manual" | "system";
   externalListingId?: string | null;
@@ -126,7 +127,7 @@ async function matchListing(
   db: SaleSignalPrismaLike,
   input: HandleSaleSignalInput,
 ): Promise<SaleSignalMatch | null> {
-  const ownerScope = { sellerId: input.userId };
+  const ownerScope = { accountId: input.accountId };
 
   if (input.externalListingId) {
     const byId = await db.marketplaceListing.findFirst({
@@ -191,6 +192,7 @@ export async function handleSaleSignal(
     await recordInventoryEvent(db, {
       inventoryItemId: match.listing.inventoryItemId,
       userId: input.userId,
+      accountId: input.accountId,
       type: "sale_detected",
       source: input.source,
       marketplace: input.marketplace,
@@ -213,6 +215,7 @@ export async function handleSaleSignal(
     const markSold = await markItemSold(db, {
       inventoryItemId: match.listing.inventoryItemId,
       userId: input.userId,
+      accountId: input.accountId,
       soldMarketplace: input.marketplace,
       soldListingId: match.listing.externalListingId,
       soldPriceCents: input.price ?? null,
@@ -227,6 +230,7 @@ export async function handleSaleSignal(
     const productName = match.listing.titleSnapshot ?? "your item";
     const task = await createReviewTask(db, {
       userId: input.userId,
+      accountId: input.accountId,
       type: "confirm_possible_sale",
       inventoryItemId: match.listing.inventoryItemId,
       marketplace: input.marketplace,
@@ -249,6 +253,7 @@ export async function handleSaleSignal(
 
     await createNotification(db, {
       userId: input.userId,
+      accountId: input.accountId,
       inventoryItemId: match.listing.inventoryItemId,
       ...possibleSaleConfirmCopy({ productName, marketplace: input.marketplace }),
     });
@@ -259,6 +264,7 @@ export async function handleSaleSignal(
   // No match at all: park an unmatched-email review task. No item to attach to.
   const task = await createReviewTask(db, {
     userId: input.userId,
+    accountId: input.accountId,
     type: "unmatched_marketplace_email",
     inventoryItemId: null,
     marketplace: input.marketplace,

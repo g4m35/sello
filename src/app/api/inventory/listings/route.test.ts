@@ -5,6 +5,7 @@ import { AppError } from "@/lib/errors";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireUser: vi.fn(),
+  getActiveAccount: vi.fn(),
   findFirst: vi.fn(),
   upsert: vi.fn(),
   eventCreate: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({
   requireSupabaseUserFromRequestOrCookies: mocks.requireUser,
 }));
+vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 
 import { POST } from "./route";
 
@@ -38,6 +40,7 @@ describe("POST /api/inventory/listings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.getPrisma.mockReturnValue({
       inventoryItem: { findFirst: mocks.findFirst },
       marketplaceListing: { upsert: mocks.upsert },
@@ -60,15 +63,15 @@ describe("POST /api/inventory/listings", () => {
     const res = await POST(req(validBody));
     expect(res.status).toBe(404);
     expect(mocks.findFirst).toHaveBeenCalledWith({
-      where: { id: ITEM_ID, sellerId: "user-1" },
-      select: { id: true },
+      where: { id: ITEM_ID, accountId: "acc-1" },
+      select: { id: true, accountId: true },
     });
     expect(mocks.upsert).not.toHaveBeenCalled();
     expect(mocks.eventCreate).not.toHaveBeenCalled();
   });
 
   it("upserts the listing (env=production, default UNKNOWN) and records listing_created", async () => {
-    mocks.findFirst.mockResolvedValue({ id: ITEM_ID });
+    mocks.findFirst.mockResolvedValue({ id: ITEM_ID, accountId: "acc-1" });
     mocks.upsert.mockResolvedValue({
       id: "ml-1",
       status: "UNKNOWN",
@@ -99,6 +102,7 @@ describe("POST /api/inventory/listings", () => {
     expect(eventData).toMatchObject({
       inventoryItemId: ITEM_ID,
       userId: "user-1",
+      accountId: "acc-1",
       type: "listing_created",
       source: "manual",
       marketplace: "depop",
@@ -106,7 +110,7 @@ describe("POST /api/inventory/listings", () => {
   });
 
   it("honors an explicit status when provided", async () => {
-    mocks.findFirst.mockResolvedValue({ id: ITEM_ID });
+    mocks.findFirst.mockResolvedValue({ id: ITEM_ID, accountId: "acc-1" });
     mocks.upsert.mockResolvedValue({ id: "ml-1", status: "LISTED", externalUrl: validBody.externalUrl });
 
     await POST(req({ ...validBody, status: "LISTED" }));

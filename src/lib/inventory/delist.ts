@@ -62,9 +62,9 @@ export type DelistPrismaLike = SyncJobPrismaLike &
     };
     inventoryItem: {
       findFirst(args: {
-        where: { id: string; sellerId: string };
+        where: { id: string; sellerId?: string; accountId?: string };
         select: { id: true; accountId: true; productName: true };
-      }): Promise<{ id: string; accountId: string | null; productName: string } | null>;
+      }): Promise<{ id: string; accountId: string; productName: string } | null>;
     };
   };
 
@@ -92,10 +92,13 @@ export async function queueDelistOtherListings(
   soldMarketplace: Marketplace | null,
   userId: string,
   inventoryOwnerUserId: string = userId,
+  accountId?: string,
 ): Promise<QueueDelistResult> {
   // Ownership: only the owning seller's item is ever inspected/acted on.
   const item = await db.inventoryItem.findFirst({
-    where: { id: inventoryItemId, sellerId: inventoryOwnerUserId },
+    where: accountId
+      ? { id: inventoryItemId, accountId }
+      : { id: inventoryItemId, sellerId: inventoryOwnerUserId },
     select: { id: true, accountId: true, productName: true },
   });
   if (!item) {
@@ -130,6 +133,7 @@ export async function queueDelistOtherListings(
 
     const job = await enqueueSyncJob(db, {
       userId,
+      accountId: item.accountId,
       type: "delist_marketplace_listing",
       idempotencyKey,
       inventoryItemId,
@@ -144,12 +148,12 @@ export async function queueDelistOtherListings(
         soldMarketplace,
         useAdapter: adapterAvailable,
         externalUrl: listing.externalUrl,
-        accountId: item.accountId ?? null,
+        accountId: item.accountId,
       } as Prisma.InputJsonValue,
     });
-    // Only adapter-available (eBay) jobs are auto-executable, so only those count
-    // as a queued automatic delist. A non-eBay job is parked needs_review and
-    // tracked via manualReviewTaskIds below — never a fake "we're removing it".
+    // Only adapter-available jobs are auto-executable, so only those count as a
+    // queued automatic delist. Unsupported marketplaces park in needs_review and
+    // are tracked below — never a fake "we're removing it".
     if (adapterAvailable) {
       result.queuedJobIds.push(job.id);
     }
@@ -162,6 +166,7 @@ export async function queueDelistOtherListings(
         : "sold";
       const task = await createReviewTask(db, {
         userId,
+        accountId: item.accountId,
         type: "manual_delist_required",
         inventoryItemId,
         marketplace: listing.marketplace,
@@ -185,6 +190,7 @@ export async function queueDelistOtherListings(
     await recordInventoryEvent(db, {
       inventoryItemId,
       userId,
+      accountId: item.accountId,
       type: "delist_requested",
       source: "system",
       marketplace: listing.marketplace,

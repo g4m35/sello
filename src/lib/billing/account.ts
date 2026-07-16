@@ -1,5 +1,7 @@
 import "server-only";
 
+import { decideEntitlement } from "@/lib/auth/entitlement-decision";
+import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 
 import type { PlanId } from "./plans";
@@ -16,11 +18,23 @@ interface RawAccount {
   id: string;
   ownerUserId: string;
   plan: string;
+  disabledAt?: Date | null;
 }
 
 function toRecord(account: RawAccount): AccountRecord {
   // PlanTier enum values ("free" | "pro" | "kingpin") are identical to PlanId.
   return { id: account.id, ownerUserId: account.ownerUserId, plan: account.plan as PlanId };
+}
+
+function toActiveRecord(account: RawAccount): AccountRecord {
+  const decision = decideEntitlement({
+    plan: account.plan as PlanId,
+    accountEnabled: !account.disabledAt,
+  });
+  if (!decision.allowed) {
+    throw new AppError(decision.sellerCopy, 403, decision.reason);
+  }
+  return toRecord(account);
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -40,7 +54,7 @@ export async function getOrCreateAccount(
   prisma: Db = getPrisma(),
 ): Promise<AccountRecord> {
   const existing = await prisma.account.findUnique({ where: { ownerUserId: userId } });
-  if (existing) return toRecord(existing);
+  if (existing) return toActiveRecord(existing);
 
   try {
     const created = await prisma.account.create({
@@ -49,11 +63,11 @@ export async function getOrCreateAccount(
         members: { create: { userId, role: "owner", status: "active" } },
       },
     });
-    return toRecord(created);
+    return toActiveRecord(created);
   } catch (error) {
     if (isUniqueViolation(error)) {
       const found = await prisma.account.findUnique({ where: { ownerUserId: userId } });
-      if (found) return toRecord(found);
+      if (found) return toActiveRecord(found);
     }
     throw error;
   }
@@ -69,14 +83,14 @@ export async function getActiveAccount(
   prisma: Db = getPrisma(),
 ): Promise<AccountRecord> {
   const owned = await prisma.account.findUnique({ where: { ownerUserId: userId } });
-  if (owned) return toRecord(owned);
+  if (owned) return toActiveRecord(owned);
 
   const membership = await prisma.accountMember.findFirst({
     where: { userId, status: "active" },
     orderBy: { createdAt: "asc" },
     include: { account: true },
   });
-  if (membership?.account) return toRecord(membership.account);
+  if (membership?.account) return toActiveRecord(membership.account);
 
   return getOrCreateAccount(userId, prisma);
 }

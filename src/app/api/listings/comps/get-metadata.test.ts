@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   requireSupabaseUser: vi.fn(),
+  resolveRuntimeEntitlements: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -10,6 +11,9 @@ vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
 vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" }),
+}));
+vi.mock("@/lib/auth/feature-access", () => ({
+  resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
 }));
 
 import { GET } from "./route";
@@ -21,6 +25,14 @@ describe("comps GET metadata", () => {
     vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
     vi.stubEnv("PAID_COMPS_EMAILS", "owner@example.com");
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "owner@example.com" });
+    mocks.resolveRuntimeEntitlements.mockResolvedValue({
+      account: { id: "acc-1", ownerUserId: "user-1", plan: "free" },
+      access: { paidComps: true },
+      decisions: {},
+      plan: "free",
+      limits: {},
+      features: {},
+    });
   });
 
   afterEach(() => {

@@ -8,11 +8,15 @@ const mocks = vi.hoisted(() => ({
   executeBulkEbayDelist: vi.fn(),
   executeBulkStockXDelist: vi.fn(),
   getActiveAccount: vi.fn(),
+  requireRuntimeFeatureAccess: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
 vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupabaseUser }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  requireRuntimeFeatureAccess: mocks.requireRuntimeFeatureAccess,
+}));
 vi.mock("@/lib/marketplace/bulk-delist", async (orig) => {
   const actual = await orig<typeof import("@/lib/marketplace/bulk-delist")>();
   return {
@@ -22,6 +26,7 @@ vi.mock("@/lib/marketplace/bulk-delist", async (orig) => {
   };
 });
 
+import { AppError } from "@/lib/errors";
 import { POST } from "./route";
 
 const ITEM = "11111111-1111-4111-8111-111111111111";
@@ -41,7 +46,18 @@ describe("bulk delist execute route", () => {
     vi.clearAllMocks();
     vi.stubEnv("EBAY_DELIST_EMAILS", "owner@example.com");
     mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "owner@example.com" });
-    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" });
+    const account = { id: "acc-1", ownerUserId: "u1", plan: "free" };
+    mocks.getActiveAccount.mockResolvedValue(account);
+    mocks.requireRuntimeFeatureAccess.mockImplementation(async (user: { email?: string | null }) => {
+      if (user.email !== "owner@example.com") {
+        throw new AppError(
+          "Live eBay delisting is currently enabled for selected alpha accounts.",
+          403,
+          "EBAY_DELIST_ALPHA_ONLY",
+        );
+      }
+      return { account: await mocks.getActiveAccount() };
+    });
     mocks.executeBulkStockXDelist.mockResolvedValue({
       bulkRunId: "run-1",
       total: 1,

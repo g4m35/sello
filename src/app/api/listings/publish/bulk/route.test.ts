@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   executeBulkEbayPublish: vi.fn(),
   executeBulkStockXPublish: vi.fn(),
   getActiveAccount: vi.fn(),
+  requireRuntimeFeatureAccess: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,6 +19,9 @@ vi.mock("@/lib/marketplace/bulk-publish", () => ({
   executeBulkStockXPublish: mocks.executeBulkStockXPublish,
 }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  requireRuntimeFeatureAccess: mocks.requireRuntimeFeatureAccess,
+}));
 
 import { POST } from "./route";
 
@@ -36,7 +40,18 @@ describe("bulk publish execution route", () => {
     vi.clearAllMocks();
     vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "allowed@example.com");
     mocks.getPrisma.mockReturnValue({});
-    mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
+    const account = { id: "acc-1", ownerUserId: "user-1", plan: "free" };
+    mocks.getActiveAccount.mockResolvedValue(account);
+    mocks.requireRuntimeFeatureAccess.mockImplementation(async (user: { email?: string | null }) => {
+      if (user.email !== "allowed@example.com") {
+        throw new AppError(
+          "Live eBay publishing is currently enabled for selected alpha accounts.",
+          403,
+          "LIVE_EBAY_PUBLISH_ALPHA_ONLY",
+        );
+      }
+      return { account: await mocks.getActiveAccount() };
+    });
     mocks.executeBulkEbayPublish.mockResolvedValue({
       bulkRunId: u(999),
       total: 1,

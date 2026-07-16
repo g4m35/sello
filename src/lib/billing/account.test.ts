@@ -104,6 +104,19 @@ describe("getActiveAccount", () => {
     expect(memberFind).not.toHaveBeenCalled();
   });
 
+  it("fails closed when the owning account is disabled", async () => {
+    const accountFind = vi.fn().mockResolvedValue({
+      id: "acc-disabled",
+      ownerUserId: "user-1",
+      plan: "pro",
+      disabledAt: new Date("2026-07-10T00:00:00Z"),
+    });
+
+    await expect(
+      getActiveAccount("user-1", db({ accountFind })),
+    ).rejects.toMatchObject({ status: 403, code: "ACCOUNT_DISABLED" });
+  });
+
   it("returns the shared account an invitee is an active member of", async () => {
     const accountFind = vi.fn().mockResolvedValue(null);
     const memberFind = vi.fn().mockResolvedValue({
@@ -117,6 +130,21 @@ describe("getActiveAccount", () => {
       orderBy: { createdAt: "asc" },
       include: { account: true },
     });
+  });
+
+  it("fails closed when a member's shared account is disabled", async () => {
+    const memberFind = vi.fn().mockResolvedValue({
+      account: {
+        id: "acc-disabled-team",
+        ownerUserId: "owner-9",
+        plan: "kingpin",
+        disabledAt: new Date("2026-07-10T00:00:00Z"),
+      },
+    });
+
+    await expect(
+      getActiveAccount("invitee-2", db({ memberFind })),
+    ).rejects.toMatchObject({ status: 403, code: "ACCOUNT_DISABLED" });
   });
 
   it("does not return a revoked membership account", async () => {

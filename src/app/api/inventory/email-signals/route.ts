@@ -46,7 +46,7 @@ type EmailSignalRow = { id: string; userId: string | null };
 type MatchListingRow = {
   id: string;
   inventoryItemId: string;
-  inventoryItem: { sellerId: string } | null;
+  inventoryItem: { sellerId: string; accountId: string } | null;
 };
 
 export type EmailIngestPrismaLike = {
@@ -87,7 +87,7 @@ export type EmailIngestPrismaLike = {
       select: {
         id: true;
         inventoryItemId: true;
-        inventoryItem: { select: { sellerId: true } };
+        inventoryItem: { select: { sellerId: true; accountId: true } };
       };
       take: number;
     }): Promise<MatchListingRow[]>;
@@ -99,6 +99,7 @@ type EngineLike = typeof handleSaleSignal;
 
 type Resolution = {
   userId: string | null;
+  accountId: string | null;
   marketplaceListingId: string | null;
   inventoryItemId: string | null;
 };
@@ -129,6 +130,7 @@ async function resolveOwner(
 ): Promise<Resolution> {
   const empty: Resolution = {
     userId: null,
+    accountId: null,
     marketplaceListingId: null,
     inventoryItemId: null,
   };
@@ -137,7 +139,7 @@ async function resolveOwner(
   const select = {
     id: true,
     inventoryItemId: true,
-    inventoryItem: { select: { sellerId: true } },
+    inventoryItem: { select: { sellerId: true, accountId: true } },
   } as const;
 
   // Resolve an owner ONLY when EXACTLY ONE listing matches the hint. Zero matches
@@ -151,6 +153,7 @@ async function resolveOwner(
     if (!row.inventoryItem) return null;
     return {
       userId: row.inventoryItem.sellerId,
+      accountId: row.inventoryItem.accountId,
       marketplaceListingId: row.id,
       inventoryItemId: row.inventoryItemId,
     };
@@ -277,13 +280,20 @@ export async function ingest(
     // rule below high confidence — this route never delists on its own.
     const actionable =
       resolution.userId !== null &&
+      resolution.accountId !== null &&
       parsed.marketplaceGuess !== undefined &&
       isActionableSignalType(parsed.signalType);
 
     let action: HandleSaleSignalResult["outcome"] | "none" = "none";
-    if (actionable && resolution.userId && parsed.marketplaceGuess) {
+    if (
+      actionable &&
+      resolution.userId &&
+      resolution.accountId &&
+      parsed.marketplaceGuess
+    ) {
       const result = await engine(db as never, {
         userId: resolution.userId,
+        accountId: resolution.accountId,
         marketplace: parsed.marketplaceGuess,
         source: "email",
         externalListingId: parsed.matchHints.externalListingId ?? null,

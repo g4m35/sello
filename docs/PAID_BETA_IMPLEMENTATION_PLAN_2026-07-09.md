@@ -1,9 +1,11 @@
 # Sello paid-beta implementation plan
 
-Date: 2026-07-09 (America/Los_Angeles)  
-Repository reviewed: `/Users/jheller/dev/resale-crosslister-clean`  
-Baseline reviewed: `main` at `1335be1` (`Simplify marketplace UI and strip redundant app chrome`)  
+Date: 2026-07-09 (America/Los_Angeles)
+Repository reviewed: `/Users/jheller/dev/resale-crosslister-clean`
+Baseline reviewed: `main` at `1335be1` (`Simplify marketplace UI and strip redundant app chrome`)
 Scope: implementation package only. No deployment, environment mutation, provider call, or marketplace write was performed.
+
+> Implementation update (2026-07-10): durable bulk intake is now present on `develop`, and the paid-beta P0 hardening is specified by `docs/architecture/bulk-intake-paid-beta-readiness.md` with rollout/recovery in `docs/operations/paid-beta-production-rollout.md`. This dated plan remains useful design context, but its baseline commit, test totals, migration state, and “missing” diagnoses are historical and must not be used as current rollout evidence.
 
 ## Ground truth and decision rules
 
@@ -42,7 +44,7 @@ Non-negotiable rules:
 
 ### Missing or incomplete
 
-- No durable bulk photo-intake domain: no `BulkUploadBatch`, `BulkUploadItem`, upload grouping, per-item AI queue, or resumable review queue. CSV import is a synchronous loop; “bulk” currently means actions on existing items.
+- Durable account-scoped bulk photo intake, grouping, per-item AI generation, resumable review, cancellation, and canonical listing conversion are now implemented. Publishing remains a separate existing single/bulk execution path and bulk-intake itself performs no marketplace write.
 - Paid product access is split between plan entitlements and alpha email allowlists. A paying seller can still be denied paid comps/live actions; the pricing page cannot truthfully describe effective access.
 - Usage quota check and increment are separate and best-effort. Concurrent requests can exceed plan limits or complete without being metered.
 - `SyncJob` retry semantics are not production-grade: several job kinds are `NOT_IMPLEMENTED`; non-delist failures go terminal immediately; `needs_review` is never claimed although one comment describes it as retryable; no exponential backoff or retry classification exists.
@@ -186,7 +188,7 @@ Do not perform cosmetic table renames during paid beta. The logical names below 
 | `BulkUploadBatch` | New fields below | `(accountId,status,updatedAt)`; unique client idempotency key | owner account; plan reserved at creation |
 | `BulkUploadItem` | New fields below | unique `(batchId,position)` and optional `inventoryItemId`; `(batchId,status)` | item cannot move across accounts |
 | `ReviewTask` | Keep; add `accountId`, `priority`, `dueAt`, `dedupeKey`, `resolution`, `resolvedBy` | unique open dedupe key; `(accountId,status,priority,dueAt)` | seller/member scope; admin actions audited |
-| `Notification` | Keep; add `accountId`, `dedupeKey`, `channel`, `deliveryStatus`, `actionUrl` | unique dedupe key; unread index | body is seller-safe; no provider payload |
+| `Notification` | Keep; add `accountId`, `dedupeKey`, `channel`, `deliveryStatus`, `actionUrl` | unique `(accountId,dedupeKey)`; unread index | body is seller-safe; no provider payload |
 | `EmailSignal` | Keep; add `accountId`, `provider`, `signatureVerified`, `rawObjectRef?`, `eventTime` | existing message-id unique; `(accountId,processedAt)` | provider signature required upstream; minimize snippets |
 | `BillingSubscription` | Evolve `Subscription`; add `lastStripeEventCreated`, `graceEndsAt` | Stripe customer/subscription unique | owner/admin reads; server webhook writes |
 | `UsageMeterEvent` | New append-only reservation/settlement record | unique idempotency key; `(accountId,metric,periodStart,status)` | atomic quota authority; no client writes |

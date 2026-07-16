@@ -1,10 +1,17 @@
+import { randomUUID } from "node:crypto";
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getActiveAccount } from "@/lib/billing/account";
-import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
-import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
-import { logUnexpectedError, safeErrorResponse } from "@/lib/errors";
+import {
+  markUsageReconciliationRequired,
+  markUsageWorkStarted,
+  releaseUsageReservation,
+  reserveUsageOrThrow,
+  settleUsageReservationOrRequireReconciliation,
+} from "@/lib/billing/usage";
+import { AppError, logUnexpectedError, safeErrorResponse } from "@/lib/errors";
 import {
   StockXIntegrationError,
   stockxErrorCodes,
@@ -27,17 +34,40 @@ const StockXPublishRequestSchema = z
   .strict();
 
 export async function POST(request: Request) {
+  let usageReservationId: string | null = null;
+  let prisma: ReturnType<typeof getPrisma> | null = null;
+  let workStarted = false;
   try {
     const user = await requireSupabaseUser(request);
     const body = StockXPublishRequestSchema.parse(await request.json());
-    const prisma = getPrisma();
+    prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    await assertWithinQuota(
-      accountWithEffectivePlan(account, user),
-      "autopublish",
-      new Date(),
-      { user },
-    );
+    const reservation = await reserveUsageOrThrow({
+      accountId: account.id,
+      metric: "autopublish",
+      idempotencyKey:
+        request.headers.get("idempotency-key") ?? randomUUID(),
+      now: new Date(),
+      operationType: "marketplace_publish",
+      operationId: `${body.inventoryItemId}:stockx`,
+      user,
+    }, prisma);
+    if (reservation.idempotent) {
+      throw new AppError(
+        "This StockX publish request is already in progress or completed.",
+        409,
+        "USAGE_REQUEST_ALREADY_RESERVED",
+      );
+    }
+    usageReservationId = reservation.reservationId;
+    workStarted = await markUsageWorkStarted(usageReservationId, new Date(), prisma);
+    if (!workStarted) {
+      throw new AppError(
+        "StockX publish could not start because its usage reservation is no longer active.",
+        409,
+        "USAGE_RESERVATION_NOT_ACTIVE",
+      );
+    }
 
     const result = await executePublish(prisma, {
       userId: user.id,
@@ -49,9 +79,34 @@ export async function POST(request: Request) {
 
     if (result.httpStatus >= 200 && result.httpStatus < 300) {
       try {
-        await incrementUsage(account.id, "autopublish", new Date());
+        await settleUsageReservationOrRequireReconciliation(
+          usageReservationId,
+          new Date(),
+          "STOCKX_AUTOPUBLISH_SETTLEMENT_FAILED",
+          prisma,
+        );
       } catch (usageError) {
-        logUnexpectedError("stockx_autopublish_usage_increment", usageError);
+        logUnexpectedError("stockx_autopublish_usage_settle", usageError);
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          "STOCKX_AUTOPUBLISH_SETTLEMENT_FAILED",
+          prisma,
+        ).catch((reconciliationError) =>
+          logUnexpectedError("stockx_autopublish_usage_reconcile", reconciliationError),
+        );
+      }
+    } else {
+      try {
+        await releaseUsageReservation(
+          usageReservationId,
+          new Date(),
+          prisma,
+          "released",
+          { allowStartedWork: true },
+        );
+      } catch (usageError) {
+        logUnexpectedError("stockx_autopublish_usage_release", usageError);
       }
     }
 
@@ -64,6 +119,22 @@ export async function POST(request: Request) {
       { status: result.httpStatus },
     );
   } catch (error) {
+    if (usageReservationId && prisma) {
+      if (workStarted) {
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          "STOCKX_AUTOPUBLISH_OUTCOME_UNKNOWN",
+          prisma,
+        ).catch((usageError) =>
+          logUnexpectedError("stockx_autopublish_usage_reconcile", usageError),
+        );
+      } else {
+        await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
+          (usageError) => logUnexpectedError("stockx_autopublish_usage_release", usageError),
+        );
+      }
+    }
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         {

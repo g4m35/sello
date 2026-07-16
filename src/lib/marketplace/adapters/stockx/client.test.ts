@@ -210,7 +210,7 @@ describe("StockX market data client", () => {
   });
 
   it("maps StockX billing/shipping setup errors to sellerProfileIncomplete", async () => {
-    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+    const fetchImpl = vi.fn<typeof fetch>(
       async () =>
         new Response(
           JSON.stringify({
@@ -227,7 +227,7 @@ describe("StockX market data client", () => {
         config,
         "access-token",
         { productId: "p1", variantId: "v1" },
-        fetchImpl as unknown as typeof fetch,
+        fetchImpl,
       ),
     ).rejects.toMatchObject({
       code: "STOCKX_SELLER_PROFILE_INCOMPLETE",

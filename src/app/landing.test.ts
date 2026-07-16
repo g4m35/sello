@@ -46,9 +46,10 @@ describe("landing page", () => {
     expect(flat.toLowerCase()).not.toContain("assisted where required");
   });
 
-  it("mentions inventory sync and autonomous delist", () => {
+  it("mentions supported inventory sync and delist", () => {
     expect(flat.toLowerCase()).toMatch(/inventory sync/i);
     expect(flat.toLowerCase()).toMatch(/delist/i);
+    expect(flat.toLowerCase()).toMatch(/supported connected|where supported/i);
   });
 
   it("has working primary/secondary CTAs", () => {
@@ -83,11 +84,12 @@ describe("landing page", () => {
     expect(landingSource).toContain("<summary");
   });
 
-  it("keeps autonomous flow without watch-the-demo CTA copy", () => {
-    expect(flat).toMatch(/One autonomous flow/i);
+  it("keeps the streamlined flow without overstating marketplace support", () => {
+    expect(flat).toMatch(/One streamlined flow/i);
     expect(flat.toLowerCase()).not.toContain("watch the demo");
     expect(flat.toLowerCase()).not.toContain("jump in");
-    expect(flat).toMatch(/Publish across marketplaces/i);
+    expect(flat).toMatch(/Publish or export listings/i);
+    expect(flat.toLowerCase()).not.toContain("publish across marketplaces");
   });
 
   it("redirects signed-in users from / to /dashboard", async () => {
