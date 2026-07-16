@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/errors";
 
@@ -15,8 +15,9 @@ const mocks = vi.hoisted(() => ({
   releaseUsageReservation: vi.fn(),
   reserveUsageOrThrow: vi.fn(),
   settleUsageReservationOrRequireReconciliation: vi.fn(),
-  prepareListingPhotos: vi.fn(),
-  uploadListingPhotos: vi.fn(),
+  createSignedUploadUrl: vi.fn(),
+  storageInfo: vi.fn(),
+  storageRemove: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -35,19 +36,23 @@ vi.mock("@/lib/billing/usage", () => ({
 }));
 vi.mock("@/lib/storage/listing-photos", () => ({
   downloadListingPhotos: mocks.downloadListingPhotos,
-  prepareListingPhotos: mocks.prepareListingPhotos,
-  uploadListingPhotos: mocks.uploadListingPhotos,
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServiceClient: () => ({
     storage: {
-      from: () => ({ createSignedUrl: mocks.createSignedUrl }),
+      from: () => ({
+        createSignedUrl: mocks.createSignedUrl,
+        createSignedUploadUrl: mocks.createSignedUploadUrl,
+        info: mocks.storageInfo,
+        remove: mocks.storageRemove,
+      }),
     },
   }),
 }));
 
 import {
   cancelBulkBatch,
+  createBulkPhotoUploadGrants,
   createBulkBatch,
   generateBulkItem,
   groupBulkPhotos,
@@ -59,6 +64,17 @@ import {
 const account = { id: "00000000-0000-4000-8000-000000000001", ownerUserId: "user-1", plan: "free" as const };
 const user = { id: "user-1", email: "seller@example.com" };
 const now = new Date("2026-07-10T12:00:00.000Z");
+
+function validJpeg() {
+  return new Uint8Array([
+    0xff, 0xd8,
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    0x00, 0x64,
+    0x00, 0x64,
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xd9,
+  ]);
+}
 
 function photo(id: string, position: number, bulkItemId: string | null = null) {
   return {
@@ -129,6 +145,21 @@ function generationItem(status = "ready_for_generation") {
 describe("bulk intake service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("BULK_INTAKE_ENABLED", "true");
+    vi.stubEnv("SUPABASE_STORAGE_BUCKET", "private");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(validJpeg(), { status: 206 })),
+    );
+    mocks.createSignedUploadUrl.mockImplementation(async (path: string) => ({
+      data: { path, token: "upload-token", signedUrl: "https://storage.test/upload" },
+      error: null,
+    }));
+    mocks.storageInfo.mockResolvedValue({
+      data: { size: 1, contentType: "image/jpeg" },
+      error: null,
+    });
+    mocks.storageRemove.mockResolvedValue({ data: [], error: null });
     mocks.reserveUsageOrThrow.mockResolvedValue({
       allowed: true,
       reservationId: "usage-reservation-1",
@@ -140,6 +171,11 @@ describe("bulk intake service", () => {
     mocks.markUsageReconciliationRequired.mockResolvedValue(true);
     mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
     mocks.downloadListingPhotos.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("scopes every batch lookup to the active account and hides unowned ids", async () => {
@@ -181,6 +217,32 @@ describe("bulk intake service", () => {
     await expect(
       createBulkBatch({ account, user, expectedItems: 11 }),
     ).rejects.toMatchObject({ code: "BULK_BATCH_TOO_LARGE" });
+  });
+
+  it("blocks new batch creation when the kill switch is not explicitly enabled", async () => {
+    vi.stubEnv("BULK_INTAKE_ENABLED", "");
+    const create = vi.fn();
+    mocks.getPrisma.mockReturnValue({ bulkBatch: { create } });
+
+    await expect(createBulkBatch({ account, user, expectedItems: 1 })).rejects.toMatchObject({
+      status: 503,
+      code: "BULK_INTAKE_DISABLED",
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("still returns an existing idempotent batch while the kill switch is off", async () => {
+    vi.stubEnv("BULK_INTAKE_ENABLED", "");
+    const existing = { ...batchRecord(), idempotencyKey: "bulk-request-recovery" };
+    const create = vi.fn();
+    mocks.getPrisma.mockReturnValue({
+      bulkBatch: { findFirst: vi.fn().mockResolvedValue(existing), create },
+    });
+
+    await expect(
+      createBulkBatch({ account, user, idempotencyKey: "bulk-request-recovery" }),
+    ).resolves.toMatchObject({ id: existing.id });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("persists complete photo grouping and the grouping-to-ready transition", async () => {
@@ -232,44 +294,79 @@ describe("bulk intake service", () => {
     expect(result.status).toBe("needs_review");
   });
 
+  it("creates account-and-batch-scoped signed upload grants", async () => {
+    const before = batchRecord("created");
+    mocks.getPrisma.mockReturnValue({
+      bulkBatch: { findFirst: vi.fn().mockResolvedValue(before) },
+    });
+    const uploadId = "30000000-0000-4000-8000-000000000010";
+
+    const grants = await createBulkPhotoUploadGrants({
+      batchId: before.id,
+      account,
+      user,
+      photos: [
+        {
+          uploadId,
+          originalName: "front.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 1,
+        },
+      ],
+    });
+
+    expect(grants).toEqual([
+      {
+        uploadId,
+        bucket: "private",
+        path: `bulk/${account.id}/${before.id}/${uploadId}.jpg`,
+        token: "upload-token",
+      },
+    ]);
+    expect(mocks.createSignedUploadUrl).toHaveBeenCalledWith(grants[0]?.path, {
+      upsert: false,
+    });
+  });
+
   it("registers account-scoped photo metadata in deterministic upload order", async () => {
     const before = batchRecord("created");
     const registered = photo("30000000-0000-4000-8000-000000000010", 0);
+    registered.storagePath = `bulk/${account.id}/${before.id}/${registered.id}.jpg`;
     const after = batchRecord("uploading", [registered]);
-    const findFirst = vi.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(after);
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(before)
+      .mockResolvedValueOnce(before)
+      .mockResolvedValueOnce(after);
     const createMany = vi.fn().mockResolvedValue({ count: 1 });
     const update = vi.fn().mockResolvedValue({ id: before.id });
+    const transaction = {
+      bulkBatch: { findFirst, update },
+      bulkPhoto: { createMany },
+      $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+    };
     const prisma = {
       bulkBatch: { findFirst, update },
       bulkPhoto: { createMany },
-      $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<void>) =>
+        callback(transaction),
+      ),
     };
     mocks.getPrisma.mockReturnValue(prisma);
-    mocks.prepareListingPhotos.mockResolvedValue([
-      {
-        bytes: new Uint8Array([1, 2, 3]),
-        mimeType: "image/jpeg",
-        originalName: "front.jpg",
-        position: 0,
-      },
-    ]);
-    mocks.uploadListingPhotos.mockResolvedValue([
-      {
-        bucket: "private",
-        path: "user-1/batch/front.jpg",
-        mimeType: "image/jpeg",
-        originalName: "front.jpg",
-        position: 0,
-      },
-    ]);
-    const formData = new FormData();
-    formData.append("photos", new File([new Uint8Array([1])], "front.jpg", { type: "image/jpeg" }));
 
     const result = await registerBulkPhotos({
       batchId: before.id,
       account,
       user,
-      formData,
+      photos: [
+        {
+          uploadId: registered.id,
+          originalName: "front.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 1,
+          storagePath: registered.storagePath,
+        },
+      ],
     });
 
     expect(result.photoCount).toBe(1);
@@ -279,13 +376,137 @@ describe("bulk intake service", () => {
           batchId: before.id,
           accountId: account.id,
           position: 0,
-          storagePath: "user-1/batch/front.jpg",
+          storagePath: registered.storagePath,
         }),
       ],
     });
   });
 
+  it("replays photo metadata registration without duplicate rows or count increments", async () => {
+    const registered = photo("30000000-0000-4000-8000-000000000010", 0);
+    registered.storagePath = `bulk/${account.id}/${batchRecord().id}/${registered.id}.jpg`;
+    const existing = batchRecord("uploading", [registered]);
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce(existing);
+    const createMany = vi.fn();
+    const update = vi.fn();
+    const transaction = {
+      bulkBatch: { findFirst, update },
+      bulkPhoto: { createMany },
+      $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getPrisma.mockReturnValue({
+      bulkBatch: { findFirst, update },
+      bulkPhoto: { createMany },
+      $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<void>) =>
+        callback(transaction),
+      ),
+    });
+
+    const result = await registerBulkPhotos({
+      batchId: existing.id,
+      account,
+      user,
+      photos: [
+        {
+          uploadId: registered.id,
+          originalName: registered.originalName,
+          mimeType: "image/jpeg",
+          sizeBytes: 1,
+          storagePath: registered.storagePath,
+        },
+      ],
+    });
+
+    expect(result.photoCount).toBe(1);
+    expect(createMany).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(mocks.storageInfo).not.toHaveBeenCalled();
+  });
+
+  it("rejects a storage path outside the authenticated account and batch", async () => {
+    const before = batchRecord("created");
+    mocks.getPrisma.mockReturnValue({
+      bulkBatch: { findFirst: vi.fn().mockResolvedValue(before) },
+    });
+
+    await expect(
+      registerBulkPhotos({
+        batchId: before.id,
+        account,
+        user,
+        photos: [
+          {
+            uploadId: "30000000-0000-4000-8000-000000000010",
+            originalName: "front.jpg",
+            mimeType: "image/jpeg",
+            sizeBytes: 1,
+            storagePath: "bulk/another-account/another-batch/front.jpg",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 400, code: "BULK_PHOTO_PATH_INVALID" });
+    expect(mocks.storageInfo).not.toHaveBeenCalled();
+  });
+
+  it("removes an unregistered object that fails server-side validation", async () => {
+    const before = batchRecord("created");
+    mocks.getPrisma.mockReturnValue({
+      bulkBatch: { findFirst: vi.fn().mockResolvedValue(before) },
+    });
+    mocks.storageInfo.mockResolvedValue({
+      data: { size: 99, contentType: "image/jpeg" },
+      error: null,
+    });
+    const uploadId = "30000000-0000-4000-8000-000000000010";
+    const storagePath = `bulk/${account.id}/${before.id}/${uploadId}.jpg`;
+
+    await expect(
+      registerBulkPhotos({
+        batchId: before.id,
+        account,
+        user,
+        photos: [
+          {
+            uploadId,
+            originalName: "front.jpg",
+            mimeType: "image/jpeg",
+            sizeBytes: 1,
+            storagePath,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ status: 400, code: "BULK_PHOTO_INVALID" });
+    expect(mocks.storageRemove).toHaveBeenCalledWith([storagePath]);
+  });
+
+  it("blocks new item generation while the kill switch is off", async () => {
+    vi.stubEnv("BULK_INTAKE_ENABLED", "");
+    const updateMany = vi.fn();
+    mocks.getPrisma.mockReturnValue({
+      bulkItem: {
+        findFirst: vi.fn().mockResolvedValue(generationItem()),
+        updateMany,
+      },
+    });
+
+    await expect(
+      generateBulkItem({
+        batchId: batchRecord().id,
+        itemId: generationItem().id,
+        account,
+        user,
+      }),
+    ).rejects.toMatchObject({ status: 503, code: "BULK_INTAKE_DISABLED" });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(mocks.reserveUsageOrThrow).not.toHaveBeenCalled();
+  });
+
   it("recovers stale generation and expires its reserved usage", async () => {
+    vi.stubEnv("BULK_INTAKE_ENABLED", "");
     const itemId = "20000000-0000-4000-8000-000000000099";
     const now = new Date("2026-07-10T12:00:00Z");
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
@@ -516,6 +737,7 @@ describe("bulk intake service", () => {
   });
 
   it("cancels unfinished items without deleting completed listings", async () => {
+    vi.stubEnv("BULK_INTAKE_ENABLED", "");
     const unfinished = generationItem();
     const completed = { ...generationItem("listing_ready"), id: "20000000-0000-4000-8000-000000000002", inventoryItemId: "40000000-0000-4000-8000-000000000002" };
     const before = batchRecord("processing", [], [unfinished, completed]);

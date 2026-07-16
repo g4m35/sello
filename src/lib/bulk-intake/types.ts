@@ -50,3 +50,10 @@ export type BulkGenerationResult = {
   errorCode: string | null;
   errorMessage: string | null;
 };
+
+export type BulkPhotoUploadGrant = {
+  uploadId: string;
+  bucket: string;
+  path: string;
+  token: string;
+};

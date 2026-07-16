@@ -22,12 +22,17 @@ import { asStringRecord } from "@/lib/listing/ebay-draft-fields";
 import { getPrisma } from "@/lib/prisma";
 import {
   downloadListingPhotos,
-  prepareListingPhotos,
-  uploadListingPhotos,
 } from "@/lib/storage/listing-photos";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { extractBulkPhotos, MAX_LISTING_PHOTOS } from "@/lib/uploads";
+import { MAX_LISTING_PHOTOS } from "@/lib/uploads";
 
+import { assertBulkIntakeEnabled } from "./config";
+import {
+  bulkPhotoStoragePath,
+  createBulkPhotoUploadGrant,
+  getBulkPhotoStorage,
+  validateStoredBulkPhoto,
+} from "./photo-storage";
 import {
   assertBulkItemTransition,
   summarizeBulkItems,
@@ -37,10 +42,13 @@ import type {
   BulkBatchSummaryView,
   BulkBatchView,
   BulkGenerationResult,
+  BulkPhotoUploadGrant,
   BulkPhotoView,
 } from "./types";
 import {
   MAX_BULK_ITEMS,
+  type BulkPhotoRegistrationInput,
+  type BulkPhotoUploadInput,
   type BulkPhotoGroupInput,
 } from "./validation";
 
@@ -69,6 +77,87 @@ function isUniqueViolation(error: unknown): boolean {
       "code" in error &&
       (error as { code?: unknown }).code === "P2002",
   );
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  limit: number,
+  callback: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await callback(values[index]!, index);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  );
+  return results;
+}
+
+function assertBatchAcceptsPhotos(batch: BulkBatchRecord): void {
+  if (batch.status === "canceled") {
+    throw new AppError("Canceled batches cannot accept photos.", 409, "BULK_BATCH_CANCELED");
+  }
+  if (batch.items.length > 0) {
+    throw new AppError(
+      "Regroup or finish this batch before adding more photos.",
+      409,
+      "BULK_BATCH_ALREADY_GROUPED",
+    );
+  }
+}
+
+function assertBulkPhotoCapacity(
+  batch: BulkBatchRecord,
+  account: AccountRecord,
+  user: BulkIntakeUser,
+  requestedUploadIds: string[],
+): void {
+  if (new Set(requestedUploadIds).size !== requestedUploadIds.length) {
+    throw new AppError(
+      "Each photo upload id must be unique.",
+      400,
+      "BULK_PHOTO_UPLOAD_ID_DUPLICATE",
+    );
+  }
+  const existingIds = new Set(batch.photos.map((photo) => photo.id));
+  const newPhotos = requestedUploadIds.filter((id) => !existingIds.has(id)).length;
+  const itemLimit = Math.min(
+    effectiveLimitsForUser(account, user).bulkBatchSize,
+    MAX_BULK_ITEMS,
+  );
+  const photoLimit = itemLimit * MAX_LISTING_PHOTOS;
+  if (batch.photos.length + newPhotos > photoLimit) {
+    throw new AppError(
+      `Upload no more than ${photoLimit} photos without exceeding this batch's item limit.`,
+      400,
+      "BULK_PHOTO_LIMIT_EXCEEDED",
+    );
+  }
+}
+
+function assertPhotoMatchesExisting(
+  photo: Pick<BulkPhotoUploadInput, "mimeType" | "originalName"> & { storagePath: string },
+  existing: BulkBatchRecord["photos"][number],
+): void {
+  if (
+    existing.storagePath !== photo.storagePath ||
+    existing.mimeType !== photo.mimeType ||
+    existing.originalName !== photo.originalName
+  ) {
+    throw new AppError(
+      "This photo upload conflicts with an existing batch photo.",
+      409,
+      "BULK_PHOTO_METADATA_CONFLICT",
+    );
+  }
 }
 
 export async function requireOwnedBulkBatch(
@@ -178,10 +267,6 @@ export async function createBulkBatch(
   },
   prisma: Db = getPrisma(),
 ): Promise<BulkBatchView> {
-  if (args.expectedItems) {
-    assertBulkBatchSize(args.account, args.expectedItems, args.user);
-  }
-
   if (args.idempotencyKey) {
     const existing = await prisma.bulkBatch.findFirst({
       where: {
@@ -191,6 +276,11 @@ export async function createBulkBatch(
       include: batchInclude,
     });
     if (existing) return toBatchView(existing);
+  }
+
+  assertBulkIntakeEnabled();
+  if (args.expectedItems) {
+    assertBulkBatchSize(args.account, args.expectedItems, args.user);
   }
 
   try {
@@ -218,63 +308,145 @@ export async function createBulkBatch(
   }
 }
 
+export async function createBulkPhotoUploadGrants(
+  args: {
+    batchId: string;
+    account: AccountRecord;
+    user: BulkIntakeUser;
+    photos: BulkPhotoUploadInput[];
+  },
+  prisma: Db = getPrisma(),
+): Promise<BulkPhotoUploadGrant[]> {
+  assertBulkIntakeEnabled();
+  const batch = await requireOwnedBulkBatch(args.batchId, args.account.id, prisma);
+  assertBatchAcceptsPhotos(batch);
+  assertBulkPhotoCapacity(
+    batch,
+    args.account,
+    args.user,
+    args.photos.map((photo) => photo.uploadId),
+  );
+
+  const existingById = new Map(batch.photos.map((photo) => [photo.id, photo]));
+  for (const photo of args.photos) {
+    const existing = existingById.get(photo.uploadId);
+    if (!existing) continue;
+    assertPhotoMatchesExisting(
+      {
+        ...photo,
+        storagePath: bulkPhotoStoragePath(args.account.id, batch.id, photo),
+      },
+      existing,
+    );
+  }
+
+  const { bucket, files } = getBulkPhotoStorage();
+  return mapWithConcurrency(args.photos, 8, (photo) =>
+    createBulkPhotoUploadGrant(bucket, files, args.account.id, batch.id, photo),
+  );
+}
+
 export async function registerBulkPhotos(
   args: {
     batchId: string;
     account: AccountRecord;
     user: BulkIntakeUser;
-    formData: FormData;
+    photos: BulkPhotoRegistrationInput[];
   },
   prisma: Db = getPrisma(),
 ): Promise<BulkBatchView> {
+  assertBulkIntakeEnabled();
   const batch = await requireOwnedBulkBatch(args.batchId, args.account.id, prisma);
-  if (batch.status === "canceled") {
-    throw new AppError("Canceled batches cannot accept photos.", 409, "BULK_BATCH_CANCELED");
-  }
-  if (batch.items.length > 0) {
-    throw new AppError(
-      "Regroup or finish this batch before adding more photos.",
-      409,
-      "BULK_BATCH_ALREADY_GROUPED",
-    );
-  }
-
-  const itemLimit = Math.min(
-    effectiveLimitsForUser(args.account, args.user).bulkBatchSize,
-    MAX_BULK_ITEMS,
+  assertBatchAcceptsPhotos(batch);
+  assertBulkPhotoCapacity(
+    batch,
+    args.account,
+    args.user,
+    args.photos.map((photo) => photo.uploadId),
   );
-  const remainingPhotos = itemLimit * MAX_LISTING_PHOTOS - batch.photoCount;
-  const files = extractBulkPhotos(args.formData, remainingPhotos);
-  const prepared = (await prepareListingPhotos(files)).map((photo) => ({
-    ...photo,
-    position: batch.photoCount + photo.position,
-  }));
-  const uploaded = await uploadListingPhotos({
-    sellerId: args.user.id,
-    inventoryItemId: batch.id,
-    photos: prepared,
-  });
-  const rows = uploaded.map((photo) => ({
-    id: randomUUID(),
-    batchId: batch.id,
-    accountId: args.account.id,
-    storageBucket: photo.bucket,
-    storagePath: photo.path,
-    mimeType: photo.mimeType,
-    originalName: photo.originalName,
-    position: photo.position,
-  }));
 
-  await prisma.$transaction([
-    prisma.bulkPhoto.createMany({ data: rows }),
-    prisma.bulkBatch.update({
+  const existingIds = new Set(batch.photos.map((photo) => photo.id));
+  const unregistered = args.photos.filter((photo) => !existingIds.has(photo.uploadId));
+
+  for (const photo of args.photos) {
+    const expectedPath = bulkPhotoStoragePath(args.account.id, batch.id, photo);
+    if (photo.storagePath !== expectedPath) {
+      throw new AppError(
+        "The photo upload does not belong to this account and batch.",
+        400,
+        "BULK_PHOTO_PATH_INVALID",
+      );
+    }
+    const existing = batch.photos.find((row) => row.id === photo.uploadId);
+    if (existing) assertPhotoMatchesExisting(photo, existing);
+  }
+
+  const { bucket, files } = getBulkPhotoStorage();
+  await mapWithConcurrency(unregistered, 8, async (photo) => {
+    try {
+      await validateStoredBulkPhoto(files, photo);
+    } catch (error) {
+      if (
+        error instanceof AppError &&
+        (error.code === "BULK_PHOTO_INVALID" ||
+          error.code === "BULK_PHOTO_DIMENSIONS_TOO_LARGE")
+      ) {
+        await files
+          .remove([photo.storagePath])
+          .catch((cleanupError) => logUnexpectedError("bulk_photo_invalid_cleanup", cleanupError));
+      }
+      throw error;
+    }
+  });
+
+  await prisma.$transaction(async (transaction) => {
+    await transaction.$executeRawUnsafe(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))",
+      `bulk-photo-register:${batch.id}`,
+    );
+    const locked = await requireOwnedBulkBatch(
+      batch.id,
+      args.account.id,
+      transaction as unknown as Db,
+    );
+    assertBatchAcceptsPhotos(locked);
+    assertBulkPhotoCapacity(
+      locked,
+      args.account,
+      args.user,
+      args.photos.map((photo) => photo.uploadId),
+    );
+
+    const lockedById = new Map(locked.photos.map((photo) => [photo.id, photo]));
+    for (const photo of args.photos) {
+      const existing = lockedById.get(photo.uploadId);
+      if (existing) assertPhotoMatchesExisting(photo, existing);
+    }
+    const newPhotos = args.photos.filter((photo) => !lockedById.has(photo.uploadId));
+    if (newPhotos.length === 0) return;
+
+    const firstPosition =
+      locked.photos.reduce((maximum, photo) => Math.max(maximum, photo.position), -1) + 1;
+    await transaction.bulkPhoto.createMany({
+      data: newPhotos.map((photo, index) => ({
+        id: photo.uploadId,
+        batchId: batch.id,
+        accountId: args.account.id,
+        storageBucket: bucket,
+        storagePath: photo.storagePath,
+        mimeType: photo.mimeType,
+        originalName: photo.originalName,
+        position: firstPosition + index,
+      })),
+    });
+    await transaction.bulkBatch.update({
       where: { id: batch.id },
       data: {
         status: "uploading",
-        photoCount: { increment: rows.length },
+        photoCount: locked.photos.length + newPhotos.length,
       },
-    }),
-  ]);
+    });
+  });
   return getBulkBatchView(batch.id, args.account.id, prisma);
 }
 
@@ -422,6 +594,7 @@ export async function startBulkBatchGeneration(
     throw new AppError("Canceled batches cannot be generated.", 409, "BULK_BATCH_CANCELED");
   }
   await recoverStaleBulkGeneration(batchId, accountId, new Date(), prisma);
+  assertBulkIntakeEnabled();
   batch = await requireOwnedBulkBatch(batchId, accountId, prisma);
   const itemIds = batch.items
     .filter(
@@ -575,6 +748,7 @@ export async function generateBulkItem(
   if (item.inventoryItemId) {
     return generationResult(args.batchId, item.id, args.account.id, prisma);
   }
+  assertBulkIntakeEnabled();
   if (item.batch.status === "canceled" || item.status === "canceled") {
     throw new AppError("Canceled bulk items cannot be generated.", 409, "BULK_ITEM_CANCELED");
   }

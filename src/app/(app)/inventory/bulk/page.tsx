@@ -34,6 +34,7 @@ export default function BulkIntakePage() {
   const router = useRouter();
   const { token } = useSession();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const batchCreationKeyRef = useRef(globalThis.crypto.randomUUID());
   const [batch, setBatch] = useState<BulkBatchView | null>(null);
   const [recent, setRecent] = useState<BulkBatchSummaryView[]>([]);
   const [files, setFiles] = useState<File[]>([]);
@@ -93,7 +94,11 @@ export default function BulkIntakePage() {
     setError(null);
     try {
       const expectedItems = Math.ceil(files.length / PHOTOS_PER_ITEM);
-      const created = await api.createBulkBatch(token, expectedItems);
+      const created = await api.createBulkBatch(
+        token,
+        expectedItems,
+        batchCreationKeyRef.current,
+      );
       const uploaded = await api.uploadBulkPhotos(token, created.batch.id, files);
       const initialGroups = defaultGroups(uploaded.batch.photos.map((photo) => photo.id));
       const grouped = await api.groupBulkPhotos(
@@ -104,6 +109,7 @@ export default function BulkIntakePage() {
       setBatch(grouped.batch);
       setGroups(groupsFromBatch(grouped.batch));
       setFiles([]);
+      batchCreationKeyRef.current = globalThis.crypto.randomUUID();
       setRecent((current) => [
         {
           id: grouped.batch.id,
@@ -258,6 +264,7 @@ export default function BulkIntakePage() {
                 hidden
                 onChange={(event) => {
                   const selected = Array.from(event.target.files ?? []).slice(0, maxPhotos);
+                  batchCreationKeyRef.current = globalThis.crypto.randomUUID();
                   setFiles(selected);
                   setError(null);
                   event.target.value = "";

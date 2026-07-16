@@ -5,6 +5,7 @@ import type {
   BulkBatchSummaryView,
   BulkBatchView,
   BulkGenerationResult,
+  BulkPhotoUploadGrant,
 } from "@/lib/bulk-intake/types";
 import type {
   BulkExecutionResult,
@@ -133,6 +134,40 @@ export type CompsSummary = {
 
 type RequestOptions = RequestInit & { timeoutMs?: number };
 const READ_REQUEST_TIMEOUT_MS = 10_000;
+const BULK_UPLOAD_CONCURRENCY = 6;
+const bulkUploadIds = new WeakMap<File, Map<string, string>>();
+
+function bulkUploadId(file: File, batchId: string, position: number): string {
+  let ids = bulkUploadIds.get(file);
+  if (!ids) {
+    ids = new Map();
+    bulkUploadIds.set(file, ids);
+  }
+  const key = `${batchId}:${position}`;
+  const existing = ids.get(key);
+  if (existing) return existing;
+  const created = globalThis.crypto.randomUUID();
+  ids.set(key, created);
+  return created;
+}
+
+async function forEachConcurrent<T>(
+  values: T[],
+  limit: number,
+  callback: (value: T, index: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await callback(values[index]!, index);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  );
+}
 
 async function request<T>(
   path: string,
@@ -499,11 +534,11 @@ export const api = {
   listBulkBatches: (token: string) =>
     request<{ batches: BulkBatchSummaryView[] }>("/api/bulk/batches", token),
 
-  createBulkBatch: (token: string, expectedItems?: number) =>
+  createBulkBatch: (token: string, expectedItems?: number, idempotencyKey?: string) =>
     request<{ batch: BulkBatchView }>("/api/bulk/batches", token, {
       method: "POST",
       body: JSON.stringify({
-        idempotencyKey: globalThis.crypto.randomUUID(),
+        idempotencyKey: idempotencyKey ?? globalThis.crypto.randomUUID(),
         ...(expectedItems ? { expectedItems } : {}),
       }),
     }),
@@ -511,13 +546,56 @@ export const api = {
   getBulkBatch: (token: string, batchId: string) =>
     request<{ batch: BulkBatchView }>(`/api/bulk/batches/${batchId}`, token),
 
-  uploadBulkPhotos: (token: string, batchId: string, files: File[]) => {
-    const form = new FormData();
-    for (const file of files) form.append("photos", file);
+  uploadBulkPhotos: async (token: string, batchId: string, files: File[]) => {
+    const declarations = files.map((file, position) => ({
+      uploadId: bulkUploadId(file, batchId, position),
+      originalName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    }));
+    const signed = await request<{ uploads: BulkPhotoUploadGrant[] }>(
+      `/api/bulk/batches/${batchId}/photos/uploads`,
+      token,
+      { method: "POST", body: JSON.stringify({ photos: declarations }) },
+    );
+    const grants = new Map(signed.uploads.map((upload) => [upload.uploadId, upload]));
+    const { getBrowserSupabase } = await import("@/lib/supabase/browser");
+    const supabase = getBrowserSupabase();
+    if (!supabase) {
+      throw { error: "Photo upload is not configured.", status: 503 } satisfies ApiError;
+    }
+
+    await forEachConcurrent(declarations, BULK_UPLOAD_CONCURRENCY, async (photo, index) => {
+      const grant = grants.get(photo.uploadId);
+      if (!grant) {
+        throw { error: "Photo upload could not be prepared.", status: 503 } satisfies ApiError;
+      }
+      // Registration is the source of truth. A retry can receive an
+      // Asset Already Exists response after the original upload succeeded, so
+      // let the server verify the object rather than treating that as failure.
+      const { error } = await supabase.storage
+        .from(grant.bucket)
+        .uploadToSignedUrl(grant.path, grant.token, files[index]!, {
+          contentType: photo.mimeType,
+          upsert: false,
+        });
+      if (error && error.status !== 400 && error.status !== 409) {
+        throw { error: "Photo upload failed. Please try again.", status: 503 } satisfies ApiError;
+      }
+    });
+
     return request<{ batch: BulkBatchView }>(
       `/api/bulk/batches/${batchId}/photos`,
       token,
-      { method: "POST", body: form },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          photos: declarations.map((photo) => ({
+            ...photo,
+            storagePath: grants.get(photo.uploadId)?.path ?? "",
+          })),
+        }),
+      },
     );
   },
 
