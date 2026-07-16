@@ -181,6 +181,41 @@ describe("publishStockXListing", () => {
     });
   });
 
+  it("does not treat operation success as proof that a listing is active", async () => {
+    const c = client({
+      createListing: vi.fn(async () => ({
+        listingId: "stockx-listing-1",
+        status: "CREATED",
+        operationId: "operation-1",
+        operationStatus: "SUCCEEDED",
+        operationUrl:
+          "https://api.stockx.com/v2/selling/listings/stockx-listing-1/operations/operation-1",
+        rawJson: {},
+      })),
+    });
+
+    const result = await publishStockXListing(
+      prisma(),
+      {
+        userId: "user-1",
+        accountId: "acc-1",
+        inventoryItemId: "item-1",
+        confirmLivePublish: true,
+      },
+      {
+        env: stockxEnv,
+        resolveAccessToken: vi.fn(async () => "access-token"),
+        createClient: () => c,
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "submitted",
+      code: stockxErrorCodes.listingSubmitted,
+      operationStatus: "SUCCEEDED",
+    });
+  });
+
   it("blocks before any client call when the listing is not matched to a StockX variant", async () => {
     const c = client();
 

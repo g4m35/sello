@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 
 import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
-import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { AppError, safeErrorResponse } from "@/lib/errors";
 import {
   preflightBulkEbayPublish,
@@ -36,8 +35,8 @@ export async function POST(request: Request) {
 
     const prisma = getPrisma();
     const resolved = await resolveRuntimeEntitlements(user, prisma);
-    const account = resolved.account;
-    assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length, user);
+    const account = { ...resolved.account, plan: resolved.plan };
+    assertBulkBatchSize(account, itemIds.length, user);
     const result =
       marketplace === "stockx"
         ? await preflightBulkStockXPublish(prisma as never, {

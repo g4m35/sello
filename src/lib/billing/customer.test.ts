@@ -55,13 +55,47 @@ describe("ensureStripeCustomer", () => {
     );
 
     expect(id).toBe("cus_made");
-    expect(customersCreate).toHaveBeenCalledWith({
-      email: "seller@example.com",
-      metadata: { accountId: "acc-1" },
-    });
+    expect(customersCreate).toHaveBeenCalledWith(
+      {
+        email: "seller@example.com",
+        metadata: { accountId: "acc-1" },
+      },
+      { idempotencyKey: "sello:billing:customer:acc-1" },
+    );
     expect(upsert).toHaveBeenCalledTimes(1);
     const arg = upsert.mock.calls[0][0];
     expect(arg.where).toEqual({ accountId: "acc-1" });
     expect(arg.create.stripeCustomerId).toBe("cus_made");
+    expect(arg.update).toEqual({});
+  });
+
+  it("uses one stable Stripe customer when first checkouts race", async () => {
+    const idempotentCustomers = new Map<string, { id: string }>();
+    const customersCreate = vi.fn(
+      async (_params: unknown, options: { idempotencyKey: string }) => {
+        const customer = idempotentCustomers.get(options.idempotencyKey) ?? { id: "cus_shared" };
+        idempotentCustomers.set(options.idempotencyKey, customer);
+        return customer;
+      },
+    );
+    const prisma = {
+      subscription: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue({}),
+      },
+    } as never;
+    const stripe = { customers: { create: customersCreate } } as never;
+
+    const customerIds = await Promise.all([
+      ensureStripeCustomer({ id: "acc-race" }, "seller@example.com", prisma, stripe),
+      ensureStripeCustomer({ id: "acc-race" }, "seller@example.com", prisma, stripe),
+    ]);
+
+    expect(customerIds).toEqual(["cus_shared", "cus_shared"]);
+    expect(customersCreate).toHaveBeenCalledTimes(2);
+    expect(customersCreate.mock.calls.map((call) => call[1]?.idempotencyKey)).toEqual([
+      "sello:billing:customer:acc-race",
+      "sello:billing:customer:acc-race",
+    ]);
   });
 });

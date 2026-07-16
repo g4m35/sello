@@ -3,18 +3,15 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 
 import {
   WorkflowError,
-  CONDUCTOR_WORKSPACE_PATH_TOKEN,
   acquireTaskLock,
   checkTask,
   cleanupTask,
-  detectConductorEnvironment,
   finishTask,
-  isConductorManagedPath,
   readTaskFile,
   reviewTask,
   runValidationCommand,
@@ -27,20 +24,6 @@ import {
 import type { TaskContract } from "./types";
 
 const temporaryRoots: string[] = [];
-const originalProcessEnv = { ...process.env };
-
-function clearConductorEnv(): void {
-  delete process.env.CONDUCTOR_WORKSPACE_PATH;
-  delete process.env.CONDUCTOR_ROOT_PATH;
-  delete process.env.CONDUCTOR_PORT;
-  delete process.env.CONDUCTOR_IS_LOCAL;
-  delete process.env.CONDUCTOR_WORKSPACE_NAME;
-  delete process.env.CONDUCTOR_DEFAULT_BRANCH;
-}
-
-beforeEach(() => {
-  clearConductorEnv();
-});
 
 function git(cwd: string, ...args: string[]): string {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -55,12 +38,12 @@ function write(path: string, content: string): void {
   writeFileSync(path, content);
 }
 
-function initializeRepo(rootOverride?: string): { root: string; remote: string; scratch: string } {
+function initializeRepo(): { root: string; remote: string; scratch: string } {
   const scratch = mkdtempSync(join(tmpdir(), "sello-agent-workflow-"));
   temporaryRoots.push(scratch);
-  const root = rootOverride ?? join(scratch, "repo");
+  const root = join(scratch, "repo");
   const remote = join(scratch, "origin.git");
-  mkdirSync(root, { recursive: true });
+  mkdirSync(root);
   git(root, "init", "-b", "develop");
   git(root, "config", "user.email", "agent-tests@example.invalid");
   git(root, "config", "user.name", "Agent Workflow Tests");
@@ -165,35 +148,24 @@ describe("task-contract parsing", () => {
     );
   });
 
-  it("accepts only the strict Conductor placeholder branch form with the runtime path token", () => {
+  it("requires an absolute native worktree path and an approved branch prefix", () => {
     const { root } = initializeRepo();
-    expect(
-      validateTaskContract(
-        contract(root, {
-          working_branch: "develop-v1",
-          worktree_path: CONDUCTOR_WORKSPACE_PATH_TOKEN,
-        }),
-        root,
-      ).working_branch,
-    ).toBe("develop-v1");
     expect(() =>
       validateTaskContract(
         contract(root, {
           working_branch: "arbitrary-branch",
-          worktree_path: CONDUCTOR_WORKSPACE_PATH_TOKEN,
         }),
         root,
       ),
-    ).toThrowError(/approved prefix/);
+    ).toThrowError(/must start with/);
     expect(() =>
       validateTaskContract(
         contract(root, {
-          working_branch: "main",
-          worktree_path: CONDUCTOR_WORKSPACE_PATH_TOKEN,
+          worktree_path: "relative/worktree",
         }),
         root,
       ),
-    ).toThrowError(/cannot be main or develop/);
+    ).toThrowError(/absolute path/);
   });
 });
 
@@ -219,7 +191,7 @@ describe("agent:start", () => {
     expect(startTask(root, task.id).reused).toBe(true);
   });
 
-  it("uses an existing local branch that is not checked out", () => {
+  it("adopts an existing Cursor-created local branch that is not checked out", () => {
     const { root } = initializeRepo();
     const task = contract(root);
     addReadyTask(root, task);
@@ -397,6 +369,31 @@ describe("agent:cleanup and reconciliation", () => {
     expect(existsSync(task.worktree_path)).toBe(false);
   });
 
+  it("removes only the declared task worktree and preserves unrelated dirty worktrees", () => {
+    const { root, scratch } = initializeRepo();
+    const task = contract(root);
+    addReadyTask(root, task);
+    startTask(root, task.id);
+
+    const unrelated = join(scratch, "unrelated-dirty-worktree");
+    git(root, "worktree", "add", "-b", "feature/unrelated-dirty", unrelated, "origin/develop");
+    write(join(unrelated, "src", "components", "unrelated-dirty.ts"), "export const protectedWork = true;\n");
+
+    git(task.worktree_path, "add", ".");
+    git(task.worktree_path, "commit", "-m", "start metadata");
+    finishTask(task.worktree_path, task.id);
+    git(task.worktree_path, "add", ".");
+    git(task.worktree_path, "commit", "-m", "finish evidence");
+    git(task.worktree_path, "push", "-u", "origin", task.working_branch);
+    git(root, "merge", "--no-ff", task.working_branch, "-m", "merge test task");
+    git(root, "push", "origin", "develop");
+
+    cleanupTask(root, task.id);
+    expect(existsSync(task.worktree_path)).toBe(false);
+    expect(existsSync(unrelated)).toBe(true);
+    expect(git(unrelated, "status", "--porcelain")).toContain("unrelated-dirty.ts");
+  });
+
   it("refuses to clean an unmerged task", () => {
     const { root } = initializeRepo();
     const task = contract(root);
@@ -426,205 +423,17 @@ describe("agent:cleanup and reconciliation", () => {
   });
 });
 
-describe("Conductor-native workflow", () => {
-  afterEach(() => {
-    clearConductorEnv();
-    for (const key of Object.keys(process.env)) {
-      if (!(key in originalProcessEnv)) delete process.env[key];
-    }
-    Object.assign(process.env, originalProcessEnv);
-    clearConductorEnv();
-  });
-
-  it("detects Conductor environment variables", () => {
-    expect(detectConductorEnvironment({}).active).toBe(false);
-    expect(
-      detectConductorEnvironment({
-        CONDUCTOR_WORKSPACE_PATH: "/tmp/workspace",
-        CONDUCTOR_ROOT_PATH: "/tmp/root",
-        CONDUCTOR_PORT: "4310",
-        CONDUCTOR_IS_LOCAL: "1",
-        CONDUCTOR_WORKSPACE_NAME: "demo",
-      }),
-    ).toMatchObject({
-      active: true,
-      workspacePath: "/tmp/workspace",
-      rootPath: "/tmp/root",
-      port: "4310",
-      isLocal: true,
-      workspaceName: "demo",
-    });
-  });
-
-  it("recognizes Conductor-managed workspace paths", () => {
-    const home = process.env.HOME || "/tmp";
-    expect(isConductorManagedPath(join(home, "conductor", "workspaces", "Sello", "alpha"), { HOME: home })).toBe(
-      true,
-    );
-    expect(
-      isConductorManagedPath("/tmp/other", {
-        HOME: home,
-        CONDUCTOR_WORKSPACE_PATH: "/tmp/other",
-      }),
-    ).toBe(true);
-    expect(isConductorManagedPath("/tmp/unrelated", { HOME: home })).toBe(false);
-  });
-
-  it("validates a registered Conductor placeholder branch only with matching workspace metadata", () => {
-    const { root } = initializeRepo();
-    const task = contract(root, {
-      working_branch: "develop-v1",
-      worktree_path: CONDUCTOR_WORKSPACE_PATH_TOKEN,
-      status: "active",
-    });
-    addReadyTask(root, { ...task, status: "ready" });
-    git(root, "checkout", "-b", task.working_branch);
-    const activeFile = join(root, ".agent", "tasks", "active", `${task.id}.yaml`);
-    rmSync(join(root, ".agent", "tasks", "backlog", `${task.id}.yaml`));
-    write(activeFile, stringify(task));
-    writeTaskState(root, {
-      task_id: task.id,
-      task_file: `.agent/tasks/active/${task.id}.yaml`,
-      base_branch: task.base_branch,
-      base_commit: git(root, "rev-parse", "origin/develop"),
-      working_branch: task.working_branch,
-      worktree_path: CONDUCTOR_WORKSPACE_PATH_TOKEN,
-      created_at: "2026-07-10T00:00:00.000Z",
-      updated_at: "2026-07-10T00:00:00.000Z",
-      started_by: "test",
-      status: "active",
-    });
-    git(root, "add", ".");
-    git(root, "commit", "-m", "adopt Conductor placeholder branch");
-
-    process.env.CONDUCTOR_WORKSPACE_PATH = root;
-    process.env.CONDUCTOR_ROOT_PATH = root;
-    try {
-      expect(checkTask(root, task).ok).toBe(true);
-
-      process.env.CONDUCTOR_WORKSPACE_PATH = join(dirname(root), "wrong-workspace");
-      const mismatch = checkTask(root, task);
-      expect(mismatch.ok).toBe(false);
-      expect(
-        mismatch.issues.some((issue) =>
-          ["WORKTREE_MISMATCH", "CONDUCTOR_WORKSPACE_UNVERIFIED"].includes(issue.code),
-        ),
-      ).toBe(true);
-    } finally {
-      clearConductorEnv();
-    }
-  });
-
-  it("infers a Conductor workspace path for placeholder tasks when the env var is absent", () => {
-    const home = mkdtempSync(join(tmpdir(), "agent-home-"));
-    temporaryRoots.push(home);
-    const workspace = join(home, "conductor", "workspaces", "Sello", "ottawa");
-    mkdirSync(workspace, { recursive: true });
-    const { root } = initializeRepo(workspace);
-    const task = contract(root, {
-      working_branch: "develop-v1",
-      worktree_path: CONDUCTOR_WORKSPACE_PATH_TOKEN,
-      status: "active",
-    });
-    addReadyTask(root, { ...task, status: "ready" });
-    git(root, "checkout", "-b", task.working_branch);
-    const activeFile = join(root, ".agent", "tasks", "active", `${task.id}.yaml`);
-    rmSync(join(root, ".agent", "tasks", "backlog", `${task.id}.yaml`));
-    write(activeFile, stringify(task));
-    writeTaskState(root, {
-      task_id: task.id,
-      task_file: `.agent/tasks/active/${task.id}.yaml`,
-      base_branch: task.base_branch,
-      base_commit: git(root, "rev-parse", "origin/develop"),
-      working_branch: task.working_branch,
-      worktree_path: root,
-      created_at: "2026-07-10T00:00:00.000Z",
-      updated_at: "2026-07-10T00:00:00.000Z",
-      started_by: "test",
-      status: "active",
-    });
-    git(root, "add", ".");
-    git(root, "commit", "-m", "infer Conductor workspace without env");
-
-    clearConductorEnv();
-    process.env.HOME = home;
-    expect(checkTask(root, task).ok).toBe(true);
-  });
-
-  it("configures future Conductor branches with a policy-compliant feature prefix", () => {
-    const settings = readFileSync(
-      resolve(import.meta.dirname, "..", "..", ".conductor", "settings.toml"),
-      "utf8",
-    );
-    expect(settings).toContain('branch_prefix_type = "custom"');
-    expect(settings).toContain('branch_prefix = "feature"');
-  });
-
-  it("adopts the current Conductor workspace instead of creating a nested worktree", () => {
-    const { root } = initializeRepo();
-    const task = contract(root, {
-      worktree_path: join(root, "nested-should-not-be-created"),
-    });
-    addReadyTask(root, task);
-    process.env.CONDUCTOR_WORKSPACE_PATH = root;
-    process.env.CONDUCTOR_ROOT_PATH = root;
-    process.env.CONDUCTOR_PORT = "4321";
-    process.env.CONDUCTOR_IS_LOCAL = "1";
-
-    const before = spawnSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).stdout;
-    const beforeCount = (before.match(/^worktree /gm) || []).length;
-    const result = startTask(root, task.id);
-    const after = spawnSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).stdout;
-    const afterCount = (after.match(/^worktree /gm) || []).length;
-
-    expect(result.mode).toBe("conductor");
-    expect(result.adopted).toBe(true);
-    expect(result.worktree).toBe(root);
-    expect(result.branch).toBe(task.working_branch);
-    expect(existsSync(join(root, "nested-should-not-be-created"))).toBe(false);
-    expect(afterCount).toBe(beforeCount);
-    expect(readTaskFile(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), root).worktree_path).toBe(root);
-  });
-
-  it("runs check and finish inside an adopted Conductor workspace", () => {
-    const { root } = initializeRepo();
-    const task = contract(root, { worktree_path: join(dirname(root), "ignored-path") });
-    addReadyTask(root, task);
-    process.env.CONDUCTOR_WORKSPACE_PATH = root;
-    process.env.CONDUCTOR_ROOT_PATH = root;
-    process.env.CONDUCTOR_IS_LOCAL = "1";
-    startTask(root, task.id);
-    git(root, "add", ".");
-    git(root, "commit", "-m", "conductor adopt metadata");
-
-    const check = checkTask(root, readTaskFile(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), root));
-    expect(check.ok).toBe(true);
-    expect(check.worktree).toBe(root);
-
-    const finished = finishTask(root, task.id);
-    expect(finished.result.ok).toBe(true);
-    expect(existsSync(join(root, ".agent", "completed", `${task.id}.md`))).toBe(true);
-  });
-
-  it("refuses cleanup for Conductor-owned workspaces", () => {
-    const { root } = initializeRepo();
-    const task = contract(root, { worktree_path: root, status: "active" });
-    write(join(root, ".agent", "tasks", "active", `${task.id}.yaml`), stringify(task));
-    process.env.CONDUCTOR_WORKSPACE_PATH = root;
-    expect(() => cleanupTask(root, task.id)).toThrowError(/Conductor manages this workspace lifecycle/);
-  });
-
-  it("preserves non-Conductor start behavior when Conductor env is absent", () => {
-    delete process.env.CONDUCTOR_WORKSPACE_PATH;
-    delete process.env.CONDUCTOR_ROOT_PATH;
-    delete process.env.CONDUCTOR_PORT;
-    delete process.env.CONDUCTOR_IS_LOCAL;
+describe("native worktree workflow", () => {
+  it("creates a registered worktree without vendor-specific environment metadata", () => {
     const { root } = initializeRepo();
     const task = contract(root);
     addReadyTask(root, task);
     const result = startTask(root, task.id);
-    expect(result.mode).toBe("manual");
-    expect(result.adopted).toBe(false);
+    const registered = git(root, "worktree", "list", "--porcelain");
+    const resolvedWorktree = git(task.worktree_path, "rev-parse", "--show-toplevel");
+    expect(result.worktree).toBe(task.worktree_path);
     expect(existsSync(task.worktree_path)).toBe(true);
+    expect(registered).toContain(`worktree ${resolvedWorktree}`);
+    expect(registered).toContain(`branch refs/heads/${task.working_branch}`);
   });
 });

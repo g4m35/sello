@@ -69,6 +69,11 @@ const FEATURE_DENIAL_CODES: Record<FeatureEntitlement, string> = {
 };
 
 const FEATURE_ENTITLEMENTS = Object.keys(FEATURE_ENV_KEYS) as FeatureEntitlement[];
+const COMMERCIAL_SAFETY_ENTITLEMENTS = new Set<FeatureEntitlement>([
+  "ebayDelist",
+  "etsyDelist",
+  "etsyOrders",
+]);
 
 export type RuntimeEntitlements = {
   account: AccountRecord;
@@ -206,7 +211,11 @@ export async function resolveRuntimeEntitlements(
         plan: account.plan,
         now,
         accountEnabled: true,
-        subscriptionRequired: account.plan !== "free",
+        // A billing problem must not trap inventory on a marketplace or stop
+        // sold-order reconciliation. Creation and paid-provider features still
+        // fail closed outside the bounded grace window.
+        subscriptionRequired:
+          account.plan !== "free" && !COMMERCIAL_SAFETY_ENTITLEMENTS.has(entitlement),
         subscriptionStatus: subscription?.status ?? null,
         graceEndsAt: subscription?.graceEndsAt ?? null,
         adminOverride,
@@ -220,15 +229,16 @@ export async function resolveRuntimeEntitlements(
       return [entitlement, decision];
     }),
   ) as Record<FeatureEntitlement, EntitlementDecision>;
+  const planOptions = { subscription, now };
   return {
     account,
     decisions,
     access: Object.fromEntries(
       FEATURE_ENTITLEMENTS.map((entitlement) => [entitlement, decisions[entitlement].allowed]),
     ) as FeatureAccess,
-    plan: effectivePlanForUser(account, user, env),
-    limits: effectiveLimitsForUser(account, user, env),
-    features: effectiveFeaturesForUser(account, user, env),
+    plan: effectivePlanForUser(account, user, env, planOptions),
+    limits: effectiveLimitsForUser(account, user, env, planOptions),
+    features: effectiveFeaturesForUser(account, user, env, planOptions),
   };
 }
 

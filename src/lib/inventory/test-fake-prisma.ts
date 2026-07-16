@@ -554,6 +554,7 @@ export function createInventoryFakePrisma(seed: {
         id: string;
         status: string | { in: readonly string[] };
         leaseOwner?: string;
+        updatedAt?: { lte: Date };
       };
       data: {
         status?: string;
@@ -576,7 +577,8 @@ export function createInventoryFakePrisma(seed: {
         (j) =>
           j.id === where.id &&
           expectedStatuses.includes(j.status) &&
-          (where.leaseOwner === undefined || j.leaseOwner === where.leaseOwner),
+          (where.leaseOwner === undefined || j.leaseOwner === where.leaseOwner) &&
+          (where.updatedAt === undefined || j.updatedAt <= where.updatedAt.lte),
       );
       if (!job) return { count: 0 };
       if (data.status !== undefined) job.status = data.status;

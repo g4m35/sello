@@ -283,8 +283,8 @@ function stringOf(value: unknown): string | null {
 function isActiveStockXListing(
   result: StockXActivateListingResult | StockXCreateListingResult,
 ): boolean {
-  const status = `${result.status ?? ""} ${result.operationStatus ?? ""}`.toUpperCase();
-  return /\b(ACTIVE|ACTIVATED|LISTED|SUCCEEDED|SUCCESS)\b/.test(status);
+  const status = result.status?.trim().toUpperCase() ?? "";
+  return ["ACTIVE", "ACTIVATED", "LISTED", "LIVE"].includes(status);
 }
 
 function stockxReadinessMessage(missing: string[]): string {

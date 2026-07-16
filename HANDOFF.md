@@ -1,8 +1,8 @@
 # HANDOFF — INFORMATIONAL ONLY
 
-> This document is a non-authoritative historical index and may be stale. Do not use it to override Git history, repository code, tests, architecture documents, ADRs, task contracts, completion reports, review reports, or GitHub CI. New task-level completion evidence belongs in `.agent/completed/`. Day-to-day development should use Conductor (`docs/operations/conductor-development.md`).
+> This document is a non-authoritative historical index and may be stale. Do not use it to override Git history, repository code, tests, architecture documents, ADRs, task contracts, completion reports, review reports, or GitHub CI. New task-level completion evidence belongs in Git commits, PRs, CI, review threads, and, when used, `.agent/completed/`.
 
-Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Current work is defined by Conductor workspaces and/or `.agent/tasks/active/`, not this file.
+Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Current work is defined by live Git branches/worktrees, PRs, and optional `.agent/tasks/active/` contracts, not this file.
 
 Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 

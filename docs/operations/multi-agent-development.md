@@ -1,35 +1,19 @@
 # Multi-agent development workflow
 
-Conductor is the recommended primary interface. See `docs/operations/conductor-development.md` first.
+Sello treats repository state as the shared brain. Every implementation is anchored to an exact Git base, one branch, one native worktree, one primary owner, independent review, and GitHub CI. A machine-readable task contract and deterministic evidence are optional for ordinary bounded work and strongly recommended for Prisma migrations, billing, authentication, marketplace publishing, inventory synchronization, production configuration, destructive refactors, and cross-system architecture changes.
 
-This document covers the two operating modes and the manual CLI/contract system that remains available for agents and high-risk work.
-
-## Modes
-
-### Conductor-native (default)
-
-- Conductor already provides branch and worktree isolation.
-- Agents must not run `agent:start` to create another worktree.
-- Users do not create task files or operate the CLI for ordinary work.
-- Task contracts are optional for low-risk bounded work.
-- Task contracts remain required or strongly recommended for Prisma migrations, billing, authentication, marketplace publishing, inventory synchronization, production configuration, destructive refactors, and cross-system architecture changes.
-- Inside Conductor, `agent:start` adopts the current workspace; `agent:check` / `agent:finish` / `agent:review` operate there; `agent:cleanup` refuses Conductor-managed workspaces.
-- Conductor Diff, Checks, Review, Fix, Create PR, Merge, and Archive are the normal interface.
-
-### Manual / non-Conductor (fallback)
-
-Sello treats repository state as the shared brain. Every implementation is anchored to an exact Git base, a machine-readable contract, one branch, one worktree, one primary owner, deterministic evidence, an independent review, and GitHub CI.
+Codex is the primary implementation, review, integration, and sensitive-backend agent. Cursor or Grok may implement bounded tasks or continue when Codex usage is exhausted. Users should not need to create branches, manage worktrees, author task YAML, run workflow commands, or transfer context between agents.
 
 ## Roles
 
 - Codex normally plans contracts, reviews full diffs, repairs valid findings when authorized, integrates the latest base, opens/updates PRs, and treats CI as final authority.
-- Cursor/Grok normally implements bounded frontend or feature tasks inside an assigned worktree or Conductor workspace.
+- Cursor/Grok normally implements bounded frontend or feature tasks inside an assigned native worktree.
 - Other agents can join by accepting the same model-independent contract and evidence requirements. Their model/vendor does not alter path or authorization boundaries.
 - One agent is the primary implementation owner for a task. Multiple agents do not independently edit the same branch or worktree; divide parallel work into non-overlapping task contracts.
 
 ## Canonical checkout versus task worktrees
 
-The canonical clone is the repository/control point. It is used to inspect state, create worktrees, review, and integrate. Product implementation happens in Conductor workspaces or contract-owned worktrees under `~/dev/`. Outside Conductor, `agent:start` fetches remote refs without moving a local integration branch, then creates the task branch from the current `origin/<base_branch>` commit. Inside Conductor it adopts the current workspace.
+The canonical clone is the repository/control point. It is used to inspect state, create worktrees, review, and integrate. Product implementation happens in dedicated native worktrees under `~/dev/`. For contracted work, `agent:start` fetches remote refs without moving a local integration branch, then creates the task branch from the current `origin/<base_branch>` commit. An equivalent directly created worktree is acceptable for ordinary bounded work after the same collision and dirty-state checks.
 
 Every pre-existing worktree, branch, uncommitted file, and unknown file belongs to its current owner. Never switch, stash, reset, clean, rebase, merge, commit, or edit another worktree to make a task convenient.
 

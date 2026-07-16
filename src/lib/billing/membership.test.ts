@@ -11,7 +11,16 @@ import {
 } from "./membership";
 
 function fakePrisma(over: Record<string, ReturnType<typeof vi.fn>>) {
-  return { accountMember: over } as never;
+  const transaction = {
+    accountMember: over,
+    $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+  };
+  return {
+    ...transaction,
+    $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) =>
+      callback(transaction),
+    ),
+  } as never;
 }
 
 describe("inviteMember", () => {
@@ -58,6 +67,75 @@ describe("inviteMember", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("serializes concurrent attempts for the final account seat", async () => {
+    type TestMember = {
+      id: string;
+      accountId: string;
+      userId: string | null;
+      invitedEmail: string | null;
+      role: string;
+      status: string;
+    };
+    const rows: TestMember[] = Array.from({ length: 4 }, (_, index) => ({
+      id: `existing-${index}`,
+      accountId: "acc-1",
+      userId: `user-${index}`,
+      invitedEmail: null,
+      role: index === 0 ? "owner" : "member",
+      status: "active",
+    }));
+    let tail = Promise.resolve();
+    const prisma = {
+      $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => {
+        let release: () => void = () => {};
+        const previous = tail;
+        tail = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        await previous;
+        const transaction = {
+          $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+          accountMember: {
+            findFirst: vi.fn(async (args: { where: { invitedEmail: string } }) =>
+              rows.find((row) => row.invitedEmail === args.where.invitedEmail) ?? null,
+            ),
+            count: vi.fn(async () => rows.length),
+            create: vi.fn(async (args: {
+              data: {
+                accountId: string;
+                invitedEmail: string;
+                role: string;
+                status: string;
+              };
+            }) => {
+              const created: TestMember = {
+                id: `created-${rows.length}`,
+                userId: null,
+                ...args.data,
+              };
+              rows.push(created);
+              return created;
+            }),
+          },
+        };
+        try {
+          return await callback(transaction);
+        } finally {
+          release();
+        }
+      }),
+    } as never;
+
+    const outcomes = await Promise.allSettled([
+      inviteMember({ id: "acc-1", plan: "kingpin" }, "first@example.com", "member", prisma),
+      inviteMember({ id: "acc-1", plan: "kingpin" }, "second@example.com", "member", prisma),
+    ]);
+
+    expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(rows).toHaveLength(5);
+  });
+
   it("treats pro/free as a single seat", async () => {
     const prisma = fakePrisma({
       findFirst: vi.fn().mockResolvedValue(null),
@@ -82,19 +160,23 @@ describe("acceptInvite", () => {
     const findFirst = vi.fn()
       .mockResolvedValueOnce({ id: "m1", accountId: "acc-1", invitedEmail: "a@b.com", status: "invited" })
       .mockResolvedValueOnce(null);
-    const update = vi
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findUnique = vi
       .fn()
       .mockResolvedValue({ id: "m1", userId: "user-9", invitedEmail: "a@b.com", role: "member", status: "active" });
-    const prisma = fakePrisma({ findFirst, update });
+    const prisma = fakePrisma({ findFirst, updateMany, findUnique });
 
     const member = await acceptInvite("user-9", "A@B.com", prisma);
 
     expect(member?.status).toBe("active");
-    expect(update.mock.calls[0][0].data).toEqual({ userId: "user-9", status: "active" });
+    expect(updateMany.mock.calls[0][0]).toEqual({
+      where: { id: "m1", status: "invited" },
+      data: { userId: "user-9", status: "active" },
+    });
   });
 
   it("returns null when there is no invite", async () => {
-    const prisma = fakePrisma({ findFirst: vi.fn().mockResolvedValue(null), update: vi.fn() });
+    const prisma = fakePrisma({ findFirst: vi.fn().mockResolvedValue(null), updateMany: vi.fn() });
     expect(await acceptInvite("user-9", "none@x.com", prisma)).toBeNull();
   });
 
@@ -102,15 +184,31 @@ describe("acceptInvite", () => {
     const findFirst = vi.fn()
       .mockResolvedValueOnce({ id: "invite-2", accountId: "acc-1", invitedEmail: "a@b.com", role: "member", status: "invited" })
       .mockResolvedValueOnce({ id: "active-1", accountId: "acc-1", userId: "user-9", invitedEmail: "a@b.com", role: "member", status: "active" });
-    const update = vi.fn().mockResolvedValue({});
-    const prisma = fakePrisma({ findFirst, update });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = fakePrisma({ findFirst, updateMany });
 
     const member = await acceptInvite("user-9", "A@B.com", prisma);
 
     expect(member?.id).toBe("active-1");
-    expect(update).toHaveBeenCalledWith({
-      where: { id: "invite-2" },
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "invite-2", status: "invited" },
       data: { status: "revoked", userId: null },
+    });
+  });
+
+  it("does not reactivate an invite that was revoked concurrently", async () => {
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce({ id: "m1", accountId: "acc-1", invitedEmail: "a@b.com", status: "invited" })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const prisma = fakePrisma({ findFirst, updateMany, findUnique: vi.fn() });
+
+    await expect(acceptInvite("user-9", "A@B.com", prisma)).resolves.toBeNull();
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "m1", status: "invited" },
+      data: { userId: "user-9", status: "active" },
     });
   });
 });
