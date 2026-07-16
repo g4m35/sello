@@ -11,6 +11,7 @@ import {
 import {
   cancelSyncJob,
   claimQueuedSyncJobs,
+  recoverStaleRunningMarketplaceAttempts,
   requeueStaleRunningSyncJobs,
   retryDelayMs,
   retrySyncJobForAdmin,
@@ -1235,6 +1236,40 @@ describe("requeueStaleRunningSyncJobs", () => {
     expect(job?.status).toBe("running");
   });
 
+  it("does not reap a job that heartbeats after the stale scan", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [item()],
+      syncJobs: [
+        {
+          id: "j-heartbeat-race",
+          userId: "user-1",
+          type: "notify_user",
+          status: "running",
+          attempts: 1,
+          maxAttempts: 5,
+          updatedAt: HOUR_AGO(),
+        },
+      ],
+    });
+    const db = workerDb(prisma);
+    const originalFindMany = db.syncJob.findMany.bind(db.syncJob);
+    vi.spyOn(db.syncJob, "findMany").mockImplementation(async (args) => {
+      const rows = await originalFindMany(args as never);
+      if ("updatedAt" in args.where) {
+        prisma._store.syncJobs[0].updatedAt = new Date();
+      }
+      return rows as never;
+    });
+
+    const summary = await requeueStaleRunningSyncJobs(db, {
+      olderThanMinutes: 15,
+      limit: 10,
+    });
+
+    expect(summary).toEqual({ requeued: 0, failed: 0 });
+    expect(prisma._store.syncJobs[0].status).toBe("running");
+  });
+
   it("fails (terminal) a stale running job at attempts >= maxAttempts (not requeued)", async () => {
     const prisma = createInventoryFakePrisma({
       items: [item()],
@@ -1360,6 +1395,113 @@ describe("requeueStaleRunningSyncJobs", () => {
     expect(prisma._store.reviewTasks).toHaveLength(0);
     expect(prisma._store.events).toHaveLength(0);
     expect(prisma._store.notifications).toHaveLength(0);
+  });
+});
+
+describe("recoverStaleRunningMarketplaceAttempts", () => {
+  function recoveryDb() {
+    const prisma = createInventoryFakePrisma({ items: [item()], syncJobs: [] });
+    const db = workerDb(prisma);
+    const attempt = {
+      id: "attempt-1",
+      status: "RUNNING",
+      code: "EBAY_PUBLISH_STARTED",
+      reason: null as string | null,
+      completedAt: null as Date | null,
+      requestedBy: "user-1",
+      startedAt: new Date(Date.now() - 60 * 60_000),
+      marketplaceListing: {
+        id: "listing-ebay",
+        marketplace: "ebay" as "ebay" | "stockx",
+        inventoryItemId: "item-1",
+        inventoryItem: {
+          accountId: "account-1",
+          sellerId: "user-1",
+          productName: "Nike Air Max 1",
+        },
+      },
+    };
+    db.publishAttempt = {
+      findMany: vi.fn(async ({ where }) =>
+        attempt.status === "RUNNING" && attempt.startedAt <= where.startedAt.lte
+          ? [attempt]
+          : []),
+      updateMany: vi.fn(async ({ where, data }) => {
+        if (
+          attempt.id !== where.id ||
+          attempt.status !== where.status ||
+          attempt.code !== where.code ||
+          attempt.startedAt > where.startedAt.lte
+        ) {
+          return { count: 0 };
+        }
+        attempt.code = data.code;
+        attempt.reason = data.reason;
+        attempt.completedAt = data.completedAt;
+        return { count: 1 };
+      }),
+    };
+    return { prisma, db, attempt };
+  }
+
+  it("keeps a stale remote mutation RUNNING and surfaces deduped reconciliation work", async () => {
+    const { prisma, db, attempt } = recoveryDb();
+
+    const first = await recoverStaleRunningMarketplaceAttempts(db, {
+      olderThanMinutes: 15,
+    });
+    const second = await recoverStaleRunningMarketplaceAttempts(db, {
+      olderThanMinutes: 15,
+    });
+
+    expect(first).toEqual({ reconciliationRequired: 1 });
+    expect(second).toEqual({ reconciliationRequired: 0 });
+    expect(attempt).toMatchObject({
+      status: "RUNNING",
+      code: "EBAY_PUBLISH_RECONCILIATION_REQUIRED",
+      completedAt: null,
+    });
+    expect(attempt.reason).toContain("Reconcile");
+    expect(prisma._store.reviewTasks).toHaveLength(1);
+    expect(prisma._store.notifications).toHaveLength(1);
+  });
+
+  it("does not create reconciliation work when the attempt completes after the scan", async () => {
+    const { prisma, db, attempt } = recoveryDb();
+    db.publishAttempt!.findMany = vi.fn(async () => {
+      const scannedAttempt = {
+        ...attempt,
+        marketplaceListing: {
+          ...attempt.marketplaceListing,
+          inventoryItem: { ...attempt.marketplaceListing.inventoryItem },
+        },
+      };
+      attempt.status = "SUCCEEDED";
+      return [scannedAttempt];
+    });
+
+    const summary = await recoverStaleRunningMarketplaceAttempts(db, {
+      olderThanMinutes: 15,
+    });
+
+    expect(summary).toEqual({ reconciliationRequired: 0 });
+    expect(attempt.code).toBe("EBAY_PUBLISH_STARTED");
+    expect(prisma._store.reviewTasks).toHaveLength(0);
+    expect(prisma._store.notifications).toHaveLength(0);
+  });
+
+  it("leaves an expected asynchronous StockX submission to its status-sync job", async () => {
+    const { prisma, db, attempt } = recoveryDb();
+    attempt.code = "STOCKX_LISTING_SUBMITTED";
+    attempt.marketplaceListing.marketplace = "stockx";
+
+    const summary = await recoverStaleRunningMarketplaceAttempts(db, {
+      olderThanMinutes: 15,
+    });
+
+    expect(summary).toEqual({ reconciliationRequired: 0 });
+    expect(attempt.code).toBe("STOCKX_LISTING_SUBMITTED");
+    expect(prisma._store.reviewTasks).toHaveLength(0);
   });
 });
 

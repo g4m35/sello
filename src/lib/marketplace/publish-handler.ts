@@ -35,6 +35,66 @@ const publishingPersistenceTables = ["PublishAttempt", "MarketplaceEvent"] as co
 
 export const publishingMigrationMissingCode = "PUBLISHING_MIGRATION_MISSING";
 
+const DEFINITIVE_PRE_WRITE_CODES = new Set<string>([
+  ebayErrorCodes.notConfigured,
+  ebayErrorCodes.notConnected,
+  ebayErrorCodes.reconnectRequired,
+  ebayErrorCodes.tokenRefreshFailed,
+  ebayErrorCodes.readinessFailed,
+  ebayErrorCodes.publishNotEnabled,
+  stockxErrorCodes.notConfigured,
+  stockxErrorCodes.notEnabled,
+  stockxErrorCodes.notConnected,
+  stockxErrorCodes.reconnectRequired,
+  stockxErrorCodes.tokenRefreshFailed,
+  stockxErrorCodes.sellerProfileIncomplete,
+  stockxErrorCodes.confirmationRequired,
+  stockxErrorCodes.listingNotEnabled,
+  stockxErrorCodes.listingReadinessFailed,
+  stockxErrorCodes.listingReadinessRequired,
+]);
+
+/**
+ * Classifies a failed mutating adapter call conservatively. A timeout, rate
+ * limit, server error, invalid/missing response, or raw transport error can all
+ * happen after the marketplace applied the write. Those outcomes must keep the
+ * active-attempt uniqueness guard instead of becoming replayable FAILED rows.
+ */
+export function isAmbiguousMarketplaceMutationFailure(
+  error: unknown,
+  opts: { externalMutationStarted?: boolean } = {},
+): boolean {
+  if (opts.externalMutationStarted === false) return false;
+
+  const code =
+    error && typeof error === "object" && "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : null;
+  if (code && DEFINITIVE_PRE_WRITE_CODES.has(code)) return false;
+
+  const details =
+    error && typeof error === "object" && "details" in error &&
+    isRecord((error as { details?: unknown }).details)
+      ? (error as { details: Record<string, unknown> }).details
+      : null;
+  const detailsStatus =
+    typeof details?.status === "number"
+      ? details.status
+      : isRecord(details?.ebayError) && typeof details.ebayError.status === "number"
+        ? details.ebayError.status
+        : null;
+  const status =
+    detailsStatus ??
+    (error && typeof error === "object" && "status" in error &&
+    typeof (error as { status?: unknown }).status === "number"
+      ? (error as { status: number }).status
+      : null);
+
+  if (status === null) return true;
+  return status === 408 || status === 429 || status >= 500;
+}
+
 export class PublishingMigrationMissingError extends AppError {
   readonly missingTables: readonly string[];
 
@@ -922,26 +982,37 @@ async function recordStockXFailure(
       ? error.details.missing.filter((id): id is string => typeof id === "string")
       : [];
   const reason = safePersistedFailureReason(error, "StockX listing failed.");
+  const outcomeUnknown = isAmbiguousMarketplaceMutationFailure(error);
+  const persistedCode = outcomeUnknown
+    ? "STOCKX_LISTING_OUTCOME_UNKNOWN"
+    : code;
+  const persistedReason = outcomeUnknown
+    ? "StockX may have accepted the listing request. Reconcile its status before retrying."
+    : reason;
 
   await withMigrationDetection(async () => {
     await updatePublishAttempt(prisma, publishAttemptId, {
-      status: "FAILED",
-      code,
-      reason,
+      status: outcomeUnknown ? "RUNNING" : "FAILED",
+      code: persistedCode,
+      reason: persistedReason,
       adapterResult: {
-        code,
+        code: persistedCode,
+        originalCode: code,
+        reconciliationRequired: outcomeUnknown,
         missing,
         ...bulkRunMetadata(bulkRunId),
       } as unknown as Prisma.InputJsonValue,
-      completedAt: new Date(),
+      completedAt: outcomeUnknown ? null : new Date(),
     });
 
     await prisma.marketplaceEvent.create({
       data: {
         marketplaceListingId,
-        kind: "publish_failed",
+        kind: outcomeUnknown ? "publish_outcome_unknown" : "publish_failed",
         data: {
-          code,
+          code: persistedCode,
+          originalCode: code,
+          reconciliationRequired: outcomeUnknown,
           missing,
           attemptId: publishAttemptId,
           marketplace: "stockx",
@@ -950,6 +1021,13 @@ async function recordStockXFailure(
         } as unknown as Prisma.InputJsonValue,
       },
     });
+
+    if (outcomeUnknown && prisma.marketplaceListing.update) {
+      await prisma.marketplaceListing.update({
+        where: { id: marketplaceListingId },
+        data: { status: "NEEDS_REVIEW", lastError: persistedReason },
+      });
+    }
 
     return { id: publishAttemptId };
   });
@@ -996,14 +1074,23 @@ async function recordEbayFailure(
     error instanceof EbayIntegrationError && Array.isArray(error.details?.succeededSteps)
       ? error.details.succeededSteps.filter((value): value is string => typeof value === "string")
       : [];
+  const outcomeUnknown = isAmbiguousMarketplaceMutationFailure(error, {
+    externalMutationStarted: startedSteps.length > 0,
+  });
+  const persistedCode = outcomeUnknown ? "EBAY_PUBLISH_OUTCOME_UNKNOWN" : code;
+  const persistedReason = outcomeUnknown
+    ? "eBay may have applied the publish request. Reconcile the offer and listing before retrying."
+    : reason;
 
   await withMigrationDetection(async () => {
     await updatePublishAttempt(prisma, publishAttemptId, {
-      status: "FAILED",
-      code,
-      reason,
+      status: outcomeUnknown ? "RUNNING" : "FAILED",
+      code: persistedCode,
+      reason: persistedReason,
       adapterResult: {
-        code,
+        code: persistedCode,
+        originalCode: code,
+        reconciliationRequired: outcomeUnknown,
         step,
         missing,
         ebayError,
@@ -1012,7 +1099,7 @@ async function recordEbayFailure(
         succeededSteps,
         ...bulkRunMetadata(bulkRunId),
       } as unknown as Prisma.InputJsonValue,
-      completedAt: new Date(),
+      completedAt: outcomeUnknown ? null : new Date(),
     });
 
     for (const stepEvent of stepEvents) {
@@ -1034,9 +1121,11 @@ async function recordEbayFailure(
     await prisma.marketplaceEvent.create({
       data: {
         marketplaceListingId,
-        kind: "publish_failed",
+        kind: outcomeUnknown ? "publish_outcome_unknown" : "publish_failed",
         data: {
-          code,
+          code: persistedCode,
+          originalCode: code,
+          reconciliationRequired: outcomeUnknown,
           step,
           missing,
           ebayError,
@@ -1048,6 +1137,13 @@ async function recordEbayFailure(
         } as unknown as Prisma.InputJsonValue,
       },
     });
+
+    if (outcomeUnknown && prisma.marketplaceListing.update) {
+      await prisma.marketplaceListing.update({
+        where: { id: marketplaceListingId },
+        data: { status: "NEEDS_REVIEW", lastError: persistedReason },
+      });
+    }
 
     return { id: publishAttemptId };
   });
