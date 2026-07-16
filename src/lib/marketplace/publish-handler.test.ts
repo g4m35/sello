@@ -1080,6 +1080,39 @@ describe("executePublish — eBay dispatch", () => {
     ).rejects.toMatchObject({ code: ebayErrorCodes.alreadyPublished, status: 409 });
     expect(ebayPublish).toHaveBeenCalledTimes(1);
   });
+
+  it("treats a raw transport failure during a mutating step as ambiguous even when startedSteps is missing", async () => {
+    // Regression: runStep's fallback wrap for non-typed errors (socket reset,
+    // truncated body, JSON parse failure) used to omit startedSteps, letting
+    // an in-flight publish be recorded as replayable FAILED.
+    const prisma = createEbayFakePrisma();
+    const ebayPublish = vi.fn().mockRejectedValue(
+      new EbayIntegrationError(
+        ebayErrorCodes.publishFailed,
+        "eBay sandbox publish step failed.",
+        502,
+        {
+          step: "publish",
+          stepEvents: [
+            { step: "inventory_item", status: "started" },
+            { step: "inventory_item", status: "succeeded" },
+            { step: "publish", status: "started" },
+            { step: "publish", status: "failed" },
+          ],
+          // no startedSteps / succeededSteps: simulates the fallback wrap
+        },
+      ),
+    );
+
+    await expect(
+      executePublish(prisma, input, undefined, ebayPublish),
+    ).rejects.toMatchObject({ code: ebayErrorCodes.publishFailed });
+
+    expect(prisma._state.attempts[0]).toMatchObject({
+      status: "RUNNING",
+      code: "EBAY_PUBLISH_OUTCOME_UNKNOWN",
+    });
+  });
 });
 
 describe("executePublish — StockX dispatch", () => {

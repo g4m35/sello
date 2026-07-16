@@ -266,7 +266,7 @@ describe("syncStockXListingStatus", () => {
   });
 
   it("marks removed StockX listings ended without marking the item sold", async () => {
-    const { prisma, listing, events, markSold, deps } = createFake({
+    const { prisma, listing, events, attempts, markSold, deps } = createFake({
       remoteStatus: "DEACTIVATED",
     });
 
@@ -280,6 +280,12 @@ describe("syncStockXListingStatus", () => {
     expect(listing.endedAt).toBeInstanceOf(Date);
     expect(events.map((event) => event.kind)).toContain("stockx_listing_ended");
     expect(markSold).not.toHaveBeenCalled();
+    // Regression: a RUNNING attempt stranded on an ended listing kept the
+    // active-attempt uniqueness guard forever, blocking all future publishes.
+    expect(attempts[0]).toMatchObject({
+      status: "FAILED",
+      code: "STOCKX_LISTING_FAILED",
+    });
   });
 
   it("keeps unknown provider statuses non-terminal", async () => {

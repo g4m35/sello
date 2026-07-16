@@ -91,7 +91,7 @@ export type StockXStatusSyncPrismaLike = MarkSoldPrismaLike & {
         code?: { in: string[] };
       };
       data: {
-        status: "SUCCEEDED";
+        status: "SUCCEEDED" | "FAILED";
         code: string;
         reason: string | null;
         completedAt: Date;
@@ -100,6 +100,16 @@ export type StockXStatusSyncPrismaLike = MarkSoldPrismaLike & {
     }): Promise<{ count: number }>;
   };
 };
+
+// A RUNNING StockX attempt can carry the in-flight codes, the ambiguous
+// outcome code, or the recovery sweep's reconciliation rename. Status sync
+// reads the authoritative remote state, so all of them are resolvable here.
+const RESOLVABLE_RUNNING_ATTEMPT_CODES = [
+  stockxErrorCodes.listingStarted,
+  stockxErrorCodes.listingSubmitted,
+  "STOCKX_LISTING_OUTCOME_UNKNOWN",
+  "STOCKX_LISTING_RECONCILIATION_REQUIRED",
+];
 
 export type StockXListingStatusClient = {
   fetchListingStatus(listingId: string): Promise<StockXListingStatusResult>;
@@ -280,7 +290,7 @@ export async function syncStockXListingStatus(
       where: {
         marketplaceListingId: listing.id,
         status: "RUNNING",
-        code: { in: [stockxErrorCodes.listingStarted, stockxErrorCodes.listingSubmitted] },
+        code: { in: RESOLVABLE_RUNNING_ATTEMPT_CODES },
       },
       data: {
         status: "SUCCEEDED",
@@ -306,6 +316,24 @@ export async function syncStockXListingStatus(
         lastSyncAt: now,
         lastError: null,
         endedAt: now,
+      },
+    });
+    // The remote state is definitively not active, so any in-flight attempt
+    // has a known outcome. Resolving it FAILED lifts the active-attempt
+    // uniqueness guard; without this, an attempt stranded RUNNING blocks
+    // every future StockX publish of the item.
+    await prisma.publishAttempt?.updateMany({
+      where: {
+        marketplaceListingId: listing.id,
+        status: "RUNNING",
+        code: { in: RESOLVABLE_RUNNING_ATTEMPT_CODES },
+      },
+      data: {
+        status: "FAILED",
+        code: stockxErrorCodes.listingFailed,
+        reason: "StockX reports the listing ended or inactive; reconciled by status sync.",
+        completedAt: now,
+        adapterResult: statusEventData(remote, classification),
       },
     });
     await prisma.marketplaceEvent.create({

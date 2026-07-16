@@ -156,4 +156,15 @@ describe("POST /api/billing/checkout", () => {
     const keys = mocks.sessionsCreate.mock.calls.map((call) => call[1]?.idempotencyKey);
     expect(keys[0]).toBe(keys[1]);
   });
+
+  it("uses distinct checkout keys for different requested plans", async () => {
+    // Regression: a shared key meant an abandoned pro checkout made Stripe
+    // reject a kingpin checkout as an idempotency conflict for ~24h.
+    await POST(req({ plan: "pro" }));
+    await POST(req({ plan: "kingpin" }));
+
+    expect(mocks.sessionsCreate).toHaveBeenCalledTimes(2);
+    const keys = mocks.sessionsCreate.mock.calls.map((call) => call[1]?.idempotencyKey);
+    expect(keys[0]).not.toBe(keys[1]);
+  });
 });

@@ -25,11 +25,15 @@ function isLiveSubscription(status: string): boolean {
 
 function checkoutIdempotencyKey(
   accountId: string,
+  requestedPriceId: string,
   latestSubscription: Stripe.Subscription | null,
 ): string {
+  // The requested price must be part of the key: Stripe rejects a reused key
+  // with different params, so an abandoned "upgrade to pro" attempt would
+  // otherwise brick "upgrade to kingpin" for the key's ~24h lifetime.
   const state = latestSubscription
-    ? `${latestSubscription.id}:${latestSubscription.status}:${latestSubscription.created}`
-    : "no-subscription";
+    ? `${latestSubscription.id}:${latestSubscription.status}:${latestSubscription.created}:${requestedPriceId}`
+    : `no-subscription:${requestedPriceId}`;
   const generation = createHash("sha256").update(state).digest("hex").slice(0, 32);
   return `sello:billing:checkout:${accountId}:${generation}`;
 }
@@ -118,7 +122,11 @@ export async function POST(request: Request) {
         cancel_url: `${origin}/settings/billing?status=cancelled`,
       },
       {
-        idempotencyKey: checkoutIdempotencyKey(account.id, subscriptions.latest),
+        idempotencyKey: checkoutIdempotencyKey(
+          account.id,
+          config.priceIds[plan],
+          subscriptions.latest,
+        ),
       },
     );
 

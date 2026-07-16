@@ -80,17 +80,8 @@ async function applySubscription(
   env: Env,
   stripe: Stripe,
 ): Promise<void> {
-  // Events can arrive out of order. Re-read the object from Stripe so an old
-  // active snapshot cannot restore access after the subscription was canceled.
-  const sub = await stripe.subscriptions.retrieve(eventSubscription.id);
-  const customerId = customerIdOf(sub.customer);
+  const customerId = customerIdOf(eventSubscription.customer);
   if (!customerId) return;
-
-  const priceId = firstItem(sub)?.price?.id ?? "";
-  const resolved = planForPriceId(priceId, env);
-  const terminal = isTerminalStatus(sub.status);
-  const plan: PlanId = terminal ? "free" : (resolved ?? "free");
-  const { start, end } = periodOf(sub);
 
   const billingRecord = await prisma.subscription.findUnique({
     where: { stripeCustomerId: customerId },
@@ -99,6 +90,19 @@ async function applySubscription(
   if (!billingRecord) return;
 
   await withBillingLock(prisma, `account:${billingRecord.accountId}`, async (transaction) => {
+    // Events can arrive out of order. Re-read the object from Stripe INSIDE
+    // the billing lock: a retrieve taken before the lock can go stale while
+    // waiting on it, letting an old active snapshot overwrite a cancellation
+    // that a concurrent handler already applied.
+    const sub = await stripe.subscriptions.retrieve(eventSubscription.id);
+    if (customerIdOf(sub.customer) !== customerId) return;
+
+    const priceId = firstItem(sub)?.price?.id ?? "";
+    const resolved = planForPriceId(priceId, env);
+    const terminal = isTerminalStatus(sub.status);
+    const plan: PlanId = terminal ? "free" : (resolved ?? "free");
+    const { start, end } = periodOf(sub);
+
     const existing = await transaction.subscription.findUnique({
       where: { stripeCustomerId: customerId },
     });
@@ -117,6 +121,8 @@ async function applySubscription(
         currentPeriodStart: start,
         currentPeriodEnd: end,
         cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+        // Leaving past_due keeps a stale grace deadline behind otherwise.
+        ...(toStatus(sub.status) !== "past_due" ? { graceEndsAt: null } : {}),
       },
     });
     await transaction.account.update({ where: { id: existing.accountId }, data: { plan } });
@@ -141,13 +147,16 @@ async function applyCheckoutCompleted(
   const customerId = customerIdOf(session.customer);
   if (!subscriptionId || !customerId) return;
 
-  const candidate = await stripe.subscriptions.retrieve(subscriptionId);
-  if (customerIdOf(candidate.customer) !== customerId || isTerminalStatus(candidate.status)) return;
-  const priceId = firstItem(candidate)?.price?.id ?? "";
-  const plan = planForPriceId(priceId, env) ?? "free";
-  const { start, end } = periodOf(candidate);
-
   await withBillingLock(prisma, `account:${accountId}`, async (transaction) => {
+    // Retrieve inside the lock; see applySubscription for the staleness rationale.
+    const candidate = await stripe.subscriptions.retrieve(subscriptionId);
+    if (customerIdOf(candidate.customer) !== customerId || isTerminalStatus(candidate.status)) {
+      return;
+    }
+    const priceId = firstItem(candidate)?.price?.id ?? "";
+    const plan = planForPriceId(priceId, env) ?? "free";
+    const { start, end } = periodOf(candidate);
+
     const existing = await transaction.subscription.findUnique({ where: { accountId } });
     if (!existing || existing.stripeCustomerId !== customerId) return;
 
@@ -168,18 +177,31 @@ async function applyCheckoutCompleted(
         currentPeriodStart: start,
         currentPeriodEnd: end,
         cancelAtPeriodEnd: candidate.cancel_at_period_end ?? false,
+        ...(toStatus(candidate.status) !== "past_due" ? { graceEndsAt: null } : {}),
       },
     });
     await transaction.account.update({ where: { id: accountId }, data: { plan } });
   });
 }
 
+// "past_due uses a short documented grace state" (paid-beta plan §11). The
+// grace deadline is set once on the first payment failure; Stripe's retry
+// events must not roll it forward, or grace never ends.
+const PAST_DUE_GRACE_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 async function applyPaymentFailed(invoice: Stripe.Invoice, prisma: Db): Promise<void> {
   const customerId = customerIdOf(invoice.customer);
   if (!customerId) return;
+  const graceEndsAt = new Date(Date.now() + PAST_DUE_GRACE_DAYS * DAY_MS);
   await prisma.subscription.updateMany({
-    where: { stripeCustomerId: customerId },
-    data: { status: "past_due" },
+    where: { stripeCustomerId: customerId, status: { not: "past_due" } },
+    data: { status: "past_due", graceEndsAt },
+  });
+  // Backfill rows that entered past_due before a grace writer existed.
+  await prisma.subscription.updateMany({
+    where: { stripeCustomerId: customerId, status: "past_due", graceEndsAt: null },
+    data: { graceEndsAt },
   });
 }
 

@@ -170,17 +170,39 @@ describe("handleStripeEvent", () => {
     });
   });
 
-  it("marks past_due on invoice.payment_failed without changing plan", async () => {
+  it("marks past_due with a grace deadline on invoice.payment_failed without changing plan", async () => {
     const event = {
       id: "evt_invoice",
       type: "invoice.payment_failed",
       data: { object: { customer: "cus_1" } },
     } as unknown as Stripe.Event;
 
+    const before = Date.now();
     await handleStripeEvent(event, prisma, env, fakeStripe({} as Stripe.Subscription));
+    const after = Date.now();
 
-    expect(fns.subUpdateMany.mock.calls[0][0].data).toEqual({ status: "past_due" });
+    const first = fns.subUpdateMany.mock.calls[0][0];
+    expect(first.where).toMatchObject({ status: { not: "past_due" } });
+    expect(first.data.status).toBe("past_due");
+    const grace = first.data.graceEndsAt as Date;
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    expect(grace.getTime()).toBeGreaterThanOrEqual(before + sevenDays);
+    expect(grace.getTime()).toBeLessThanOrEqual(after + sevenDays);
+
+    // A retry for an already past_due row must not roll grace forward; only
+    // rows that never got a deadline are backfilled.
+    const second = fns.subUpdateMany.mock.calls[1][0];
+    expect(second.where).toMatchObject({ status: "past_due", graceEndsAt: null });
+
     expect(fns.accountUpdate).not.toHaveBeenCalled();
+  });
+
+  it("clears the grace deadline when the subscription recovers to active", async () => {
+    const event = subscriptionEvent("customer.subscription.updated");
+    await handleStripeEvent(event, prisma, env, fakeStripe(currentSubscription(event)));
+
+    const arg = fns.subUpdate.mock.calls[0][0];
+    expect(arg.data.graceEndsAt).toBeNull();
   });
 
   it("is idempotent: a duplicate delivery is a no-op", async () => {

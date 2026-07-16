@@ -1074,8 +1074,14 @@ async function recordEbayFailure(
     error instanceof EbayIntegrationError && Array.isArray(error.details?.succeededSteps)
       ? error.details.succeededSteps.filter((value): value is string => typeof value === "string")
       : [];
+  // startedSteps is the primary signal, but fall back to stepEvents so an
+  // error wrapper that dropped startedSteps cannot silently reclassify an
+  // in-flight mutation as pre-write (and therefore replayable).
+  const anyStepStarted =
+    startedSteps.length > 0 ||
+    stepEvents.some((event) => event.status === "started");
   const outcomeUnknown = isAmbiguousMarketplaceMutationFailure(error, {
-    externalMutationStarted: startedSteps.length > 0,
+    externalMutationStarted: anyStepStarted,
   });
   const persistedCode = outcomeUnknown ? "EBAY_PUBLISH_OUTCOME_UNKNOWN" : code;
   const persistedReason = outcomeUnknown
