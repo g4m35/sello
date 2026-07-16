@@ -34,7 +34,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "bullmq": "^5.79.3",
-    "ioredis": "^5.10.1",
+    "ioredis": "^5.11.1",
     "lucide-react": "^1.24.0",
     "next": "^16.2.10",
     "pg": "^8.22.0",
