@@ -402,7 +402,15 @@ export async function reconcileEbaySoldSignal(
       title: `Confirm the eBay order for "${listing.inventoryItem.productName}"`,
       description:
         "The eBay order is not confirmed enough for automatic delisting. Review payment, cancellation, and refund status.",
-      payload: { saleSignalId: signalId, state },
+      // marketplaceListingId is what the resolve route passes to markItemSold
+      // as the source listing; without it the eBay listing row stays LISTED
+      // after the seller confirms the sale.
+      payload: {
+        saleSignalId: signalId,
+        state,
+        marketplaceListingId: listing.id,
+        externalListingId: listing.externalListingId ?? undefined,
+      },
     });
     await createNotification(db, {
       userId: input.actorUserId,
