@@ -441,6 +441,11 @@ describe("reconcileEbaySoldSignal", () => {
     expect(result.outcome).toBe("review_uncertain");
     expect(prisma._store.items[0].status).toBe("LISTED");
     expect(prisma._store.reviewTasks[0].type).toBe("confirm_possible_sale");
+    // Regression: without the source listing id in the payload, resolving the
+    // task marked the item sold but left the eBay listing row LISTED.
+    expect(prisma._store.reviewTasks[0].payload).toMatchObject({
+      marketplaceListingId: "listing-ebay",
+    });
     expect(prisma._store.notifications).toHaveLength(1);
   });
 
