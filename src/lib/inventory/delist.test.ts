@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { queueDelistOtherListings } from "./delist";
-import { createInventoryFakePrisma, type FakeListing } from "./test-fake-prisma";
+import {
+  createInventoryFakePrisma,
+  type FakeItem,
+  type FakeListing,
+} from "./test-fake-prisma";
 
-function baseItem() {
+function baseItem(overrides: Partial<FakeItem> = {}): FakeItem {
   return {
     id: "item-1",
     sellerId: "user-1",
@@ -14,6 +18,7 @@ function baseItem() {
     soldSourceMarketplace: null,
     soldSourceListingId: null,
     lockVersion: 0,
+    ...overrides,
   };
 }
 
@@ -123,6 +128,27 @@ describe("queueDelistOtherListings", () => {
     expect((prisma._store.syncJobs[0].payload as { useAdapter: boolean }).useAdapter).toBe(
       true,
     );
+  });
+
+  it("includes account scope in adapter-backed delist jobs", async () => {
+    const prisma = createInventoryFakePrisma({
+      items: [baseItem({ accountId: "account-1" })],
+      listings: [
+        listing({
+          id: "l-stockx",
+          marketplace: "stockx",
+          externalListingId: "stockx-listing-1",
+        }),
+      ],
+    });
+
+    await queueDelistOtherListings(prisma, "item-1", "ebay", "member-1", "user-1");
+
+    expect(prisma._store.syncJobs[0].payload).toMatchObject({
+      accountId: "account-1",
+      marketplace: "stockx",
+      useAdapter: true,
+    });
   });
 
   it("parks a non-eBay listing as needs_review and creates a manual_delist_required task", async () => {

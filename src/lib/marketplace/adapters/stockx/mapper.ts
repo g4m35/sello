@@ -3,6 +3,9 @@ import { StockXIntegrationError, stockxErrorCodes } from "./errors";
 export type StockXCreateListingPayload = {
   amount: string;
   variantId: string;
+  currencyCode: "USD";
+  active: true;
+  inventoryType: "STANDARD";
 };
 
 export function buildStockXCreateListingPayload(input: {
@@ -33,7 +36,15 @@ export function buildStockXCreateListingPayload(input: {
   }
 
   return {
-    amount: (input.priceCents / 100).toFixed(2),
+    amount: formatStockXAmount(input.priceCents),
     variantId,
+    currencyCode: "USD",
+    active: true,
+    inventoryType: "STANDARD",
   };
+}
+
+function formatStockXAmount(priceCents: number): string {
+  const dollars = priceCents / 100;
+  return Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2);
 }

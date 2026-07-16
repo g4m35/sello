@@ -5,7 +5,7 @@ import {
   assertCanConnectMarketplace,
   assertCanManageMarketplaceConnections,
 } from "@/lib/billing/connections";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import {
   getEbayConfig,
   getEbayOAuthStateSecret,
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     // (reconnecting eBay is always allowed).
     const account = await getActiveAccount(user.id);
     await assertCanManageMarketplaceConnections(account, user.id);
-    await assertCanConnectMarketplace(account, "ebay");
+    await assertCanConnectMarketplace(account, "ebay", undefined, user);
 
     const config = getEbayConfig();
     const state = createRandomEbayOAuthState();
@@ -54,7 +54,8 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof AppError && !(error as { code?: string }).code?.startsWith("EBAY_")) {
-      return NextResponse.json({ error: getErrorMessage(error) }, { status: error.status });
+      const { status, body } = safeErrorResponse(error, { label: "ebay_connect" });
+      return NextResponse.json(body, { status });
     }
 
     const { payload, status } = toEbayErrorPayload(error);

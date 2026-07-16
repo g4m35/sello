@@ -49,6 +49,14 @@ function client(overrides: Partial<StockXDelistClient> = {}): StockXDelistClient
       operationUrl: "https://api.stockx.com/v2/selling/listings/stockx-listing-1/operations/operation-2",
       rawJson: {},
     })),
+    deleteListing: vi.fn(async () => ({
+      listingId: "stockx-listing-1",
+      status: "DELETED",
+      operationId: null,
+      operationStatus: null,
+      operationUrl: null,
+      rawJson: {},
+    })),
     ...overrides,
   };
 }
@@ -73,11 +81,48 @@ describe("delistStockXListing", () => {
     );
 
     expect(c.deactivateListing).toHaveBeenCalledWith("stockx-listing-1");
+    expect(c.deleteListing).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       status: "delisted",
       code: stockxErrorCodes.delistSucceeded,
       listingId: "stockx-listing-1",
       operationId: "operation-2",
+    });
+  });
+
+  it("deletes a StockX listing when deactivate is rejected for the current listing state", async () => {
+    const c = client({
+      deactivateListing: vi.fn(async () => {
+        throw new StockXIntegrationError(
+          stockxErrorCodes.delistFailed,
+          "StockX API request failed.",
+          502,
+          { status: 400 },
+        );
+      }),
+    });
+
+    const result = await delistStockXListing(
+      prisma(),
+      {
+        userId: "user-1",
+        accountId: "acc-1",
+        inventoryItemId: "item-1",
+        listingId: "stockx-listing-1",
+      },
+      {
+        env: stockxEnv,
+        resolveAccessToken: vi.fn(async () => "access-token"),
+        createClient: () => c,
+      },
+    );
+
+    expect(c.deactivateListing).toHaveBeenCalledWith("stockx-listing-1");
+    expect(c.deleteListing).toHaveBeenCalledWith("stockx-listing-1");
+    expect(result).toMatchObject({
+      status: "delisted",
+      code: stockxErrorCodes.delistSucceeded,
+      listingId: "stockx-listing-1",
     });
   });
 
@@ -104,6 +149,7 @@ describe("delistStockXListing", () => {
       status: 422,
     });
     expect(c.deactivateListing).not.toHaveBeenCalled();
+    expect(c.deleteListing).not.toHaveBeenCalled();
   });
 
   it("fails closed when StockX API config is missing", async () => {

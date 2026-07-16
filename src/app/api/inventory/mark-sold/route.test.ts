@@ -74,6 +74,7 @@ describe("POST /api/inventory/mark-sold", () => {
     expect(mocks.markItemSold.mock.calls[0][1]).toEqual({
       inventoryItemId: ITEM_ID,
       userId: "user-1",
+      accountId: "acc-1",
       inventoryOwnerUserId: "owner-1",
       soldMarketplace: "grailed",
       soldListingId: "g-123",

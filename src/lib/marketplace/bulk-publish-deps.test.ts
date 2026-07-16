@@ -20,10 +20,21 @@ vi.mock("./adapters/ebay/config", async (orig) => {
   return { ...actual, getEbayEnvironment: () => "sandbox" };
 });
 
-import { defaultBulkPublishDeps } from "./bulk-publish";
+import { defaultBulkPublishDeps, defaultBulkStockXPublishDeps } from "./bulk-publish";
 import { EbayIntegrationError, ebayErrorCodes } from "./adapters/ebay/errors";
+import { StockXIntegrationError, stockxErrorCodes } from "./adapters/stockx/errors";
 
 const ENV = { EBAY_SANDBOX_PUBLISH_ENABLED: "true" } as Record<string, string | undefined>;
+const STOCKX_ENV = {
+  STOCKX_API_ENABLED: "true",
+  STOCKX_LISTING_ENABLED: "true",
+  STOCKX_CLIENT_ID: "client-id",
+  STOCKX_CLIENT_SECRET: "client-secret",
+  STOCKX_REDIRECT_URI: "https://sello.wtf/api/marketplaces/stockx/callback",
+  STOCKX_TOKEN_ENCRYPTION_KEY: "test-encryption-key",
+  STOCKX_OAUTH_STATE_SECRET: "x".repeat(40),
+  STOCKX_API_KEY: "api-key",
+} as Record<string, string | undefined>;
 
 function prismaFake(opts: {
   owned?: boolean;
@@ -32,6 +43,64 @@ function prismaFake(opts: {
   return {
     inventoryItem: {
       findFirst: vi.fn(async () => (opts.owned === false ? null : { id: "item-1" })),
+    },
+    marketplaceListing: {
+      findFirst: vi.fn(async () => opts.listing ?? null),
+    },
+  };
+}
+
+function stockxPrismaFake(opts: {
+  owned?: boolean;
+  connected?: boolean;
+  listing?: {
+    status: string;
+    externalListingId: string | null;
+    publishAttempts?: Array<{ status: string; code: string }>;
+  } | null;
+  draft?: {
+    selectedMarketplaces?: string[];
+    stockxProductId?: string | null;
+    stockxVariantId?: string | null;
+    marketplaceDrafts?: unknown;
+    recommendedPriceCents?: number | null;
+  };
+  quantityAvailable?: number;
+  condition?: string;
+  recommendedPriceCents?: number | null;
+} = {}) {
+  const draft = opts.draft;
+  const stockxProductId =
+    draft && "stockxProductId" in draft ? (draft.stockxProductId ?? null) : "product-1";
+  const stockxVariantId =
+    draft && "stockxVariantId" in draft ? (draft.stockxVariantId ?? null) : "variant-1";
+  return {
+    inventoryItem: {
+      findFirst: vi.fn(async () => {
+        if (opts.owned === false) return null;
+        return {
+          id: "item-1",
+          productName: "Jordan 1",
+          condition: opts.condition ?? "new_with_tags",
+          quantityAvailable: opts.quantityAvailable ?? 1,
+          recommendedPriceCents: opts.recommendedPriceCents ?? 12000,
+          listingDrafts: [
+            {
+              title: "Jordan 1",
+              recommendedPriceCents: opts.draft?.recommendedPriceCents ?? 12000,
+              selectedMarketplaces: opts.draft?.selectedMarketplaces ?? ["stockx"],
+              stockxProductId,
+              stockxVariantId,
+              marketplaceDrafts: opts.draft?.marketplaceDrafts ?? {
+                stockx: { size: "10" },
+              },
+            },
+          ],
+        };
+      }),
+    },
+    marketplaceConnection: {
+      findUnique: vi.fn(async () => (opts.connected === false ? null : { id: "conn-1" })),
     },
     marketplaceListing: {
       findFirst: vi.fn(async () => opts.listing ?? null),
@@ -218,5 +287,138 @@ describe("defaultBulkPublishDeps.executeItem", () => {
     expect(serialized).not.toContain("secret.token");
     expect(serialized).not.toContain("Prisma");
     expect(serialized).not.toMatch(/\{"errors"/);
+  });
+});
+
+describe("defaultBulkStockXPublishDeps.preflightItem", () => {
+  it("rejects out-of-account items before connection or duplicate checks", async () => {
+    const prisma = stockxPrismaFake({ owned: false });
+    const deps = defaultBulkStockXPublishDeps(prisma as never, STOCKX_ENV);
+
+    const out = await deps.preflightItem({
+      userId: "member-1",
+      accountId: "acc-1",
+      itemId: "item-1",
+    });
+
+    expect(out.status).toBe("rejected");
+    expect(prisma.inventoryItem.findFirst).toHaveBeenCalledWith({
+      where: { id: "item-1", accountId: "acc-1" },
+      include: { listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } },
+    });
+    expect(prisma.marketplaceConnection.findUnique).not.toHaveBeenCalled();
+    expect(prisma.marketplaceListing.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns ready only when StockX OAuth, exact match, price, quantity, and target are present", async () => {
+    const deps = defaultBulkStockXPublishDeps(stockxPrismaFake() as never, STOCKX_ENV);
+
+    const out = await deps.preflightItem({
+      userId: "seller-1",
+      accountId: "acc-1",
+      itemId: "item-1",
+    });
+
+    expect(out).toEqual({ status: "ready" });
+  });
+
+  it("blocks disconnected, unmatched, unpriced, zero-quantity StockX items with friendly labels", async () => {
+    const deps = defaultBulkStockXPublishDeps(
+      stockxPrismaFake({
+        connected: false,
+        quantityAvailable: 0,
+        draft: {
+          selectedMarketplaces: [],
+          stockxProductId: null,
+          stockxVariantId: null,
+          marketplaceDrafts: { stockx: {} },
+          recommendedPriceCents: 0,
+        },
+      }) as never,
+      STOCKX_ENV,
+    );
+
+    const out = await deps.preflightItem({ userId: "seller-1", accountId: "acc-1", itemId: "item-1" });
+
+    expect(out.status).toBe("needs_details");
+    expect(out.missing).toEqual(
+      expect.arrayContaining([
+        "StockX seller connection",
+        "Exact StockX product",
+        "Exact StockX size/variant",
+        "StockX marketplace selection",
+        "StockX size label",
+        "Price",
+        "Quantity",
+      ]),
+    );
+  });
+
+  it("skips duplicate StockX listings and in-flight StockX listing attempts", async () => {
+    const listed = defaultBulkStockXPublishDeps(
+      stockxPrismaFake({ listing: { status: "LISTED", externalListingId: "sx-1" } }) as never,
+      STOCKX_ENV,
+    );
+    const inFlight = defaultBulkStockXPublishDeps(
+      stockxPrismaFake({
+        listing: {
+          status: "FAILED",
+          externalListingId: null,
+          publishAttempts: [{ status: "RUNNING", code: "STOCKX_LISTING_STARTED" }],
+        },
+      }) as never,
+      STOCKX_ENV,
+    );
+
+    expect((await listed.preflightItem({ userId: "seller-1", accountId: "acc-1", itemId: "item-1" })).status).toBe("skipped");
+    expect((await inFlight.preflightItem({ userId: "seller-1", accountId: "acc-1", itemId: "item-1" })).status).toBe("skipped");
+  });
+});
+
+describe("defaultBulkStockXPublishDeps.executeItem", () => {
+  const args = { userId: "seller-1", accountId: "acc-1", itemId: "item-1", bulkRunId: "run-1" };
+
+  it("routes StockX bulk execution through the canonical publish handler", async () => {
+    mocks.executePublish.mockResolvedValue({
+      outcome: { status: "submitted" },
+      listingId: "stockx-listing-1",
+    });
+    const deps = defaultBulkStockXPublishDeps(stockxPrismaFake() as never, STOCKX_ENV);
+
+    const out = await deps.executeItem(args);
+
+    expect(out).toMatchObject({
+      status: "published",
+      externalListingId: "stockx-listing-1",
+    });
+    expect(mocks.executePublish).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        userId: "seller-1",
+        accountId: "acc-1",
+        inventoryItemId: "item-1",
+        marketplace: "stockx",
+        bulkRunId: "run-1",
+        confirmLivePublish: true,
+      }),
+    );
+  });
+
+  it("maps StockX readiness failures to safe missing labels", async () => {
+    mocks.executePublish.mockRejectedValue(
+      new StockXIntegrationError(
+        stockxErrorCodes.listingReadinessFailed,
+        "not ready",
+        422,
+        { missing: ["stockx_variant_match", "price"] },
+      ),
+    );
+    const deps = defaultBulkStockXPublishDeps(stockxPrismaFake() as never, STOCKX_ENV);
+
+    const out = await deps.executeItem(args);
+
+    expect(out.status).toBe("needs_details");
+    expect(out.missing).toEqual(["Exact StockX size/variant", "Price"]);
+    expect(JSON.stringify(out)).not.toContain("STOCKX_CLIENT_SECRET");
   });
 });

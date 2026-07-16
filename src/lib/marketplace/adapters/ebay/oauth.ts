@@ -13,9 +13,10 @@ const tokenUrls: Record<EbayEnvironment, string> = {
   sandbox: "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
   production: "https://api.ebay.com/identity/v1/oauth2/token",
 };
-const requiredScopes = [
+export const EBAY_REQUIRED_SCOPES = [
   "https://api.ebay.com/oauth/api_scope/sell.inventory",
   "https://api.ebay.com/oauth/api_scope/sell.account",
+  "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
 ];
 
 type StatePayload = {
@@ -34,7 +35,7 @@ export function buildEbayAuthorizationUrl(config: EbayConfig, state: string) {
   url.searchParams.set("redirect_uri", config.redirectUriName);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("state", state);
-  url.searchParams.set("scope", requiredScopes.join(" "));
+  url.searchParams.set("scope", EBAY_REQUIRED_SCOPES.join(" "));
   url.search = url.search.replace(/\+/g, "%20");
   return url;
 }

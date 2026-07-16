@@ -9,7 +9,6 @@ import { isPublishReady } from "@/lib/view/item-readiness-bucket";
 import { Badge, Btn, Check } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/icon";
 import { MpLogo, MpDots, Thumb } from "@/components/ui/marketplace";
-import { marketplaceCapabilityLabel } from "@/lib/view/marketplaces";
 import { Topbar } from "@/components/app/topbar";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
@@ -172,13 +171,7 @@ export default function DashboardPage() {
     setPublishOpen(true);
   };
 
-  if (loading)
-    return (
-      <>
-        <Topbar crumbs={["Dashboard"]} />
-        <PageSkeleton />
-      </>
-    );
+  if (loading) return <PageSkeleton />;
   if (error)
     return (
       <>
@@ -195,19 +188,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Topbar
-        crumbs={["Dashboard"]}
-        right={
-          <Btn
-            variant="accent"
-            size="sm"
-            icon="plus"
-            onClick={() => router.push("/inventory/new")}
-          >
-            New listing
-          </Btn>
-        }
-      />
+      <Topbar crumbs={["Dashboard"]} />
 
       <main className="page">
         <div className="page__head">
@@ -218,24 +199,6 @@ export default function DashboardPage() {
             <div className="page__title-meta">
               {readyItems.length} ready · {attention.length} need attention
             </div>
-          </div>
-          <div className="page__actions">
-            <Btn
-              variant="ghost"
-              size="sm"
-              icon="history"
-              onClick={() => router.push("/history")}
-            >
-              History
-            </Btn>
-            <Btn
-              variant="secondary"
-              size="sm"
-              icon="box"
-              onClick={() => router.push("/inventory")}
-            >
-              Inventory
-            </Btn>
           </div>
         </div>
 
@@ -355,7 +318,7 @@ export default function DashboardPage() {
                         checked={picked.has(item.id)}
                         onChange={() => togglePick(item.id)}
                       />
-                      <Thumb seed={item.id} size={44} />
+                      <Thumb image={item.coverImage ?? null} size={44} />
                       <div style={{ minWidth: 0 }}>
                         <div className="attn-row__title">{item.title}</div>
                         <div className="attn-row__sub">
@@ -401,12 +364,6 @@ export default function DashboardPage() {
                       <MpLogo id={ch.marketplace} size={26} />
                       <div style={{ minWidth: 0 }}>
                         <div className="mp-row__name">{ch.name}</div>
-                        <div className="mp-row__meta">
-                          {marketplaceCapabilityLabel({
-                            marketplace: ch.marketplace,
-                            publish: ch.capabilities.publish,
-                          })}
-                        </div>
                       </div>
                       <span
                         className={`health-dot ${

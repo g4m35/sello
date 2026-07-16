@@ -5,7 +5,7 @@ import {
   assertCanConnectMarketplace,
   assertCanManageMarketplaceConnections,
 } from "@/lib/billing/connections";
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, safeErrorResponse } from "@/lib/errors";
 import {
   getStockXOAuthConfig,
   getStockXOAuthStateSecret,
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const user = await requireSupabaseUserFromRequestOrCookies(request);
     const account = await getActiveAccount(user.id);
     await assertCanManageMarketplaceConnections(account, user.id);
-    await assertCanConnectMarketplace(account, "stockx");
+    await assertCanConnectMarketplace(account, "stockx", undefined, user);
 
     const config = getStockXOAuthConfig();
     const state = createRandomStockXOAuthState();
@@ -51,7 +51,8 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof AppError && !(error as { code?: string }).code?.startsWith("STOCKX_")) {
-      return NextResponse.json({ error: getErrorMessage(error) }, { status: error.status });
+      const { status, body } = safeErrorResponse(error, { label: "stockx_connect" });
+      return NextResponse.json(body, { status });
     }
     const { payload, status } = toStockXErrorPayload(error);
     return NextResponse.json({ error: payload }, { status });

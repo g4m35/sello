@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { featureAccessForUser } from "@/lib/auth/feature-access";
-import { getActiveAccount } from "@/lib/billing/account";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { inventoryChildScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { summarizeJobLogs } from "@/lib/jobs/summary";
@@ -20,7 +19,8 @@ export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const resolved = await resolveRuntimeEntitlements(user, prisma);
+    const account = resolved.account;
 
     const jobs = await prisma.jobLog.findMany({
       where: inventoryChildScope(account),
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     // handlers, so expose their real API readiness instead of the legacy
     // compatibility adapter's draft-only defaults.
     const ebayLivePublishEnabled =
-      isEbayProductionPublishEnabled() && featureAccessForUser(user).liveEbayPublish;
+      isEbayProductionPublishEnabled() && resolved.access.liveEbayPublish;
     const stockxApiConfigured = isStockXApiConfigured();
     const stockxListingEnabled = isStockXListingCreationAvailable();
 

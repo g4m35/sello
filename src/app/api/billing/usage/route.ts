@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { getActiveAccount } from "@/lib/billing/account";
-import { entitlementsForPlan } from "@/lib/billing/entitlements";
+import {
+  effectiveFeaturesForUser,
+  effectiveLimitsForUser,
+  effectivePlanForUser,
+} from "@/lib/billing/effective-plan";
 import { billingPeriodStart } from "@/lib/billing/usage";
 import { safeErrorResponse } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
@@ -20,7 +24,6 @@ export async function GET(request: Request) {
     const user = await requireSupabaseUser(request);
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    const entitlements = entitlementsForPlan(account.plan);
     const now = new Date();
     const subscription = await prisma.subscription.findUnique({
       where: { accountId: account.id },
@@ -29,8 +32,13 @@ export async function GET(request: Request) {
         currentPeriodStart: true,
         currentPeriodEnd: true,
         cancelAtPeriodEnd: true,
+        graceEndsAt: true,
       },
     });
+    const planOptions = { subscription, now };
+    const plan = effectivePlanForUser(account, user, process.env, planOptions);
+    const limits = effectiveLimitsForUser(account, user, process.env, planOptions);
+    const features = effectiveFeaturesForUser(account, user, process.env, planOptions);
 
     const periodStart = billingPeriodStart(now, subscription);
     const usageRows = await prisma.usageCounter.findMany({
@@ -53,9 +61,9 @@ export async function GET(request: Request) {
       new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
     return NextResponse.json({
-      plan: account.plan,
-      limits: entitlements.limits,
-      features: entitlements.features,
+      plan,
+      limits,
+      features,
       usage,
       periodStart,
       periodEnd,

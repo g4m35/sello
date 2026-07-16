@@ -69,6 +69,7 @@ describe("enqueueSyncJob", () => {
 
     const job = await enqueueSyncJob(prisma, {
       userId: "user-1",
+      accountId: "account-1",
       type: "delist_marketplace_listing",
       idempotencyKey: "delist:item-1:listing-1",
       payload: { foo: "bar" },
@@ -82,6 +83,7 @@ describe("enqueueSyncJob", () => {
     const prisma = createFakePrisma();
     const input = {
       userId: "user-1",
+      accountId: "account-1",
       type: "delist_marketplace_listing" as const,
       idempotencyKey: "delist:item-1:listing-1",
     };
@@ -98,6 +100,7 @@ describe("enqueueSyncJob", () => {
 
     const job = await enqueueSyncJob(prisma, {
       userId: "user-1",
+      accountId: "account-1",
       type: "delist_marketplace_listing",
       idempotencyKey: "delist:item-1:listing-2",
       status: "needs_review",
@@ -112,6 +115,7 @@ describe("markSyncJob* helpers", () => {
     const prisma = createFakePrisma();
     const job = await enqueueSyncJob(prisma, {
       userId: "user-1",
+      accountId: "account-1",
       type: "delist_marketplace_listing",
       idempotencyKey: "k1",
     });
@@ -127,6 +131,7 @@ describe("markSyncJob* helpers", () => {
     const prisma = createFakePrisma();
     const job = await enqueueSyncJob(prisma, {
       userId: "user-1",
+      accountId: "account-1",
       type: "delist_marketplace_listing",
       idempotencyKey: "k2",
     });

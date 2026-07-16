@@ -15,7 +15,8 @@ export function friendlySourceLabel(id: string): string {
   const lower = id.toLowerCase();
   if (lower.includes("lens") || lower.includes("visual")) return VISUAL_SOURCE_LABEL;
   if (lower.includes("active") || lower.includes("browse")) return ACTIVE_SOURCE_LABEL;
-  if (lower.includes("sold") || lower.includes("insights") || lower.includes("stockx")) {
+  if (lower.includes("stockx")) return ACTIVE_SOURCE_LABEL;
+  if (lower.includes("sold") || lower.includes("insights")) {
     return SOLD_SOURCE_LABEL;
   }
   return GENERIC_SOURCE_LABEL;
@@ -58,8 +59,21 @@ function noteForSkip(message: string): string | null {
   if (m.includes("cooldown")) {
     return "Sold comps were just refreshed. Try again shortly.";
   }
-  if (m.includes("paid_providers_disabled") || m.includes("paid comp provider")) {
+  if (m.includes("marketplace_not_connected") || m.includes("connect stockx")) {
+    return "Connect StockX in Settings → Marketplaces to include StockX market comps.";
+  }
+  if (
+    m.includes("stockx_seller_profile_incomplete") ||
+    (m.includes("billing") && m.includes("shipping") && m.includes("stockx"))
+  ) {
+    return "Finish billing and shipping setup on StockX (stockx.com), then refresh comps.";
+  }
+  if (m.includes("paid_providers_disabled")) {
     return `Fresh sold comps are disabled right now. ${MANUAL_STILL_WORKS}`;
+  }
+  // Generic paid-provider failure copy from sanitizeProviderError — not the kill switch.
+  if (m.includes("paid comp provider failed")) {
+    return "A pricing source was temporarily unavailable. Try again later.";
   }
   if (m.includes("fail") || m.includes("error") || m.includes("unavailable")) {
     return "A pricing source was temporarily unavailable. Try again later.";
@@ -104,10 +118,12 @@ export function buildPricingNotes(input: PricingNotesInput): string[] {
     if (!notes.includes(note)) notes.push(note);
   };
 
-  if (!input.autoDiscoveryEnabled) {
-    add(`Fresh sold comps are currently disabled. ${MANUAL_STILL_WORKS}`);
-  } else if (input.paidProvidersEnabled === false) {
+  if (input.paidProvidersEnabled === false) {
     add(`Fresh sold comps are disabled right now. ${MANUAL_STILL_WORKS}`);
+  } else if (!input.autoDiscoveryEnabled) {
+    add(
+      "Automatic background pricing is off. Use Refresh comps to search fresh sold comps for this listing.",
+    );
   }
 
   if (input.status === "skipped_weak_identity") {

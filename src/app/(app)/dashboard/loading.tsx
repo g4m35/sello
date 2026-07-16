@@ -1,13 +1,6 @@
-import { Topbar } from "@/components/app/topbar";
 import { PageSkeleton } from "@/components/app/states";
 
-// Instant skeleton during route navigation, so moving between screens never
-// shows a blank frame before the page's own data loads.
+// Centered brand loader only — no topbar crumbs or skeleton rows.
 export default function Loading() {
-  return (
-    <>
-      <Topbar crumbs={["Dashboard"]} />
-      <PageSkeleton />
-    </>
-  );
+  return <PageSkeleton />;
 }

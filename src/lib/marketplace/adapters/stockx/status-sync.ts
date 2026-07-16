@@ -42,7 +42,7 @@ export type StockXStatusSyncPrismaLike = MarkSoldPrismaLike & {
       where: {
         id: string;
         marketplace: "stockx";
-        inventoryItem: { sellerId: string };
+        inventoryItem: { accountId: string } | { sellerId: string };
       };
       select: unknown;
     }): Promise<ListingRow | null>;
@@ -91,7 +91,7 @@ export type StockXStatusSyncPrismaLike = MarkSoldPrismaLike & {
         code?: { in: string[] };
       };
       data: {
-        status: "SUCCEEDED";
+        status: "SUCCEEDED" | "FAILED";
         code: string;
         reason: string | null;
         completedAt: Date;
@@ -100,6 +100,16 @@ export type StockXStatusSyncPrismaLike = MarkSoldPrismaLike & {
     }): Promise<{ count: number }>;
   };
 };
+
+// A RUNNING StockX attempt can carry the in-flight codes, the ambiguous
+// outcome code, or the recovery sweep's reconciliation rename. Status sync
+// reads the authoritative remote state, so all of them are resolvable here.
+const RESOLVABLE_RUNNING_ATTEMPT_CODES = [
+  stockxErrorCodes.listingStarted,
+  stockxErrorCodes.listingSubmitted,
+  "STOCKX_LISTING_OUTCOME_UNKNOWN",
+  "STOCKX_LISTING_RECONCILIATION_REQUIRED",
+];
 
 export type StockXListingStatusClient = {
   fetchListingStatus(listingId: string): Promise<StockXListingStatusResult>;
@@ -164,7 +174,9 @@ export async function syncStockXListingStatus(
     where: {
       id: input.marketplaceListingId,
       marketplace: "stockx",
-      inventoryItem: { sellerId: input.userId },
+      inventoryItem: input.accountId
+        ? { accountId: input.accountId }
+        : { sellerId: input.userId },
     },
     select: {
       id: true,
@@ -236,6 +248,18 @@ export async function syncStockXListingStatus(
   const metadata = stockxStatusMetadata(listing.metadata, remote, classification);
 
   if (classification === "sold") {
+    await deps.markSold(prisma, {
+      inventoryItemId: listing.inventoryItemId,
+      userId: input.userId,
+      accountId,
+      inventoryOwnerUserId: listing.inventoryItem.sellerId,
+      soldMarketplace: "stockx",
+      soldListingId: listing.externalListingId,
+      sourceMarketplaceListingId: listing.id,
+      source: "api",
+    });
+    // markItemSold owns the atomic source-listing + canonical-item + delist-job
+    // transition. Only enrich the already-safe sold row after it succeeds.
     await prisma.marketplaceListing.update({
       where: { id: listing.id },
       data: {
@@ -244,13 +268,6 @@ export async function syncStockXListingStatus(
         lastSyncAt: now,
         lastError: null,
       },
-    });
-    await deps.markSold(prisma, {
-      inventoryItemId: listing.inventoryItemId,
-      userId: input.userId,
-      soldMarketplace: "stockx",
-      soldListingId: listing.externalListingId,
-      source: "api",
     });
     await prisma.marketplaceEvent.create({
       data: {
@@ -273,7 +290,7 @@ export async function syncStockXListingStatus(
       where: {
         marketplaceListingId: listing.id,
         status: "RUNNING",
-        code: { in: [stockxErrorCodes.listingStarted, stockxErrorCodes.listingSubmitted] },
+        code: { in: RESOLVABLE_RUNNING_ATTEMPT_CODES },
       },
       data: {
         status: "SUCCEEDED",
@@ -299,6 +316,24 @@ export async function syncStockXListingStatus(
         lastSyncAt: now,
         lastError: null,
         endedAt: now,
+      },
+    });
+    // The remote state is definitively not active, so any in-flight attempt
+    // has a known outcome. Resolving it FAILED lifts the active-attempt
+    // uniqueness guard; without this, an attempt stranded RUNNING blocks
+    // every future StockX publish of the item.
+    await prisma.publishAttempt?.updateMany({
+      where: {
+        marketplaceListingId: listing.id,
+        status: "RUNNING",
+        code: { in: RESOLVABLE_RUNNING_ATTEMPT_CODES },
+      },
+      data: {
+        status: "FAILED",
+        code: stockxErrorCodes.listingFailed,
+        reason: "StockX reports the listing ended or inactive; reconciled by status sync.",
+        completedAt: now,
+        adapterResult: statusEventData(remote, classification),
       },
     });
     await prisma.marketplaceEvent.create({
@@ -333,14 +368,23 @@ export async function syncStockXListingStatus(
 function classifyStockXStatus(
   result: StockXListingStatusResult,
 ): StockXStatusSyncResult["status"] {
-  const value = `${result.status ?? ""} ${result.operationStatus ?? ""}`
-    .trim()
-    .toUpperCase();
-  if (/\b(SOLD|SALE|FULFILLED|COMPLETE|COMPLETED)\b/.test(value)) return "sold";
-  if (/\b(ACTIVE|ACTIVATED|LISTED|LIVE|SUCCEEDED|SUCCESS)\b/.test(value)) {
-    return "active";
-  }
-  if (/\b(INACTIVE|DEACTIVATED|ENDED|REMOVED|CANCELED|CANCELLED|EXPIRED)\b/.test(value)) {
+  // An async operation reaching SUCCEEDED/COMPLETED only means the operation
+  // finished. It is not evidence that the listing is live or sold. Lifecycle
+  // decisions therefore use the listing status field exclusively.
+  const status = result.status?.trim().toUpperCase() ?? "";
+  if (["SOLD", "SALE", "FULFILLED"].includes(status)) return "sold";
+  if (["ACTIVE", "ACTIVATED", "LISTED", "LIVE"].includes(status)) return "active";
+  if (
+    [
+      "INACTIVE",
+      "DEACTIVATED",
+      "ENDED",
+      "REMOVED",
+      "CANCELED",
+      "CANCELLED",
+      "EXPIRED",
+    ].includes(status)
+  ) {
     return "ended";
   }
   return "unknown";

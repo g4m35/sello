@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getActiveAccount } from "@/lib/billing/account";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import {
   assertCanManageAccount,
   inviteMember,
@@ -37,7 +38,11 @@ export async function POST(request: Request) {
     const account = await getActiveAccount(user.id);
     await assertCanManageAccount(account, user.id);
     const { email, role } = InviteBody.parse(await request.json());
-    const member = await inviteMember(account, email, role ?? "member");
+    const member = await inviteMember(
+      accountWithEffectivePlan(account, user),
+      email,
+      role ?? "member",
+    );
     return NextResponse.json({ member }, { status: 201 });
   } catch (error) {
     const { status, body } = safeErrorResponse(error, {

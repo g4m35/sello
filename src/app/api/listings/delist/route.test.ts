@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getPrisma: vi.fn(),
   getActiveAccount: vi.fn(),
+  requireRuntimeFeatureAccess: vi.fn(),
   requireSupabaseUser: vi.fn(),
   executeEbayDelist: vi.fn(),
   executeStockXDelist: vi.fn(),
@@ -16,6 +17,10 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: mocks.getActiveAccount,
+}));
+
+vi.mock("@/lib/auth/feature-access", () => ({
+  requireRuntimeFeatureAccess: mocks.requireRuntimeFeatureAccess,
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -33,16 +38,28 @@ vi.mock("@/lib/marketplace/delist-handler", async (importOriginal) => {
   };
 });
 
+import { AppError } from "@/lib/errors";
 import { POST } from "./route";
 
 describe("delist API auth boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("EBAY_DELIST_EMAILS", "allowed@example.com");
-    mocks.getActiveAccount.mockResolvedValue({
+    const account = {
       id: "acc-1",
       ownerUserId: "user-1",
       plan: "free",
+    };
+    mocks.getActiveAccount.mockResolvedValue(account);
+    mocks.requireRuntimeFeatureAccess.mockImplementation(async (user: { email?: string | null }) => {
+      if (user.email !== "allowed@example.com") {
+        throw new AppError(
+          "Live eBay delisting is currently enabled for selected alpha accounts.",
+          403,
+          "EBAY_DELIST_ALPHA_ONLY",
+        );
+      }
+      return { account };
     });
   });
 
@@ -86,7 +103,7 @@ describe("delist API auth boundaries", () => {
     });
     expect(mocks.executeEbayDelist).not.toHaveBeenCalled();
     expect(mocks.executeStockXDelist).not.toHaveBeenCalled();
-    expect(mocks.getPrisma).not.toHaveBeenCalled();
+    expect(mocks.requireRuntimeFeatureAccess).toHaveBeenCalled();
     expect(prismaWrite).not.toHaveBeenCalled();
     expect(outboundAdapter).not.toHaveBeenCalled();
   });

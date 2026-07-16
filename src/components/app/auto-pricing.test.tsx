@@ -154,4 +154,49 @@ describe("AutoPricing resilience", () => {
     const html = renderPricing();
     expect(html).toContain("Add sold comp");
   });
+
+  it("keeps refresh available when only background discovery is off", async () => {
+    mocks.getComps.mockResolvedValue({
+      summary: {
+        status: "needs_comps",
+        totalComps: 0,
+        validComps: 0,
+        lowCents: null,
+        averageCents: null,
+        highCents: null,
+        quickSaleCents: null,
+        recommendedListCents: null,
+        confidence: "none",
+      },
+      discovery: {
+        status: "disabled",
+        autoDiscoveryEnabled: false,
+        paidProvidersEnabled: true,
+        enabledSources: ["apify-ebay-sold"],
+        queries: [],
+        sourceErrors: [],
+        lastRunAt: null,
+      },
+      comps: [],
+    });
+
+    renderPricing();
+    reactHarness.effects[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    reactHarness.cursor = 0;
+    reactHarness.effects = [];
+    const readyView = AutoPricing({ itemId: "item-1" });
+    const refresh = findElement(
+      readyView,
+      (element) => element.props.children === "Refresh comps",
+    );
+    expect(refresh).not.toBeNull();
+    expect(refresh?.props.disabled).toBe(false);
+
+    const html = renderPricing();
+    expect(html).toContain("Manual sold-comp refresh is available");
+    expect(html).toContain("Use Refresh comps");
+  });
 });

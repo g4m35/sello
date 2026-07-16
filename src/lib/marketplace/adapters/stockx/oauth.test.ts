@@ -94,7 +94,11 @@ describe("StockX token exchange", () => {
     );
 
     expect(token.access_token).toBe("access-token");
-    const [url, init] = fetchImpl.mock.calls[0];
+    const firstCall = fetchImpl.mock.calls[0] as unknown as [
+      RequestInfo | URL,
+      RequestInit | undefined,
+    ];
+    const [url, init] = firstCall;
     expect(String(url)).toBe("https://accounts.stockx.com/oauth/token");
     const body = init?.body as URLSearchParams;
     expect(body.get("grant_type")).toBe("authorization_code");

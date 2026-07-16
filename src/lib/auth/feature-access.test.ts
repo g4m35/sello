@@ -9,6 +9,8 @@ import {
   configuredFeatureEmails,
   featureAccessForUser,
   requireFeatureAccess,
+  requireRuntimeFeatureAccess,
+  resolveRuntimeEntitlements,
   type FeatureEntitlement,
 } from "./feature-access";
 
@@ -60,21 +62,43 @@ describe("configuredFeatureEmails", () => {
 });
 
 describe("featureAccessForUser", () => {
-  it("grants each feature independently without falling back to ADMIN_EMAILS", () => {
+  it("grants each feature independently for non-admins", () => {
     expect(
       featureAccessForUser(
-        { email: "owner@example.com" },
+        { email: "seller@example.com" },
         {
           ADMIN_EMAILS: "owner@example.com",
           LIVE_EBAY_PUBLISH_EMAILS: "",
-          EBAY_DELIST_EMAILS: "owner@example.com",
-          PAID_COMPS_EMAILS: "beta@example.com, OWNER@example.com",
+          EBAY_DELIST_EMAILS: "seller@example.com",
+          PAID_COMPS_EMAILS: "beta@example.com, SELLER@example.com",
         },
       ),
     ).toMatchObject({
       liveEbayPublish: false,
       ebayDelist: true,
       paidComps: true,
+    });
+  });
+
+  it("grants every entitlement to ADMIN_EMAILS users for owner testing", () => {
+    expect(
+      featureAccessForUser(
+        { email: "owner@example.com" },
+        {
+          ADMIN_EMAILS: "owner@example.com",
+          LIVE_EBAY_PUBLISH_EMAILS: "",
+          EBAY_DELIST_EMAILS: "",
+          PAID_COMPS_EMAILS: "",
+        },
+      ),
+    ).toMatchObject({
+      liveEbayPublish: true,
+      ebayDelist: true,
+      paidComps: true,
+      etsyConnect: true,
+      etsyPublish: true,
+      etsyDelist: true,
+      etsyOrders: true,
     });
   });
 
@@ -116,10 +140,10 @@ describe("featureAccessForUser", () => {
     },
   );
 
-  it("does not grant any feature from ADMIN_EMAILS alone", () => {
+  it("still fails closed for non-admins when only ADMIN_EMAILS is set", () => {
     expect(
       featureAccessForUser(
-        { email: "owner@example.com" },
+        { email: "seller@example.com" },
         { ADMIN_EMAILS: "owner@example.com" },
       ),
     ).toMatchObject({
@@ -220,5 +244,140 @@ describe("FEATURE_ACCESS_COPY", () => {
     expect(serialized).not.toContain("emails");
     expect(serialized).not.toContain("admin");
     expect(serialized).not.toContain("@");
+  });
+});
+
+function runtimePrisma(opts: {
+  plan?: "free" | "pro" | "kingpin";
+  disabledAt?: Date | null;
+  subscriptionStatus?: "active" | "trialing" | "past_due" | null;
+  graceEndsAt?: Date | null;
+} = {}) {
+  return {
+    account: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: "acc-1",
+        ownerUserId: "user-1",
+        plan: opts.plan ?? "free",
+        disabledAt: opts.disabledAt ?? null,
+      }),
+    },
+    accountMember: { findFirst: vi.fn() },
+    subscription: {
+      findUnique: vi.fn().mockResolvedValue(
+        opts.subscriptionStatus === undefined
+          ? null
+          : {
+              status: opts.subscriptionStatus,
+              graceEndsAt: opts.graceEndsAt ?? null,
+            },
+      ),
+    },
+  } as never;
+}
+
+const paidCompsEnv = {
+  PAID_COMPS_EMAILS: "seller@example.com",
+  COMPS_PAID_PROVIDERS_ENABLED: "true",
+  COMPS_APIFY_EBAY_SOLD_ENABLED: "true",
+  APIFY_TOKEN: "configured-test-placeholder",
+};
+
+describe("authoritative runtime entitlements", () => {
+  it("uses one account, subscription, switch, provider, and allowlist decision", async () => {
+    const resolved = await resolveRuntimeEntitlements(
+      { id: "user-1", email: "seller@example.com" },
+      runtimePrisma(),
+      paidCompsEnv,
+    );
+
+    expect(resolved.account.id).toBe("acc-1");
+    expect(resolved.access.paidComps).toBe(true);
+    expect(resolved.decisions.paidComps.reason).toBe("ALLOWED");
+  });
+
+  it("fails closed on the runtime switch even for an allowlisted seller", async () => {
+    const resolved = await resolveRuntimeEntitlements(
+      { id: "user-1", email: "seller@example.com" },
+      runtimePrisma(),
+      { ...paidCompsEnv, COMPS_PAID_PROVIDERS_ENABLED: "false" },
+    );
+
+    expect(resolved.decisions.paidComps).toMatchObject({
+      allowed: false,
+      reason: "FEATURE_KILL_SWITCH_ACTIVE",
+    });
+  });
+
+  it("enforces paid-plan subscription state and honors a bounded grace period", async () => {
+    const inactive = await resolveRuntimeEntitlements(
+      { id: "user-1", email: "seller@example.com" },
+      runtimePrisma({ plan: "pro", subscriptionStatus: "past_due" }),
+      paidCompsEnv,
+      new Date("2026-07-11T12:00:00Z"),
+    );
+    expect(inactive.decisions.paidComps.reason).toBe("SUBSCRIPTION_INACTIVE");
+    expect(inactive.plan).toBe("free");
+    expect(inactive.limits.aiListingsPerMonth).toBe(10);
+
+    const grace = await resolveRuntimeEntitlements(
+      { id: "user-1", email: "seller@example.com" },
+      runtimePrisma({
+        plan: "pro",
+        subscriptionStatus: "past_due",
+        graceEndsAt: new Date("2026-07-12T12:00:00Z"),
+      }),
+      paidCompsEnv,
+      new Date("2026-07-11T12:00:00Z"),
+    );
+    expect(grace.decisions.paidComps).toMatchObject({
+      allowed: true,
+      gracePeriodActive: true,
+    });
+    expect(grace.plan).toBe("pro");
+  });
+
+  it("keeps marketplace safety actions available during commercial suspension", async () => {
+    const resolved = await resolveRuntimeEntitlements(
+      { id: "user-1", email: "seller@example.com" },
+      runtimePrisma({ plan: "pro", subscriptionStatus: "past_due" }),
+      {
+        EBAY_DELIST_EMAILS: "seller@example.com",
+        EBAY_CLIENT_ID: "test-client",
+        EBAY_CLIENT_SECRET: "test-secret",
+        EBAY_REDIRECT_URI_NAME: "test-redirect",
+        EBAY_TOKEN_ENCRYPTION_KEY:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        EBAY_ENV: "sandbox",
+      },
+      new Date("2026-07-15T12:00:00Z"),
+    );
+
+    expect(resolved.plan).toBe("free");
+    expect(resolved.decisions.ebayDelist).toMatchObject({ allowed: true, reason: "ALLOWED" });
+  });
+
+  it("rejects a disabled active account before evaluating commercial access", async () => {
+    await expect(
+      requireRuntimeFeatureAccess(
+        { id: "user-1", email: "seller@example.com" },
+        "paidComps",
+        runtimePrisma({ disabledAt: new Date("2026-07-11T00:00:00Z") }),
+        paidCompsEnv,
+      ),
+    ).rejects.toMatchObject({ code: "ACCOUNT_DISABLED", status: 403 });
+  });
+
+  it("does not let an admin bypass a disabled runtime switch", async () => {
+    const resolved = await resolveRuntimeEntitlements(
+      { id: "user-1", email: "owner@example.com" },
+      runtimePrisma(),
+      {
+        ...paidCompsEnv,
+        ADMIN_EMAILS: "owner@example.com",
+        COMPS_PAID_PROVIDERS_ENABLED: "false",
+      },
+    );
+    expect(resolved.decisions.paidComps.reason).toBe("FEATURE_KILL_SWITCH_ACTIVE");
   });
 });

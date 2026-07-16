@@ -32,9 +32,11 @@ type FakeListing = {
 function createFake({
   remoteStatus,
   operationStatus = null,
+  sellerId = "user-1",
 }: {
   remoteStatus: string | null;
   operationStatus?: string | null;
+  sellerId?: string;
 }) {
   const listing: FakeListing = {
     id: "listing-row-1",
@@ -43,7 +45,7 @@ function createFake({
     status: "LISTING",
     externalListingId: "stockx-listing-1",
     metadata: { operationId: "operation-1" },
-    inventoryItem: { accountId: "account-1", sellerId: "user-1" },
+    inventoryItem: { accountId: "account-1", sellerId },
     lastSyncAt: null,
     endedAt: null,
   };
@@ -52,26 +54,50 @@ function createFake({
     { status: "RUNNING", code: stockxErrorCodes.listingSubmitted },
   ];
   const markSold = vi.fn().mockResolvedValue({ outcome: "marked_sold" });
+  const fetchListingStatus = vi.fn().mockResolvedValue({
+    listingId: "stockx-listing-1",
+    status: remoteStatus,
+    operationId: "operation-1",
+    operationStatus,
+    operationUrl:
+      "https://api.stockx.com/v2/selling/listings/stockx-listing-1/operations/operation-1",
+    rawJson: { secret: "not persisted" },
+  });
   const deps: StockXStatusSyncDeps = {
     env,
     resolveAccessToken: () => "access-token",
     createClient: () => ({
-      fetchListingStatus: vi.fn().mockResolvedValue({
-        listingId: "stockx-listing-1",
-        status: remoteStatus,
-        operationId: "operation-1",
-        operationStatus,
-        operationUrl:
-          "https://api.stockx.com/v2/selling/listings/stockx-listing-1/operations/operation-1",
-        rawJson: { secret: "not persisted" },
-      }),
+      fetchListingStatus,
     }),
     markSold,
   };
 
   const prisma = {
     marketplaceListing: {
-      async findFirst() {
+      async findFirst({
+        where,
+      }: {
+        where: {
+          id: string;
+          marketplace: "stockx";
+          inventoryItem: { accountId: string } | { sellerId: string };
+        };
+      }) {
+        if (where.id !== listing.id || where.marketplace !== listing.marketplace) {
+          return null;
+        }
+        if (
+          "accountId" in where.inventoryItem &&
+          where.inventoryItem.accountId !== listing.inventoryItem.accountId
+        ) {
+          return null;
+        }
+        if (
+          "sellerId" in where.inventoryItem &&
+          where.inventoryItem.sellerId !== listing.inventoryItem.sellerId
+        ) {
+          return null;
+        }
         return listing;
       },
       async update({ data }: { data: Partial<FakeListing> }) {
@@ -110,7 +136,15 @@ function createFake({
     },
   } as unknown as StockXStatusSyncPrismaLike;
 
-  return { prisma, listing, events, attempts, markSold, deps };
+  return {
+    prisma,
+    listing,
+    events,
+    attempts,
+    markSold,
+    fetchListingStatus,
+    deps,
+  };
 }
 
 describe("syncStockXListingStatus", () => {
@@ -153,16 +187,86 @@ describe("syncStockXListingStatus", () => {
       prisma,
       expect.objectContaining({
         inventoryItemId: "item-1",
+        accountId: "account-1",
+        inventoryOwnerUserId: "user-1",
         soldMarketplace: "stockx",
         soldListingId: "stockx-listing-1",
+        sourceMarketplaceListingId: "listing-row-1",
         source: "api",
       }),
     );
     expect(events.map((event) => event.kind)).toContain("stockx_listing_sold");
   });
 
-  it("marks removed StockX listings ended without marking the item sold", async () => {
+  it("marks the owning seller's inventory sold when status sync runs as a teammate", async () => {
+    const { prisma, markSold, deps } = createFake({
+      remoteStatus: "SOLD",
+      sellerId: "owner-1",
+    });
+
+    await syncStockXListingStatus(prisma, {
+      userId: "member-1",
+      accountId: "account-1",
+      marketplaceListingId: "listing-row-1",
+    }, deps);
+
+    expect(markSold).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        userId: "member-1",
+        accountId: "account-1",
+        inventoryOwnerUserId: "owner-1",
+        inventoryItemId: "item-1",
+      }),
+    );
+  });
+
+  it("does not pre-mark the source listing sold when the atomic sold transition fails", async () => {
     const { prisma, listing, events, markSold, deps } = createFake({
+      remoteStatus: "SOLD",
+    });
+    markSold.mockRejectedValueOnce(new Error("transaction failed"));
+
+    await expect(
+      syncStockXListingStatus(
+        prisma,
+        {
+          userId: "user-1",
+          accountId: "account-1",
+          marketplaceListingId: "listing-row-1",
+        },
+        deps,
+      ),
+    ).rejects.toThrow("transaction failed");
+
+    expect(listing.status).toBe("LISTING");
+    expect(events).toHaveLength(0);
+  });
+
+  it("uses account scope for teammate status sync and rejects a foreign account", async () => {
+    const { prisma, markSold, fetchListingStatus, deps } = createFake({
+      remoteStatus: "SOLD",
+      sellerId: "owner-1",
+    });
+
+    await expect(
+      syncStockXListingStatus(
+        prisma,
+        {
+          userId: "member-1",
+          accountId: "foreign-account",
+          marketplaceListingId: "listing-row-1",
+        },
+        deps,
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+
+    expect(fetchListingStatus).not.toHaveBeenCalled();
+    expect(markSold).not.toHaveBeenCalled();
+  });
+
+  it("marks removed StockX listings ended without marking the item sold", async () => {
+    const { prisma, listing, events, attempts, markSold, deps } = createFake({
       remoteStatus: "DEACTIVATED",
     });
 
@@ -176,6 +280,12 @@ describe("syncStockXListingStatus", () => {
     expect(listing.endedAt).toBeInstanceOf(Date);
     expect(events.map((event) => event.kind)).toContain("stockx_listing_ended");
     expect(markSold).not.toHaveBeenCalled();
+    // Regression: a RUNNING attempt stranded on an ended listing kept the
+    // active-attempt uniqueness guard forever, blocking all future publishes.
+    expect(attempts[0]).toMatchObject({
+      status: "FAILED",
+      code: "STOCKX_LISTING_FAILED",
+    });
   });
 
   it("keeps unknown provider statuses non-terminal", async () => {
@@ -193,6 +303,48 @@ describe("syncStockXListingStatus", () => {
     expect(listing.lastSyncAt).toBeInstanceOf(Date);
     expect(events).toHaveLength(0);
     expect(attempts[0].status).toBe("RUNNING");
+    expect(markSold).not.toHaveBeenCalled();
+  });
+
+  it("does not infer sold or active from a completed async operation", async () => {
+    const { prisma, listing, events, attempts, markSold, deps } = createFake({
+      remoteStatus: "PENDING_REVIEW",
+      operationStatus: "COMPLETED",
+    });
+
+    const result = await syncStockXListingStatus(
+      prisma,
+      {
+        userId: "user-1",
+        marketplaceListingId: "listing-row-1",
+      },
+      deps,
+    );
+
+    expect(result.status).toBe("unknown");
+    expect(listing.status).toBe("LISTING");
+    expect(attempts[0].status).toBe("RUNNING");
+    expect(events).toHaveLength(0);
+    expect(markSold).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicitly active listing active when its operation is completed", async () => {
+    const { prisma, listing, markSold, deps } = createFake({
+      remoteStatus: "ACTIVE",
+      operationStatus: "COMPLETED",
+    });
+
+    const result = await syncStockXListingStatus(
+      prisma,
+      {
+        userId: "user-1",
+        marketplaceListingId: "listing-row-1",
+      },
+      deps,
+    );
+
+    expect(result.status).toBe("active");
+    expect(listing.status).toBe("LISTED");
     expect(markSold).not.toHaveBeenCalled();
   });
 });

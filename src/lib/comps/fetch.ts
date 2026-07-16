@@ -19,8 +19,15 @@ import { logUnexpectedError } from "@/lib/errors";
 import { enabledCompSources } from "@/lib/comps/registry";
 import { scoreCompMatch } from "@/lib/comps/scoring";
 import type { CompSource, NormalizedComp } from "@/lib/comps/source";
+import {
+  STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP,
+  StockXCompsNotConnectedError,
+  StockXCompsSellerProfileIncompleteError,
+} from "@/lib/comps/sources/stockx";
 import { summarizeComps } from "@/lib/pricing/summarize";
 import { getPrisma } from "@/lib/prisma";
+
+export const MARKETPLACE_NOT_CONNECTED_SKIP = "marketplace_not_connected";
 
 type Db = ReturnType<typeof getPrisma>;
 
@@ -50,6 +57,10 @@ export type RunCompFetchOptions = {
   force?: boolean;
   paidProvidersAllowed?: boolean;
   accountId?: string;
+  /** Request-scoped key used to prevent duplicate paid-provider reservations. */
+  idempotencyKey?: string;
+  /** When true (admin identity), bypass paid-provider budget/quota/cooldown. */
+  adminOverride?: boolean;
 };
 
 export function isAutoDiscoveryEnabled(): boolean {
@@ -69,7 +80,36 @@ async function fetchFromSource(
   try {
     const comps = await source.fetchComps(query);
     return { source, comps, error: null };
-  } catch {
+  } catch (error) {
+    if (error instanceof StockXCompsNotConnectedError) {
+      return { source, comps: [], error: MARKETPLACE_NOT_CONNECTED_SKIP };
+    }
+    if (error instanceof StockXCompsSellerProfileIncompleteError) {
+      return { source, comps: [], error: STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP };
+    }
+    // Always record the source id + error name/code (never tokens/bodies) so
+    // provider_error ledger rows are diagnosable without swallowing AppErrors.
+    const name = error instanceof Error ? error.name : typeof error;
+    const code =
+      error && typeof error === "object" && "code" in error &&
+      typeof (error as { code?: unknown }).code === "string"
+        ? (error as { code: string }).code
+        : undefined;
+    const details =
+      error && typeof error === "object" && "details" in error &&
+      error.details &&
+      typeof error.details === "object"
+        ? (error.details as Record<string, unknown>)
+        : undefined;
+    const status =
+      typeof details?.status === "number" ? details.status : undefined;
+    const path = typeof details?.path === "string" ? details.path : undefined;
+    console.error(
+      `[comp_source_fetch:${source.id}] ${name}${code ? ` (${code})` : ""}${
+        status != null ? ` status=${status}` : ""
+      }${path ? ` path=${path}` : ""}`,
+    );
+    logUnexpectedError(`comp_source_fetch:${source.id}`, error);
     return { source, comps: [], error: sanitizeProviderError(source) };
   }
 }
@@ -166,8 +206,15 @@ export async function runCompFetch(
   // Paid-provider (e.g. Apify) cost/quota accounting context.
   const ledgerPrisma = prisma as unknown as ProviderLedgerPrismaLike;
   const draftId = draft?.id ?? null;
+  const ledgerAccountId = options.accountId ?? item.accountId;
   const queryHash = hashQueries(queries);
-  const paidConfig = paidSources.length > 0 ? loadPaidGateConfig() : null;
+  const paidConfig =
+    paidSources.length > 0
+      ? {
+          ...loadPaidGateConfig(),
+          ...(options.adminOverride === true ? { adminOverride: true } : {}),
+        }
+      : null;
   const now = new Date();
 
   if (!autoDiscoveryEnabled && !options.sources && !options.force) {
@@ -213,6 +260,7 @@ export async function runCompFetch(
       try {
         await recordProviderCall(ledgerPrisma, {
           userId: sellerId,
+          accountId: ledgerAccountId,
           draftId,
           inventoryItemId,
           provider: paidSource.id,
@@ -223,6 +271,9 @@ export async function runCompFetch(
           acceptedCount: 0,
           rejectedCount: 0,
           queryHash,
+          idempotencyKey: options.idempotencyKey
+            ? `${options.idempotencyKey}:${paidSource.id}:weak-identity`
+            : null,
         });
       } catch (error) {
         // The skip ledger is best-effort accounting. A DB hiccup here must not
@@ -305,11 +356,15 @@ export async function runCompFetch(
       try {
         reservation = await reservePaidProviderCall(ledgerPrisma, {
           config: paidConfig,
+          accountId: ledgerAccountId,
           userId: sellerId,
           draftId,
           inventoryItemId,
           provider: paidSource.id,
           queryHash,
+          idempotencyKey: options.idempotencyKey
+            ? `${options.idempotencyKey}:${paidSource.id}`
+            : null,
           now,
         });
       } catch (error) {
@@ -406,10 +461,18 @@ export async function runCompFetch(
           comp.matchClassification === "strong" || comp.matchClassification === "possible",
       ).length;
       try {
+        const softSkip =
+          result.error === MARKETPLACE_NOT_CONNECTED_SKIP ||
+          result.error === STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP;
         await completeProviderCall(ledgerPrisma, {
           reservationId,
-          status: result.error ? "failed" : "succeeded",
-          estimatedCostCents: paidConfig.estimatedCostCents,
+          status: softSkip ? "skipped" : result.error ? "failed" : "succeeded",
+          skippedReason: softSkip
+            ? "provider_not_configured"
+            : result.error
+              ? "provider_error"
+              : null,
+          estimatedCostCents: softSkip ? 0 : paidConfig.estimatedCostCents,
           fetchedCount: result.comps.length,
           acceptedCount: sourceAccepted,
           rejectedCount: sourceComps.length - sourceAccepted,

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { BrandLoader } from "@/components/ui/brand-loader";
 import { Icon, type IconName } from "@/components/ui/icon";
 
 export function EmptyState({
@@ -64,11 +65,13 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   );
 }
 
-export function PageSkeleton() {
+export function PageSkeleton({ label = "Loading" }: { label?: string }) {
+  // Full-viewport centered brand mark only — no skeleton rows/cards under it.
   return (
-    <main className="page">
-      <div className="skel" style={{ width: 280, height: 36, marginBottom: 24 }} />
-      <TableSkeleton />
+    <main className="page page--loading" aria-busy="true">
+      <div className="page-loading">
+        <BrandLoader label={label} size={72} />
+      </div>
     </main>
   );
 }

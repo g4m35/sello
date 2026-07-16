@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { NextResponse } from "next/server";
 
 import {
@@ -6,10 +8,15 @@ import {
   evaluateRefreshCooldown,
 } from "@/lib/comps/cooldown";
 import { isAdminUser } from "@/lib/auth/admin";
-import { requireFeatureAccess } from "@/lib/auth/feature-access";
-import { getActiveAccount } from "@/lib/billing/account";
+import { requireRuntimeFeatureAccess } from "@/lib/auth/feature-access";
 import { accountScope } from "@/lib/billing/scope";
-import { assertWithinQuota, incrementUsage } from "@/lib/billing/usage";
+import {
+  markUsageReconciliationRequired,
+  markUsageWorkStarted,
+  releaseUsageReservation,
+  reserveUsageOrThrow,
+  settleUsageReservationOrRequireReconciliation,
+} from "@/lib/billing/usage";
 import { runCompFetch } from "@/lib/comps/fetch";
 import { isCompsPaidProvidersEnabled } from "@/lib/comps/flags";
 import { AppError, logUnexpectedError, safeErrorResponse } from "@/lib/errors";
@@ -21,9 +28,12 @@ export const runtime = "nodejs";
 // Fetches fresh automatic comps for an item from all enabled comp sources.
 // Returns 0 honestly when no source is configured (no invented prices).
 export async function POST(request: Request) {
+  let usageReservationId: string | null = null;
+  let prisma: ReturnType<typeof getPrisma> | null = null;
+  let workStarted = false;
+  let meteredWorkCompleted = false;
   try {
     const user = await requireSupabaseUser(request);
-    requireFeatureAccess(user, "paidComps");
     const body = await request.json();
     const inventoryItemId: unknown = body?.inventoryItemId;
     if (typeof inventoryItemId !== "string" || !inventoryItemId) {
@@ -36,9 +46,14 @@ export async function POST(request: Request) {
         "PAID_COMPS_DISABLED",
       );
     }
+    prisma = getPrisma();
+    const runtimeEntitlements = await requireRuntimeFeatureAccess(
+      user,
+      "paidComps",
+      prisma,
+    );
 
-    const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
+    const account = runtimeEntitlements.account;
     const item = await prisma.inventoryItem.findFirst({
       where: { id: inventoryItemId, ...accountScope(account) },
       select: { id: true },
@@ -47,53 +62,102 @@ export async function POST(request: Request) {
       throw new AppError("Item not found", 404);
     }
 
-    // Monthly paid-refresh quota. Checked before the cooldown so an out-of-quota
-    // seller gets a clear 402 upgrade signal rather than a retry timer.
-    await assertWithinQuota(account, "comp_refresh", new Date());
+    const requestIdempotencyKey = request.headers.get("idempotency-key") ?? randomUUID();
+    const reservation = await reserveUsageOrThrow({
+      accountId: account.id,
+      metric: "comp_refresh",
+      idempotencyKey: requestIdempotencyKey,
+      now: new Date(),
+      operationType: "comp_refresh",
+      operationId: inventoryItemId,
+      user,
+    }, prisma);
+    if (reservation.idempotent) {
+      throw new AppError(
+        "This comp-refresh request is already in progress or completed.",
+        409,
+        "USAGE_REQUEST_ALREADY_RESERVED",
+      );
+    }
+    usageReservationId = reservation.reservationId;
 
     // Cooldown: spam-clicking Refresh must not fire repeated paid provider calls.
     // Only count the last run that actually queried a provider — a disabled,
     // weak-identity, no-source, or failed run never poisons the cooldown, so the
-    // seller can retry immediately after one of those.
-    const lastRun = await prisma.compSearchRun.findFirst({
-      where: {
-        inventoryItemId,
-        status: { in: [...COOLDOWN_ELIGIBLE_RUN_STATUSES] },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    });
-    const cooldown = evaluateRefreshCooldown({
-      lastRunAt: lastRun?.createdAt ?? null,
-      now: new Date(),
-      cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: isAdminUser(user) }),
-    });
-    if (!cooldown.allowed) {
-      return NextResponse.json(
-        {
-          error: `Comps were just refreshed. Try again in ${cooldown.retryAfterSeconds}s.`,
-          retryAfterSeconds: cooldown.retryAfterSeconds,
+    // seller can retry immediately after one of those. Admins skip cooldown.
+    const isOwner = isAdminUser(user);
+    if (!isOwner) {
+      const lastRun = await prisma.compSearchRun.findFirst({
+        where: {
+          inventoryItemId,
+          status: { in: [...COOLDOWN_ELIGIBLE_RUN_STATUSES] },
         },
-        { status: 429, headers: { "Retry-After": String(cooldown.retryAfterSeconds) } },
-      );
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
+      const cooldown = evaluateRefreshCooldown({
+        lastRunAt: lastRun?.createdAt ?? null,
+        now: new Date(),
+        cooldownMs: compsRefreshCooldownMs(process.env, { isOwner: false }),
+      });
+      if (!cooldown.allowed) {
+        try {
+          await releaseUsageReservation(usageReservationId, new Date(), prisma);
+        } catch (usageError) {
+          logUnexpectedError("comp_refresh_usage_release", usageError);
+        }
+        return NextResponse.json(
+          {
+            error: `Comps were just refreshed. Try again in ${cooldown.retryAfterSeconds}s.`,
+            retryAfterSeconds: cooldown.retryAfterSeconds,
+          },
+          { status: 429, headers: { "Retry-After": String(cooldown.retryAfterSeconds) } },
+        );
+      }
     }
 
+    workStarted = await markUsageWorkStarted(usageReservationId, new Date(), prisma);
+    if (!workStarted) {
+      throw new AppError(
+        "Comp refresh could not start because its usage reservation is no longer active.",
+        409,
+        "USAGE_RESERVATION_NOT_ACTIVE",
+      );
+    }
     const result = await runCompFetch(prisma, inventoryItemId, user.id, {
       force: true,
       paidProvidersAllowed: true,
       accountId: account.id,
+      adminOverride: isOwner,
+      idempotencyKey: requestIdempotencyKey,
     });
+    meteredWorkCompleted = true;
 
-    // Count the refresh against the monthly quota on success only; a failed
-    // fetch (which throws) never burns quota. Best-effort, logged on failure.
-    try {
-      await incrementUsage(account.id, "comp_refresh", new Date());
-    } catch (usageError) {
-      logUnexpectedError("comp_refresh_usage_increment", usageError);
-    }
+    await settleUsageReservationOrRequireReconciliation(
+      usageReservationId,
+      new Date(),
+      "COMP_REFRESH_SETTLEMENT_FAILED",
+      prisma,
+    );
 
     return NextResponse.json(result);
   } catch (error) {
+    if (usageReservationId && prisma) {
+      if (workStarted || meteredWorkCompleted) {
+        await markUsageReconciliationRequired(
+          usageReservationId,
+          new Date(),
+          meteredWorkCompleted
+            ? "COMP_REFRESH_SETTLEMENT_FAILED"
+            : "COMP_REFRESH_OUTCOME_UNKNOWN",
+          prisma,
+        ).catch((usageError) => logUnexpectedError("comp_refresh_usage_reconcile", usageError));
+      } else {
+        await releaseUsageReservation(usageReservationId, new Date(), prisma).catch(
+          (usageError) => logUnexpectedError("comp_refresh_usage_release", usageError),
+        );
+      }
+    }
     // Sanitized: an unexpected failure (e.g. a Prisma/DB error) never leaks raw
     // internals. AppError keeps its code/message; everything else collapses to a
     // stable code + seller-safe copy. Manual comps are unaffected by this path.

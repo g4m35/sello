@@ -1,32 +1,34 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import Landing, { metadata } from "@/app/page";
+vi.mock("@/lib/supabase/server", () => ({
+  getSupabaseUserFromCookies: vi.fn(async () => null),
+}));
 
-const source = readFileSync(join(process.cwd(), "src/app/page.tsx"), "utf8");
-const componentsSource = [
-  "Hero.tsx",
-  "DemoFlow.tsx",
-  "FeatureGrid.tsx",
-  "LandingNav.tsx",
-  "MarketplaceSection.tsx",
-  "BetaCTA.tsx",
-]
-  .map((file) =>
-    readFileSync(join(process.cwd(), "src/components/landing", file), "utf8"),
-  )
-  .join("\n");
-const stylesSource = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
-// Whitespace-insensitive view so multi-word copy that wraps across lines in JSX
-// still matches.
-const flat = `${source}\n${componentsSource}`.replace(/\s+/g, " ");
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((url: string) => {
+    throw new Error(`REDIRECT:${url}`);
+  }),
+}));
+
+import HomePage, { metadata } from "@/app/page";
+import { LandingPage } from "@/components/marketing/landing-page";
+import { getSupabaseUserFromCookies } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+
+const pageSource = readFileSync(join(process.cwd(), "src/app/page.tsx"), "utf8");
+const landingSource = readFileSync(
+  join(process.cwd(), "src/components/marketing/landing-page.tsx"),
+  "utf8",
+);
+const flat = landingSource.replace(/\s+/g, " ");
 
 describe("landing page", () => {
-  it("renders without auth (pure server component, no throw)", () => {
-    expect(typeof Landing).toBe("function");
-    expect(() => Landing()).not.toThrow();
+  it("renders without auth (pure marketing component, no throw)", () => {
+    expect(typeof LandingPage).toBe("function");
+    expect(() => LandingPage()).not.toThrow();
   });
 
   it("has page metadata title + description", () => {
@@ -34,116 +36,80 @@ describe("landing page", () => {
     expect(String(metadata.description ?? "")).toMatch(/listing/i);
   });
 
-  it("uses the planned Sello positioning", () => {
-    expect(flat).toContain("List everywhere. Sell faster. Stay in control.");
-    expect(flat).toContain("The AI listing system for modern resellers");
+  it("does not use marketplace-ready phrasing in metadata", () => {
+    expect(String(metadata.title ?? "").toLowerCase()).not.toContain("marketplace-ready");
+    expect(String(metadata.description ?? "").toLowerCase()).not.toContain("marketplace-ready");
   });
 
-  it("has focused CTAs without duplicate demo buttons", () => {
-    expect(componentsSource).toContain('href="/dashboard"');
-    expect(componentsSource).toContain("Start listing");
-    expect(componentsSource).toContain('href: "#demo"');
-    expect(componentsSource).toContain('href: "#automation"');
-    expect(componentsSource).toContain('href: "#marketplaces"');
-    expect(componentsSource).toContain('href: "/contact"');
-    expect(componentsSource).toContain("Request access");
-    expect(componentsSource).not.toContain("Watch demo");
-    expect(componentsSource).not.toContain("See demo");
-    expect(componentsSource).not.toContain("landing-nav__cta");
+  it("does not use the old assisted-where-required slogan", () => {
+    expect(flat.toLowerCase()).not.toContain("automated where supported");
+    expect(flat.toLowerCase()).not.toContain("assisted where required");
   });
 
-  it("keeps the rendered landing page simple", () => {
-    expect(source).toContain("<Hero />");
-    expect(source).toContain("<DemoFlow />");
-    expect(source).toContain("<FeatureGrid />");
-    expect(source).toContain("<MarketplaceSection />");
-    expect(source).not.toContain("ProblemSection");
-    expect(source).not.toContain("SolutionSection");
-    expect(source).not.toContain("TrustSection");
-    expect(source).not.toContain("FAQ");
-    expect(componentsSource).not.toContain("landing-marketplace-row");
-    expect(componentsSource).not.toContain("MockDashboard");
-    expect(componentsSource).not.toContain("#proof");
-    expect(componentsSource).not.toContain("#faq");
+  it("mentions supported inventory sync and delist", () => {
+    expect(flat.toLowerCase()).toMatch(/inventory sync/i);
+    expect(flat.toLowerCase()).toMatch(/delist/i);
+    expect(flat.toLowerCase()).toMatch(/supported connected|where supported/i);
   });
 
-  it("embeds a continuous animated workflow ending in an eBay draft", () => {
-    expect(flat).toContain("Supreme Box Logo Hoodie Black FW21");
-    expect(flat).toContain("See what Sello does in one pass.");
-    expect(flat).toContain("Actual animation of one resale listing moving through Sello");
-    expect(componentsSource).toContain("motion-photo");
-    expect(componentsSource).toContain("motion-scan");
-    expect(componentsSource).toContain("motion-marketplace");
-    expect(componentsSource).toContain("motion-ebay");
-    expect(flat).toContain("Sold median");
-    expect(flat).toContain("Comp range");
-    expect(flat).toContain("Est. payout");
-    expect(flat).toContain("Chosen marketplaces");
-    expect(flat).toContain("SKU: {item.sku}");
-    expect(flat).toContain("Draft ready for seller review");
-    expect(flat).toContain("Seller approval gate required before publishing");
-    expect(componentsSource).toContain("motion-price-metrics");
-    expect(componentsSource).toContain("motion-marketplace-grid");
-    expect(componentsSource).toContain("motion-ebay__image");
-    expect(componentsSource).not.toContain("Brand, size, condition, color, flaws");
-    expect(componentsSource).not.toContain("Recommended list price from sold comps.");
-    expect(componentsSource).not.toContain("tourScenes");
-    expect(componentsSource).not.toContain("tour-screen");
-    expect(componentsSource).not.toContain("demo-step");
+  it("has working primary/secondary CTAs", () => {
+    expect(landingSource).toContain('href="/dashboard"');
+    expect(landingSource).toContain("Start creating listings");
+    expect(landingSource).toContain('href="#how-it-works"');
+    expect(landingSource).toContain('href="/pricing"');
+    expect(landingSource).toContain("View pricing");
   });
 
-  it("keeps the capability section compact and direct", () => {
-    expect(flat).toContain("Sello is an automated listing system for resellers.");
-    expect(flat).toContain("Automated listing drafts");
-    expect(flat).toContain("Automated sold-comp pricing");
-    expect(componentsSource).toContain("feature-summary__item");
-    expect(componentsSource).not.toContain("What it is");
-    expect(componentsSource).not.toContain("Upload item photos, get a clean listing");
-    expect(componentsSource).not.toContain("feature-card");
-    expect(componentsSource).not.toContain("feature-grid");
+  it("eBay FYI: no developer account, seller policies needed for auto-publish", () => {
+    expect(flat).toMatch(/no developer account|Connect your normal eBay seller account/i);
+    expect(flat).toMatch(/payment, shipping, and returns/i);
   });
 
-  it("uses honest marketplace wording without overpromising direct publishing", () => {
-    expect(flat).toContain(
-      "Sello uses the deepest available workflow for each marketplace",
-    );
-    expect(flat).toContain("direct publishing only where technically and policy-wise available");
-    expect(flat).toContain("More marketplaces are coming");
-    expect(flat).toContain("More coming");
-    expect(componentsSource).toContain("marketplace-showcase");
-    expect(componentsSource).toContain("marketplace-card--coming-soon");
-    expect(componentsSource).not.toContain("marketplace-table");
-    expect(flat.toLowerCase()).not.toContain("auto-post");
-    expect(flat.toLowerCase()).not.toContain("auto-submit");
-    expect(flat.toLowerCase()).not.toContain("scrape");
+  it("positions full auto-pricing / sold comps as paid", () => {
+    expect(flat).toMatch(/paid plans unlock/i);
+    expect(flat.toLowerCase()).toMatch(/sold comps?/);
   });
 
-  it("keeps landing colors aligned with Sello theme tokens", () => {
-    const landingStyles = stylesSource.slice(stylesSource.indexOf(".landing-page"));
-
-    expect(landingStyles).toContain("--landing-accent: var(--accent)");
-    expect(landingStyles).toContain("--landing-bg: var(--bg)");
-    expect(landingStyles).toContain("--landing-surface: var(--surface)");
-    expect(landingStyles).toContain("var(--status-ready-bg)");
-    expect(landingStyles).not.toMatch(/violet|purple|#6366f1|#8b5cf6|#3b82f6/i);
+  it("describes Grailed as packages/assisted, not direct automation", () => {
+    expect(landingSource.toLowerCase()).toMatch(/grailed/);
+    expect(landingSource.toLowerCase()).toMatch(/listing packages|packages/);
+    expect(landingSource.toLowerCase()).not.toContain("auto-post");
+    expect(landingSource.toLowerCase()).not.toContain("auto-submit");
+    expect(landingSource.toLowerCase()).not.toContain("scrape");
+    expect(landingSource.toLowerCase()).not.toMatch(/directly publish to grailed/);
   });
 
-  it("keeps landing polish details from regressing", () => {
-    const landingStyles = stylesSource.slice(stylesSource.indexOf(".landing-page"));
-    const rootLayout = readFileSync(join(process.cwd(), "src/app/layout.tsx"), "utf8");
+  it("uses FAQ accordion details/summary", () => {
+    expect(landingSource).toContain("<details");
+    expect(landingSource).toContain("<summary");
+  });
 
-    expect(rootLayout).toContain("antialiased");
-    expect(landingStyles).toContain("text-wrap: balance");
-    expect(landingStyles).toContain("text-wrap: pretty");
-    expect(landingStyles).toContain("font-variant-numeric: tabular-nums");
-    expect(landingStyles).toContain("transform: scale(0.96)");
-    expect(landingStyles).toContain("--landing-image-outline: rgba(0, 0, 0, 0.1)");
-    expect(landingStyles).toContain("--landing-image-outline: rgba(255, 255, 255, 0.1)");
-    expect(landingStyles).toContain("outline: 1px solid var(--landing-image-outline)");
-    expect(landingStyles).toContain("--landing-shadow-ring");
-    expect(landingStyles).not.toContain("transition: all");
-    expect(landingStyles).toContain("@keyframes motionScan");
-    expect(landingStyles).toContain("motion-panel--paused");
-    expect(componentsSource).toContain("tour-control__glyph--active");
+  it("keeps the streamlined flow without overstating marketplace support", () => {
+    expect(flat).toMatch(/One streamlined flow/i);
+    expect(flat.toLowerCase()).not.toContain("watch the demo");
+    expect(flat.toLowerCase()).not.toContain("jump in");
+    expect(flat).toMatch(/Publish or export listings/i);
+    expect(flat.toLowerCase()).not.toContain("publish across marketplaces");
+  });
+
+  it("redirects signed-in users from / to /dashboard", async () => {
+    expect(pageSource).toContain("getSupabaseUserFromCookies");
+    expect(pageSource).toContain('redirect("/dashboard")');
+
+    vi.mocked(redirect).mockClear();
+    vi.mocked(getSupabaseUserFromCookies).mockResolvedValueOnce({
+      id: "user-1",
+    } as Awaited<ReturnType<typeof getSupabaseUserFromCookies>>);
+
+    await expect(HomePage()).rejects.toThrow("REDIRECT:/dashboard");
+    expect(redirect).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("shows the landing for signed-out visitors", async () => {
+    vi.mocked(redirect).mockClear();
+    vi.mocked(getSupabaseUserFromCookies).mockResolvedValueOnce(null);
+    const result = await HomePage();
+    expect(result).toBeTruthy();
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

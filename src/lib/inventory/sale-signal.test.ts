@@ -57,6 +57,7 @@ describe("handleSaleSignal", () => {
 
     const result = await handleSaleSignal(prisma, {
       userId: "user-1",
+      accountId: "account-user-1",
       marketplace: "grailed",
       source: "api",
       externalListingId: "g-123",
@@ -86,6 +87,7 @@ describe("handleSaleSignal", () => {
 
     const result = await handleSaleSignal(prisma, {
       userId: "user-1",
+      accountId: "account-user-1",
       marketplace: "grailed",
       source: "email",
       externalListingId: "g-123",
@@ -110,6 +112,7 @@ describe("handleSaleSignal", () => {
 
     const result = await handleSaleSignal(prisma, {
       userId: "user-1",
+      accountId: "account-user-1",
       marketplace: "grailed",
       source: "email",
       externalListingId: "g-123",
@@ -132,6 +135,7 @@ describe("handleSaleSignal", () => {
 
     const result = await handleSaleSignal(prisma, {
       userId: "user-1",
+      accountId: "account-user-1",
       marketplace: "depop",
       source: "email",
       externalListingId: "unknown-999",
@@ -161,6 +165,7 @@ describe("handleSaleSignal", () => {
 
     const result = await handleSaleSignal(prisma, {
       userId: "user-1",
+      accountId: "account-user-1",
       marketplace: "grailed",
       source: "email",
       title: "Nike Air Max 1 Patta Aqua",
@@ -172,9 +177,9 @@ describe("handleSaleSignal", () => {
     expect(prisma._store.syncJobs).toHaveLength(0);
   });
 
-  it("scopes matching to the requesting user (no cross-user match)", async () => {
+  it("scopes matching to the requesting account (no cross-account match)", async () => {
     const prisma = createInventoryFakePrisma({
-      items: [baseItem({ sellerId: "owner" })],
+      items: [baseItem({ sellerId: "owner", accountId: "owner-account" })],
       listings: [
         listing({ id: "l-grailed", marketplace: "grailed", externalListingId: "g-123" }),
       ],
@@ -182,6 +187,7 @@ describe("handleSaleSignal", () => {
 
     const result = await handleSaleSignal(prisma, {
       userId: "attacker",
+      accountId: "attacker-account",
       marketplace: "grailed",
       source: "api",
       externalListingId: "g-123",

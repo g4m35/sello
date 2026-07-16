@@ -8,12 +8,16 @@ import { uniqueItemIds } from "./bulk-publish-request";
 // delist.
 
 const itemIds = z.array(z.uuid()).min(1).transform(uniqueItemIds);
+const marketplace = z.enum(["ebay", "stockx"]).default("ebay");
 
-export const BulkDelistPreflightRequestSchema = z.object({ itemIds }).strict();
+export const BulkDelistPreflightRequestSchema = z
+  .object({ itemIds, marketplace })
+  .strict();
 
 export const BulkDelistExecuteRequestSchema = z
   .object({
     itemIds,
+    marketplace,
     bulkRunId: z.uuid().optional(),
     confirmLiveDelist: z.literal(true),
   })

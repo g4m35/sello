@@ -26,6 +26,7 @@ import { STOCKX_ENVIRONMENT } from "./adapters/stockx/types";
 import {
   PublishingMigrationMissingError,
   publishingMigrationMissingCode,
+  isAmbiguousMarketplaceMutationFailure,
   isUniqueConstraintViolation,
 } from "./publish-handler";
 
@@ -584,30 +585,48 @@ async function recordEbayDelistFailure(
     error instanceof EbayIntegrationError ? error.code : ebayErrorCodes.delistFailed;
   // Sanitized before persisting to publishAttempt.reason and marketplaceListing.lastError.
   const reason = safePersistedFailureReason(error, "eBay could not end this listing.");
+  const outcomeUnknown = isAmbiguousMarketplaceMutationFailure(error);
+  const persistedCode = outcomeUnknown ? "EBAY_DELIST_OUTCOME_UNKNOWN" : code;
+  const persistedReason = outcomeUnknown
+    ? "eBay may have ended this listing. Reconcile it before retrying the delist."
+    : reason;
 
   await withMigrationDetection(async () => {
     await prisma.publishAttempt.update({
       where: { id: publishAttemptId },
       data: {
-        status: "FAILED",
-        code,
-        reason,
-        adapterResult: { code } as unknown as Prisma.InputJsonValue,
-        completedAt: new Date(),
+        status: outcomeUnknown ? "RUNNING" : "FAILED",
+        code: persistedCode,
+        reason: persistedReason,
+        adapterResult: {
+          code: persistedCode,
+          originalCode: code,
+          reconciliationRequired: outcomeUnknown,
+        } as unknown as Prisma.InputJsonValue,
+        completedAt: outcomeUnknown ? null : new Date(),
       },
     });
 
     await prisma.marketplaceEvent.create({
       data: {
         marketplaceListingId,
-        kind: "delist_failed",
-        data: { code, attemptId: publishAttemptId, marketplace: "ebay" },
+        kind: outcomeUnknown ? "delist_outcome_unknown" : "delist_failed",
+        data: {
+          code: persistedCode,
+          originalCode: code,
+          reconciliationRequired: outcomeUnknown,
+          attemptId: publishAttemptId,
+          marketplace: "ebay",
+        },
       },
     });
 
     await prisma.marketplaceListing.update({
       where: { id: marketplaceListingId },
-      data: { status: "LISTED", lastError: reason },
+      data: {
+        status: outcomeUnknown ? "NEEDS_REVIEW" : "LISTED",
+        lastError: persistedReason,
+      },
     });
   });
 }
@@ -626,30 +645,48 @@ async function recordStockXDelistFailure(
     error,
     "StockX could not end this listing.",
   );
+  const outcomeUnknown = isAmbiguousMarketplaceMutationFailure(error);
+  const persistedCode = outcomeUnknown ? "STOCKX_DELIST_OUTCOME_UNKNOWN" : code;
+  const persistedReason = outcomeUnknown
+    ? "StockX may have ended this listing. Reconcile it before retrying the delist."
+    : reason;
 
   await withMigrationDetection(async () => {
     await prisma.publishAttempt.update({
       where: { id: publishAttemptId },
       data: {
-        status: "FAILED",
-        code,
-        reason,
-        adapterResult: { code } as unknown as Prisma.InputJsonValue,
-        completedAt: new Date(),
+        status: outcomeUnknown ? "RUNNING" : "FAILED",
+        code: persistedCode,
+        reason: persistedReason,
+        adapterResult: {
+          code: persistedCode,
+          originalCode: code,
+          reconciliationRequired: outcomeUnknown,
+        } as unknown as Prisma.InputJsonValue,
+        completedAt: outcomeUnknown ? null : new Date(),
       },
     });
 
     await prisma.marketplaceEvent.create({
       data: {
         marketplaceListingId,
-        kind: "delist_failed",
-        data: { code, attemptId: publishAttemptId, marketplace: "stockx" },
+        kind: outcomeUnknown ? "delist_outcome_unknown" : "delist_failed",
+        data: {
+          code: persistedCode,
+          originalCode: code,
+          reconciliationRequired: outcomeUnknown,
+          attemptId: publishAttemptId,
+          marketplace: "stockx",
+        },
       },
     });
 
     await prisma.marketplaceListing.update({
       where: { id: marketplaceListingId },
-      data: { status: "LISTED", lastError: reason },
+      data: {
+        status: outcomeUnknown ? "NEEDS_REVIEW" : "LISTED",
+        lastError: persistedReason,
+      },
     });
   });
 }

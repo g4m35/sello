@@ -31,6 +31,20 @@ describe("assertCanConnectMarketplace", () => {
     ).rejects.toMatchObject({ code: "CONNECTION_LIMIT_REACHED" });
   });
 
+  it("lets server admins connect another marketplace even when the account is at its plan limit", async () => {
+    vi.stubEnv("ADMIN_EMAILS", "owner@sello.com");
+    const { prisma } = prismaWith(["ebay"]);
+
+    await expect(
+      assertCanConnectMarketplace(
+        { id: "acc-1", ownerUserId: "u1", plan: "free" },
+        "stockx",
+        prisma,
+        { id: "u1", email: "owner@sello.com" },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it("always allows reconnecting a marketplace already connected", async () => {
     const { prisma } = prismaWith(["ebay"]);
     await expect(

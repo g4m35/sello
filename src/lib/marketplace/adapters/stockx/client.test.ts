@@ -4,6 +4,7 @@ import {
   activateStockXListing,
   createStockXListing,
   deactivateStockXListing,
+  deleteStockXListing,
   fetchStockXListingStatus,
   fetchStockXMarketData,
   searchStockXCatalog,
@@ -53,7 +54,9 @@ describe("StockX catalog client", () => {
     );
 
     const [url, init] = fetchImpl.mock.calls[0];
-    expect(String(url)).toBe("https://api.stockx.com/v2/catalog/search?q=dunk+panda&size=10");
+    expect(String(url)).toBe(
+      "https://api.stockx.com/v2/catalog/search?query=dunk+panda&pageNumber=1&pageSize=5",
+    );
     const headers = init?.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer access-token");
     expect(headers["x-api-key"]).toBe("api-key");
@@ -66,6 +69,85 @@ describe("StockX catalog client", () => {
       size: "10",
       url: "https://stockx.com/nike-dunk-low-panda",
     });
+  });
+
+  it("enriches product-only catalog search results with product variant details", async () => {
+    const fetchImpl = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            products: [
+              {
+                productId: "p1",
+                title: "Nike Dunk Low Panda",
+                brand: "Nike",
+                urlKey: "nike-dunk-low-panda",
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            variants: [
+              { variantId: "v9", traits: { size: "9" } },
+              { variantId: "v10", traits: { size: "10" } },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const results = await searchStockXCatalog(
+      config,
+      "access-token",
+      { query: "dunk panda", size: "10" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(String(fetchImpl.mock.calls[1][0])).toBe(
+      "https://api.stockx.com/v2/catalog/products/p1/variants",
+    );
+    expect(results).toEqual([
+      expect.objectContaining({
+        productId: "p1",
+        variantId: "v10",
+        title: "Nike Dunk Low Panda",
+        size: "10",
+      }),
+    ]);
+  });
+
+  it("applies size filtering before truncating enriched variant results", async () => {
+    const variants = Array.from({ length: 20 }, (_, index) => ({
+      variantId: `v${index + 1}`,
+      traits: { size: index === 18 ? "10" : `early-${index + 1}` },
+    }));
+    const fetchImpl = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            products: [{ productId: "p1", title: "Nike Dunk Low Panda", brand: "Nike" }],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ variants }), { status: 200 }));
+
+    const results = await searchStockXCatalog(
+      config,
+      "access-token",
+      { query: "dunk panda", size: "10" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ variantId: "v19", size: "10" });
   });
 
   it("retries only idempotent GET failures and never leaks raw upstream payloads", async () => {
@@ -93,7 +175,107 @@ describe("StockX catalog client", () => {
 });
 
 describe("StockX market data client", () => {
-  it("normalizes recent sale rows into market data points", async () => {
+  it("requests currencyCode and normalizes ask/bid market levels", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              productId: "p1",
+              variantId: "v1",
+              currencyCode: "USD",
+              lowestAskAmount: 120,
+              highestBidAmount: 95,
+              sellFasterAmount: 110,
+            },
+          }),
+          { status: 200 },
+        ),
+    );
+
+    const rows = await fetchStockXMarketData(
+      config,
+      "access-token",
+      { productId: "p1", variantId: "v1" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain("currencyCode=USD");
+    expect(rows[0]).toMatchObject({
+      priceCents: 12000,
+      currency: "USD",
+      soldDate: null,
+    });
+    expect(rows.some((row) => row.priceCents === 9500)).toBe(true);
+  });
+
+  it("maps StockX billing/shipping setup errors to sellerProfileIncomplete", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            statusCode: 400,
+            errorMessage:
+              "Please setup valid billing and shipping information on www.stockx.com",
+          }),
+          { status: 400 },
+        ),
+    );
+
+    await expect(
+      fetchStockXMarketData(
+        config,
+        "access-token",
+        { productId: "p1", variantId: "v1" },
+        fetchImpl,
+      ),
+    ).rejects.toMatchObject({
+      code: "STOCKX_SELLER_PROFILE_INCOMPLETE",
+    });
+  });
+
+  it("falls back to product market-data when the variant endpoint returns 400", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async (input) => {
+        const url = String(input);
+        if (url.includes("/variants/")) {
+          return new Response(JSON.stringify({ message: "bad variant" }), { status: 400 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                productId: "p1",
+                variantId: "v1",
+                currencyCode: "USD",
+                lowestAskAmount: "140",
+              },
+              {
+                productId: "p1",
+                variantId: "v2",
+                currencyCode: "USD",
+                lowestAskAmount: "99",
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      },
+    );
+
+    const rows = await fetchStockXMarketData(
+      config,
+      "access-token",
+      { productId: "p1", variantId: "v1" },
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ priceCents: 14000 });
+  });
+
+  it("still normalizes legacy sale-history rows when present", async () => {
     const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
       async () =>
         new Response(
@@ -148,7 +330,13 @@ describe("StockX listing client", () => {
     const result = await createStockXListing(
       config,
       "access-token",
-      { amount: "125.00", variantId: "variant-1" },
+      {
+        amount: "125",
+        variantId: "variant-1",
+        currencyCode: "USD",
+        active: true,
+        inventoryType: "STANDARD",
+      },
       fetchImpl as unknown as typeof fetch,
     );
 
@@ -156,8 +344,11 @@ describe("StockX listing client", () => {
     expect(String(url)).toBe("https://api.stockx.com/v2/selling/listings");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({
-      amount: "125.00",
+      amount: "125",
       variantId: "variant-1",
+      currencyCode: "USD",
+      active: true,
+      inventoryType: "STANDARD",
     });
     expect(result).toMatchObject({ listingId: "listing-1", status: "CREATED" });
   });
@@ -188,7 +379,7 @@ describe("StockX listing client", () => {
     expect(String(url)).toBe(
       "https://api.stockx.com/v2/selling/listings/listing-1/activate",
     );
-    expect(init?.method).toBe("POST");
+    expect(init?.method).toBe("PUT");
     expect(result).toMatchObject({
       listingId: "listing-1",
       operationId: "operation-1",
@@ -205,7 +396,13 @@ describe("StockX listing client", () => {
       createStockXListing(
         config,
         "access-token",
-        { amount: "125.00", variantId: "variant-1" },
+        {
+          amount: "125",
+          variantId: "variant-1",
+          currencyCode: "USD",
+          active: true,
+          inventoryType: "STANDARD",
+        },
         fetchImpl as unknown as typeof fetch,
       ),
     ).rejects.toMatchObject({ code: "STOCKX_LISTING_FAILED" });
@@ -241,6 +438,27 @@ describe("StockX listing client", () => {
       listingId: "listing-1",
       operationId: "operation-2",
       operationStatus: "PENDING",
+    });
+  });
+
+  it("deletes a listing through the official delete endpoint", async () => {
+    const fetchImpl = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>(
+      async () => new Response("", { status: 200 }),
+    );
+
+    const result = await deleteStockXListing(
+      config,
+      "access-token",
+      "listing-1",
+      fetchImpl as unknown as typeof fetch,
+    );
+
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://api.stockx.com/v2/selling/listings/listing-1");
+    expect(init?.method).toBe("DELETE");
+    expect(result).toMatchObject({
+      listingId: "listing-1",
+      status: null,
     });
   });
 

@@ -16,7 +16,8 @@ import type { CompQuery, NormalizedComp, SoldCompSource } from "@/lib/comps/sour
 type Env = Record<string, string | undefined>;
 
 const SOURCE_ID = "apify-ebay-sold";
-const DEFAULT_TIMEOUT_MS = 12_000;
+// Apify run-sync sold scrapes often exceed 12s; stay under typical Vercel limits.
+const DEFAULT_TIMEOUT_MS = 55_000;
 
 export type ApifyEbaySoldDeps = {
   env?: Env;
@@ -27,8 +28,9 @@ export type ApifyEbaySoldDeps = {
 function actorEndpoint(actor: string): string {
   // run-sync-get-dataset-items runs the actor and returns its dataset items in
   // one synchronous call. The token is supplied via the Authorization header so
-  // it never appears in the URL.
-  return `https://api.apify.com/v2/acts/${encodeURIComponent(actor)}/run-sync-get-dataset-items?clean=true&format=json`;
+  // it never appears in the URL. Preserve `~` in Apify actor slugs (user~name).
+  const encoded = encodeURIComponent(actor).replace(/%7E/gi, "~");
+  return `https://api.apify.com/v2/acts/${encoded}/run-sync-get-dataset-items?clean=true&format=json`;
 }
 
 function firstString(...values: unknown[]): string | null {
@@ -188,7 +190,14 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
             ebayDomain: "ebay.com",
           }),
         });
-        if (!response.ok) throw new Error("provider_error");
+        if (!response.ok) {
+          const err = new Error("provider_error");
+          (err as Error & { details?: Record<string, unknown> }).details = {
+            status: response.status,
+            path: "apify-ebay-sold",
+          };
+          throw err;
+        }
         const json = (await response.json()) as unknown;
         const items = Array.isArray(json)
           ? json
@@ -196,8 +205,20 @@ export function createApifyEbaySoldSource(deps: ApifyEbaySoldDeps = {}): SoldCom
             ? (json as { items: unknown[] }).items
             : [];
         return mapApifyEbaySoldItems(items, query, maxItems);
-      } catch {
-        throw new Error("provider_error");
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "provider_error" &&
+          "details" in error
+        ) {
+          throw error;
+        }
+        const err = new Error("provider_error");
+        (err as Error & { details?: Record<string, unknown> }).details = {
+          path: "apify-ebay-sold",
+          cause: error instanceof Error ? error.name : typeof error,
+        };
+        throw err;
       } finally {
         clearTimeout(timer);
       }

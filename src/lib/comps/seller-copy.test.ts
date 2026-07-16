@@ -22,7 +22,7 @@ describe("friendlySourceLabels", () => {
 
   it("dedupes and never exposes raw provider ids", () => {
     const labels = friendlySourceLabels(["apify-ebay-sold", "poshmark-sold", "stockx"]);
-    expect(labels).toEqual(["Fresh sold comps"]);
+    expect(labels).toEqual(["Fresh sold comps", "Active market listings"]);
     expect(labels.join(" ")).not.toMatch(/apify|stockx|poshmark/i);
   });
 
@@ -41,6 +41,18 @@ describe("buildPricingNotes", () => {
     });
     expect(notes.some((n) => /disabled right now/i.test(n))).toBe(true);
     expect(notes.some((n) => /manual comps/i.test(n))).toBe(true);
+  });
+
+  it("points sellers to manual refresh when background discovery is off", () => {
+    const notes = buildPricingNotes({
+      autoDiscoveryEnabled: false,
+      paidProvidersEnabled: true,
+      status: "disabled",
+      sourceErrors: [],
+    });
+    expect(notes).toEqual([
+      "Automatic background pricing is off. Use Refresh comps to search fresh sold comps for this listing.",
+    ]);
   });
 
   it("explains weak identity with what to improve", () => {
@@ -64,10 +76,20 @@ describe("buildPricingNotes", () => {
         { source: "apify-ebay-sold", message: "Paid comp providers skipped: global_budget_exceeded" },
         { source: "apify-ebay-sold", message: "Paid comp providers skipped: user_daily_quota_exceeded" },
         { source: "apify-ebay-sold", message: "Paid comp provider failed. Try again later." },
+        { source: "stockx", message: "marketplace_not_connected" },
+        {
+          source: "stockx",
+          message: "stockx_seller_profile_incomplete",
+        },
       ],
     });
     const joined = notes.join(" | ");
-    expect(joined).not.toMatch(/apify|global_budget_exceeded|user_daily_quota_exceeded/i);
+    expect(joined).not.toMatch(
+      /apify|global_budget_exceeded|user_daily_quota_exceeded|marketplace_not_connected|stockx_seller_profile_incomplete/i,
+    );
+    expect(joined).toMatch(/Connect StockX/i);
+    expect(joined).toMatch(/billing and shipping/i);
+    expect(joined).toMatch(/temporarily unavailable/i);
     expect(notes.length).toBeGreaterThan(0);
   });
 
@@ -79,6 +101,7 @@ describe("buildPricingNotes", () => {
       sourceErrors: [{ source: "apify-ebay-sold", message: "paid_providers_disabled" }],
     });
     expect(notes.join(" ")).not.toMatch(/apify-ebay-sold|paid_providers_disabled/);
+    expect(notes.join(" ")).toMatch(/disabled right now/i);
     expect(notes.length).toBeGreaterThan(0);
   });
 });

@@ -1,6 +1,6 @@
 import { AppError } from "@/lib/errors";
 
-import { deactivateStockXListing } from "./client";
+import { deactivateStockXListing, deleteStockXListing } from "./client";
 import { getStockXApiConfig, isStockXApiConfigured } from "./config";
 import { StockXIntegrationError, stockxErrorCodes } from "./errors";
 import { decryptStockXToken } from "./token-crypto";
@@ -47,6 +47,7 @@ export type StockXDelistPrismaLike = {
 
 export type StockXDelistClient = {
   deactivateListing(listingId: string): Promise<StockXDeactivateListingResult>;
+  deleteListing(listingId: string): Promise<StockXDeactivateListingResult>;
 };
 
 export type StockXDelistDeps = {
@@ -86,6 +87,8 @@ export const defaultStockXDelistDeps: StockXDelistDeps = {
   createClient: (accessToken, config) => ({
     deactivateListing: (listingId) =>
       deactivateStockXListing(config, accessToken, listingId),
+    deleteListing: (listingId) =>
+      deleteStockXListing(config, accessToken, listingId),
   }),
 };
 
@@ -146,9 +149,8 @@ export async function delistStockXListing(
   }
 
   const accessToken = await deps.resolveAccessToken(connection, config);
-  const result = await deps.createClient(accessToken, config).deactivateListing(
-    input.listingId,
-  );
+  const client = deps.createClient(accessToken, config);
+  const result = await deactivateOrDeleteStockXListing(client, input.listingId);
 
   return {
     status: "delisted",
@@ -160,4 +162,21 @@ export async function delistStockXListing(
     operationStatus: result.operationStatus,
     operationUrl: result.operationUrl,
   };
+}
+
+async function deactivateOrDeleteStockXListing(
+  client: StockXDelistClient,
+  listingId: string,
+): Promise<StockXDeactivateListingResult> {
+  try {
+    return await client.deactivateListing(listingId);
+  } catch (error) {
+    if (
+      error instanceof StockXIntegrationError &&
+      error.details?.status === 400
+    ) {
+      return client.deleteListing(listingId);
+    }
+    throw error;
+  }
 }

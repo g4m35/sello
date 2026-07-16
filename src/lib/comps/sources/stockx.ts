@@ -5,18 +5,47 @@ import {
   isStockXApiEnabled,
   isStockXMarketDataEnabled,
 } from "@/lib/marketplace/adapters/stockx/config";
+import { StockXIntegrationError, stockxErrorCodes } from "@/lib/marketplace/adapters/stockx/errors";
 import { loadStockXConnectionSession } from "@/lib/marketplace/adapters/stockx/session";
 import { getPrisma } from "@/lib/prisma";
 
 type Env = Record<string, string | undefined>;
+
+// Soft skip: account has a StockX product match but no OAuth connection yet.
+// Thrown so the comps pipeline can mark the ledger as not-configured instead of
+// a hard provider_error (and so seller copy can say "connect StockX").
+export class StockXCompsNotConnectedError extends Error {
+  readonly code = "stockx_not_connected";
+
+  constructor() {
+    super("Connect StockX to include StockX market comps.");
+    this.name = "StockXCompsNotConnectedError";
+  }
+}
+
+// Soft skip: OAuth is connected, but StockX blocks market-data until the
+// seller finishes billing + shipping setup on stockx.com.
+export class StockXCompsSellerProfileIncompleteError extends Error {
+  readonly code = "stockx_seller_profile_incomplete";
+
+  constructor() {
+    super(
+      "Finish billing and shipping setup on StockX (stockx.com) to include StockX market comps.",
+    );
+    this.name = "StockXCompsSellerProfileIncompleteError";
+  }
+}
+
+export const STOCKX_SELLER_PROFILE_INCOMPLETE_SKIP = "stockx_seller_profile_incomplete";
 
 // StockX API = sneaker/streetwear market data. It is a paid/partner provider,
 // so the shared provider budget ledger gates calls before fetchComps runs.
 export const stockxSource: CompSource = {
   id: "stockx",
   displayName: "StockX",
-  sold: true,
-  resultKind: "sold_comps",
+  // Official StockX market-data is live ask/bid levels, not completed sales.
+  sold: false,
+  resultKind: "active_listings",
   paid: true,
   isEnabled() {
     return isStockXMarketDataConfigured();
@@ -26,11 +55,36 @@ export const stockxSource: CompSource = {
 
     const prisma = getPrisma();
     const config = getStockXMarketDataConfig();
-    const session = await loadStockXConnectionSession(prisma, query.accountId, config);
-    const rows = await fetchStockXMarketData(config, session.accessToken, {
-      productId: query.stockxProductId,
-      variantId: query.stockxVariantId,
-    });
+    let session;
+    try {
+      session = await loadStockXConnectionSession(prisma, query.accountId, config);
+    } catch (error) {
+      if (
+        error instanceof StockXIntegrationError &&
+        (error.code === stockxErrorCodes.notConnected ||
+          error.code === stockxErrorCodes.reconnectRequired)
+      ) {
+        throw new StockXCompsNotConnectedError();
+      }
+      throw error;
+    }
+
+    let rows;
+    try {
+      rows = await fetchStockXMarketData(config, session.accessToken, {
+        productId: query.stockxProductId,
+        variantId: query.stockxVariantId,
+        currencyCode: "USD",
+      });
+    } catch (error) {
+      if (
+        error instanceof StockXIntegrationError &&
+        error.code === stockxErrorCodes.sellerProfileIncomplete
+      ) {
+        throw new StockXCompsSellerProfileIncompleteError();
+      }
+      throw error;
+    }
 
     if (query.draftId) {
       await prisma.listingDraft.update({
@@ -39,23 +93,26 @@ export const stockxSource: CompSource = {
       }).catch(() => undefined);
     }
 
-    return rows.map((row): NormalizedComp => ({
-      source: "stockx",
-      externalId: row.externalId,
-      title: row.title,
-      priceCents: row.priceCents,
-      shippingCents: 0,
-      currency: row.currency,
-      soldDate: row.soldDate,
-      url: row.url,
-      imageUrl: row.imageUrl,
-      sold: true,
-      condition: "unknown",
-      brand: row.brand,
-      size: row.size,
-      category: row.category,
-      rawJson: row.rawJson,
-    }));
+    return rows.map((row): NormalizedComp => {
+      const isCompletedSale = Boolean(row.soldDate);
+      return {
+        source: "stockx",
+        externalId: row.externalId,
+        title: row.title,
+        priceCents: row.priceCents,
+        shippingCents: 0,
+        currency: row.currency,
+        soldDate: row.soldDate,
+        url: row.url,
+        imageUrl: row.imageUrl,
+        sold: isCompletedSale,
+        condition: "unknown",
+        brand: row.brand,
+        size: row.size ?? query.size,
+        category: row.category ?? query.category,
+        rawJson: row.rawJson,
+      };
+    });
   },
 };
 

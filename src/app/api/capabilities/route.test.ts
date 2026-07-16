@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireSupabaseUser: vi.fn(),
   getActiveAccount: vi.fn(),
+  subscriptionFindUnique: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -13,7 +14,9 @@ vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: mocks.getActiveAccount,
 }));
 vi.mock("@/lib/prisma", () => ({
-  getPrisma: vi.fn(() => ({ prisma: true })),
+  getPrisma: vi.fn(() => ({
+    subscription: { findUnique: mocks.subscriptionFindUnique },
+  })),
 }));
 
 import { AppError } from "@/lib/errors";
@@ -31,6 +34,7 @@ describe("GET /api/capabilities", () => {
       ownerUserId: "user-1",
       plan: "pro",
     });
+    mocks.subscriptionFindUnique.mockResolvedValue({ status: "active", graceEndsAt: null });
   });
 
   it("requires authentication", async () => {
@@ -46,6 +50,15 @@ describe("GET /api/capabilities", () => {
     vi.stubEnv("LIVE_EBAY_PUBLISH_EMAILS", "owner@example.com");
     vi.stubEnv("EBAY_DELIST_EMAILS", "beta@example.com");
     vi.stubEnv("PAID_COMPS_EMAILS", "OWNER@example.com");
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("COMPS_APIFY_EBAY_SOLD_ENABLED", "true");
+    vi.stubEnv("APIFY_TOKEN", "configured-test-placeholder");
+    vi.stubEnv("EBAY_ENV", "production");
+    vi.stubEnv("EBAY_PRODUCTION_PUBLISH_ENABLED", "true");
+    vi.stubEnv("EBAY_CLIENT_ID", "configured-test-placeholder");
+    vi.stubEnv("EBAY_CLIENT_SECRET", "configured-test-placeholder");
+    vi.stubEnv("EBAY_REDIRECT_URI_NAME", "configured-test-placeholder");
+    vi.stubEnv("EBAY_TOKEN_ENCRYPTION_KEY", "configured-test-placeholder");
     mocks.requireSupabaseUser.mockResolvedValue({
       id: "user-1",
       email: "owner@example.com",
@@ -90,12 +103,50 @@ describe("GET /api/capabilities", () => {
         bulkBatchSize: 25,
         teamSeats: 1,
       },
+      features: {
+        basicAnalytics: true,
+        profitTracking: "simple",
+        templates: true,
+        assistedSoldDelist: true,
+        fullInventorySync: false,
+        autoDelist: false,
+        soldDetection: false,
+        advancedComps: false,
+        advancedAnalytics: false,
+        repricing: false,
+        deadStock: false,
+        performanceAnalytics: false,
+        priorityQueue: false,
+        prioritySupport: false,
+      },
     });
 
     const serialized = JSON.stringify(payload).toLowerCase();
     expect(serialized).not.toContain("owner@example.com");
     expect(serialized).not.toContain("beta@example.com");
     expect(serialized).not.toContain("emails");
-    expect(Object.keys(payload)).toEqual(["access", "copy", "plan", "limits"]);
+    expect(Object.keys(payload).sort()).toEqual(
+      ["access", "copy", "features", "limits", "plan"].sort(),
+    );
+  });
+
+  it("returns unlimited limits for an admin even when the stored account is free", async () => {
+    vi.stubEnv("ADMIN_EMAILS", "owner@example.com");
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "owner@example.com",
+    });
+    mocks.getActiveAccount.mockResolvedValue({
+      id: "acc-1",
+      ownerUserId: "user-1",
+      plan: "free",
+    });
+
+    const payload = await (await GET(request())).json();
+
+    expect(payload.plan).toBe("kingpin");
+    expect(payload.limits.compRefreshesPerMonth).toBe(1_000_000_000);
+    expect(payload.limits.bulkBatchSize).toBe(1_000_000_000);
+    expect(payload.limits.marketplaceConnections).toBe(1_000_000_000);
   });
 });

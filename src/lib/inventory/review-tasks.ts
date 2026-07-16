@@ -16,23 +16,27 @@ export type ReviewTaskPrismaLike = {
   reviewTask: {
     findFirst(args: {
       where: {
-        userId: string;
+        userId?: string;
+        accountId?: string;
         type: ReviewTaskType;
         status: ReviewTaskStatus;
         inventoryItemId: string | null;
-        marketplace: Marketplace | null;
+        marketplace?: Marketplace | null;
+        dedupeKey?: string;
       };
       select: { id: true };
     }): Promise<{ id: string } | null>;
     create(args: {
       data: {
         userId: string;
+        accountId: string;
         inventoryItemId?: string | null;
         marketplace?: Marketplace | null;
         type: ReviewTaskType;
         title: string;
         description: string;
         payload: Prisma.InputJsonValue;
+        dedupeKey?: string | null;
       };
     }): Promise<{ id: string }>;
   };
@@ -40,12 +44,14 @@ export type ReviewTaskPrismaLike = {
 
 export type CreateReviewTaskInput = {
   userId: string;
+  accountId: string;
   type: ReviewTaskType;
   inventoryItemId?: string | null;
   marketplace?: Marketplace | null;
   title: string;
   description: string;
   payload?: Prisma.InputJsonValue;
+  dedupeKey?: string | null;
 };
 
 export type CreateReviewTaskResult = {
@@ -53,6 +59,15 @@ export type CreateReviewTaskResult = {
   // True when an existing OPEN task matched and no new row was created.
   deduped: boolean;
 };
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002",
+  );
+}
 
 export async function createReviewTask(
   db: ReviewTaskPrismaLike = getPrisma(),
@@ -63,11 +78,12 @@ export async function createReviewTask(
 
   const existing = await db.reviewTask.findFirst({
     where: {
-      userId: input.userId,
+      accountId: input.accountId,
       type: input.type,
       status: "open",
       inventoryItemId,
       marketplace,
+      ...(input.dedupeKey ? { dedupeKey: input.dedupeKey } : {}),
     },
     select: { id: true },
   });
@@ -75,16 +91,35 @@ export async function createReviewTask(
     return { id: existing.id, deduped: true };
   }
 
-  const created = await db.reviewTask.create({
-    data: {
-      userId: input.userId,
-      inventoryItemId,
-      marketplace,
-      type: input.type,
-      title: input.title,
-      description: input.description,
-      payload: input.payload ?? {},
-    },
-  });
-  return { id: created.id, deduped: false };
+  try {
+    const created = await db.reviewTask.create({
+      data: {
+        userId: input.userId,
+        accountId: input.accountId,
+        inventoryItemId,
+        marketplace,
+        type: input.type,
+        title: input.title,
+        description: input.description,
+        payload: input.payload ?? {},
+        dedupeKey: input.dedupeKey ?? null,
+      },
+    });
+    return { id: created.id, deduped: false };
+  } catch (error) {
+    if (!input.dedupeKey || !isUniqueViolation(error)) throw error;
+    const raced = await db.reviewTask.findFirst({
+      where: {
+        accountId: input.accountId,
+        type: input.type,
+        status: "open",
+        inventoryItemId,
+        marketplace,
+        dedupeKey: input.dedupeKey,
+      },
+      select: { id: true },
+    });
+    if (!raced) throw error;
+    return { id: raced.id, deduped: true };
+  }
 }

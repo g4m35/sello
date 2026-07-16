@@ -124,6 +124,70 @@ describe("BulkPublishModal", () => {
     expect(html).toContain(LIVE_CONFIRM);
   });
 
+  it("renders StockX-specific readiness and confirmation copy", () => {
+    const html = renderToStaticMarkup(
+      <BulkPublishModal
+        {...base}
+        marketplace="stockx"
+        selectionCount={2}
+        livePublishAllowed
+        phase="ready"
+        preflight={preflight({
+          total: 2,
+          readyCount: 1,
+          needsDetailsCount: 1,
+          skippedCount: 0,
+          items: [
+            { itemId: u(1), status: "ready" },
+            {
+              itemId: u(2),
+              status: "needs_details",
+              missing: ["Exact StockX product", "Exact StockX size/variant"],
+            },
+          ],
+        })}
+        execution={null}
+      />,
+    );
+
+    expect(html).toContain("Publish selected to StockX");
+    expect(html).toContain("Exact product and size ready");
+    expect(html).toContain("Exact StockX product");
+    expect(html).toContain("I understand this will create live StockX listings.");
+  });
+
+  it("renders StockX submitted result copy safely", () => {
+    const execution: BulkExecutionResult = {
+      bulkRunId: u(999),
+      total: 1,
+      publishedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      needsDetailsCount: 0,
+      items: [
+        {
+          itemId: u(1),
+          status: "published",
+          message: "Submitted to StockX. Sello is checking status.",
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <BulkPublishModal
+        {...base}
+        marketplace="stockx"
+        selectionCount={1}
+        livePublishAllowed
+        phase="result"
+        preflight={null}
+        execution={execution}
+      />,
+    );
+
+    expect(html).toContain("Submitted to StockX");
+    expect(html).not.toContain("[object Object]");
+  });
+
   it("renders independent published/failed/skipped/needs-details results", () => {
     const execution: BulkExecutionResult = {
       bulkRunId: u(999),

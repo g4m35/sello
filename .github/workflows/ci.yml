@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Deterministic non-secret placeholders. Validation must not contact live services.
+  DATABASE_URL: postgresql://ci-placeholder:ci-placeholder@127.0.0.1:5432/sello_ci
+  DIRECT_URL: postgresql://ci-placeholder:ci-placeholder@127.0.0.1:5432/sello_ci
+  NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+  SUPABASE_STORAGE_BUCKET: listing-photos
+  GEMINI_API_KEY: ci-placeholder-gemini-key
+  GEMINI_MODEL: gemini-2.5-flash
+  REDIS_URL: redis://127.0.0.1:6379
+  COMPS_PAID_PROVIDERS_ENABLED: "false"
+  EBAY_PRODUCTION_PUBLISH_ENABLED: "false"
+  STOCKX_LISTING_ENABLED: "false"
+
+jobs:
+  agent-policy:
+    name: Agent policy and workflow tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full branch history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate agent task policy
+        run: npm run agent:ci -- --json
+
+      - name: Test the agent workflow
+        run: npm run agent:test
+
+  repository-validation:
+    name: Repository validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run full integration gate
+        run: npm run validate:full

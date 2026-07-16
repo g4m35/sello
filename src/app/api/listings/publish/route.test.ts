@@ -11,8 +11,12 @@ const mocks = vi.hoisted(() => ({
     | undefined
     | ((...args: unknown[]) => Promise<unknown>),
   getActiveAccount: vi.fn(),
-  assertWithinQuota: vi.fn(),
-  incrementUsage: vi.fn(),
+  requireRuntimeFeatureAccess: vi.fn(),
+  markUsageReconciliationRequired: vi.fn(),
+  markUsageWorkStarted: vi.fn(),
+  releaseUsageReservation: vi.fn(),
+  reserveUsageOrThrow: vi.fn(),
+  settleUsageReservationOrRequireReconciliation: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -26,9 +30,16 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
+vi.mock("@/lib/auth/feature-access", () => ({
+  requireRuntimeFeatureAccess: mocks.requireRuntimeFeatureAccess,
+}));
 vi.mock("@/lib/billing/usage", () => ({
-  assertWithinQuota: mocks.assertWithinQuota,
-  incrementUsage: mocks.incrementUsage,
+  markUsageReconciliationRequired: mocks.markUsageReconciliationRequired,
+  markUsageWorkStarted: mocks.markUsageWorkStarted,
+  releaseUsageReservation: mocks.releaseUsageReservation,
+  reserveUsageOrThrow: mocks.reserveUsageOrThrow,
+  settleUsageReservationOrRequireReconciliation:
+    mocks.settleUsageReservationOrRequireReconciliation,
 }));
 
 vi.mock("@/lib/marketplace/publish-handler", async (importOriginal) => {
@@ -49,8 +60,18 @@ describe("publish API auth boundaries", () => {
     mocks.executePublish.mockReset();
     mocks.executePublish.mockImplementation(mocks.executePublishActual!);
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "kingpin" });
-    mocks.assertWithinQuota.mockResolvedValue(undefined);
-    mocks.incrementUsage.mockResolvedValue(undefined);
+    mocks.requireRuntimeFeatureAccess.mockResolvedValue({
+      account: { id: "acc-1", ownerUserId: "user-1", plan: "kingpin" },
+    });
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-1",
+      idempotent: false,
+      status: "reserved",
+    });
+    mocks.releaseUsageReservation.mockResolvedValue(true);
+    mocks.markUsageWorkStarted.mockResolvedValue(true);
+    mocks.markUsageReconciliationRequired.mockResolvedValue(true);
+    mocks.settleUsageReservationOrRequireReconciliation.mockResolvedValue("settled");
   });
 
   afterEach(() => {
@@ -59,7 +80,7 @@ describe("publish API auth boundaries", () => {
 
   it("returns 402 and does not publish when the autopublish quota is exhausted", async () => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "allowed@example.com" });
-    mocks.assertWithinQuota.mockRejectedValue(
+    mocks.reserveUsageOrThrow.mockRejectedValue(
       new AppError(
         "You have used all of your autopublishes for this billing period. Upgrade your plan for more.",
         402,
@@ -77,7 +98,43 @@ describe("publish API auth boundaries", () => {
     expect(response.status).toBe(402);
     expect((await response.json()).error.code).toBe("QUOTA_EXCEEDED_AUTOPUBLISH");
     expect(mocks.executePublish).not.toHaveBeenCalled();
-    expect(mocks.incrementUsage).not.toHaveBeenCalled();
+    expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
+  });
+
+  it("does not release the original reservation for a duplicate request", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "allowed@example.com",
+    });
+    mocks.getPrisma.mockReturnValue({});
+    mocks.requireRuntimeFeatureAccess.mockRejectedValueOnce(
+      new AppError(
+        "This feature is currently available to selected beta accounts.",
+        403,
+        "ALPHA_OR_BETA_ACCESS_REQUIRED",
+      ),
+    );
+    mocks.reserveUsageOrThrow.mockResolvedValue({
+      reservationId: "usage-reservation-in-flight",
+      idempotent: true,
+      status: "reserved",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        headers: { "idempotency-key": "request-key-123" },
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe("USAGE_REQUEST_ALREADY_RESERVED");
+    expect(mocks.executePublish).not.toHaveBeenCalled();
+    expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
   });
 
   it("rejects publish attempts when the seller is not signed in", async () => {
@@ -131,13 +188,12 @@ describe("publish API auth boundaries", () => {
     expect(response.status).toBe(403);
     expect(payload).toEqual({
       error: {
-        code: "LIVE_EBAY_PUBLISH_ALPHA_ONLY",
-        message:
-          "Live eBay publishing is currently enabled for selected alpha accounts.",
+        code: "ALPHA_OR_BETA_ACCESS_REQUIRED",
+        message: "This feature is currently available to selected beta accounts.",
       },
     });
     expect(mocks.executePublish).not.toHaveBeenCalled();
-    expect(mocks.getPrisma).not.toHaveBeenCalled();
+    expect(mocks.getPrisma).toHaveBeenCalledOnce();
     expect(prismaWrite).not.toHaveBeenCalled();
     expect(outboundAdapter).not.toHaveBeenCalled();
   });
@@ -217,6 +273,81 @@ describe("publish API auth boundaries", () => {
       inventoryItemId: "22222222-2222-4222-8222-222222222222",
       marketplace: "grailed",
     });
+  });
+
+  it("preserves a non-2xx publish outcome when usage release fails", async () => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+    mocks.getPrisma.mockReturnValue({});
+    mocks.releaseUsageReservation.mockRejectedValue(new Error("temporary database failure"));
+    mocks.executePublish.mockResolvedValueOnce({
+      outcome: {
+        status: "not_implemented",
+        code: "NOT_IMPLEMENTED",
+        marketplace: "grailed",
+        reason: "Draft-only marketplace.",
+      },
+      httpStatus: 501,
+      marketplaceListingId: "listing-2",
+      publishAttemptId: "attempt-2",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "22222222-2222-4222-8222-222222222222",
+          marketplace: "grailed",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(501);
+    expect((await response.json()).code).toBe("NOT_IMPLEMENTED");
+  });
+
+  it("preserves a successful publish outcome and flags reconciliation when settlement fails", async () => {
+    const prisma = {};
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "seller@example.com" });
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.settleUsageReservationOrRequireReconciliation.mockRejectedValue(
+      new AppError(
+        "Usage settlement could not be recorded.",
+        503,
+        "USAGE_SETTLEMENT_NOT_DURABLE",
+      ),
+    );
+    mocks.executePublish.mockResolvedValueOnce({
+      outcome: {
+        status: "published",
+        code: "EBAY_LISTING_PUBLISHED",
+        marketplace: "ebay",
+        environment: "sandbox",
+      },
+      httpStatus: 200,
+      marketplaceListingId: "listing-1",
+      publishAttemptId: "attempt-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        headers: { "idempotency-key": "publish-request-1" },
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).code).toBe("EBAY_LISTING_PUBLISHED");
+    expect(mocks.markUsageReconciliationRequired).toHaveBeenCalledWith(
+      "usage-reservation-1",
+      expect.any(Date),
+      "AUTOPUBLISH_SETTLEMENT_FAILED",
+      prisma,
+    );
+    expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
   });
 
   it("returns a typed setup error when publish persistence tables are missing", async () => {

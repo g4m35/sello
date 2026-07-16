@@ -35,6 +35,7 @@ function soldComp(i: number): NormalizedComp {
 
 const strongItem = {
   id: "item-1",
+  accountId: "acc-1",
   productName: "Nike Dunk Low Panda",
   brand: "Nike",
   styleCode: null,
@@ -82,7 +83,7 @@ function createPrisma(opts: {
       },
     })),
     count: vi.fn(
-      async ({ where }: { where: { userId: string; createdAt: { gte: Date } } }) => {
+      async ({ where }: { where: { userId?: string; accountId?: string; createdAt: { gte: Date } } }) => {
         const now = new Date();
         const dayStart = Date.UTC(
           now.getUTCFullYear(),
@@ -106,7 +107,7 @@ function createPrisma(opts: {
           initialCount +
           ledger.filter(
             (row) =>
-              row.userId === where.userId &&
+              (where.accountId ? row.accountId === where.accountId : row.userId === where.userId) &&
               costingStatuses.has(String(row.status)) &&
               (row.createdAt as Date) >= where.createdAt.gte,
           ).length
@@ -117,14 +118,29 @@ function createPrisma(opts: {
       async ({
         where,
       }: {
-        where: { userId: string; draftId: string; provider: string };
+        where: {
+          userId?: string;
+          accountId?: string;
+          draftId?: string;
+          provider?: string;
+          idempotencyKey?: string;
+        };
       }) => {
+        if (where.accountId && where.idempotencyKey) {
+          const duplicate = [...ledger].reverse().find(
+            (entry) => entry.accountId === where.accountId &&
+              entry.idempotencyKey === where.idempotencyKey,
+          );
+          return duplicate ? { createdAt: duplicate.createdAt as Date } : null;
+        }
         if (opts.lastDraftCallAt) return { createdAt: opts.lastDraftCallAt };
         const row = [...ledger]
           .reverse()
           .find(
             (entry) =>
-              entry.userId === where.userId &&
+              (where.accountId
+                ? entry.accountId === where.accountId
+                : entry.userId === where.userId) &&
               entry.draftId === where.draftId &&
               entry.provider === where.provider &&
               costingStatuses.has(String(entry.status)),
@@ -200,6 +216,54 @@ afterEach(() => {
 });
 
 describe("runCompFetch paid-provider budget/quota gates", () => {
+  it("shares paid-provider daily quota across account members", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("COMPS_USER_DAILY_PROVIDER_CALL_LIMIT", "1");
+    vi.stubEnv("COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS", "0");
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma();
+
+    await runCompFetch(prisma as never, "item-1", "member-1", {
+      paidProvidersAllowed: true,
+      sources: [source],
+      accountId: "acc-1",
+      idempotencyKey: "member-one-refresh",
+    });
+    await runCompFetch(prisma as never, "item-1", "member-2", {
+      paidProvidersAllowed: true,
+      sources: [source],
+      accountId: "acc-1",
+      idempotencyKey: "member-two-refresh",
+    });
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(prisma._ledger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ accountId: "acc-1", userId: "member-1", status: "succeeded" }),
+        expect.objectContaining({ accountId: "acc-1", userId: "member-2", skippedReason: "user_daily_quota_exceeded" }),
+      ]),
+    );
+  });
+
+  it("deduplicates the same account-scoped provider request before a second paid call", async () => {
+    vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
+    vi.stubEnv("COMPS_DRAFT_PROVIDER_COOLDOWN_SECONDS", "0");
+    const source = paidSource(async () => [soldComp(1)]);
+    const prisma = createPrisma();
+    const options = {
+      paidProvidersAllowed: true,
+      sources: [source],
+      accountId: "acc-1",
+      idempotencyKey: "same-provider-request",
+    };
+
+    await runCompFetch(prisma as never, "item-1", "member-1", options);
+    await runCompFetch(prisma as never, "item-1", "member-1", options);
+
+    expect(source.fetchComps).toHaveBeenCalledTimes(1);
+    expect(prisma._ledger).toHaveLength(1);
+  });
+
   it("excludes paid providers before reservation when entitlement is absent", async () => {
     vi.stubEnv("COMPS_PAID_PROVIDERS_ENABLED", "true");
     const source = paidSource(async () => [soldComp(1)]);
@@ -283,9 +347,11 @@ describe("runCompFetch paid-provider budget/quota gates", () => {
     expect(lockKeys).toEqual(
       expect.arrayContaining([
         expect.stringContaining("paid-comps:global:"),
-        expect.stringContaining("paid-comps:user-day:user-1:"),
-        expect.stringContaining("paid-comps:user-month:user-1:"),
-        expect.stringContaining("paid-comps:draft:user-1:apify-ebay-sold:draft-1"),
+        expect.stringContaining("paid-comps:scope-day:account:acc-1:"),
+        expect.stringContaining("paid-comps:scope-month:account:acc-1:"),
+        expect.stringContaining(
+          "paid-comps:draft:account:acc-1:apify-ebay-sold:draft-1",
+        ),
       ]),
     );
   });

@@ -8,6 +8,7 @@ import { api } from "@/lib/api/client";
 import { useSession } from "@/components/providers/session-provider";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { prefetchBillingUsage } from "@/components/billing/usage-snapshot";
+import { useMobileNav } from "@/components/providers/mobile-nav-provider";
 
 type NavItem = { href: string; label: string; icon: IconName; count?: number };
 
@@ -15,6 +16,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { session, token, signOut, name, requestNameEdit } = useSession();
+  const { open: drawerOpen, close: closeDrawer } = useMobileNav();
   const [search, setSearch] = useState("");
   const [counts, setCounts] = useState<{ items?: number; channels?: number }>({});
 
@@ -37,6 +39,7 @@ export function Sidebar() {
       "/dashboard",
       "/inventory",
       "/inventory/new",
+      "/inventory/bulk",
       "/history",
       "/channels",
       "/settings",
@@ -50,7 +53,7 @@ export function Sidebar() {
 
   const isActive = (href: string) =>
     href === "/inventory"
-      ? pathname.startsWith("/inventory")
+      ? pathname.startsWith("/inventory") && !pathname.startsWith("/inventory/bulk")
       : href === "/settings"
         ? pathname === "/settings"
       : pathname === href || pathname.startsWith(href + "/");
@@ -58,6 +61,7 @@ export function Sidebar() {
   const primary: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: "grid" },
     { href: "/inventory", label: "Inventory", icon: "box", count: counts.items },
+    { href: "/inventory/bulk", label: "Bulk intake", icon: "upload" },
   ];
   const config: NavItem[] = [
     { href: "/history", label: "Publish history", icon: "history" },
@@ -77,11 +81,12 @@ export function Sidebar() {
 
   function go(href: string) {
     warm(href);
+    closeDrawer();
     router.push(href);
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${drawerOpen ? " sidebar--open" : ""}`}>
       <div className="sidebar__brand">
         <button
           type="button"

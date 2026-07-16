@@ -10,9 +10,21 @@ describe("StockX listing mapper", () => {
         priceCents: 12500,
       }),
     ).toEqual({
-      amount: "125.00",
+      amount: "125",
       variantId: "98e2e748-8000-45bf-a624-5531d6a68318",
+      currencyCode: "USD",
+      active: true,
+      inventoryType: "STANDARD",
     });
+  });
+
+  it("preserves cents only when the StockX amount is not a whole dollar", () => {
+    expect(
+      buildStockXCreateListingPayload({
+        variantId: "variant-1",
+        priceCents: 12599,
+      }).amount,
+    ).toBe("125.99");
   });
 
   it("rejects missing variant and invalid prices before any StockX request can be made", () => {

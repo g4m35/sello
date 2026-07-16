@@ -10,7 +10,11 @@ import {
 } from "react";
 import type { Session } from "@supabase/supabase-js";
 
-import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { BrandLoader } from "@/components/ui/brand-loader";
+import {
+  consumeSupabaseImplicitSessionFromUrl,
+  getBrowserSupabase,
+} from "@/lib/supabase/browser";
 
 const SESSION_BOOTSTRAP_TIMEOUT_MS = 10_000;
 const SESSION_BOOTSTRAP_ERROR =
@@ -70,21 +74,35 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setReady(true);
     }, SESSION_BOOTSTRAP_TIMEOUT_MS);
 
-    supabase.auth.getSession()
-      .then(({ data }) => {
+    // Magic-link / recovery redirects may land with access_token in the URL
+    // hash. Consume that before getSession so the app shell is not stuck on
+    // the sign-in form after a valid redirect.
+    void (async () => {
+      try {
+        const fromUrl = await consumeSupabaseImplicitSessionFromUrl(supabase);
+        if (!active) return;
+        if (fromUrl) {
+          clearTimeout(timeout);
+          setSession(fromUrl);
+          setAuthError(null);
+          setReady(true);
+          return;
+        }
+        const { data } = await supabase.auth.getSession();
         if (!active) return;
         clearTimeout(timeout);
         setSession(data.session);
         setAuthError(null);
         setReady(true);
-      })
-      .catch(() => {
+      } catch {
         if (!active) return;
         clearTimeout(timeout);
         setSession(null);
         setAuthError(SESSION_BOOTSTRAP_ERROR);
         setReady(true);
-      });
+      }
+    })();
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, next) => {
@@ -176,7 +194,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   if (!ready) {
     return (
       <div className="auth-gate">
-        <div className="skel" style={{ width: 220, height: 14 }} />
+        <BrandLoader label="Checking your session" size={64} />
       </div>
     );
   }

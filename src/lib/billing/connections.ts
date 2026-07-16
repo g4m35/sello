@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isAdminUser } from "@/lib/auth/admin";
 import { AppError } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
 
@@ -7,6 +8,7 @@ import { connectionLimitReached } from "./errors";
 import { limitsFor, type PlanId } from "./plans";
 
 type Db = ReturnType<typeof getPrisma>;
+type AdminCheckUser = { id?: string | null; email?: string | null };
 
 export type MarketplaceConnectionAccount = {
   id: string;
@@ -46,6 +48,7 @@ export async function assertCanConnectMarketplace(
   account: MarketplaceConnectionAccount,
   marketplace: string,
   prisma: Db = getPrisma(),
+  user?: AdminCheckUser,
 ): Promise<void> {
   const limit = limitsFor(account.plan).marketplaceConnections;
 
@@ -57,5 +60,6 @@ export async function assertCanConnectMarketplace(
 
   const marketplaces = new Set<string>(connected.map((row) => row.marketplace));
   if (marketplaces.has(marketplace)) return;
+  if (user && isAdminUser(user)) return;
   if (marketplaces.size >= limit) throw connectionLimitReached(limit);
 }

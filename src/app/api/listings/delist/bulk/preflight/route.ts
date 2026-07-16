@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { featureAccessForUser } from "@/lib/auth/feature-access";
-import { getActiveAccount } from "@/lib/billing/account";
+import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { assertBulkBatchSize } from "@/lib/billing/batch";
+import { accountWithEffectivePlan } from "@/lib/billing/effective-plan";
 import { AppError, safeErrorResponse } from "@/lib/errors";
-import { preflightBulkEbayDelist } from "@/lib/marketplace/bulk-delist";
+import {
+  preflightBulkEbayDelist,
+  preflightBulkStockXDelist,
+} from "@/lib/marketplace/bulk-delist";
 import { BulkDelistPreflightRequestSchema } from "@/lib/marketplace/bulk-delist-request";
 import { loadBulkPublishConfig } from "@/lib/marketplace/bulk-publish-request";
 import { getPrisma } from "@/lib/prisma";
@@ -13,12 +16,12 @@ import { requireSupabaseUser } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 
 // Read-only dry run for bulk end/delist. Available to every authenticated
-// seller: it only classifies which selected items have a live eBay listing that
-// can be ended vs which cannot. No outbound eBay write happens here.
+// seller: it classifies marketplace-specific eligibility and never makes
+// provider mutation calls during preflight.
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-    const { itemIds } = BulkDelistPreflightRequestSchema.parse(await request.json());
+    const { itemIds, marketplace } = BulkDelistPreflightRequestSchema.parse(await request.json());
 
     const config = loadBulkPublishConfig();
     if (itemIds.length > config.maxItemsPerRequest) {
@@ -29,16 +32,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const liveDelistAllowed = featureAccessForUser(user).ebayDelist;
     const prisma = getPrisma();
-    const account = await getActiveAccount(user.id, prisma);
-    assertBulkBatchSize(account, itemIds.length);
-    const result = await preflightBulkEbayDelist(prisma as never, {
-      userId: user.id,
-      accountId: account.id,
-      itemIds,
-      liveDelistAllowed,
-    });
+    const resolved = await resolveRuntimeEntitlements(user, prisma);
+    const account = resolved.account;
+    assertBulkBatchSize(accountWithEffectivePlan(account, user), itemIds.length, user);
+    const result =
+      marketplace === "stockx"
+        ? await preflightBulkStockXDelist(prisma as never, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+          })
+        : await preflightBulkEbayDelist(prisma as never, {
+            userId: user.id,
+            accountId: account.id,
+            itemIds,
+            liveDelistAllowed: resolved.access.ebayDelist,
+          });
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {

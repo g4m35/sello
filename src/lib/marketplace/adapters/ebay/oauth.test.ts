@@ -26,6 +26,7 @@ describe("eBay OAuth helpers", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("redirect-uri-name");
     expect(url.searchParams.get("scope")).toContain("sell.inventory");
     expect(url.searchParams.get("scope")).toContain("sell.account");
+    expect(url.searchParams.get("scope")).toContain("sell.fulfillment");
     expect(url.toString()).toContain("sell.inventory%20https");
     expect(url.toString()).not.toContain("sell.inventory+https");
   });
@@ -53,7 +54,7 @@ describe("eBay OAuth helpers", () => {
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("state")).toBe("state-1");
     expect(url.searchParams.get("scope")).toBe(
-      "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account",
+      "https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account https://api.ebay.com/oauth/api_scope/sell.fulfillment",
     );
     // Spaces between scopes must encode as %20 (eBay rejects "+").
     expect(url.toString()).toContain("sell.inventory%20https");

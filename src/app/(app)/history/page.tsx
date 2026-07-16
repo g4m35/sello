@@ -152,14 +152,9 @@ export default function HistoryPage() {
   }, []);
 
   const topbarRight = (
-    <>
-      <Btn variant="secondary" size="sm" icon="download" disabled title="Coming soon">
-        Export
-      </Btn>
-      <Btn variant="secondary" size="sm" icon="refresh" onClick={reload}>
-        Refresh
-      </Btn>
-    </>
+    <Btn variant="secondary" size="sm" icon="refresh" onClick={reload}>
+      Refresh
+    </Btn>
   );
 
   if (loadError) {
@@ -173,13 +168,7 @@ export default function HistoryPage() {
     );
   }
 
-  if (attempts === null)
-    return (
-      <>
-        <Topbar crumbs={["Publish history"]} right={topbarRight} />
-        <PageSkeleton />
-      </>
-    );
+  if (attempts === null) return <PageSkeleton />;
 
   const total = attempts.length;
 

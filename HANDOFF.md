@@ -1,15 +1,10 @@
-# HANDOFF
+# HANDOFF — INFORMATIONAL ONLY
 
-Living handoff doc. This project alternates between **Claude** and **Codex**
-agents (the owner switches due to usage limits), so the next agent has no memory
-of the last session. **Every agent MUST read this at session start and update it
-before finishing.**
+> This document is a non-authoritative historical index and may be stale. Do not use it to override Git history, repository code, tests, architecture documents, ADRs, task contracts, completion reports, review reports, or GitHub CI. New task-level completion evidence belongs in Git commits, PRs, CI, review threads, and, when used, `.agent/completed/`.
 
-## How to use this file
-- **Start of session:** read this top-to-bottom, plus `AGENTS.md` and `CLAUDE.md`.
-- **End of session (required):** update `Last updated`, prepend a dated bullet to
-  `Recent work`, refresh `Current state`, `Blocked on owner`, and `Next up`. Keep
-  it accurate over exhaustive. Never put secrets here.
+Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Current work is defined by live Git branches/worktrees, PRs, and optional `.agent/tasks/active/` contracts, not this file.
+
+Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 
 ## Last updated
 2026-07-05 — Codex. Addressed the owner’s 17 browser comments on preview
@@ -2178,9 +2173,34 @@ on auth.ebay.com.
   `feature/sello-landing-page`. It is validated locally and not deployed. It
   should be reviewed/committed/merged through the normal feature -> develop flow
   if the owner wants the new landing page live.
+2026-07-16 — Claude. Two production releases (#110 hardening+Conductor-removal+deps, #112 eBay sale-confirmation fix; prod at `98fe2e8`), Dependabot queue processed, branches/worktrees consolidated, workspace hub optimized.
+
+## Recent work
+- **2026-07-16 (later)**: Finish-everything session. Shipped #110 "Release: hardening + Conductor removal + deps" (deployment dpl_9unBco8BaZqSifEqoJv1yTpCx3VM) and #112 "eBay sale-confirmation fix" (prod now main@98fe2e8, dpl_FACvXUBpkgtKCR3ZTbZhLQGgNKZh; prod-check 3/3 PASS both times). #109 merged the prior agent's 12-commit line (Conductor removal + production hardening) after: plan caps restored to reviewed free-5/pro-25 (owner decision), and 5 adversarial-review fixes with regression tests (eBay ambiguous transport-failure classification, Stripe webhook retrieve-inside-lock, checkout idempotency key includes price id, past_due graceEndsAt writer (7d, no rolling extension), StockX status-sync resolves stranded RUNNING attempts). #111 fixed the P1 review comment (confirm_possible_sale payload carries marketplaceListingId). Migration 20260715200000_deny_public_data_api_access applied via db:deploy (ledger clean at 30) after verifying deployed code has no PostgREST public-table reads. Dependabot: #108 batch merged (stripe/genai/bullmq/ioredis/supabase/tsx), #97-#99 actions majors merged, #101 eslint-10 and #102 types/node-26 deferred with reasons, PR #1 closed superseded. Seller-flow branch verified obsolete (both fixes already reimplemented on develop) and archived. Branches consolidated: local 6 intentional, remote 4 (29 proven-merged remote branches deleted, tips in bundles); Sello Conductor local data retired. Workspace: perc 30 is a symlink hub (1.8G -> ~100K), landing worktree moved to ~/dev/sello-worktrees/landing-page, sello-ui to ~/dev/sello-ui, bundles in ~/dev/sello-recovery/. Gate at release: lint 0 errors, tsc clean, 234 files / 1,674 tests, prisma valid, build green. main == develop == 98fe2e8.
+- **2026-07-16**: Production release + consolidation. Merged PR #96 (`develop` → `main`, `[deploy]`): paid-beta P0 readiness, RLS hardening, durable bulk intake, account-scoped notification dedupe. Pre-merge gate on `develop@ce649ce`: lint 0 errors (2 known warnings), 227 test files / 1,614 tests passed, Prisma valid, production build passed; re-ran tests after the CLAUDE.md merge-conflict resolution (kept the AGENTS.md entry-point version). Applied the 4 pending migrations to the prod DB via `npm run db:deploy` before merging (RLS migration was already applied; provenance recovered in #95); `prisma migrate status` clean at 29. Post-deploy: `prod-check.mts` 3/3 PASS against sello.wtf, homepage 200. Workspace: committed 2.6k-line landing WIP to `feature/sello-landing-page` (`ed11485`, pushed, unmerged); trashed the two orphaned pre-move worktree folders and `resale-crosslister-ARCHIVED-NO-GIT`; pruned stale worktree registrations; removed bulk-intake/multi-agent/marketplaces worktrees. Branches: deleted 10 merged + 19 superseded (each superseded tip kept as a local `archive/<name>` tag; full-ref backup at `~/dev/sello-backup-2026-07-16.bundle`); mirrored 25 deletions on origin incl. dead `feature/ui` and `feature/alpha-live-actions`. Kept: `develop`, `feature/sello-landing-page`, `chore/remove-conductor-and-production-hardening`, both stripe-billing branches, `feat/marketplace-safety-layer`, `fix/pre-alpha-seller-flow-blockers` (contains possibly-unshipped Mark-Ready-gate and comp-cooldown fixes — review before deleting). Dependabot PRs #97-#99 (GitHub Actions bumps) left for review. No marketplace publish, delist, or env mutation.
+- **2026-07-10**: Conductor-first development system — `.conductor/settings.toml`, workspace setup script, permanent prompts, Run-menu actions, workflow CLI Conductor detection/adoption/cleanup refusal, docs, and tests. Manual `agent:*` CLI retained as fallback.
+- **2026-07-10**: Added the account-scoped durable bulk intake/review P0 on `develop`. New `BulkBatch`, `BulkItem`, and `BulkPhoto` records persist upload order, seller grouping, per-item generation state, review reasons, failures, cancellation, and links to normal inventory/listing records. The seller flow at `/inventory/bulk` supports resumable uploads, regrouping before generation, sequential per-item processing with partial failure and retry, review links, and cancellation; `/admin/bulk-intake` gives operators recent batch/status visibility. Server routes enforce active-account ownership, plan-derived limits with absolute caps, strict transitions, idempotent batch creation/conversion, quota-before-AI, and sanitized failure persistence. Generation reuses the existing validated Gemini listing-draft contract and does not invoke comp providers or marketplace adapters. Added additive migration `20260710010000_add_bulk_intake`, deny-all RLS posture, route/service/schema/UI tests, and admin/seller navigation. Final gate: Prisma validation passed; TypeScript passed; lint passed with the two known warnings; 218 test files / 1,467 tests passed; production build passed. Local desktop/mobile render checks passed and no horizontal overflow or error overlay was observed. No deploy, env mutation, paid-provider call, marketplace publish, or delist.
+- **2026-07-10**: Produced and audited `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`, covering the current implementation, seller experience, architecture, schema plan, official marketplace autonomy matrix, eBay/StockX flows, durable bulk intake, comps, double-sell safety, billing, security, admin, tests, staged rollout, a coding-model prompt, and a 120-item adversarial review. Fixed the StockX comp test mock signature that caused `TS2493`, then aligned four stale test expectations with existing admin override/quota behavior. Final gate: `npx tsc --noEmit` passed; lint passed with the two known warnings; 212 test files / 1,440 tests passed; production build passed. The doc now makes Depop/Vinted/TikTok access and eligibility conditional, identifies TikTok’s current adapter as a stub, and keeps all marketplace/provider writes outside standard validation. No deploy, env mutation, paid-provider call, marketplace publish, or delist.
+- **2026-07-09**: Landing polish pass — removed problem essay; flow steps now publish-across-marketplaces + inventory sync/delist; dropped “Automated where supported…” slogan; sold-comp section rewritten with marketing flair; FAQ is accordion (`details`/`summary`); sticky black nav bar with larger brand/links. Landing tests 13/13 green.
+- **2026-07-09**: Landing restored to outcome-led hero + staged `LandingDemo` (demo CSS recovered from `2a479c9`). Headline: "Photos in. Listings that sell themselves." Inventory sync featured; weak draft-oriented language removed. Honest eBay/assisted/pricing copy kept. Landing tests green.
+- **2026-07-09**: App shell livelier SaaS polish — wider sidebar with soft accent wash, richer active nav + New listing CTA, dual radial wash on `.main`, frosted topbar, staggered KPI enter, channel-card accents, toolbar tint, fixed truncated `prefers-reduced-motion` block.
+- **2026-07-09**: Marketplace settings cards (eBay, Etsy, StockX) restyled to Sello token system — `card`/`card__head`, `.btn` variants, `.banner--warn`, `.input`, `.field`, `t-small`/`muted`/`danger`, `marketplace-logo`, `var(--positive)` for ok status, `var(--surface-sunk)` tiles for readiness checklist. All zinc-950/emerald-400 Tailwind colors removed. `globals.css` enhanced: subtle accent radial on `.main`, richer `.card:hover` border, `.readiness { order: -1 }` on mobile, responsive `.readiness-grid` breakpoints. All 11 marketplace tests green; pre-existing TS/lint issues unchanged.
+- **2026-07-09**: `/settings/marketplaces` moved into `(app)` layout group — URL unchanged (OAuth callbacks still work), page now has sidebar/topbar; page chrome uses design tokens instead of raw zinc/emerald.
+- **2026-07-09**: Mobile hamburger nav: `MobileNavProvider` context, `sidebar--open` CSS drawer, `drawer-overlay` backdrop, hamburger button in topbar (hidden on desktop). Help/Bell removed from topbar.
+- **2026-07-09**: Channels empty state + "Inventory" CTA. Listing detail topbar publish demoted to `secondary` (readiness card stays primary accent).
+- Admin users now receive all feature entitlements (paidComps/publish/etsy) so owner testing is not blocked by separate allowlists. Global kill-switches still apply.
+- Added always-on testing policy + full public runthrough notes.
+- Neutralized orphan Desktop checkout (`resale-crosslister-ARCHIVED-NO-GIT`).
+- Documented Clerk auth/billing research; deferred migration.
+- Updated WORKTREES.md / LOCAL_DEVELOPMENT_RULES.md to match real paths.
+- Fixed develop tip typecheck (speed-insights install, test fixture types, ioredis pin for BullMQ).
+- Full gate green: lint 0 errors, tsc 0, 1415 tests, build 0.
+
+## Current state
+- Paid-beta implementation contract: `docs/PAID_BETA_IMPLEMENTATION_PLAN_2026-07-09.md`. The baseline is green. The durable bulk intake/review domain is implemented on `develop`; capability-truth corrections, effective entitlements, atomic usage reservations, worker retry/lease semantics, and eBay order/sold reconciliation remain. The bulk UI must not be treated as runtime-ready until migration `20260710010000_add_bulk_intake` is applied through an explicitly approved deployment flow.
 - Repo `resale-crosslister`. Production: https://sello.wtf (Vercel project
   `jaky/resale-crosslister`). Current production deployment is
-  `dpl_9wySr8qrtFHA5E6GJawKVzKSGdEh` from commit `c300b01`, aliased to
+  `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY` from local commit `10de26a`, aliased to
   `https://sello.wtf`.
 - Pricing and billing are now directly discoverable: the public landing page
   links to `/pricing`, the pricing page uses Sello-native styling, the signed-in
@@ -2198,9 +2218,10 @@ on auth.ebay.com.
   merged to `develop` and deployed to production. StockX code now supports
   official API catalog-backed create/activate/deactivate through audited publish
   and delist handlers, plus inventory-sync worker delist jobs. A local
-  2026-07-04 follow-up this commit adds StockX listing-status
-  reconciliation for pending publish operations and sold/inactive detection;
-  deploy status must be checked before assuming production has that slice.
+  2026-07-04 follow-up adds StockX listing-status reconciliation for pending
+  publish operations and sold/inactive detection, plus shared-account scope fixes
+  for StockX status sync and adapter-backed delist jobs; this is live in
+  production deployment `dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ`.
 - PR #65 paid-beta checkout/bulk preflight hardening is also merged and live.
 - Stripe live billing is active; production pricing is Free `$0`, Pro `$20/mo`,
   Kingpin `$119/mo`; webhook endpoint is
@@ -2211,11 +2232,13 @@ on auth.ebay.com.
   `20260625020000_inventory_account_scope`,
   `20260625030000_marketplace_connections_account_scope`, and
   `20260701010000_stockx_foundation`. PR #66 added no migration.
-- StockX production runtime status: Vercel lists the StockX production env names,
-  but safe `vercel env pull` metadata shows empty values. The signed-in
-  marketplace page therefore correctly shows StockX catalog-match/API readiness
-  as pending. Populate the real StockX credentials/config in Vercel before any
-  live StockX listing smoke can run.
+- StockX production runtime status: Sello-owned StockX envs/flags were generated
+  or set on 2026-07-05 and redeployed. Safe callback probe now reaches
+  `STOCKX_OAUTH_STATE_INVALID`, which confirms config is past the disabled-env
+  blocker. Signed-in Connect StockX is currently blocked by account eligibility:
+  `Your plan allows 1 connected marketplace. Upgrade to connect more.` Keep
+  `STOCKX_LISTING_ENABLED=false` until OAuth, exact product/variant readiness,
+  and one-item operator approval are complete.
 - PR #36 marketplace-image migration
   `20260617120000_add_marketplace_images` is applied in production and Prisma
   migration status is up to date.
@@ -2245,8 +2268,8 @@ on auth.ebay.com.
 
 ## Shipped to prod (all live now)
 - Full app UI, Phase 0, Full Auto Price Comps with Apify eBay sold provider
-  (manual Refresh enabled; draft auto-discovery disabled by cost/quality
-  decision).
+  (manual Refresh enabled; draft auto-discovery enabled only for strong
+  identity items under strict Apify caps).
 - T1–T7 (lifecycle mark-sold/delist, responsive layout, auto-fetch comps, inventory
   grid/sort/pagination, photo set-cover, consistent loading/error states, tests).
 - eBay account-deletion compliance endpoint (deployed, but **env not set yet** — see Blocked).
@@ -2272,6 +2295,64 @@ on auth.ebay.com.
   build, and diff check. Local Chrome/Playwright visual QA covered desktop,
   mobile, and demo click-to-Price. Figma capture was blocked by app
   reauthentication.
+- 2026-06-17 (Codex): reviewed, merged, and deployed PR #38 Comp Cost +
+  Confidence Hardening. PR merge commit `507a91e`; final main commit
+  `908bded`; final production deployment
+  `dpl_J9X8eo53dH1muXsjGfucyvciKUGe` is READY and aliased to `sello.wtf`.
+  Gates passed on PR branch and main: prisma format/validate, lint (same two
+  existing warnings in `draft-actions.test.ts`), tsc, 571 tests, build, migrate
+  status. No migration added. Final production env: `COMPS_AUTO_DISCOVERY_ENABLED=true`,
+  `COMPS_APIFY_EBAY_SOLD_ENABLED=true`, `COMPS_MAX_PROVIDER_RESULTS=10`,
+  `COMPS_MAX_QUERY_VARIANTS=1`, `COMPS_AUTO_MIN_IDENTITY_CONFIDENCE=0.85`,
+  `COMPS_REFRESH_COOLDOWN_SECONDS=60`, `COMPS_EBAY_ACTIVE_ENABLED=false`,
+  `COMPS_SERPAPI_EBAY_ACTIVE_ENABLED=false`, and
+  `EBAY_PRODUCTION_PUBLISH_ENABLED` absent. Production validation: generic
+  black shirt `7d70b619-c473-40ca-b601-1a3956161862` skipped with
+  `skipped_weak_identity`, zero provider calls, and one query; branded North
+  Face item `9fa01f5b-77f6-4594-87fd-ef701d64564d` ran Apify with final caps
+  (10 fetched / 6 accepted / 4 rejected), medium confidence, recommended price
+  `13146` cents, cooldown visible in UI, and passive dashboard/inventory/detail
+  navigation created no extra runs. Apify run cost stayed high at about
+  `$0.3201` even with `maxItems=10` (previous same-day reference `$0.3641`),
+  so auto-discovery remains enabled only because the identity gate is now
+  strict; monitor spend closely. Chrome file upload permission blocked a fresh
+  new-photo AI draft validation, so the auto path was validated by controlled
+  production-backed `runCompFetch` calls rather than a new uploaded item. Vercel
+  recent log scan found no error/fatal/500/token-like lines.
+- 2026-07-05 (Codex): Generated/set Sello-owned StockX Production envs, redeployed
+  `dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY`, and proceeded to signed-in StockX Connect
+  preflight. Runtime config is no longer disabled: safe callback probe returns
+  `400 STOCKX_OAUTH_STATE_INVALID` for fake state instead of
+  `STOCKX_NOT_ENABLED`. Signed-in marketplace page shows StockX not connected,
+  but Connect StockX returns `403` because the current plan allows only one
+  connected marketplace and eBay is already connected. Stopped before OAuth/live
+  listing. No secrets printed, no StockX-issued credentials invented, no
+  Keychain/cookie extraction, no paid checkout, no bulk action. `.env.example`
+  corrected to `STOCKX_API_BASE_URL=https://api.stockx.com/v2`.
+- 2026-07-05 (Codex): Ran final live StockX single-item verification preflight
+  and stopped safely before OAuth/listing. Local gate passed on `develop`
+  (`b2fc862`): Prisma validate, diff check, lint with two known warnings, full
+  tests (209 files / 1371 tests), and build. Vercel deployment
+  `dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ` remains READY and aliased to
+  `https://sello.wtf`. Vercel Production metadata lists required `STOCKX_*`
+  names, but redacted temp env pull reported empty/non-boolean StockX values and
+  safe runtime callback probe returned `503 STOCKX_NOT_ENABLED`. No StockX OAuth,
+  catalog, market data, live publish, detect-status provider call, delist, paid
+  checkout, Keychain/cookie/session extraction, or bulk action was run.
+- 2026-07-04 (Codex): Fixed the StockX shared-account automation gap found by
+  subagent audit and deployed it to production. Commit
+  `8f679a9110ee1cfac9453ecb12d25afe4003eaf7`; deployment
+  `dpl_7VFFdP6jXEQpncBsPDE784uNYYhZ`, READY and aliased to
+  `https://sello.wtf`. Queue-delist payloads now include account scope,
+  inventory-sync worker delist/status lookups use account scope when present,
+  StockX/eBay delist handlers receive accountId from the worker, and StockX sold
+  reconciliation passes the inventory owner into `markItemSold`. Added
+  regression tests for shared-account StockX delist/status sync and documented
+  StockX env names in `.env.example`. Validation: focused 3-file suite / 53
+  tests, `npx prisma validate`, `git diff --check`, lint (two known warnings),
+  full `npm test` (209 files / 1371 tests), local build, Vercel build, production
+  protected-route smoke, and Vercel log filter. No live StockX provider call,
+  listing, deactivate, or bulk action was run.
 - 2026-07-04 (Codex): Added StockX listing-status reconciliation in commit
   this commit. The
   StockX client can fetch a stored listing's current status, submitted StockX
@@ -2558,6 +2639,16 @@ on auth.ebay.com.
   envs were re-added and production was redeployed on 2026-07-04. Do not print
   values. Verify readiness through safe runtime booleans/UI/logs before any live
   StockX listing smoke; avoid Keychain/session-cookie extraction.
+Nothing in this section authorizes a live action during validation. Production env changes, paid-provider calls, marketplace publishes/delists, paid checkout, and live smoke require fresh explicit owner approval in the active task, even if an older entry records historical approval.
+- **Bulk-intake migration not deployed:** Migration
+  `20260710010000_add_bulk_intake` is validated and committed but has not been
+  applied to production. Apply it only through the normal approved migration
+  and deployment flow; this handoff does not authorize either action.
+- **Production StockX account eligibility:** Runtime config is enabled, but the
+  signed-in StockX connect route returns `403`: `Your plan allows 1 connected
+  marketplace. Upgrade to connect more.` Current eBay connection consumes the
+  one allowed marketplace slot. Do not disconnect eBay or alter billing/plan
+  entitlements without explicit operator approval.
 - **Live StockX smoke:** Owner approved live listing tests, but live StockX
   create/deactivate cannot run until production env values are real, the seller
   connects StockX, and one inventory item has an exact StockX product/variant
@@ -2579,6 +2670,11 @@ on auth.ebay.com.
   derivative preflight passed, but keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent
   unless the owner explicitly approves another controlled live run.
 - **Comp provider spend/quality:** Apify eBay sold comps are live only for
+  manual Refresh and very strong auto-discovery candidates. Draft auto-discovery
+  is enabled, but Apify still costs about `$0.32` per paid run even at
+  `COMPS_MAX_PROVIDER_RESULTS=10`; find a cheaper sold-comp source/actor or add
+  budget controls before increasing volume.
+- **Stripe keys** for monetization.
   manual Refresh. Draft auto-discovery is disabled because the observed cost per
   auto run was about `$0.3641`; keep it disabled until
   `feature/comp-confidence-cost-controls` lands and production manual Refresh is
@@ -2625,17 +2721,46 @@ on auth.ebay.com.
 8. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
    controlled live eBay run.
 9. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
+1. Correct TikTok/Depop capability truth and queue eligibility in a dedicated `feature/*` worktree while preserving the green gate.
+2. Implement one server-side effective-capability resolver and atomic account-scoped usage reservations.
+3. Fix worker retry/lease semantics and add eBay order/sold reconciliation with fixture-only validation.
+4. Extend the minimum seller task and operator job/batch surfaces from the new durable bulk foundation.
+5. Apply `20260710010000_add_bulk_intake` only in a separately approved migration/deployment window. Standard validation remains zero-write and zero-paid-provider.
+
+## Historical next up (superseded — do not execute without a new scoped request)
+The older items below are retained as context only. They do not override the current priority list or authorize deploys, environment changes, paid-provider calls, marketplace publishes, or delists.
+1. Add a hard daily/weekly Apify budget or per-seller auto-run quota before any
+   larger intake flow; current per-paid-run cost is still too high for Bulk
+   Intake scale.
+2. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+1. Resolve StockX connection eligibility: upgrade/entitle the account for at
+   least two connected marketplaces, or explicitly approve a temporary eBay
+   disconnect/reconnect plan. Do not bypass billing gates silently.
+2. Connect the seller's StockX account, match one inventory item to an exact
+   StockX product/variant, then run one controlled live create/activate smoke
+   followed immediately by the StockX delist/deactivate smoke.
+3. Monitor production after the StockX env redeploy
+   (`dpl_2RdUdBSdV4ewDS9eaFLgf5Rg1fiY`) for any delayed runtime errors; initial
+   error/fatal/500 log filters were clean.
+4. If an authenticated production owner session is available, run a
+   non-destructive seller smoke for plan/quota visibility, authenticated
+   `/api/capabilities`, bulk over-cap UI blocking, owner/admin checkout-open
+   without payment completion, and Free portal safety.
+5. Review and merge `feature/comp-confidence-cost-controls`, then deploy and
+   revalidate manual Refresh before considering draft auto-discovery again.
+6. Keep `EBAY_PRODUCTION_PUBLISH_ENABLED` absent until an explicitly approved
+   controlled live eBay run.
+7. Before a live eBay run, rerun authenticated eBay readiness/preflight in the
    UI and verify the public derivative row is reused for the target item.
-9. Continue security follow-ups: externalUserId binding, real eBay deletion
+8. Continue security follow-ups: externalUserId binding, real eBay deletion
    notification validation, key rotation, npm audit items, RLS hardening.
-10. Stripe subscriptions and background worker host + inventory sync.
+9. Stripe subscriptions and background worker host + inventory sync.
 
 ## Resume checklist
-1. `cd "/Users/jheller/dev/resale-crosslister-safety"` (current Sello checkout).
-2. `git fetch && git merge origin/develop` (stay current); `npm install`; `npx prisma generate`.
-3. Gate: `npm run lint && npx tsc --noEmit && npm test && npm run build`.
-4. Flow: `feature/* → develop → production via Vercel`. Commit + push to
-   `develop`; deploy production only when the owner has explicitly requested it.
+1. `cd "/Users/jheller/dev/resale-crosslister-clean"` and read `AGENTS.md` + this file.
+2. Verify branch, worktrees, remotes, and dirty state before creating a dedicated `feature/*` worktree for P0 implementation.
+3. Gate in stop-on-first-failure order: `npx tsc --noEmit`, `npm run lint`, `npm test`, `npm run build`.
+4. Flow: `feature/* → develop → main → production`. Push, merge, environment changes, paid-provider calls, marketplace writes, and deployment require the authority specified by the active task; production deployment always requires explicit owner approval.
 
 ## Key gotchas
 - **Next.js 16**: read `node_modules/next/dist/docs/` before writing Next code; `params`/`searchParams` are async; use `next/font`.
@@ -2649,312 +2774,3 @@ on auth.ebay.com.
 
 Pre-paid-customer marketplace safety layer, Part 1 (core). Built in an isolated
 worktree off develop; additive only; existing eBay/Etsy/export behavior unchanged.
-
-## What was built (validated, landed)
-- Source-of-truth inventory model + idempotent double-sell engine.
-- Email-signal ingestion MVP (parser + fail-closed endpoint).
-- Manual action routes (mark sold / add marketplace URL / resolve review task).
-
-## Tables added/changed (migration 20260626000000_inventory_safety_layer)
-- InventoryItem +: quantityAvailable, soldSourceMarketplace, soldSourceListingId,
-  lockVersion (optimistic concurrency).
-- MarketplaceListing +: externalUrl, titleSnapshot, skuSnapshot, metadata, endedAt;
-  status enum +ENDED/UNKNOWN/NEEDS_REVIEW/SUBMITTED_FOR_AUDIT/REJECTED.
-- New: InventoryEvent, ReviewTask, SyncJob (idempotencyKey FULL unique), EmailSignal
-  (providerMessageId unique), Notification. RLS enabled, no policies (resale_app
-  BYPASSRLS pattern). NOT applied to any DB.
-
-## Sync-job worker / executors (src/lib/inventory-sync/jobs/worker.ts)
-- Pure, db-injectable (default getPrisma()) like the engine. Entrypoints:
-  claimQueuedSyncJobs(db,{limit}), runSyncJob(db,jobId,deps), runQueuedSyncJobs(db,{limit}).
-- Claim is atomic: a conditional updateMany(where:{id,status:'queued'}) — count===1
-  means this worker won; two workers can NEVER both claim. Limit caps at 25 (default 10).
-- maxAttempts is enforced: a delist that FAILS at attempts>=maxAttempts ends terminal
-  'failed' (never re-queued); endless retry is impossible. All error text is scrubbed
-  via safeFailureText before being persisted to job/event/task.
-- delist_marketplace_listing: ownership-scoped load; missing/already-terminal listing
-  => 'succeeded' (no-op); sold-source listing => 'skipped'; eBay => the EXISTING
-  executeEbayDelist (CALLED, not reimplemented) then endedAt + delist_succeeded +
-  'succeeded'; on error => delist_failed event + manual_delist_required task +
-  'needs_review' (or 'failed' if attempts exhausted). Non-eBay is defensive only:
-  NEVER fakes a delist — parks a manual task + 'needs_review'.
-- notify_user: createNotification + notification_sent event once (deduped by unread
-  user+kind+inventoryItemId+title); invalid payload => 'failed'. Nothing enqueues
-  these yet (forward use).
-- create_review_task: createReviewTask (dedupes open tasks) => 'succeeded'.
-- FAIL CLOSED (no executor yet): detect_status, mark_sold, update_inventory_quantity,
-  update_price, sync_order => 'skipped' + errorCode 'NOT_IMPLEMENTED'. They do NOT
-  silently succeed and invent no marketplace API calls. TODO (next): implement each
-  against the real provider APIs (no invented endpoints), keep them fail-closed behind
-  the per-marketplace adapter/enablement flags, and only then flip from 'skipped' to a
-  real executor. Order/quantity/price sync also need the inbound polling source first.
-
-## Stale-running reaper (ops hardening, PR #61)
-- `requeueStaleRunningSyncJobs(db, { olderThanMinutes, limit }): Promise<{ requeued; failed }>`
-  in `src/lib/inventory-sync/jobs/worker.ts`. Same db-injectable pattern as the rest
-  of the worker (default `getPrisma()`); fully unit-tested with the in-memory fake.
-- Why: a worker that crashes mid-run leaves a SyncJob in 'running' that never reaches
-  a terminal status and would otherwise sit forever. The reaper recovers them.
-- Behavior: cutoff = now - olderThanMinutes. Finds `status='running' AND updatedAt <=
-  cutoff`, ordered by updatedAt asc, bounded by `take: limit` (limit clamped to max 25,
-  default 10). For each:
-  - `attempts < maxAttempts` => REQUEUE via a RACE-SAFE conditional
-    `updateMany({ where:{ id, status:'running' }, data:{ status:'queued', runAfter: now } })`.
-    count===1 => requeued++. **attempts is NOT reset** (the original claim already
-    counted it). Creates NO event/task/notification (status change only — never
-    duplicates side effects).
-  - `attempts >= maxAttempts` => FAIL terminal via
-    `updateMany({ where:{ id, status:'running' }, data:{ status:'failed',
-    errorCode:'MAX_ATTEMPTS_EXHAUSTED', errorMessage:<safeFailureText> } })`.
-    count===1 => failed++. Not requeued. errorMessage is the sanitized generic
-    "The job exceeded its maximum attempts." (no raw internals).
-- The conditional `status:'running'` guard makes it race-safe against a live worker
-  that finishes the same row: that row no longer matches, count===0, it is skipped.
-- `staleOlderThanMinutes` is clamped server-side to a safe minimum of 5 and max of
-  1440 (default 15) so a tiny/negative window can never requeue freshly-claimed jobs
-  that are still legitimately running.
-
-## Worker-route trigger (POST /api/inventory/sync-jobs/run)
-- Header (RENAMED): `x-inventory-sync-worker-secret: $INVENTORY_SYNC_WORKER_SECRET`
-  (was `x-internal-secret`). 503 if env unset, 401 on mismatch, timing-safe compare.
-- Body (all optional; empty body works; present-but-malformed JSON => 400):
-  `{ "limit": 10, "requeueStale": true, "staleOlderThanMinutes": 15 }`.
-  When `requeueStale` is true the reaper runs FIRST (clamped minutes + bounded limit),
-  THEN `runQueuedSyncJobs`, so recovered jobs are re-claimed in the same invocation.
-  When false: `requeuedStale=0, failedStale=0`.
-- Response (sanitized counts only — NEVER payloads/provider errors/secrets):
-  `{ ok:true, requeuedStale, failedStale, claimed, succeeded, failed, skipped, needsReview }`.
-
-## Scheduler decision (NO Vercel cron)
-- DECISION: do NOT add `vercel.json` cron and do NOT add a GET handler.
-  Reasons: (1) the repo has no existing safe cron-route / CRON_SECRET pattern to reuse;
-  (2) Vercel Cron can only issue `GET` + `Authorization: Bearer $CRON_SECRET` — no
-  custom header, no POST body — so it cannot authenticate this POST + custom-header
-  endpoint without weakening the auth model, which we will not do.
-- Use an EXTERNAL scheduler (GitHub Actions cron / Upstash QStash / any cron service):
-  - POST to `https://<app-domain>/api/inventory/sync-jobs/run` every 5-10 minutes.
-  - Header: `x-inventory-sync-worker-secret: $INVENTORY_SYNC_WORKER_SECRET`
-  - Body: `{"limit":10,"requeueStale":true,"staleOlderThanMinutes":15}`
-  - Keep the secret in the scheduler's secret store, never in the repo.
-
-## Endpoints added
-- POST /api/inventory/email-signals  (x-internal-secret, fail-closed)
-- POST /api/inventory/sync-jobs/run   (x-inventory-sync-worker-secret, fail-closed;
-  worker trigger; optional {limit, requeueStale, staleOlderThanMinutes}; returns ONLY a
-  sanitized summary {requeuedStale,failedStale,claimed,succeeded,failed,skipped,
-  needsReview}; not public-user callable)
-- POST /api/inventory/mark-sold
-- POST /api/inventory/listings        (manual marketplace URL)
-- POST /api/inventory/review-tasks/[id]/resolve
-
-## Lifecycle bridge (double-sell gap closed)
-- POST /api/listings/lifecycle action 'mark_sold' now routes through the engine
-  (markItemSold) instead of a bare SOLD flip, so OTHER active listings are queued for
-  delist. The marketplace is unknown for a manual action: markItemSold /
-  queueDelistOtherListings now accept soldMarketplace: Marketplace | null — null =
-  "source unknown" => soldSourceMarketplace=null and delist EVERY active listing (skip
-  none). Auth (401), ownership (404), and canTransition (409) behavior preserved; the
-  existing { inventoryItem } response shape is kept (re-read after the engine call).
-  The 'delist' action is unchanged.
-
-## Env vars
-- INVENTORY_EMAIL_INGEST_SECRET (server-only). Unset => /api/inventory/email-signals
-  returns 503; wrong x-internal-secret => 401 (timing-safe compare).
-- INVENTORY_SYNC_WORKER_SECRET (server-only). Unset => /api/inventory/sync-jobs/run
-  returns 503; wrong `x-inventory-sync-worker-secret` header => 401 (timing-safe compare).
-
-## Automated vs manual
-- Automated: high-confidence sale signal -> mark sold -> queue delist for other
-  platforms -> notify. eBay delist enqueued via the existing adapter path; all
-  non-eBay marketplaces create a manual_delist_required review task with URL +
-  instructions.
-- Manual: medium/low-confidence signals create review tasks only (never auto-
-  delist). Manual mark-sold and add-URL via the routes above.
-
-## Marketplace keys
-- vinted / stockx / tiktok_shop were ALREADY present (enum, registry, capability
-  matrix, labels, tests — PR #59). They ALREADY fail closed via the stub adapter
-  (NOT_IMPLEMENTED). No live calls exist for them.
-
-## Known limitations / NOT done this pass (sequenced next steps)
-- TikTok Shop full native integration (auth/signing/products/orders/webhooks):
-  DEFERRED. Must be implemented against official TikTok Shop API docs (no invented
-  endpoints) and stay fail-closed behind TIKTOK_SHOP_ENABLED. Today TikTok is a
-  fail-closed stub, which satisfies "block live calls unless enabled".
-- Part 3 pricing tiers (Free/Pro/Kingpin, usage metering, seats): OWNED BY THE
-  CONCURRENT BILLING BRANCH (src/lib/billing/* on security/rls-least-privilege),
-  which already implements the plan catalog/entitlements/usage and is wired into
-  draft/publish/bulk routes. NOT rebuilt here to avoid a destructive conflict. The
-  safety engine is tier-agnostic; gate its automation (auto-delist / sold
-  detection) behind billing entitlements (fullInventorySync/autoDelist/
-  soldDetection) when that branch merges. Until then, gated automation should fall
-  back to manual review tasks (the engine already creates them).
-- Inventory sync UI (platform chips, sync panel, buttons), notifications UI, and
-  the order-sync/webhook consumers: DEFERRED.
-- Migration is NOT applied; apply via the documented Supabase path after develop merge.
-- Worker scheduling is EXTERNAL (no in-repo cron). Until an external scheduler is
-  configured (see "Scheduler decision"), the reaper + worker only run when something
-  POSTs the route. No background loop ships in the app.
-
-## Validation (in worktree)
-- Inventory safety layer (earlier pass): prisma validate pass; tsc clean; lint 0
-  errors (2 pre-existing warnings); 163 files / 1094 tests; next build success.
-- Ops-hardening pass (PR #61, 2026-06-25): `prisma validate` pass; `tsc --noEmit` 0;
-  `npm run lint` 0 errors / 2 pre-existing warnings (`draft-actions.test.ts`, unrelated);
-  `npm test` 166 files / **1140 tests pass** (baseline was 1129; +11 new reaper/route
-  tests); `next build` success. No eBay/billing/auth/UI files modified; no secrets in
-  code/logs/tests; migration `20260626000000_inventory_safety_layer` untouched/unapplied.
-
-## Risks
-- resale_app BYPASSRLS: isolation depends on app-layer userId filters (engine
-  enforces them; keep that invariant).
-- Email parser is heuristic; only HIGH-confidence + exact match auto-acts, all else
-  -> review task (by design, to avoid wrong auto-delist).
-
----
-
-# Stripe billing / account-scope PR checkpoint (2026-06-26)
-
-- Branch: `feature/stripe-billing-metering-seats`
-- PR: https://github.com/g4m35/resale-crosslister/pull/62 -> `develop`
-- Branch was rebased onto latest `origin/develop`; one additive Prisma schema
-  conflict was resolved by retaining both inventory-safety models and billing
-  account/subscription/usage models.
-- Review fix commit added after PR open:
-  `fix(billing): preserve account scope in mark-sold flows`
-  - `/api/inventory/mark-sold` now authorizes by active account before calling
-    the safety engine.
-  - Lifecycle `mark_sold` passes creator `sellerId` as the inventory-owner guard
-    while preserving signed-in user as actor/audit id.
-- Review findings addressed in progress:
-  - Owner/admin account-management guard added for member invites.
-  - Owner/admin account-management guard added for Stripe portal sessions.
-  - Duplicate pending invites are reused, and duplicate login-time invite
-    acceptance revokes the extra pending invite when the user is already active.
-
-## Latest local validation before review-fix push
-- `npx prisma validate`: pass
-- `npm run lint`: pass, 0 errors / same 2 pre-existing warnings in
-  `src/app/api/listings/draft/draft-actions.test.ts`
-- `npm test`: pass, 187 files / 1252 tests
-- `npm run build`: pass
-- `git diff --check`: pass
-- Focused review-fix tests after guard/idempotency edits:
-  4 files / 30 tests pass
-
-## External status at checkpoint
-- Branch pushed to origin.
-- PR opened.
-- Vercel status reported success, but build was ignored by the configured Vercel
-  ignored-build step.
-- Supabase Preview skipped because there were no `supabase` directory changes.
-- Vercel Agent Review skipped because of insufficient credit.
-- CodeRabbit remained pending with only its in-progress comment at the time of
-  this checkpoint.
-- Codex review produced three actionable findings; all are being fixed before
-  merge.
-
----
-
-# StockX foundation / production-readiness checkpoint (2026-07-01)
-
-- Branch: `feature/stockx-foundation-bulk-safety-release`
-- StockX callback URL used by config and Vercel defaults:
-  `https://sello.wtf/api/marketplaces/stockx/callback`
-- Implementation added a fail-closed StockX foundation:
-  OAuth connect/callback/disconnect/status, encrypted token storage in the existing
-  account-scoped `MarketplaceConnection`, catalog search normalization, listing-draft
-  product/variant matching, StockX paid market-data comp source, settings UI, listing
-  editor match UI, and disabled listing placeholder route.
-- New migration:
-  `20260701010000_stockx_foundation` adds only nullable StockX match metadata fields
-  on `ListingDraft` plus indexes. The existing marketplace token table is reused.
-- Vercel env state checked by name only:
-  - Production and Preview (`develop`) now have non-secret defaults:
-    `STOCKX_REDIRECT_URI`, `STOCKX_API_BASE_URL`, `STOCKX_AUTH_BASE_URL`,
-    `STOCKX_API_ENABLED=false`, `STOCKX_MARKET_DATA_ENABLED=false`,
-    `STOCKX_LISTING_ENABLED=false`.
-  - Production and Preview (`develop`) now have generated app-owned secrets:
-    `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_OAUTH_STATE_SECRET`.
-  - The linked Vercel project did not list `STOCKX_CLIENT_ID`,
-    `STOCKX_CLIENT_SECRET`, or `STOCKX_API_KEY` by name during this pass. No values
-    were printed.
-- StockX OAuth/live API status:
-  disabled by default because `STOCKX_API_ENABLED=false` and required app credentials
-  / API key are not visible by name in the linked Vercel project. Catalog search and
-  market data fail closed until the flags and env are complete.
-- Intentionally disabled:
-  live StockX listing creation, future listing/order sync, and any bulk StockX
-  publishing. `stockx` remains excluded from the autonomous publish queue.
-- Bulk publishing safety validation:
-  registry tests assert StockX is not publish-queue eligible; the new StockX publish
-  route returns disabled/future-readiness errors and performs no marketplace mutation.
-- Migration-ledger readiness:
-  prior read-only Supabase production check found the billing/account-scope schema
-  present but `_prisma_migrations` missing the exact required billing migration names
-  (`20260625010000_add_billing_models`,
-  `20260625020000_inventory_account_scope`,
-  `20260625030000_marketplace_connections_account_scope`). Treat production deploy as
-  blocked until that ledger mismatch is reconciled or formally documented.
-- Validation after this pass:
-  `npx prisma validate` pass; `npm run lint` pass with the same two pre-existing
-  `draft-actions.test.ts` warnings; `npm test` pass (199 files / 1295 tests);
-  `npm run build` pass; `git diff --check` pass.
-- Secret handling:
-  no `.env*` files changed, no StockX credential values printed, and no secrets added
-  to repo docs/tests/source.
-
-## Follow-up release-readiness pass (2026-07-01)
-
-- Branch was rebased against `origin/develop`; no rebase changes were needed.
-- Vercel StockX env status, checked redacted:
-  - `vercel env ls` shows production names present for:
-    `STOCKX_API_KEY`, `STOCKX_REDIRECT_URI`, `STOCKX_API_BASE_URL`,
-    `STOCKX_AUTH_BASE_URL`, `STOCKX_API_ENABLED`,
-    `STOCKX_MARKET_DATA_ENABLED`, `STOCKX_LISTING_ENABLED`,
-    `STOCKX_TOKEN_ENCRYPTION_KEY`, `STOCKX_OAUTH_STATE_SECRET`.
-  - `vercel env ls` still shows misnamed production credential names:
-    `StockX_client_id`, `StockX_client_secret`.
-  - Exact production names `STOCKX_CLIENT_ID` and `STOCKX_CLIENT_SECRET` are
-    still missing. The misnamed values are not retrievable via `vercel env pull`
-    / `vercel env run` in this CLI context, so they must be re-entered under the
-    exact uppercase names by an operator. No credential values were printed.
-  - `STOCKX_API_ENABLED`, `STOCKX_MARKET_DATA_ENABLED`, and
-    `STOCKX_LISTING_ENABLED` were updated through Vercel CLI and verified as
-    fail-closed in the production runtime env (`!== "true"`). StockX live API,
-    market data, and listing creation remain disabled.
-- Read-only production migration ledger query was run through Supabase MCP against
-  project `xkovtxrdxparbkuysunh`:
-  - Present latest ledger entries include
-    `20260624000000_add_tiktok_vinted_stockx_marketplaces`,
-    `20260625000000_rls_least_privilege_hardening`, and
-    `20260626000000_inventory_safety_layer`.
-  - Still missing by exact name:
-    `20260625010000_add_billing_models`,
-    `20260625020000_inventory_account_scope`,
-    `20260625030000_marketplace_connections_account_scope`.
-  - New branch migration `20260701010000_stockx_foundation` is not applied to
-    production. Production deploy remains blocked until the migration ledger is
-    reconciled/documented and the StockX migration is applied through the
-    approved production path.
-- Bulk publish/delist safety audit result:
-  - Bulk publish and delist routes authenticate the user, resolve the active
-    account server-side, enforce plan batch caps, and pass `userId` separately
-    from `accountId` into service execution.
-  - Services re-check item membership with active `accountId` before readiness,
-    publish, or delist work; client-supplied account ids are not accepted.
-  - Bulk publish preflight uses canonical eBay preflight; execution calls
-    single-item `executePublish`, preserving eBay readiness, production gate,
-    duplicate publish guard, idempotency key, and structured per-item results.
-  - Bulk delist preflight and execution route through canonical eBay delist logic,
-    preserving already-ended/in-flight/idempotency checks and structured per-item
-    results.
-  - `stockx` remains excluded from autonomous publish queue; no bulk StockX
-    publishing exists.
-- Additional tests added in this pass:
-  - Free/Pro/Kingpin bulk publish plan cap behavior.
-  - Over-cap batch blocks before marketplace service call.
-  - Active account and acting user are forwarded separately for bulk publish/delist.
-  - Account-scoped item rejection happens before readiness/listing classification.
-  - Revoked membership is not returned by `getActiveAccount`.
-  - Focused validation: 8 files / 70 tests passed.

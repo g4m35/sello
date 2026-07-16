@@ -49,6 +49,10 @@ vi.mock("@/lib/api/client", () => ({
 
 vi.mock("@/components/app/theme-toggle", () => ({ ThemeToggle: () => null }));
 
+vi.mock("@/components/providers/mobile-nav-provider", () => ({
+  useMobileNav: () => ({ open: false, toggle: vi.fn(), close: vi.fn() }),
+}));
+
 import { Sidebar } from "./sidebar";
 
 function findElement(
@@ -78,7 +82,8 @@ function textContent(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(textContent).join("");
   if (typeof node === "object" && "props" in node) {
-    return textContent((node as ReactElement<Record<string, unknown>>).props.children);
+    const children = (node as ReactElement<{ children?: ReactNode }>).props.children;
+    return textContent(children);
   }
   return "";
 }
@@ -110,11 +115,26 @@ describe("Sidebar brand", () => {
       tree,
       (el) =>
         typeof el.props.onClick === "function" &&
-        textContent(el.props.children).includes("Billing"),
+        textContent(el.props.children as ReactNode).includes("Billing"),
     );
 
     expect(billing).not.toBeNull();
     (billing?.props.onClick as () => void)();
     expect(mocks.push).toHaveBeenCalledWith("/settings/billing");
+  });
+
+  it("provides direct access to durable bulk intake", () => {
+    reactHarness.cursor = 0;
+    const tree = Sidebar();
+    const bulk = findElement(
+      tree,
+      (el) =>
+        typeof el.props.onClick === "function" &&
+        textContent(el.props.children as ReactNode).includes("Bulk intake"),
+    );
+
+    expect(bulk).not.toBeNull();
+    (bulk?.props.onClick as () => void)();
+    expect(mocks.push).toHaveBeenCalledWith("/inventory/bulk");
   });
 });

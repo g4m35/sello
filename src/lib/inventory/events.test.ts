@@ -24,6 +24,7 @@ describe("recordInventoryEvent", () => {
     await recordInventoryEvent(prisma, {
       inventoryItemId: "item-1",
       userId: "user-1",
+      accountId: "account-1",
       type: "sale_detected",
       source: "api",
       marketplace: "grailed",
@@ -34,6 +35,7 @@ describe("recordInventoryEvent", () => {
     expect(prisma._events[0]).toMatchObject({
       inventoryItemId: "item-1",
       userId: "user-1",
+      accountId: "account-1",
       type: "sale_detected",
       source: "api",
       marketplace: "grailed",
@@ -48,6 +50,7 @@ describe("recordInventoryEvent", () => {
     await recordInventoryEvent(prisma, {
       inventoryItemId: "item-1",
       userId: "user-1",
+      accountId: "account-1",
       type: "notification_sent",
       source: "system",
     });

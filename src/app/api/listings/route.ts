@@ -4,7 +4,7 @@ import { getActiveAccount } from "@/lib/billing/account";
 import { accountScope } from "@/lib/billing/scope";
 import { AppError, safeClientMessage } from "@/lib/errors";
 import { getPrisma } from "@/lib/prisma";
-import { requireSupabaseUser } from "@/lib/supabase/server";
+import { createSupabaseServiceClient, requireSupabaseUser } from "@/lib/supabase/server";
 import { partitionDeletable } from "@/lib/view/inventory-actions";
 import { mapItem } from "@/lib/view/server-map";
 
@@ -24,11 +24,26 @@ export async function GET(request: Request) {
       include: {
         listingDrafts: { orderBy: { updatedAt: "desc" } },
         marketplaceListings: true,
+        photos: { orderBy: { position: "asc" }, take: 1 },
         _count: { select: { photos: true } },
       },
     });
 
-    return NextResponse.json({ items: items.map(mapItem) });
+    const photoUrls = new Map<string, string | null>();
+    const photos = items.flatMap((item) => item.photos);
+    if (photos.length > 0) {
+      const storage = createSupabaseServiceClient().storage;
+      await Promise.all(
+        photos.map(async (photo) => {
+          const { data } = await storage
+            .from(photo.storageBucket)
+            .createSignedUrl(photo.storagePath, 60 * 60);
+          photoUrls.set(photo.id, data?.signedUrl ?? null);
+        }),
+      );
+    }
+
+    return NextResponse.json({ items: items.map((item) => mapItem(item, photoUrls)) });
   } catch (error) {
     const status = error instanceof AppError ? error.status : 500;
     return NextResponse.json(

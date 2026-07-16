@@ -57,6 +57,7 @@ export type ItemView = {
   /** Number of blocking readiness checks still missing (0 when ready). */
   missingCount: number;
   photoCount: number;
+  coverImage?: string | null;
   updatedAt: string;
   draftId: string | null;
   channels: ChannelStateView[];

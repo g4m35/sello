@@ -2,6 +2,12 @@ import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
 import type { PlanId, PlanLimits } from "@/lib/billing/plans";
 import type {
+  BulkBatchSummaryView,
+  BulkBatchView,
+  BulkGenerationResult,
+  BulkPhotoUploadGrant,
+} from "@/lib/bulk-intake/types";
+import type {
   BulkExecutionResult,
   BulkPreflightResult,
 } from "@/lib/marketplace/bulk-publish";
@@ -88,6 +94,22 @@ export type ProviderUsageRow = {
   createdAt: string;
 };
 
+export type AdminBulkBatchRow = {
+  id: string;
+  accountId: string;
+  createdByUserId: string;
+  status: string;
+  photoCount: number;
+  totalItems: number;
+  processedItems: number;
+  needsReviewItems: number;
+  listingReadyItems: number;
+  failedItems: number;
+  canceledItems: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CompsSummary = {
   status: string;
   totalComps: number;
@@ -112,6 +134,40 @@ export type CompsSummary = {
 
 type RequestOptions = RequestInit & { timeoutMs?: number };
 const READ_REQUEST_TIMEOUT_MS = 10_000;
+const BULK_UPLOAD_CONCURRENCY = 6;
+const bulkUploadIds = new WeakMap<File, Map<string, string>>();
+
+function bulkUploadId(file: File, batchId: string, position: number): string {
+  let ids = bulkUploadIds.get(file);
+  if (!ids) {
+    ids = new Map();
+    bulkUploadIds.set(file, ids);
+  }
+  const key = `${batchId}:${position}`;
+  const existing = ids.get(key);
+  if (existing) return existing;
+  const created = globalThis.crypto.randomUUID();
+  ids.set(key, created);
+  return created;
+}
+
+async function forEachConcurrent<T>(
+  values: T[],
+  limit: number,
+  callback: (value: T, index: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await callback(values[index]!, index);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, () => worker()),
+  );
+}
 
 async function request<T>(
   path: string,
@@ -437,6 +493,12 @@ export const api = {
       }[];
     }>("/api/admin/marketplace-operations", token),
 
+  getAdminBulkIntake: (token: string) =>
+    request<{
+      totals: { batches: number; active: number; ready: number; failed: number; items: number };
+      rows: AdminBulkBatchRow[];
+    }>("/api/admin/bulk-intake", token),
+
   getChannels: async (token: string): Promise<ChannelView[]> => {
     const res = await request<{
       adapters: {
@@ -468,6 +530,113 @@ export const api = {
       { method: "POST", body: form },
     );
   },
+
+  listBulkBatches: (token: string) =>
+    request<{ batches: BulkBatchSummaryView[] }>("/api/bulk/batches", token),
+
+  createBulkBatch: (token: string, expectedItems?: number, idempotencyKey?: string) =>
+    request<{ batch: BulkBatchView }>("/api/bulk/batches", token, {
+      method: "POST",
+      body: JSON.stringify({
+        idempotencyKey: idempotencyKey ?? globalThis.crypto.randomUUID(),
+        ...(expectedItems ? { expectedItems } : {}),
+      }),
+    }),
+
+  getBulkBatch: (token: string, batchId: string) =>
+    request<{ batch: BulkBatchView }>(`/api/bulk/batches/${batchId}`, token),
+
+  uploadBulkPhotos: async (token: string, batchId: string, files: File[]) => {
+    const declarations = files.map((file, position) => ({
+      uploadId: bulkUploadId(file, batchId, position),
+      originalName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    }));
+    const signed = await request<{ uploads: BulkPhotoUploadGrant[] }>(
+      `/api/bulk/batches/${batchId}/photos/uploads`,
+      token,
+      { method: "POST", body: JSON.stringify({ photos: declarations }) },
+    );
+    const grants = new Map(signed.uploads.map((upload) => [upload.uploadId, upload]));
+    const { getBrowserSupabase } = await import("@/lib/supabase/browser");
+    const supabase = getBrowserSupabase();
+    if (!supabase) {
+      throw { error: "Photo upload is not configured.", status: 503 } satisfies ApiError;
+    }
+
+    await forEachConcurrent(declarations, BULK_UPLOAD_CONCURRENCY, async (photo, index) => {
+      const grant = grants.get(photo.uploadId);
+      if (!grant) {
+        throw { error: "Photo upload could not be prepared.", status: 503 } satisfies ApiError;
+      }
+      // Registration is the source of truth. A retry can receive an
+      // Asset Already Exists response after the original upload succeeded, so
+      // let the server verify the object rather than treating that as failure.
+      const { error } = await supabase.storage
+        .from(grant.bucket)
+        .uploadToSignedUrl(grant.path, grant.token, files[index]!, {
+          contentType: photo.mimeType,
+          upsert: false,
+        });
+      if (error && error.status !== 400 && error.status !== 409) {
+        throw { error: "Photo upload failed. Please try again.", status: 503 } satisfies ApiError;
+      }
+    });
+
+    return request<{ batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/photos`,
+      token,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          photos: declarations.map((photo) => ({
+            ...photo,
+            storagePath: grants.get(photo.uploadId)?.path ?? "",
+          })),
+        }),
+      },
+    );
+  },
+
+  groupBulkPhotos: (
+    token: string,
+    batchId: string,
+    groups: { photoIds: string[] }[],
+  ) =>
+    request<{ batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/grouping`,
+      token,
+      { method: "PUT", body: JSON.stringify({ groups }) },
+    ),
+
+  startBulkGeneration: (token: string, batchId: string) =>
+    request<{ itemIds: string[]; batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/generate`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  generateBulkItem: (token: string, batchId: string, itemId: string) =>
+    request<{ item: BulkGenerationResult }>(
+      `/api/bulk/batches/${batchId}/items/${itemId}/generate`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  convertBulkItem: (token: string, batchId: string, itemId: string) =>
+    request<{ item: BulkGenerationResult }>(
+      `/api/bulk/batches/${batchId}/items/${itemId}/convert`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  cancelBulkBatch: (token: string, batchId: string) =>
+    request<{ batch: BulkBatchView }>(
+      `/api/bulk/batches/${batchId}/cancel`,
+      token,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
 
   addPhotos: (token: string, itemId: string, files: File[]) => {
     const form = new FormData();
@@ -655,13 +824,14 @@ export const api = {
   preflightBulkPublish: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkPreflightResult> => {
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
     const parts = await Promise.all(
       chunks.map((ids) =>
         request<BulkPreflightResult>("/api/listings/publish/bulk/preflight", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids }),
+          body: JSON.stringify({ itemIds: ids, marketplace }),
         }),
       ),
     );
@@ -674,6 +844,7 @@ export const api = {
   executeBulkPublish: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkExecutionResult> => {
     const bulkRunId = globalThis.crypto.randomUUID();
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
@@ -682,7 +853,7 @@ export const api = {
       parts.push(
         await request<BulkExecutionResult>("/api/listings/publish/bulk", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLivePublish: true }),
+          body: JSON.stringify({ itemIds: ids, marketplace, bulkRunId, confirmLivePublish: true }),
         }),
       );
     }
@@ -694,13 +865,14 @@ export const api = {
   preflightBulkDelist: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkDelistPreflightResult> => {
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
     const parts = await Promise.all(
       chunks.map((ids) =>
         request<BulkDelistPreflightResult>("/api/listings/delist/bulk/preflight", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids }),
+          body: JSON.stringify({ itemIds: ids, marketplace }),
         }),
       ),
     );
@@ -713,6 +885,7 @@ export const api = {
   executeBulkDelist: async (
     token: string,
     itemIds: string[],
+    marketplace: "ebay" | "stockx" = "ebay",
   ): Promise<BulkDelistExecutionResult> => {
     const bulkRunId = globalThis.crypto.randomUUID();
     const chunks = chunkIds(itemIds, BULK_TRANSPORT_CHUNK);
@@ -721,7 +894,7 @@ export const api = {
       parts.push(
         await request<BulkDelistExecutionResult>("/api/listings/delist/bulk", token, {
           method: "POST",
-          body: JSON.stringify({ itemIds: ids, bulkRunId, confirmLiveDelist: true }),
+          body: JSON.stringify({ itemIds: ids, marketplace, bulkRunId, confirmLiveDelist: true }),
         }),
       );
     }

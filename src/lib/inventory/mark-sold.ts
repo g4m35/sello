@@ -34,6 +34,7 @@ import { createReviewTask, type ReviewTaskPrismaLike } from "./review-tasks";
 export type MarkSoldItemRow = {
   id: string;
   sellerId: string;
+  accountId: string;
   productName: string;
   status: InventoryStatus;
   soldSourceMarketplace: Marketplace | null;
@@ -58,6 +59,12 @@ export type MarkSoldTransaction = DelistPrismaLike & {
       };
     }): Promise<{ id: string }>;
   };
+  marketplaceListing: DelistPrismaLike["marketplaceListing"] & {
+    update(args: {
+      where: { id: string };
+      data: { status: "SOLD"; endedAt: Date };
+    }): Promise<{ id: string }>;
+  };
 };
 
 export type MarkSoldPrismaLike = DelistPrismaLike &
@@ -66,10 +73,11 @@ export type MarkSoldPrismaLike = DelistPrismaLike &
   InventoryEventPrismaLike & {
     inventoryItem: DelistPrismaLike["inventoryItem"] & {
       findFirst(args: {
-        where: { id: string; sellerId: string };
+        where: { id: string; sellerId?: string; accountId?: string };
         select: {
           id: true;
           sellerId: true;
+          accountId: true;
           productName: true;
           status: true;
           soldSourceMarketplace: true;
@@ -84,11 +92,13 @@ export type MarkSoldPrismaLike = DelistPrismaLike &
 export type MarkItemSoldInput = {
   inventoryItemId: string;
   userId: string;
+  accountId?: string;
   inventoryOwnerUserId?: string;
   // null = "source unknown" (e.g. a manual mark-sold via the lifecycle route):
   // record no sold source and delist EVERY active listing.
   soldMarketplace: Marketplace | null;
   soldListingId?: string | null;
+  sourceMarketplaceListingId?: string | null;
   soldPriceCents?: number | null;
   source: "api" | "email" | "manual" | "system";
 };
@@ -113,16 +123,117 @@ export type MarkItemSoldResult =
       reviewTaskId: string;
     };
 
+class InventoryLockVersionConflict extends Error {}
+
+function soldSourceConflictDedupeKey(
+  inventoryItemId: string,
+  existingSource: Marketplace | null,
+  incomingSource: Marketplace | null,
+): string {
+  const sources = [existingSource ?? "manual", incomingSource ?? "manual"].sort();
+  return `sold-source-conflict:${inventoryItemId}:${sources.join(":")}`;
+}
+
+async function recordSoldSourceConflict(
+  db: MarkSoldPrismaLike,
+  input: MarkItemSoldInput,
+  item: MarkSoldItemRow,
+): Promise<Extract<MarkItemSoldResult, { outcome: "conflict" }>> {
+  const existingSource = item.soldSourceMarketplace;
+  const conflictMarketplace = existingSource ?? input.soldMarketplace;
+  if (!conflictMarketplace) {
+    throw new AppError(
+      "Inventory is already sold without a distinguishable conflicting source.",
+      409,
+      "INVENTORY_SOLD_SOURCE_UNKNOWN",
+    );
+  }
+
+  const conflictingLabel = input.soldMarketplace
+    ? `from ${input.soldMarketplace}`
+    : "from another source";
+  const dedupeKey = soldSourceConflictDedupeKey(
+    item.id,
+    existingSource,
+    input.soldMarketplace,
+  );
+  const task = await createReviewTask(db, {
+    userId: input.userId,
+    accountId: item.accountId,
+    type: "sync_conflict",
+    inventoryItemId: item.id,
+    marketplace: input.soldMarketplace,
+    dedupeKey,
+    title: `Conflicting sale for "${item.productName}"`,
+    description:
+      `"${item.productName}" is already marked sold` +
+      (existingSource ? ` on ${existingSource}` : "") +
+      `, but a new sale signal arrived ${conflictingLabel}. ` +
+      `Review which sale is real before any listing is changed.`,
+    payload: {
+      inventoryItemId: item.id,
+      alreadySoldMarketplace: existingSource,
+      alreadySoldListingId: item.soldSourceListingId,
+      conflictingMarketplace: input.soldMarketplace,
+      conflictingListingId: input.soldListingId ?? null,
+      source: input.source,
+    } as Prisma.InputJsonValue,
+  });
+
+  await recordInventoryEvent(db, {
+    inventoryItemId: item.id,
+    userId: input.userId,
+    accountId: item.accountId,
+    type: "sync_conflict",
+    source: input.source,
+    marketplace: input.soldMarketplace,
+    payload: {
+      alreadySoldMarketplace: existingSource,
+      alreadySoldListingId: item.soldSourceListingId,
+      conflictingMarketplace: input.soldMarketplace,
+      conflictingListingId: input.soldListingId ?? null,
+      reviewTaskId: task.id,
+    } as Prisma.InputJsonValue,
+  });
+
+  // The seller-facing conflict notification only fires when both the existing
+  // source and the conflicting source are named marketplaces.
+  if (existingSource && input.soldMarketplace) {
+    await createNotification(db, {
+      userId: input.userId,
+      accountId: item.accountId,
+      inventoryItemId: item.id,
+      dedupeKey,
+      ...syncConflictCopy({
+        productName: item.productName,
+        alreadySoldMarketplace: existingSource,
+        conflictingMarketplace: input.soldMarketplace,
+      }),
+    });
+  }
+
+  return {
+    outcome: "conflict",
+    inventoryItemId: item.id,
+    soldMarketplace: input.soldMarketplace,
+    conflictMarketplace,
+    reviewTaskId: task.id,
+  };
+}
+
 export async function markItemSold(
   db: MarkSoldPrismaLike = getPrisma(),
   input: MarkItemSoldInput,
 ): Promise<MarkItemSoldResult> {
   const inventoryOwnerUserId = input.inventoryOwnerUserId ?? input.userId;
   const item = await db.inventoryItem.findFirst({
-    where: { id: input.inventoryItemId, sellerId: inventoryOwnerUserId },
+    where: input.accountId
+      ? { id: input.inventoryItemId, accountId: input.accountId }
+      : { id: input.inventoryItemId, sellerId: inventoryOwnerUserId },
     select: {
       id: true,
       sellerId: true,
+      accountId: true,
       productName: true,
       status: true,
       soldSourceMarketplace: true,
@@ -134,6 +245,7 @@ export async function markItemSold(
   if (!item) {
     throw new AppError("Inventory item not found.", 404);
   }
+  const authoritativeAccountId = item.accountId;
 
   // Already sold: idempotent if same source, conflict if a different source.
   if (item.status === "SOLD" || item.soldSourceMarketplace) {
@@ -146,66 +258,8 @@ export async function markItemSold(
       };
     }
 
-    // Different source (or sold with no recorded source): never overwrite. An
-    // unnamed (null) new source is described generically.
-    const conflictMarketplace = existingSource ?? input.soldMarketplace;
-    const conflictingLabel = input.soldMarketplace
-      ? `from ${input.soldMarketplace}`
-      : "from another source";
-    const task = await createReviewTask(db, {
-      userId: input.userId,
-      type: "sync_conflict",
-      inventoryItemId: item.id,
-      marketplace: input.soldMarketplace,
-      title: `Conflicting sale for "${item.productName}"`,
-      description:
-        `"${item.productName}" is already marked sold` +
-        (existingSource ? ` on ${existingSource}` : "") +
-        `, but a new sale signal arrived ${conflictingLabel}. ` +
-        `Review which sale is real before any listing is changed.`,
-      payload: {
-        inventoryItemId: item.id,
-        alreadySoldMarketplace: existingSource,
-        conflictingMarketplace: input.soldMarketplace,
-        conflictingListingId: input.soldListingId ?? null,
-        source: input.source,
-      } as Prisma.InputJsonValue,
-    });
-
-    await recordInventoryEvent(db, {
-      inventoryItemId: item.id,
-      userId: input.userId,
-      type: "sync_conflict",
-      source: input.source,
-      marketplace: input.soldMarketplace,
-      payload: {
-        alreadySoldMarketplace: existingSource,
-        conflictingMarketplace: input.soldMarketplace,
-        reviewTaskId: task.id,
-      } as Prisma.InputJsonValue,
-    });
-
-    // The seller-facing conflict notification only fires when both the existing
-    // source and the conflicting source are named marketplaces.
-    if (existingSource && input.soldMarketplace) {
-      await createNotification(db, {
-        userId: input.userId,
-        inventoryItemId: item.id,
-        ...syncConflictCopy({
-          productName: item.productName,
-          alreadySoldMarketplace: existingSource,
-          conflictingMarketplace: input.soldMarketplace,
-        }),
-      });
-    }
-
-    return {
-      outcome: "conflict",
-      inventoryItemId: item.id,
-      soldMarketplace: input.soldMarketplace,
-      conflictMarketplace: conflictMarketplace as Marketplace,
-      reviewTaskId: task.id,
-    };
+    // Different source (or sold with no recorded source): never overwrite.
+    return recordSoldSourceConflict(db, input, item);
   }
 
   // Fresh sale: flip to SOLD, record the audit event, AND queue delist for every
@@ -218,20 +272,32 @@ export async function markItemSold(
   let delist: QueueDelistResult;
   try {
     delist = await db.$transaction(async (tx) => {
-      await tx.inventoryItem.update({
-        where: { id: item.id, lockVersion: item.lockVersion },
-        data: {
-          status: "SOLD",
-          quantityAvailable: 0,
-          soldAt: now,
-          soldSourceMarketplace: input.soldMarketplace,
-          soldSourceListingId: input.soldListingId ?? null,
-          lockVersion: { increment: 1 },
-        },
-      });
+      try {
+        await tx.inventoryItem.update({
+          where: { id: item.id, lockVersion: item.lockVersion },
+          data: {
+            status: "SOLD",
+            quantityAvailable: 0,
+            soldAt: now,
+            soldSourceMarketplace: input.soldMarketplace,
+            soldSourceListingId: input.soldListingId ?? null,
+            lockVersion: { increment: 1 },
+          },
+        });
+      } catch (error) {
+        if (isRecordNotFound(error)) throw new InventoryLockVersionConflict();
+        throw error;
+      }
+      if (input.sourceMarketplaceListingId) {
+        await tx.marketplaceListing.update({
+          where: { id: input.sourceMarketplaceListingId },
+          data: { status: "SOLD", endedAt: now },
+        });
+      }
       await recordInventoryEvent(tx, {
         inventoryItemId: item.id,
         userId: input.userId,
+        accountId: authoritativeAccountId,
         type: "sale_confirmed",
         source: input.source,
         marketplace: input.soldMarketplace,
@@ -248,17 +314,43 @@ export async function markItemSold(
         input.soldMarketplace,
         input.userId,
         inventoryOwnerUserId,
+        authoritativeAccountId,
       );
     });
   } catch (error) {
     // A concurrent sale won the lockVersion race. Treat as already-sold (the
     // other writer is mid-flight); never overwrite or double-queue.
-    if (isLockVersionConflict(error)) {
-      return {
-        outcome: "already_sold",
-        inventoryItemId: item.id,
-        soldMarketplace: input.soldMarketplace,
-      };
+    if (error instanceof InventoryLockVersionConflict) {
+      const latest = await db.inventoryItem.findFirst({
+        where: input.accountId
+          ? { id: input.inventoryItemId, accountId: input.accountId }
+          : { id: input.inventoryItemId, sellerId: inventoryOwnerUserId },
+        select: {
+          id: true,
+          sellerId: true,
+          accountId: true,
+          productName: true,
+          status: true,
+          soldSourceMarketplace: true,
+          soldSourceListingId: true,
+          lockVersion: true,
+        },
+      });
+      if (latest && (latest.status === "SOLD" || latest.soldSourceMarketplace)) {
+        if (latest.soldSourceMarketplace !== input.soldMarketplace) {
+          return recordSoldSourceConflict(db, input, latest);
+        }
+        return {
+          outcome: "already_sold",
+          inventoryItemId: item.id,
+          soldMarketplace: input.soldMarketplace,
+        };
+      }
+      throw new AppError(
+        "Inventory changed while the sale was being recorded. Retry reconciliation.",
+        409,
+        "INVENTORY_LOCK_CONFLICT",
+      );
     }
     throw error;
   }
@@ -267,11 +359,12 @@ export async function markItemSold(
   // never roll back a completed sale.
   await createNotification(db, {
     userId: input.userId,
+    accountId: authoritativeAccountId,
     inventoryItemId: item.id,
     ...soldDelistingCopy({
       productName: item.productName,
       soldMarketplace: input.soldMarketplace,
-      // queuedJobIds holds ONLY auto-executable (eBay) jobs; non-eBay listings are
+      // queuedJobIds holds ONLY adapter-backed jobs; unsupported marketplaces are
       // in manualReviewTaskIds. Keep the two distinct so we never tell the seller
       // we're auto-removing a listing we can't touch.
       autoDelistCount: delist.queuedJobIds.length,
@@ -288,7 +381,7 @@ export async function markItemSold(
 }
 
 // Prisma surfaces "record not found for the where clause" on an update as P2025.
-function isLockVersionConflict(error: unknown): boolean {
+function isRecordNotFound(error: unknown): boolean {
   return (
     !!error &&
     typeof error === "object" &&
