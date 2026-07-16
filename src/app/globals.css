@@ -1091,6 +1091,8 @@ img { display: block; max-width: 100%; }
   --lp-on-ink-2: #C9C7BE;
   --lp-on-ink-3: #97958C;
   --lp-line-on-ink: #2E2E29;
+  /* Muted label ink that still clears 4.5:1 on the sunk surface. */
+  --lp-ink3-sunk: #5D5C55;
   --lp-ease: cubic-bezier(.2, .7, .2, 1);
   --lp-wrap: 1200px;
 
@@ -1295,7 +1297,7 @@ img { display: block; max-width: 100%; }
   font-weight: 600;
   letter-spacing: .12em;
   text-transform: uppercase;
-  color: var(--lp-ink3);
+  color: var(--lp-ink3-sunk);
   background: var(--lp-sunk);
   border-bottom: 2px solid var(--lp-ink);
   padding: 9px 16px;
@@ -1333,7 +1335,7 @@ img { display: block; max-width: 100%; }
   font-size: 9.5px;
   letter-spacing: .1em;
   text-transform: uppercase;
-  color: var(--lp-ink3);
+  color: var(--lp-ink3-sunk);
 }
 .lp-ticket__photo-note.is-done { color: var(--lp-ink); }
 .lp-ticket__fields { min-width: 0; }
@@ -1491,7 +1493,7 @@ img { display: block; max-width: 100%; }
   font-weight: 600;
   letter-spacing: .13em;
   text-transform: uppercase;
-  color: var(--lp-ink3);
+  color: var(--lp-ink3-sunk);
   background: var(--lp-sunk);
   border-top: 2px solid var(--lp-ink);
   padding: 8px 16px;

@@ -7,6 +7,26 @@ Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Curren
 Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 
 ## Last updated
+2026-07-16 — Claude (Fable). Full landing-page redesign on
+`feature/sello-landing-page`. Merged origin/develop (115 commits) into the
+branch first (took develop's page.tsx/globals.css/landing.test.ts as base,
+kept the WIP checkpoint in history). New "Market Sheet" landing system:
+typographic hero + rotated listing-ticket artifact, merged 5-step interactive
+flow (single evolving ticket, keyboard tabs, pause control, no auto-advance
+on touch/reduced-motion), registry-true marketplace support board
+(native/gated/copy-ready), dark comp-tape evidence band (receipt reflow on
+mobile), spec-sheet plans with real PLAN_CATALOG numbers, manifest-row FAQ
+(details/summary kept), ink closing band. New `lp-` CSS block replaces the
+old landing CSS in globals.css; contact page restyled to match (its WIP
+styles were lost in the merge); unreviewed `src/components/landing/*` WIP
+components deleted; Manrope 800 added in layout.tsx. All copy anchors from
+landing.test.ts preserved (no test changes needed). Gate: lint 0 errors
+(2 known warnings), tsc clean, 235 files / 1,675 tests passed, prisma valid,
+production build green. Browser-verified at 1920/1440/1280/834/390/320 — no
+horizontal overflow, console clean (only local-prod Vercel insights 404s),
+LCP ~124 ms local, CLS 0. Branch pushed; not merged, no deploy.
+
+## Last updated (previous)
 2026-07-05 — Codex. Addressed the owner’s 17 browser comments on preview
 `https://resale-crosslister-jeo2bdik8-jaky.vercel.app`, using two read-only
 subagents plus web research on integration/marketplace landing sections before
