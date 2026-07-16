@@ -270,7 +270,6 @@ export function LandingPage() {
       <header className="lp-hero">
         <div className="lp-hero__meta">
           <span>Sello — Resale crosslisting</span>
-          <span>Fig. 01 — For resellers</span>
           <span>Early access / 2026</span>
         </div>
 
@@ -311,19 +310,13 @@ export function LandingPage() {
       <section
         id="how-it-works"
         className="lp-section lp-section--flow"
-        aria-labelledby="lp-flow-title"
+        aria-label="How it works"
       >
-        <div className="lp-section__head" data-reveal="rise">
-          <p className="lp-eyebrow">
-            <span className="lp-eyebrow__fig">Fig. 02</span> The flow
-          </p>
-          <h2 id="lp-flow-title" className="lp-section__title">
-            From photo to live to <em>sold.</em>
-          </h2>
-          <p className="lp-section__sub">
-            One streamlined flow — upload, draft, price, publish or export,
-            synced. No retyping, no tab-juggling.
-          </p>
+        <div className="lp-caption" data-reveal="draw">
+          <span className="lp-caption__label">The flow</span>
+          <span className="lp-caption__note">
+            One streamlined flow — photo → live → sold
+          </span>
         </div>
         <LandingFlow steps={FLOW_STEPS} item={FLOW_TICKET} />
       </section>
@@ -331,23 +324,13 @@ export function LandingPage() {
       <section
         id="marketplaces"
         className="lp-section lp-section--board"
-        aria-labelledby="lp-board-title"
+        aria-label="Marketplace coverage"
       >
-        <div className="lp-section__head" data-reveal="rise">
-          <p className="lp-eyebrow">
-            <span className="lp-eyebrow__fig">Fig. 03</span> Coverage
-          </p>
-          <h2 id="lp-board-title" className="lp-section__title">
-            Eight channels. <em>Honest</em> support levels.
-          </h2>
-          <p className="lp-section__sub">
-            No scraping, no botting, no pretending. Sello does the maximum
-            each marketplace officially allows — and labels exactly what that
-            is.
-          </p>
-        </div>
-
         <div className="lp-board">
+          <div className="lp-grid-caption" data-reveal="rise">
+            <span>Eight channels — honest support levels</span>
+            <span>No scraping · no botting · official routes only</span>
+          </div>
           {BOARD.map((cell) => (
             <article
               key={cell.name}
@@ -373,18 +356,13 @@ export function LandingPage() {
 
       <section className="lp-section lp-section--evidence" aria-labelledby="lp-evidence-title">
         <div className="lp-section__head" data-reveal="rise">
-          <p className="lp-eyebrow lp-eyebrow--onink">
-            <span className="lp-eyebrow__fig">Fig. 04</span> Pricing evidence
-          </p>
           <h2 id="lp-evidence-title" className="lp-section__title">
             Priced like the market <em>already did.</em>
           </h2>
           <p className="lp-section__sub">
-            Sello hunts real sold comps, trims the outliers, and recommends a
-            price from what buyers actually paid — with a confidence score and
-            the receipts behind it. Create listings free and preview pricing;
-            paid plans unlock full automatic discovery and refreshes, so your
-            ask stays sharp as the market moves.
+            Real sold comps, outliers trimmed, receipts included. Create
+            listings free and preview pricing — paid plans unlock full
+            automatic discovery and refreshes.
           </p>
         </div>
 
@@ -449,21 +427,12 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section id="plans" className="lp-section lp-section--plans" aria-labelledby="lp-plans-title">
-        <div className="lp-section__head" data-reveal="rise">
-          <p className="lp-eyebrow">
-            <span className="lp-eyebrow__fig">Fig. 05</span> Plans
-          </p>
-          <h2 id="lp-plans-title" className="lp-section__title">
-            Free to list. <em>Paid</em> to price.
-          </h2>
-          <p className="lp-section__sub">
-            Full sold-comp discovery uses paid provider calls — credit-limited,
-            included with paid plans.
-          </p>
-        </div>
-
+      <section id="plans" className="lp-section lp-section--plans" aria-label="Plans">
         <div className="lp-plans">
+          <div className="lp-grid-caption" data-reveal="rise">
+            <span>Plans — free to list, paid to price</span>
+            <span>Comp discovery is credit-limited — included with paid plans</span>
+          </div>
           {PLANS.map((plan) => (
             <article
               key={plan.name}
@@ -493,14 +462,14 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section id="faq" className="lp-section lp-section--faq" aria-labelledby="lp-faq-title">
-        <div className="lp-section__head" data-reveal="rise">
-          <p className="lp-eyebrow">
-            <span className="lp-eyebrow__fig">Fig. 06</span> Questions
-          </p>
-          <h2 id="lp-faq-title" className="lp-section__title">
-            Straight <em>answers.</em>
-          </h2>
+      <section
+        id="faq"
+        className="lp-section lp-section--faq"
+        aria-label="Frequently asked questions"
+      >
+        <div className="lp-caption" data-reveal="draw">
+          <span className="lp-caption__label">Questions</span>
+          <span className="lp-caption__note">Straight answers — no fine print</span>
         </div>
         <div className="lp-faq">
           {FAQ.map(([question, answer], index) => (
