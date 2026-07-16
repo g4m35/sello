@@ -25,14 +25,18 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://sello.wtf"),
-  title: "Sello — Resale crosslisting",
-  description: "AI-assisted resale cross-listing for streetwear, sneakers, and hype-fashion sellers.",
+  title: "Sello — Listings live. Inventory synchronized.",
+  description:
+    "Turn photos into complete resale listings, publish through the strongest marketplace workflow available, and keep inventory synchronized through sale and delisting.",
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg",
     apple: "/sello-mark.svg",
   },
   openGraph: {
+    title: "Sello — Listings live. Inventory synchronized.",
+    description:
+      "Complete resale listings, marketplace-specific publishing, sold-comp pricing, and inventory synchronization through sale and delisting.",
     images: ["/sello-mark.svg"],
   },
 };

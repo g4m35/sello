@@ -15,44 +15,124 @@ vi.mock("next/navigation", () => ({
 
 import HomePage, { metadata } from "@/app/page";
 import { LandingPage } from "@/components/marketing/landing-page";
+import { PLAN_CATALOG } from "@/lib/billing/plans";
 import { getSupabaseUserFromCookies } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 const pageSource = readFileSync(join(process.cwd(), "src/app/page.tsx"), "utf8");
+const layoutSource = readFileSync(join(process.cwd(), "src/app/layout.tsx"), "utf8");
 const landingSource = readFileSync(
   join(process.cwd(), "src/components/marketing/landing-page.tsx"),
   "utf8",
 );
-const flat = landingSource.replace(/\s+/g, " ");
+const flowSource = readFileSync(
+  join(process.cwd(), "src/components/marketing/landing-flow.tsx"),
+  "utf8",
+);
+const ticketSource = readFileSync(
+  join(process.cwd(), "src/components/marketing/landing-ticket.tsx"),
+  "utf8",
+);
+const effectsSource = readFileSync(
+  join(process.cwd(), "src/components/marketing/landing-effects.tsx"),
+  "utf8",
+);
+const cssSource = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+const landingBundle = [landingSource, flowSource, ticketSource].join("\n");
+const flat = landingBundle.replace(/\s+/g, " ");
+
+const bannedPhrases = [
+  "marketplace-ready",
+  "copy-ready",
+  "copy and paste",
+  "copy & paste",
+  "automated where supported",
+  "assisted where required",
+  "one click",
+  "list everywhere",
+  "sell everywhere",
+  "never double sell",
+  "all-in-one",
+  "supercharge",
+  "revolutionize",
+  "watch the demo",
+  "jump in",
+  "publish across marketplaces",
+] as const;
+
+const sectionIds = [
+  "nav",
+  "hero",
+  "how-it-works",
+  "listing-creation",
+  "marketplaces",
+  "inventory-sync",
+  "bulk-operations",
+  "pricing-intelligence",
+  "marketplace-coverage",
+  "why-sello",
+  "trust",
+  "plans",
+  "final-cta",
+  "footer",
+] as const;
 
 describe("landing page", () => {
-  it("renders without auth (pure marketing component, no throw)", () => {
+  it("renders without auth as a pure marketing component", () => {
     expect(typeof LandingPage).toBe("function");
     expect(() => LandingPage()).not.toThrow();
   });
 
-  it("has page metadata title + description", () => {
-    expect(metadata.title).toMatch(/Sello/);
+  it("uses listing-led page and root metadata", () => {
+    expect(metadata.title).toMatch(/^Sello — /);
     expect(String(metadata.description ?? "")).toMatch(/listing/i);
+    expect(layoutSource).toMatch(/title:\s*"Sello — [^"]+"/);
+    expect(layoutSource).toMatch(/description:\s*"[^"]*listing[^"]*"/i);
   });
 
-  it("does not use marketplace-ready phrasing in metadata", () => {
-    expect(String(metadata.title ?? "").toLowerCase()).not.toContain("marketplace-ready");
-    expect(String(metadata.description ?? "").toLowerCase()).not.toContain("marketplace-ready");
+  it("keeps banned positioning out of metadata and landing copy", () => {
+    const metadataCopy = [
+      String(metadata.title ?? ""),
+      String(metadata.description ?? ""),
+      pageSource,
+      layoutSource,
+    ]
+      .join(" ")
+      .toLowerCase();
+    const landingCopy = flat.toLowerCase();
+
+    for (const phrase of bannedPhrases) {
+      expect(metadataCopy).not.toContain(phrase);
+      expect(landingCopy).not.toContain(phrase);
+    }
   });
 
-  it("does not use the old assisted-where-required slogan", () => {
-    expect(flat.toLowerCase()).not.toContain("automated where supported");
-    expect(flat.toLowerCase()).not.toContain("assisted where required");
+  it("contains the complete landing narrative", () => {
+    expect(landingSource).toContain('className="lp-nav"');
+    for (const id of sectionIds) {
+      expect(landingSource).toContain(`id="${id}"`);
+    }
   });
 
-  it("mentions supported inventory sync and delist", () => {
-    expect(flat.toLowerCase()).toMatch(/inventory sync/i);
-    expect(flat.toLowerCase()).toMatch(/delist/i);
-    expect(flat.toLowerCase()).toMatch(/supported connected|where supported/i);
+  it("includes the required operational sections", () => {
+    expect(landingSource).toContain('id="inventory-sync"');
+    expect(landingSource).toContain('id="marketplaces"');
+    expect(landingSource).toContain('id="bulk-operations"');
+    expect(flat).toMatch(/inventory sync/i);
+    expect(flat).toMatch(/delist/i);
+    expect(flat).toMatch(/supported connected|where supported/i);
   });
 
-  it("has working primary/secondary CTAs", () => {
+  it("uses the fixed marketplace vocabulary and mechanisms", () => {
+    expect(flat).toMatch(/Publishes direct/);
+    expect(flat).toMatch(/Guided publish/);
+    expect(flat).toMatch(/On approval/);
+    expect(flat).toMatch(/native API, access-gated/i);
+    expect(flat).toMatch(/no official APIs exist/i);
+    expect(flat).toMatch(/Vinted Pro API/i);
+  });
+
+  it("has working primary and secondary CTAs", () => {
     expect(landingSource).toContain('href="/dashboard"');
     expect(landingSource).toContain("Start creating listings");
     expect(landingSource).toContain('href="#how-it-works"');
@@ -60,36 +140,76 @@ describe("landing page", () => {
     expect(landingSource).toContain("View pricing");
   });
 
-  it("eBay FYI: no developer account, seller policies needed for auto-publish", () => {
-    expect(flat).toMatch(/no developer account|Connect your normal eBay seller account/i);
+  it("states eBay connection and seller-policy requirements", () => {
+    expect(flat).toMatch(/Connect your normal eBay seller account/i);
     expect(flat).toMatch(/payment, shipping, and returns/i);
   });
 
-  it("positions full auto-pricing / sold comps as paid", () => {
-    expect(flat).toMatch(/paid plans unlock/i);
-    expect(flat.toLowerCase()).toMatch(/sold comps?/);
+  it("describes guided channels without direct automation claims", () => {
+    expect(flat).toMatch(/Grailed/);
+    expect(flat).toMatch(/complete listing/i);
+    expect(flat.toLowerCase()).not.toContain("auto-post");
+    expect(flat.toLowerCase()).not.toContain("auto-submit");
+    expect(flat.toLowerCase()).not.toContain("scrape");
+    expect(flat.toLowerCase()).not.toMatch(/directly publish to grailed/);
   });
 
-  it("describes Grailed as packages/assisted, not direct automation", () => {
-    expect(landingSource.toLowerCase()).toMatch(/grailed/);
-    expect(landingSource.toLowerCase()).toMatch(/listing packages|packages/);
-    expect(landingSource.toLowerCase()).not.toContain("auto-post");
-    expect(landingSource.toLowerCase()).not.toContain("auto-submit");
-    expect(landingSource.toLowerCase()).not.toContain("scrape");
-    expect(landingSource.toLowerCase()).not.toMatch(/directly publish to grailed/);
+  it("uses the plan catalog and describes its automation depth", () => {
+    expect(landingSource).toContain("PLAN_CATALOG");
+    expect(PLAN_CATALOG.free.limits).toMatchObject({
+      aiListingsPerMonth: 10,
+      autopublishesPerMonth: 10,
+      compRefreshesPerMonth: 10,
+      marketplaceConnections: 1,
+      bulkBatchSize: 5,
+      teamSeats: 1,
+    });
+    expect(PLAN_CATALOG.pro.limits).toMatchObject({
+      aiListingsPerMonth: 125,
+      autopublishesPerMonth: 125,
+      compRefreshesPerMonth: 100,
+      marketplaceConnections: 3,
+      bulkBatchSize: 25,
+      teamSeats: 1,
+    });
+    expect(PLAN_CATALOG.kingpin.limits).toMatchObject({
+      aiListingsPerMonth: 1000,
+      autopublishesPerMonth: 1000,
+      compRefreshesPerMonth: 750,
+      marketplaceConnections: 5,
+      bulkBatchSize: 250,
+      teamSeats: 5,
+    });
+    expect(flat).toMatch(/5 items per batch/);
+    expect(flat).toMatch(/25 items per batch/);
+    expect(flat).toMatch(/250 items per batch/);
+    expect(flat).toMatch(/Assisted sold-delist/);
+    expect(flat).toMatch(/Full inventory sync/);
+    expect(flat).toMatch(/automatic delisting/);
   });
 
-  it("uses FAQ accordion details/summary", () => {
-    expect(landingSource).toContain("<details");
-    expect(landingSource).toContain("<summary");
+  it("keeps reveal effects additive and content visible by default", () => {
+    expect(effectsSource).toContain("IntersectionObserver");
+    expect(cssSource).not.toMatch(
+      /\.lp-reveal-ready\s+\[data-reveal\][^{]*\{[^}]*opacity:\s*0/,
+    );
   });
 
-  it("keeps the streamlined flow without overstating marketplace support", () => {
-    expect(flat).toMatch(/One streamlined flow/i);
-    expect(flat.toLowerCase()).not.toContain("watch the demo");
-    expect(flat.toLowerCase()).not.toContain("jump in");
-    expect(flat).toMatch(/Publish or export listings/i);
-    expect(flat.toLowerCase()).not.toContain("publish across marketplaces");
+  it("wires motion as a progressive enhancement with static final states", () => {
+    expect(landingSource).toContain('data-sequence="hero"');
+    expect(landingSource).toContain('data-sequence="sync"');
+    expect(landingSource).toContain('data-sequence="bulk"');
+    expect(flowSource).toContain('data-sequence="lifecycle"');
+    expect(effectsSource).toContain("prefers-reduced-motion: reduce");
+    expect(effectsSource).toContain("max-width: 767px");
+    expect(effectsSource).toContain("visibilitychange");
+    expect(cssSource).toContain("@keyframes lp-stamp-in");
+    expect(cssSource).toContain(".lp.is-motion-paused");
+  });
+
+  it("routes the Free plan CTA to the dashboard", () => {
+    expect(landingSource).toContain('href={id === "free" ? "/dashboard" : "/pricing"}');
+    expect(landingSource).toContain('{id === "free" ? "Start free" : "View pricing"}');
   });
 
   it("redirects signed-in users from / to /dashboard", async () => {
