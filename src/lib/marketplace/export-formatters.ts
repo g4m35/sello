@@ -415,7 +415,7 @@ function buildFields(
   push("description", "Description", body);
   push("price", "Price", resolved.priceText);
   push("brand", "Brand", input.brand);
-  push("size", "Size", input.size?.trim() ? input.size : null);
+  push("size", "Size", input.size?.trim() ? input.size.trim() : null);
   push("condition", "Condition", resolved.conditionText);
   push("color", "Color", input.colorway);
   push("style_code", "Style code", input.styleCode);

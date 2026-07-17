@@ -201,6 +201,56 @@ async function main() {
       check("  attempt.rawStatus === NOT_IMPLEMENTED", attempt.rawStatus === "NOT_IMPLEMENTED", `${attempt.rawStatus}`);
       check("  attempt.marketplaceName === eBay", attempt.marketplaceName === "eBay", `${attempt.marketplaceName}`);
     }
+
+    // 10. Guided publish: structured export payload for the new channels.
+    const mercariExport = await callApi(
+      `/api/listings/${itemId}/export?marketplace=mercari`,
+      token,
+    );
+    const me = mercariExport.json as {
+      title?: string;
+      body?: string;
+      fields?: Array<{ key: string; label: string; value: string }>;
+    };
+    check(
+      "GET export?marketplace=mercari -> 200 + fields[]",
+      mercariExport.status === 200 && Array.isArray(me.fields) && me.fields.length > 0,
+      `status ${mercariExport.status}, ${me.fields?.length ?? 0} fields`,
+    );
+    check("  mercari title within 80 chars", (me.title ?? "").length > 0 && (me.title ?? "").length <= 80, `${me.title?.length} chars`);
+    check(
+      "  fields carry stable title/description keys",
+      ["title", "description"].every((k) => !!me.fields?.some((f) => f.key === k)),
+    );
+
+    const vintedExport = await callApi(
+      `/api/listings/${itemId}/export?marketplace=vinted`,
+      token,
+    );
+    const ve = vintedExport.json as { body?: string };
+    check(
+      "GET export?marketplace=vinted -> 200, no hashtags",
+      vintedExport.status === 200 && !!ve.body && !ve.body.includes("#"),
+      `status ${vintedExport.status}`,
+    );
+
+    const badExport = await callApi(`/api/listings/${itemId}/export?marketplace=stockx`, token);
+    check("GET export?marketplace=stockx -> 400", badExport.status === 400, `status ${badExport.status}`);
+
+    // 11. Mark as listed: a seller-pasted mercari URL is recorded for the
+    // double-sell safety engine (cleanup cascades with the inventory item).
+    const externalUrl = `https://www.mercari.com/us/item/e2e${stamp}/`;
+    const marked = await callApi("/api/inventory/listings", token, {
+      method: "POST",
+      body: JSON.stringify({ inventoryItemId: itemId, marketplace: "mercari", externalUrl }),
+    });
+    const mj = marked.json as { ok?: boolean; listing?: { id?: string; externalUrl?: string | null } };
+    check(
+      "POST /api/inventory/listings (mercari) -> ok + listing",
+      marked.status === 200 && mj.ok === true && !!mj.listing?.id,
+      `status ${marked.status}`,
+    );
+    check("  listing echoes the pasted URL", mj.listing?.externalUrl === externalUrl);
   }
 }
 
