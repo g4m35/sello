@@ -1,4 +1,4 @@
-import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
+import type { Flaw, Marketplace, Measurement } from "@/lib/ai/listing-draft";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
 import type { PlanId, PlanLimits } from "@/lib/billing/plans";
 import type {
@@ -934,11 +934,31 @@ export const api = {
       marketplace: ExportMarketplace;
       title: string;
       body: string;
+      fields: { key: string; label: string; value: string }[];
       warnings: string[];
     }>(
       `/api/listings/${itemId}/export?marketplace=${encodeURIComponent(marketplace)}`,
       token,
     ),
+
+  // Manual "mark as listed": record where the seller listed the item on a
+  // channel Sello does not publish to natively, so the double-sell safety engine
+  // can delist it later. No marketplace/network call happens server-side.
+  addMarketplaceListing: (
+    token: string,
+    body: {
+      inventoryItemId: string;
+      marketplace: Marketplace;
+      externalUrl: string;
+    },
+  ) =>
+    request<{
+      ok: true;
+      listing: { id: string; status: string; externalUrl: string | null };
+    }>(`/api/inventory/listings`, token, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // eBay publish preflight (dry run). Validates the listing and returns the
   // exact payload preview without any outbound eBay call. Used to drive the

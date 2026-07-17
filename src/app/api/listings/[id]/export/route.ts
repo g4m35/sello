@@ -45,7 +45,7 @@ export async function GET(
     const parsed = ExportMarketplaceSchema.safeParse(marketplaceParam);
     if (!parsed.success) {
       throw new AppError(
-        "Unsupported marketplace. Use depop, poshmark, grailed, or etsy.",
+        "Unsupported marketplace. Use depop, poshmark, grailed, etsy, vinted, or mercari.",
         400,
       );
     }

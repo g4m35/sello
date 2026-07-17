@@ -10,8 +10,23 @@ import {
 } from "@/lib/listing/intelligence";
 import { conditionLabel, formatMoneyCents } from "@/lib/view/format";
 
-export const ExportMarketplaceSchema = z.enum(["depop", "poshmark", "grailed", "etsy"]);
+export const ExportMarketplaceSchema = z.enum([
+  "depop",
+  "poshmark",
+  "grailed",
+  "etsy",
+  "vinted",
+  "mercari",
+]);
 export type ExportMarketplace = z.infer<typeof ExportMarketplaceSchema>;
+
+// One labelled copy target the guided listing panel renders with its own copy
+// button, so the seller pastes each field into the right box on the sell form.
+export type ExportField = {
+  key: string;
+  label: string;
+  value: string;
+};
 
 export type ListingExportInput = {
   productName: string;
@@ -37,11 +52,14 @@ export type ListingExport = {
   marketplace: ExportMarketplace;
   title: string;
   body: string;
+  fields: ExportField[];
   warnings: string[];
 };
 
 const POSHMARK_TITLE_MAX = 80;
+const MERCARI_TITLE_MAX = 80;
 const DEPOP_HASHTAG_MAX = 8;
+const MERCARI_HASHTAG_MAX = 3;
 // Etsy allows up to 13 search tags, each up to 20 characters.
 const ETSY_TAG_MAX = 13;
 const ETSY_TAG_CHAR_MAX = 20;
@@ -74,7 +92,10 @@ function toHashtag(value: string): string {
   return `#${value.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 }
 
-function hashtagLine(input: ListingExportInput): string {
+function hashtagLine(
+  input: ListingExportInput,
+  max: number = DEPOP_HASHTAG_MAX,
+): string {
   const candidates = [
     ...input.tags,
     input.brand ?? "",
@@ -87,7 +108,7 @@ function hashtagLine(input: ListingExportInput): string {
     if (tag.length < 3 || seen.has(tag)) continue;
     seen.add(tag);
     hashtags.push(tag);
-    if (hashtags.length >= DEPOP_HASHTAG_MAX) break;
+    if (hashtags.length >= max) break;
   }
   return hashtags.join(" ");
 }
@@ -198,6 +219,49 @@ function formatDepop(input: ListingExportInput, fields: ResolvedFields): string 
     fields.flawSection,
     fields.measurementSection,
     hashtagLine(input),
+  ]);
+}
+
+// Mercari mirrors Depop but caps hashtags at three (Mercari surfaces only a few)
+// and drops missing facts rather than printing placeholder dashes.
+function formatMercari(input: ListingExportInput, fields: ResolvedFields): string {
+  const facts = [
+    input.brand ? `Brand: ${input.brand}` : null,
+    `Size: ${input.size?.trim() ? input.size : "Not specified"}`,
+    fields.conditionText ? `Condition: ${fields.conditionText}` : null,
+    input.colorway ? `Color: ${input.colorway}` : null,
+    fields.priceText ? `Price: ${fields.priceText}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return joinSections([
+    input.description.trim() || null,
+    facts,
+    fields.flawSection,
+    fields.measurementSection,
+    hashtagLine(input, MERCARI_HASHTAG_MAX),
+  ]);
+}
+
+// Vinted has no hashtag culture; keep the body plain (description, facts,
+// measurements, flaws) and omit any fact Sello does not actually know.
+function formatVinted(input: ListingExportInput, fields: ResolvedFields): string {
+  const facts = [
+    input.brand ? `Brand: ${input.brand}` : null,
+    `Size: ${input.size?.trim() ? input.size : "Not specified"}`,
+    fields.conditionText ? `Condition: ${fields.conditionText}` : null,
+    input.colorway ? `Color: ${input.colorway}` : null,
+    fields.priceText ? `Price: ${fields.priceText}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return joinSections([
+    input.description.trim() || null,
+    facts,
+    fields.measurementSection,
+    fields.flawSection,
   ]);
 }
 
@@ -314,31 +378,87 @@ function formatEtsy(input: ListingExportInput, fields: ResolvedFields): string {
   ]);
 }
 
+// The structured tag value for each marketplace's Tags field, matching what that
+// marketplace's body uses: Depop/Mercari get hashtags (at their own caps), Etsy
+// gets its comma-separated search tags, everyone else gets the raw tag list.
+function marketplaceTags(
+  marketplace: ExportMarketplace,
+  input: ListingExportInput,
+): string {
+  switch (marketplace) {
+    case "depop":
+      return hashtagLine(input);
+    case "mercari":
+      return hashtagLine(input, MERCARI_HASHTAG_MAX);
+    case "etsy":
+      return etsyTags(input).join(", ");
+    default:
+      return input.tags.map((t) => t.trim()).filter(Boolean).join(", ");
+  }
+}
+
+// Field-level copy targets. Empty values are omitted, never fabricated, so the
+// panel only offers a copy button for facts Sello actually has.
+function buildFields(
+  marketplace: ExportMarketplace,
+  input: ListingExportInput,
+  resolved: ResolvedFields,
+  title: string,
+  body: string,
+): ExportField[] {
+  const fields: ExportField[] = [];
+  const push = (key: string, label: string, value: string | null): void => {
+    if (value != null && value.trim() !== "") fields.push({ key, label, value });
+  };
+
+  push("title", "Title", title);
+  push("description", "Description", body);
+  push("price", "Price", resolved.priceText);
+  push("brand", "Brand", input.brand);
+  push("size", "Size", input.size?.trim() ? input.size : null);
+  push("condition", "Condition", resolved.conditionText);
+  push("color", "Color", input.colorway);
+  push("style_code", "Style code", input.styleCode);
+  push("tags", "Tags", marketplaceTags(marketplace, input));
+  push("category", "Category", input.category.replace(/_/g, " "));
+
+  return fields;
+}
+
 export function buildListingExport(
   marketplace: ExportMarketplace,
   input: ListingExportInput,
 ): ListingExport {
-  const fields = resolveFields(input);
+  const resolved = resolveFields(input);
 
-  let title = fields.title;
+  let title = resolved.title;
   let body: string;
-  const warnings = [...fields.warnings];
+  const warnings = [...resolved.warnings];
   switch (marketplace) {
     case "depop":
-      body = formatDepop(input, fields);
+      body = formatDepop(input, resolved);
       break;
     case "poshmark":
       title = title.slice(0, POSHMARK_TITLE_MAX);
-      body = formatPoshmark(input, fields);
+      body = formatPoshmark(input, resolved);
       break;
     case "grailed":
-      body = formatGrailed(input, fields);
+      body = formatGrailed(input, resolved);
+      break;
+    case "vinted":
+      body = formatVinted(input, resolved);
+      break;
+    case "mercari":
+      title = title.slice(0, MERCARI_TITLE_MAX);
+      body = formatMercari(input, resolved);
       break;
     case "etsy":
-      body = formatEtsy(input, fields);
+      body = formatEtsy(input, resolved);
       warnings.push("Needs seller review for Etsy-specific fields");
       break;
   }
 
-  return { marketplace, title, body, warnings };
+  const fields = buildFields(marketplace, input, resolved, title, body);
+
+  return { marketplace, title, body, fields, warnings };
 }

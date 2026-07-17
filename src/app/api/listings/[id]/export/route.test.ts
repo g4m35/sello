@@ -97,7 +97,9 @@ describe("listing export API", () => {
     const response = await getRequest("ebay");
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toMatch(/depop, poshmark, grailed, or etsy/);
+    expect((await response.json()).error).toMatch(
+      /depop, poshmark, grailed, etsy, vinted, or mercari/,
+    );
   });
 
   it("exports an Etsy copy-ready draft with a seller-review advisory", async () => {
@@ -156,6 +158,31 @@ describe("listing export API", () => {
     expect(payload.body).toContain("Brand: Supreme");
     expect(payload.body).toContain("Price: $420");
     expect(payload.body).toContain("#supreme");
+
+    const fields = payload.fields as {
+      key: string;
+      label: string;
+      value: string;
+    }[];
+    expect(fields.map(({ key }) => key)).toEqual([
+      "title",
+      "description",
+      "price",
+      "brand",
+      "size",
+      "condition",
+      "color",
+      "style_code",
+      "tags",
+      "category",
+    ]);
+    expect(fields.find(({ key }) => key === "description")?.value).toBe(
+      payload.body,
+    );
+    expect(fields.find(({ key }) => key === "price")?.value).toBe("$420");
+    expect(fields.find(({ key }) => key === "tags")?.value).toBe(
+      "#supreme #bogo #streetwear",
+    );
     expect(payload.warnings).toEqual([]);
   });
 

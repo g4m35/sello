@@ -122,8 +122,10 @@ describe("ExportMarketplaceSchema", () => {
     expect(ExportMarketplaceSchema.parse("poshmark")).toBe("poshmark");
     expect(ExportMarketplaceSchema.parse("grailed")).toBe("grailed");
     expect(ExportMarketplaceSchema.parse("etsy")).toBe("etsy");
+    expect(ExportMarketplaceSchema.parse("vinted")).toBe("vinted");
+    expect(ExportMarketplaceSchema.parse("mercari")).toBe("mercari");
     expect(ExportMarketplaceSchema.safeParse("ebay").success).toBe(false);
-    expect(ExportMarketplaceSchema.safeParse("mercari").success).toBe(false);
+    expect(ExportMarketplaceSchema.safeParse("stockx").success).toBe(false);
   });
 });
 
@@ -310,6 +312,214 @@ describe("etsy copy-ready draft", () => {
     );
     expect(result.warnings).toContain("Missing brand");
     expect(result.warnings).toContain("Missing price");
+  });
+});
+
+describe("buildListingExport vinted", () => {
+  it("formats labelled sections without hashtags", () => {
+    const result = buildListingExport("vinted", input());
+
+    expect(result.marketplace).toBe("vinted");
+    expect(result.warnings).toEqual([]);
+    expect(result.body).toContain(
+      "Classic bogo hoodie in heather grey. Worn a handful of times.",
+    );
+    expect(result.body).toContain("Brand: Supreme");
+    expect(result.body).toContain("Size: M");
+    expect(result.body).toContain("Condition: Used — Good");
+    expect(result.body).toContain("Price: $420");
+    expect(result.body).toContain("Color: Heather Grey");
+    expect(result.body).not.toContain("#");
+  });
+
+  it("includes measurements and flaws sections when present", () => {
+    const result = buildListingExport(
+      "vinted",
+      input({
+        measurements: [{ label: "Pit to pit", value: "21.5", unit: "in" }],
+        flaws: [
+          { label: "Cuff stain", description: "Light stain on the left cuff" },
+        ],
+        itemSpecifics: {},
+      }),
+    );
+
+    expect(result.body).toContain("Measurements:");
+    expect(result.body).toContain("Pit to pit: 21.5 in");
+    expect(result.body).toContain("Flaws:");
+    expect(result.body).toContain("- Cuff stain: Light stain on the left cuff");
+  });
+
+  it("never renders a missing size as a raw dash", () => {
+    const result = buildListingExport("vinted", input({ size: null }));
+    expect(result.body).toContain("Size: Not specified");
+    expect(result.body).not.toContain("Size: —");
+  });
+
+  it("still surfaces shared missing-field warnings", () => {
+    const result = buildListingExport(
+      "vinted",
+      input({ brand: null, priceCents: null }),
+    );
+    expect(result.warnings).toContain("Missing brand");
+    expect(result.warnings).toContain("Missing price");
+  });
+});
+
+describe("buildListingExport mercari", () => {
+  it("formats a casual listing capped at three hashtags", () => {
+    const result = buildListingExport(
+      "mercari",
+      input({ tags: ["one", "two", "three", "four"] }),
+    );
+
+    expect(result.marketplace).toBe("mercari");
+    expect(result.warnings).toEqual([]);
+    expect(result.body).toContain("Brand: Supreme");
+    expect(result.body).toContain("Size: M");
+    expect(result.body).toContain("Condition: Used — Good");
+    expect(result.body).toContain("Price: $420");
+
+    const lastLine = result.body.trimEnd().split("\n").at(-1) ?? "";
+    expect(lastLine).toBe("#one #two #three");
+  });
+
+  it("keeps the title within Mercari's 80 character limit", () => {
+    const longTitle = "M".repeat(100);
+    const result = buildListingExport("mercari", input({ title: longTitle }));
+    expect(result.title).toBe(longTitle.slice(0, 80));
+  });
+
+  it("includes measurements and flaws sections when present", () => {
+    const result = buildListingExport(
+      "mercari",
+      input({
+        measurements: [{ label: "Pit to pit", value: "21.5", unit: "in" }],
+        flaws: [
+          { label: "Cuff stain", description: "Light stain on the left cuff" },
+        ],
+        itemSpecifics: {},
+      }),
+    );
+
+    expect(result.body).toContain("Measurements:");
+    expect(result.body).toContain("Pit to pit: 21.5 in");
+    expect(result.body).toContain("Flaws:");
+    expect(result.body).toContain("- Cuff stain: Light stain on the left cuff");
+  });
+
+  it("leaves depop's eight-hashtag behavior unchanged", () => {
+    const manyTags = Array.from({ length: 12 }, (_, i) => `tag${i}`);
+    const depop = buildListingExport("depop", input({ tags: manyTags }));
+    const lastLine = depop.body.trimEnd().split("\n").at(-1) ?? "";
+    expect(lastLine.split(" ")).toHaveLength(8);
+  });
+
+  it("still surfaces shared missing-field warnings", () => {
+    const result = buildListingExport(
+      "mercari",
+      input({ brand: null, priceCents: null }),
+    );
+    expect(result.warnings).toContain("Missing brand");
+    expect(result.warnings).toContain("Missing price");
+  });
+});
+
+describe("structured export fields", () => {
+  it("returns all populated fields with exact stable keys and resolved values", () => {
+    const result = buildListingExport("depop", input());
+    const values = Object.fromEntries(
+      result.fields.map(({ key, value }) => [key, value]),
+    );
+
+    expect(result.fields.map(({ key }) => key)).toEqual([
+      "title",
+      "description",
+      "price",
+      "brand",
+      "size",
+      "condition",
+      "color",
+      "style_code",
+      "tags",
+      "category",
+    ]);
+    expect(values.title).toBe(result.title);
+    expect(values.description).toBe(result.body);
+    expect(values.price).toBe("$420");
+    expect(result.body).toContain(`Price: ${values.price}`);
+    expect(values.brand).toBe("Supreme");
+    expect(values.size).toBe("M");
+    expect(values.condition).toBe("Used — Good");
+    expect(values.color).toBe("Heather Grey");
+    expect(values.style_code).toBe("FW17-BOGO");
+    expect(values.tags).toBe("#supreme #boxlogo #streetwear");
+    expect(values.category).toBe("streetwear");
+  });
+
+  it("omits empty values instead of fabricating structured fields", () => {
+    const result = buildListingExport(
+      "vinted",
+      input({
+        brand: null,
+        size: " ",
+        colorway: " ",
+        styleCode: null,
+        condition: "unknown",
+        priceCents: null,
+        tags: [],
+      }),
+    );
+    const keys = new Set(result.fields.map(({ key }) => key));
+
+    expect(keys.has("brand")).toBe(false);
+    expect(keys.has("size")).toBe(false);
+    expect(keys.has("condition")).toBe(false);
+    expect(keys.has("price")).toBe(false);
+    expect(keys.has("color")).toBe(false);
+    expect(keys.has("style_code")).toBe(false);
+    expect(keys.has("tags")).toBe(false);
+  });
+
+  it("uses marketplace-specific structured tag values", () => {
+    const depop = buildListingExport("depop", input());
+    const mercari = buildListingExport(
+      "mercari",
+      input({ tags: ["one", "two", "three", "four"] }),
+    );
+    const etsy = buildListingExport("etsy", input());
+
+    expect(depop.fields.find(({ key }) => key === "tags")?.value).toBe(
+      "#supreme #boxlogo #streetwear",
+    );
+    expect(mercari.fields.find(({ key }) => key === "tags")?.value).toBe(
+      "#one #two #three",
+    );
+    expect(etsy.fields.find(({ key }) => key === "tags")?.value).toBe(
+      "supreme, box logo, streetwear, heather grey",
+    );
+
+    for (const marketplace of ["poshmark", "grailed", "vinted"] as const) {
+      const result = buildListingExport(marketplace, input());
+      expect(result.fields.find(({ key }) => key === "tags")?.value).toBe(
+        "supreme, box logo, streetwear",
+      );
+    }
+  });
+
+  it("uses the capped marketplace title and a readable category suggestion", () => {
+    const longTitle = "M".repeat(100);
+    const result = buildListingExport(
+      "mercari",
+      input({ title: longTitle, category: "mens_outerwear" }),
+    );
+
+    expect(result.fields.find(({ key }) => key === "title")?.value).toBe(
+      longTitle.slice(0, 80),
+    );
+    expect(result.fields.find(({ key }) => key === "category")?.value).toBe(
+      "mens outerwear",
+    );
   });
 });
 
