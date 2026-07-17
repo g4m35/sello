@@ -20,6 +20,7 @@ describe("marketplace registry", () => {
         "ebay",
         "etsy",
         "grailed",
+        "mercari",
         "poshmark",
         "stockx",
         "tiktok_shop",
@@ -36,6 +37,29 @@ describe("marketplace registry", () => {
     }
   });
 
+  describe("mercari", () => {
+    const mercari = getMarketplaceDescriptor("mercari");
+
+    it("is an assisted copy-ready channel (no official listing API)", () => {
+      expect(mercari.displayName).toBe("Mercari");
+      expect(mercari.integrationMode).toBe("assisted");
+      expect(mercari.defaultStatus).toBe("copy_ready");
+      expect(mercari.fallbackMode).toBe("copy_ready");
+      expect(mercari.capabilities.canCreateDraft).toBe(true);
+      expect(mercari.capabilities.canAutoPublish).toBe(false);
+    });
+
+    it("fails closed: no current capabilities without a live adapter", () => {
+      const current = resolveCurrentCapabilities(mercari, {
+        enabled: true,
+        connected: true,
+        implemented: false,
+      });
+      expect(current.canCreateDraft).toBe(false);
+      expect(current.canAutoPublish).toBe(false);
+    });
+  });
+
   describe("vinted", () => {
     const vinted = getMarketplaceDescriptor("vinted");
 
@@ -43,7 +67,8 @@ describe("marketplace registry", () => {
       expect(vinted.integrationMode).toBe("gated_scaffold");
       expect(vinted.defaultStatus).toBe("access_required");
       expect(vinted.bestFutureMode).toContain("Vinted Pro");
-      expect(vinted.fallbackMode).toBe("assisted_export");
+      // copy_ready is the only fallback the export layer actually implements.
+      expect(vinted.fallbackMode).toBe("copy_ready");
       expect(vinted.uiCopy).toContain("Vinted Pro API access required");
     });
 
@@ -93,6 +118,8 @@ describe("marketplace registry", () => {
       expect(stockx.capabilities.requiresCatalogMatch).toBe(true);
       expect(stockx.capabilities.requiresManualApproval).toBe(true);
       expect(stockx.uiCopy).toContain("exact catalog match");
+      // Catalog-driven listing has no meaningful paste text, so no fallback.
+      expect(stockx.fallbackMode).toBeNull();
     });
 
     it("does not advertise a sold webhook (none is implemented)", () => {
@@ -138,8 +165,10 @@ describe("marketplace registry", () => {
   describe("tiktok_shop", () => {
     const tiktok = getMarketplaceDescriptor("tiktok_shop");
 
-    it("is a full native integration that requires a connected shop", () => {
-      expect(tiktok.integrationMode).toBe("full_native");
+    it("is a gated scaffold (no live handler yet) that requires a connected shop", () => {
+      // Ceiling stays full-native-shaped, but until a real TikTok Shop handler
+      // exists the integration mode must keep it out of the publish queue.
+      expect(tiktok.integrationMode).toBe("gated_scaffold");
       expect(tiktok.defaultStatus).toBe("shop_connection_required");
       expect(tiktok.capabilities).toMatchObject({
         canAutoPublish: true,
@@ -211,8 +240,10 @@ describe("marketplace registry", () => {
   });
 
   describe("publish-queue eligibility (fail closed at enqueue)", () => {
-    it("rejects channels that cannot safely run in the background queue yet (Vinted)", () => {
+    it("rejects channels that cannot safely run in the background queue yet", () => {
       expect(isPublishQueueEligible("vinted")).toBe(false);
+      // No live TikTok Shop handler exists; the queue must fail closed.
+      expect(isPublishQueueEligible("tiktok_shop")).toBe(false);
     });
 
     it("allows full-native and assisted channels into the publish queue", () => {
@@ -222,8 +253,8 @@ describe("marketplace registry", () => {
         "grailed",
         "poshmark",
         "depop",
+        "mercari",
         "stockx",
-        "tiktok_shop",
       ] as const) {
         expect(isPublishQueueEligible(mp)).toBe(true);
       }
@@ -231,7 +262,7 @@ describe("marketplace registry", () => {
 
     it("lists exactly the publish-queue-eligible marketplaces", () => {
       expect(listPublishQueueEligibleMarketplaces().sort()).toEqual(
-        ["depop", "ebay", "etsy", "grailed", "poshmark", "stockx", "tiktok_shop"].sort(),
+        ["depop", "ebay", "etsy", "grailed", "mercari", "poshmark", "stockx"].sort(),
       );
     });
   });

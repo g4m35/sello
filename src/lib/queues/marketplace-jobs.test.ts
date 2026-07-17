@@ -16,14 +16,14 @@ describe("marketplace job payload schemas", () => {
     expect(payload.marketplaces).toHaveLength(5);
   });
 
-  it("accepts the full-native TikTok Shop channel for publishing", () => {
-    const payload = PublishListingJobSchema.parse({
-      inventoryItemId: "00000000-0000-4000-8000-000000000001",
-      listingDraftId: "00000000-0000-4000-8000-000000000002",
-      marketplaces: ["ebay", "tiktok_shop"],
-    });
-
-    expect(payload.marketplaces).toContain("tiktok_shop");
+  it("fails closed: TikTok Shop has no live handler and cannot be background-queued", () => {
+    expect(() =>
+      PublishListingJobSchema.parse({
+        inventoryItemId: "00000000-0000-4000-8000-000000000001",
+        listingDraftId: "00000000-0000-4000-8000-000000000002",
+        marketplaces: ["ebay", "tiktok_shop"],
+      }),
+    ).toThrow();
   });
 
   it("fails closed: StockX cannot be background-queued without seller confirmation in the payload", () => {

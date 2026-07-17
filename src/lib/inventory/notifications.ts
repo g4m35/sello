@@ -47,6 +47,7 @@ const MARKETPLACE_LABELS: Record<Marketplace, string> = {
   grailed: "Grailed",
   poshmark: "Poshmark",
   depop: "Depop",
+  mercari: "Mercari",
   etsy: "Etsy",
   tiktok_shop: "TikTok Shop",
   vinted: "Vinted",
