@@ -5,13 +5,13 @@ import { LandingPage } from "@/components/marketing/landing-page";
 import { getSupabaseUserFromCookies } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Sello — Photos in. Listings that sell themselves.",
+  title: "Sello — Listings live. Inventory synchronized.",
   description:
-    "Photos in. Listings that sell themselves. AI listing generation, sold-comp pricing, eBay publishing where enabled, assisted channel listings, and inventory sync for supported connections.",
+    "Turn photos into complete resale listings, publish through the strongest marketplace workflow available, and keep inventory synchronized through sale and delisting.",
   openGraph: {
-    title: "Sello — Photos in. Listings that sell themselves.",
+    title: "Sello — Listings live. Inventory synchronized.",
     description:
-      "AI listing generation, sold-comp pricing, eBay publish, channel packages, and inventory sync — for fashion and streetwear resellers.",
+      "Complete resale listings, marketplace-specific publishing, sold-comp pricing, and inventory synchronization through sale and delisting.",
     type: "website",
   },
 };

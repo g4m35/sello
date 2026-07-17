@@ -7,7 +7,7 @@ import "./globals.css";
 const manrope = Manrope({
   variable: "--font-manrope",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700", "800"],
 });
 
 const instrumentSerif = Instrument_Serif({
@@ -25,14 +25,18 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://sello.wtf"),
-  title: "Sello — Resale crosslisting",
-  description: "AI-assisted resale cross-listing for streetwear, sneakers, and hype-fashion sellers.",
+  title: "Sello — Listings live. Inventory synchronized.",
+  description:
+    "Turn photos into complete resale listings, publish through the strongest marketplace workflow available, and keep inventory synchronized through sale and delisting.",
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg",
     apple: "/sello-mark.svg",
   },
   openGraph: {
+    title: "Sello — Listings live. Inventory synchronized.",
+    description:
+      "Complete resale listings, marketplace-specific publishing, sold-comp pricing, and inventory synchronization through sale and delisting.",
     images: ["/sello-mark.svg"],
   },
 };
@@ -47,7 +51,7 @@ export default function RootLayout({
       lang="en"
       data-density="regular"
       suppressHydrationWarning
-      className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full`}
+      className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
         {/* Apply the color theme before paint to avoid a flash. Mirrors
