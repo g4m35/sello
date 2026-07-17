@@ -24,15 +24,15 @@ describe("guidedListingMeta", () => {
       sellFormUrl: "https://www.mercari.com/sell/",
       listingUrlHosts: ["mercari.com", "www.mercari.com"],
     });
+    // Etsy is copy-ready too, so its manual listings can be marked as listed.
+    expect(guidedListingMeta("etsy")).toEqual({
+      sellFormUrl: "https://www.etsy.com/your/shops/me/tools/listings/create",
+      listingUrlHosts: ["etsy.com", "www.etsy.com"],
+    });
   });
 
-  it("returns null for marketplaces without guided listing metadata", () => {
-    for (const marketplace of [
-      "ebay",
-      "etsy",
-      "stockx",
-      "tiktok_shop",
-    ] as const) {
+  it("returns null for marketplaces Sello publishes to natively (no manual sell form)", () => {
+    for (const marketplace of ["ebay", "stockx", "tiktok_shop"] as const) {
       expect(guidedListingMeta(marketplace)).toBeNull();
     }
   });

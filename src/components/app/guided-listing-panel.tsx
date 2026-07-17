@@ -37,7 +37,7 @@ export function markAsListedError(
 ): string | null {
   if (!url.trim()) return "Paste the listing URL first.";
   if (!isPlausibleListingUrl(marketplace, url)) {
-    return `That does not look like a ${marketplaceName(marketplace)} listing URL.`;
+    return `That does not look like your ${marketplaceName(marketplace)} listing URL.`;
   }
   return null;
 }

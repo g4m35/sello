@@ -29,6 +29,13 @@ export const GUIDED_LISTING: Partial<Record<Marketplace, GuidedListingMeta>> = {
     sellFormUrl: "https://www.mercari.com/sell/",
     listingUrlHosts: ["mercari.com", "www.mercari.com"],
   },
+  // Etsy has a native gated adapter, but it is also a copy-ready export channel;
+  // when a seller lists on Etsy manually, the guided panel still lets them mark
+  // it as listed so the double-sell engine covers it.
+  etsy: {
+    sellFormUrl: "https://www.etsy.com/your/shops/me/tools/listings/create",
+    listingUrlHosts: ["etsy.com", "www.etsy.com"],
+  },
 };
 
 export function guidedListingMeta(

@@ -72,10 +72,10 @@ describe("markAsListedError", () => {
 
   it("rejects a URL that is not a plausible listing for the marketplace", () => {
     expect(markAsListedError("depop", "https://www.grailed.com/x")).toBe(
-      "That does not look like a Depop listing URL.",
+      "That does not look like your Depop listing URL.",
     );
     expect(markAsListedError("grailed", "http://www.grailed.com/x")).toBe(
-      "That does not look like a Grailed listing URL.",
+      "That does not look like your Grailed listing URL.",
     );
   });
 
