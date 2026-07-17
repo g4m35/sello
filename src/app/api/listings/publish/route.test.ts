@@ -237,6 +237,50 @@ describe("publish API auth boundaries", () => {
     });
   });
 
+  it("releases (never settles) quota when sandbox publishing is disabled", async () => {
+    // A not_enabled outcome publishes nothing, so it must not burn an
+    // autopublish credit even though the sandbox response is a 200.
+    mocks.requireSupabaseUser.mockResolvedValue({
+      id: "user-1",
+      email: "not-allowed@example.com",
+    });
+    const prisma = {};
+    mocks.getPrisma.mockReturnValue(prisma);
+    mocks.executePublish.mockResolvedValueOnce({
+      outcome: {
+        status: "not_enabled",
+        code: "EBAY_PUBLISH_NOT_ENABLED",
+        marketplace: "ebay",
+        environment: "sandbox",
+        message: "disabled",
+      },
+      httpStatus: 200,
+      marketplaceListingId: "listing-1",
+      publishAttemptId: "attempt-1",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/listings/publish", {
+        method: "POST",
+        body: JSON.stringify({
+          inventoryItemId: "11111111-1111-4111-8111-111111111111",
+          marketplace: "ebay",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).code).toBe("EBAY_PUBLISH_NOT_ENABLED");
+    expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
+    expect(mocks.releaseUsageReservation).toHaveBeenCalledWith(
+      "usage-reservation-1",
+      expect.any(Date),
+      prisma,
+      "released",
+      { allowStartedWork: true },
+    );
+  });
+
   it("allows nonallowlisted sellers to reach draft-only non-eBay publishing", async () => {
     const prisma = {};
     mocks.requireSupabaseUser.mockResolvedValue({
