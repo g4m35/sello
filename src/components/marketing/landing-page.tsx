@@ -108,7 +108,7 @@ const MARKETPLACE_GROUPS = [
     tone: "approval",
     summary: "The product path is built, but live access has not cleared.",
     rows: [
-      ["Vinted", "Pending Vinted Pro API", "Direct publishing, sync, and sold events ship after API approval. Until then, capabilities fail closed."],
+      ["Vinted", "Pending Vinted Pro API", "Direct publishing, sync, and sold detection turn on once Vinted approves API access. Until then, the connection shows as unavailable instead of pretending."],
     ],
   },
 ] as const;
@@ -138,6 +138,12 @@ const COVERAGE_ROWS = [
   ["Depop", "Guided publish", "Final post guided", "Linked item status", "Assisted sold-delist on Pro", "guided"],
   ["Vinted", "On approval", "Pending Vinted Pro API", "Planned after approval", "Planned after approval", "planned"],
 ] as const;
+
+const COVERAGE_LANE_TONE: Record<string, string> = {
+  "Publishes direct": "direct",
+  "Guided publish": "guided",
+  "On approval": "approval",
+};
 
 const OPERATING_COMPARISON = [
   ["Listing data", "Re-enter fields and fix gaps", "Marketplace-specific item data"],
@@ -264,9 +270,34 @@ export function LandingPage() {
         <LandingFlow steps={LIFECYCLE_STEPS} item={HERO_TICKET} />
       </section>
 
+      <section id="why-sello" className="lp-section lp-section--difference" aria-labelledby="difference-title">
+        <div className="lp-section__head lp-section__head--split" data-reveal="rise">
+          <div>
+            <p className="lp-kicker">02 / Operating difference</p>
+            <h2 id="difference-title" className="lp-section__title">
+              Cross-listers copy. <em>Sello operates.</em>
+            </h2>
+          </div>
+          <p className="lp-section__sub">
+            The difference is not marketplace count. It is what happens after the fields are generated and before a failure becomes your problem.
+          </p>
+        </div>
+        <p className="lp-difference__quote" data-reveal="rise">
+          Not copied fields. Correct marketplace data.
+        </p>
+        <div className="lp-compare" data-reveal="table">
+          <div className="lp-compare__head"><span>Operational dimension</span><span>Typical crosslister loop</span><span>Sello loop</span></div>
+          {OPERATING_COMPARISON.map(([dimension, typical, sello]) => (
+            <div key={dimension} className="lp-compare__row">
+              <strong>{dimension}</strong><span>{typical}</span><span>{sello}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section id="listing-creation" className="lp-section lp-section--creation" aria-labelledby="creation-title">
         <div className="lp-section__head" data-reveal="rise">
-          <p className="lp-kicker">02 / Listing creation</p>
+          <p className="lp-kicker">03 / Listing creation</p>
           <h2 id="creation-title" className="lp-section__title">
             From photos to {"a "}<em>complete listing.</em>
           </h2>
@@ -277,10 +308,45 @@ export function LandingPage() {
         <div className="lp-anatomy">
           <div className="lp-anatomy__evidence">
             <div className="lp-anatomy__photos" aria-label="Photo evidence strip">
-              <span data-photo="front">Front</span>
-              <span data-photo="back">Back</span>
-              <span data-photo="tag">Tag</span>
-              <span data-photo="flaw">Flaw</span>
+              <span data-photo="front">
+                <svg viewBox="0 0 96 112" fill="none" aria-hidden="true">
+                  <path d="M40 10 48 16 56 10 66 14 70 22 70 60 73 102 23 102 26 60 26 22 30 14Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                  <path d="m70 22 12 4 4 40-12 2-4-24M26 22l-12 4-4 40 12 2 4-24" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  <path d="m40 10 8 24-4 10-6-22M56 10l-8 24 4 10 6-22M48 34v68" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                  <circle cx="44" cy="52" r="1.4" fill="currentColor" />
+                  <circle cx="44" cy="64" r="1.4" fill="currentColor" />
+                  <circle cx="44" cy="76" r="1.4" fill="currentColor" />
+                </svg>
+                Front
+              </span>
+              <span data-photo="back">
+                <svg viewBox="0 0 96 112" fill="none" aria-hidden="true">
+                  <path d="M40 10 48 14 56 10 66 14 70 22 70 60 73 102 23 102 26 60 26 22 30 14Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                  <path d="m70 22 12 4 4 40-12 2-4-24M26 22l-12 4-4 40 12 2 4-24" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  <path d="M40 10c2 4 14 4 16 0" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M48 20v54M48 74l-6 28M48 74l6 28" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                </svg>
+                Back
+              </span>
+              <span data-photo="tag">
+                <svg viewBox="0 0 96 112" fill="none" aria-hidden="true">
+                  <path d="M32 34h32v52H32Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                  <circle cx="48" cy="42" r="2" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M48 40c0-10 10-16 18-20" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M38 54h20M38 60h20" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M43 78v-9l5 6 5-6v9" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                </svg>
+                Tag
+              </span>
+              <span data-photo="flaw">
+                <svg viewBox="0 0 96 112" fill="none" aria-hidden="true">
+                  <path d="M64 14 84 34 46 88 30 94 22 86 26 70Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                  <path d="M26 70l20 18M58 22l18 18" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M32 78l6 6M36 74l6 6M40 70l6 6" stroke="currentColor" strokeWidth="1.1" />
+                  <circle cx="38" cy="78" r="15" stroke="currentColor" strokeWidth="1.2" strokeDasharray="3 3" />
+                </svg>
+                Flaw
+              </span>
             </div>
             <p className="lp-anatomy__note">Raw phone photos · seller measurements · visible condition</p>
             <ol className="lp-anatomy__map">
@@ -301,7 +367,7 @@ export function LandingPage() {
       <section id="marketplaces" className="lp-section lp-section--marketplaces" aria-labelledby="marketplaces-title">
         <div className="lp-section__head lp-section__head--split" data-reveal="rise">
           <div>
-            <p className="lp-kicker">03 / Marketplace publishing</p>
+            <p className="lp-kicker">04 / Marketplace publishing</p>
             <h2 id="marketplaces-title" className="lp-section__title">
               The strongest workflow each marketplace <em>allows.</em>
             </h2>
@@ -335,7 +401,7 @@ export function LandingPage() {
         <div className="lp-sync" data-sequence="sync">
           <div className="lp-section__head lp-section__head--split" data-reveal="rise">
             <div>
-              <p className="lp-kicker">04 / Inventory sync</p>
+              <p className="lp-kicker">05 / Inventory sync</p>
               <h2 id="sync-title" className="lp-section__title">
                 After you publish is where <em>Sello earns it.</em>
               </h2>
@@ -380,13 +446,13 @@ export function LandingPage() {
       <section id="bulk-operations" className="lp-section lp-section--bulk" aria-labelledby="bulk-title">
         <div className="lp-section__head lp-section__head--split" data-reveal="rise">
           <div>
-            <p className="lp-kicker">05 / Bulk operations</p>
+            <p className="lp-kicker">06 / Bulk operations</p>
             <h2 id="bulk-title" className="lp-section__title">
               A rack, <em>not an item.</em>
             </h2>
           </div>
           <p className="lp-section__sub">
-            Generate, price, publish, and recover a batch without letting one bad row hide the rest of the work.
+            Generate, price, and publish a whole batch at once. If one item fails, it is flagged for recovery and the rest keep moving.
           </p>
         </div>
         <div className="lp-manifest" data-sequence="bulk" data-reveal="table">
@@ -423,7 +489,7 @@ export function LandingPage() {
       <section id="pricing-intelligence" className="lp-section lp-section--pricing" aria-labelledby="pricing-title">
         <div className="lp-section__head lp-section__head--split" data-reveal="rise">
           <div>
-            <p className="lp-kicker">06 / Pricing intelligence</p>
+            <p className="lp-kicker">07 / Pricing intelligence</p>
             <h2 id="pricing-title" className="lp-section__title">
               Priced like the market <em>already did.</em>
             </h2>
@@ -467,7 +533,7 @@ export function LandingPage() {
 
       <section id="marketplace-coverage" className="lp-section lp-section--coverage" aria-labelledby="coverage-title">
         <div className="lp-section__head" data-reveal="rise">
-          <p className="lp-kicker">07 / Marketplace coverage</p>
+          <p className="lp-kicker">08 / Marketplace coverage</p>
           <h2 id="coverage-title" className="lp-section__title">
             Eight channels. <em>Three honest lanes.</em>
           </h2>
@@ -479,37 +545,12 @@ export function LandingPage() {
               {COVERAGE_ROWS.map(([channel, tier, mechanism, sync, sold, state]) => (
                 <tr key={channel} data-coverage-state={state}>
                   <th scope="row">{channel}</th>
-                  <td><span className={`lp-chip lp-chip--${state}`}>{tier}</span></td>
+                  <td><span className={`lp-chip lp-chip--${COVERAGE_LANE_TONE[tier] ?? state}`}>{tier}</span></td>
                   <td>{mechanism}</td><td>{sync}</td><td>{sold}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
-
-      <section id="why-sello" className="lp-section lp-section--difference" aria-labelledby="difference-title">
-        <div className="lp-section__head lp-section__head--split" data-reveal="rise">
-          <div>
-            <p className="lp-kicker">08 / Operating difference</p>
-            <h2 id="difference-title" className="lp-section__title">
-              Cross-listers copy. <em>Sello operates.</em>
-            </h2>
-          </div>
-          <p className="lp-section__sub">
-            The difference is not marketplace count. It is what happens after the fields are generated and before a failure becomes your problem.
-          </p>
-        </div>
-        <p className="lp-difference__quote" data-reveal="rise">
-          Not copied fields. Correct marketplace data.
-        </p>
-        <div className="lp-compare" data-reveal="table">
-          <div className="lp-compare__head"><span>Operational dimension</span><span>Typical crosslister loop</span><span>Sello loop</span></div>
-          {OPERATING_COMPARISON.map(([dimension, typical, sello]) => (
-            <div key={dimension} className="lp-compare__row">
-              <strong>{dimension}</strong><span>{typical}</span><span>{sello}</span>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -589,7 +630,7 @@ export function LandingPage() {
             <span>Less listing work.</span>
             <span className="lp-serif">More selling<em>.</em></span>
           </h2>
-          <p className="lp-close__sub">List it once. Sello handles the rest of its life.</p>
+          <p className="lp-close__sub">List it once. Sello takes it from there, all the way to sold.</p>
           <div className="lp-close__cta">
             <Link href="/dashboard" className="lp-btn lp-btn--red">Start creating listings</Link>
             <Link href="/pricing" className="lp-btn lp-btn--onink">View pricing</Link>

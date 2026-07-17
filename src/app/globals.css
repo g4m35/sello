@@ -1297,10 +1297,6 @@ img { display: block; max-width: 100%; }
 .lp-flow__index { color: var(--lp-ink-3); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
 .lp-flow__marker { position: relative; display: grid; place-items: center; width: 11px; height: 11px; border: 1px solid var(--lp-ink); background: var(--lp-card); color: var(--lp-ink); }
 .lp-flow__marker::after { content: "✓"; color: currentColor; font-family: var(--font-mono); font-size: 8px; font-weight: 800; transform: scale(1); }
-.lp-flow__step--live .lp-flow__marker { background: var(--lp-green); border-color: var(--lp-green); color: var(--lp-on-ink); }
-.lp-flow__step--sale-detected .lp-flow__marker { background: var(--lp-red); border-color: var(--lp-red); color: var(--lp-on-ink); }
-.lp-flow__step--delisted .lp-flow__marker { background: var(--lp-ink-3); border-color: var(--lp-ink-3); color: var(--lp-on-ink); }
-.lp-flow__step--sold .lp-flow__marker { background: var(--lp-ink); border-color: var(--lp-ink); color: var(--lp-on-ink); }
 .lp-flow__copy { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(0, 1.3fr); gap: 14px; align-items: baseline; }
 .lp-flow__copy strong { font-family: var(--font-serif); font-size: 20px; font-weight: 400; }
 .lp-flow__copy span { color: var(--lp-ink-3); font-size: 12.5px; }
@@ -1310,7 +1306,8 @@ img { display: block; max-width: 100%; }
 .lp-section--creation { background: #F7F5EE; border-bottom: 2px solid var(--lp-ink); }
 .lp-anatomy { display: grid; grid-template-columns: minmax(0, .85fr) minmax(410px, 1.15fr); gap: clamp(38px, 7vw, 100px); align-items: center; }
 .lp-anatomy__photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.lp-anatomy__photos span { min-height: 120px; display: flex; align-items: flex-end; border: 1px solid var(--lp-ink); padding: 10px; background: linear-gradient(135deg, transparent 49%, var(--lp-line) 50%, transparent 51%), var(--lp-sunk); color: var(--lp-ink-3); font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.lp-anatomy__photos span { min-height: 120px; display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; gap: 6px; border: 1px solid var(--lp-ink); padding: 10px; background: var(--lp-sunk); color: var(--lp-ink-3); font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.lp-anatomy__photos svg { flex: 1; min-height: 0; width: 100%; color: var(--lp-ink-2); }
 .lp-anatomy__note { margin: 11px 0 25px; color: var(--lp-ink-3); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .07em; text-transform: uppercase; }
 .lp-anatomy__map { list-style: none; margin: 0; border-top: 2px solid var(--lp-ink); padding: 0; }
 .lp-anatomy__map li { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 18px; border-bottom: 1px solid var(--lp-line); padding: 12px 0; }
@@ -1346,14 +1343,24 @@ img { display: block; max-width: 100%; }
 .lp-sync__record { display: flex; justify-content: center; }
 .lp-sync__record .lp-ticket { box-shadow: 14px 14px 0 rgba(247, 245, 237, .08); }
 .lp-sync__control { border: 1px solid var(--lp-line-on-ink); background: #11110F; }
+.lp-sync__event-line {
+  position: absolute;
+  z-index: 3;
+  top: 52%;
+  left: 39%;
+  width: 18%;
+  height: 2px;
+  background: var(--lp-red-bright);
+  opacity: .75;
+  pointer-events: none;
+  transform-origin: 100% 50%;
+}
+.lp-sync__event-line::before,
+.lp-sync__event-line::after { content: ""; position: absolute; top: 50%; width: 7px; height: 7px; border-radius: 50%; background: var(--lp-red-bright); transform: translateY(-50%); }
+.lp-sync__event-line::before { left: 0; }
+.lp-sync__event-line::after { right: 0; }
 .lp-sync__legend { display: flex; flex-wrap: wrap; gap: 7px; border-bottom: 1px solid var(--lp-line-on-ink); padding: 13px 15px; }
-.lp-status { color: var(--lp-on-ink-3); }
-.lp-status--active { color: #83B89B; }
-.lp-status--pending,
-.lp-status--review { color: #D1AE67; }
-.lp-status--failed { color: var(--lp-red-bright); }
-.lp-status--sold { background: var(--lp-on-ink); color: var(--lp-ink); }
-.lp-status--delisted { color: var(--lp-on-ink-3); }
+.lp-status { color: var(--lp-on-ink-2); }
 .lp-audit-tape { list-style: none; margin: 0; padding: 0; }
 .lp-audit-tape li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; border-bottom: 1px solid var(--lp-line-on-ink); padding: 15px; font-family: var(--font-mono); }
 .lp-audit-tape li span { color: var(--lp-red-bright); font-size: 10px; }
@@ -1720,22 +1727,7 @@ img { display: block; max-width: 100%; }
   .lp-motion-ready [data-sequence="lifecycle"] .lp-flow__step:nth-child(8)::before,
   .lp-motion-ready [data-sequence="lifecycle"] .lp-flow__step:nth-child(8) .lp-flow__marker { animation-delay: 1750ms; }
 
-  .lp-sync__event-line {
-    position: absolute;
-    z-index: 3;
-    top: 52%;
-    left: 39%;
-    width: 18%;
-    height: 2px;
-    background: var(--lp-red-bright);
-    opacity: 0;
-    pointer-events: none;
-    transform-origin: 100% 50%;
-  }
-  .lp-sync__event-line::before,
-  .lp-sync__event-line::after { content: ""; position: absolute; top: 50%; width: 7px; height: 7px; border-radius: 50%; background: var(--lp-red-bright); transform: translateY(-50%); }
-  .lp-sync__event-line::before { left: 0; }
-  .lp-sync__event-line::after { right: 0; }
+  .lp-motion-ready [data-sequence="sync"].is-sequence-ready:not(.is-playing) .lp-sync__event-line { opacity: 0; }
   .lp-motion-ready [data-sequence="sync"].is-sequence-ready:not(.is-playing) [data-lane-name="ebay"] .lp-stamp,
   .lp-motion-ready [data-sequence="sync"].is-sequence-ready:not(.is-playing) [data-lane-name="stockx"] .lp-stamp,
   .lp-motion-ready [data-sequence="sync"].is-sequence-ready:not(.is-playing) [data-lane-name="grailed"] .lp-stamp,
@@ -1822,6 +1814,7 @@ img { display: block; max-width: 100%; }
   .lp-sync__board,
   .lp-pricing-grid { grid-template-columns: 1fr; }
   .lp-flow__record { position: static; align-items: flex-start; }
+  .lp-sync__event-line { display: none; }
   .lp-anatomy__record,
   .lp-sync__record { justify-content: flex-start; }
   .lp-section__head--split { grid-template-columns: 1fr; gap: 18px; }
