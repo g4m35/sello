@@ -1550,9 +1550,10 @@ img { display: block; max-width: 100%; }
   100% { opacity: 1; transform: translateY(0); }
 }
 
+/* No CSS smooth scrolling: Chrome cancels long smooth programmatic scrolls
+   while IntersectionObserver reveals mutate classes, which silently breaks
+   anchor navigation. Instant jumps are reliable at this page height. */
 @media (prefers-reduced-motion: no-preference) {
-  html:has(.lp) { scroll-behavior: smooth; }
-
   .lp-reveal-ready [data-reveal] {
     transition: transform .5s var(--lp-ease), box-shadow .5s var(--lp-ease);
   }
