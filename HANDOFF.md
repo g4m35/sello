@@ -46,6 +46,24 @@ Landing over-claims flagged for owner: the support board still says TikTok
 "Publishes direct" (no handler) and eBay/StockX "full sync/sale detection"
 (partial); not changed this session (landing just shipped).
 
+**Same-day addendum (second session, verification + fixes).** The verification
+gap above is closed. Mercari enum migration APPLIED to the Supabase DB via
+`prisma migrate deploy` (additive, idempotent). `scripts/e2e-smoke.mts`
+modernized to current flows (9 adapters, readiness-gated approval incl. the
+sale-wording/photo blockers, gated eBay typed outcome, honest 501 on grailed,
+structured export fields, mark-as-listed) and run GREEN 32/32 against the dev
+server. Authenticated browser QA of the guided panel done (chrome-devtools,
+throwaway Supabase user, fixture fully deleted after): panel renders per
+selected channel, sell-form links correct, full-text + per-field copy work,
+invalid URL blocked inline, valid URL → success banner + channel refetch;
+console clean. Two defects found and FIXED: (1) publish route settled (burned)
+an autopublish credit on 2xx `not_enabled` no-op outcomes — settlement now also
+requires a real publish outcome; (2) mark-as-listed rows defaulted to UNKNOWN,
+which badges as "Publishing" — the panel now records them as LISTED
+("Published", still delist-eligible). Full gate re-run GREEN after fixes:
+238 files / 1718 tests, lint 0 errors, tsc 0, build 0. Branch at 15 commits,
+still NOT merged/deployed.
+
 ## Last updated (previous)
 2026-07-16 — Claude (Fable). Full landing-page redesign on
 `feature/sello-landing-page`. Merged origin/develop (115 commits) into the
