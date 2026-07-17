@@ -14,16 +14,49 @@ const HERO_STATES = [
   ["resolved", 3200],
 ] as const;
 
-function waitForVisible(callback: () => void, delay: number) {
-  const tick = () => {
-    if (document.hidden) {
-      window.setTimeout(tick, 250);
-      return;
-    }
-    callback();
+type PausableTimer = {
+  cancel: () => void;
+  pause: () => void;
+  resume: () => void;
+};
+
+function createPausableTimer(callback: () => void, delay: number): PausableTimer {
+  let cancelled = false;
+  let remaining = delay;
+  let startedAt: number | undefined;
+  let timeoutId: number | undefined;
+
+  const pause = () => {
+    if (timeoutId === undefined || startedAt === undefined) return;
+
+    remaining = Math.max(0, remaining - (window.performance.now() - startedAt));
+    window.clearTimeout(timeoutId);
+    timeoutId = undefined;
+    startedAt = undefined;
   };
 
-  return window.setTimeout(tick, delay);
+  const resume = () => {
+    if (cancelled || timeoutId !== undefined || document.hidden) return;
+
+    startedAt = window.performance.now();
+    timeoutId = window.setTimeout(() => {
+      cancelled = true;
+      timeoutId = undefined;
+      startedAt = undefined;
+      callback();
+    }, remaining);
+  };
+
+  const cancel = () => {
+    cancelled = true;
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    timeoutId = undefined;
+    startedAt = undefined;
+  };
+
+  const timer = { cancel, pause, resume };
+  timer.resume();
+  return timer;
 }
 
 export function LandingEffects() {
@@ -34,15 +67,28 @@ export function LandingEffects() {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const compactViewport = window.matchMedia("(max-width: 767px)");
     const cleanups: (() => void)[] = [];
-    const sequenceTimers = new Set<number>();
+    const sequenceTimers = new Set<PausableTimer>();
 
     const scheduleSequenceStep = (callback: () => void, delay: number) => {
-      const timer = waitForVisible(() => {
+      const timer = createPausableTimer(() => {
         sequenceTimers.delete(timer);
         callback();
       }, delay);
       sequenceTimers.add(timer);
     };
+
+    const handleVisibilityChange = () => {
+      root.classList.toggle("is-motion-paused", document.hidden);
+      sequenceTimers.forEach((timer) => {
+        if (document.hidden) timer.pause();
+        else timer.resume();
+      });
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    cleanups.push(() => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    });
 
     if (!reduceMotion.matches && "IntersectionObserver" in window) {
       root.classList.add("lp-reveal-ready");
@@ -85,33 +131,38 @@ export function LandingEffects() {
       const hero = root.querySelector('[data-sequence="hero"]');
       if (hero instanceof HTMLElement) {
         let heroIndex = 0;
-        let heroTimer: number | undefined;
+        let heroTimer: PausableTimer | undefined;
         let heroVisible = false;
         let heroHovered = false;
 
         const clearHeroTimer = () => {
-          if (heroTimer === undefined) return;
-          window.clearTimeout(heroTimer);
+          heroTimer?.cancel();
           heroTimer = undefined;
         };
 
         const advanceHero = () => {
-          clearHeroTimer();
-          if (!heroVisible || heroHovered || document.hidden) return;
+          if (heroTimer || !heroVisible || heroHovered || document.hidden) return;
 
           const [state, duration] = HERO_STATES[heroIndex];
           hero.dataset.heroState = state;
-          heroTimer = window.setTimeout(() => {
+          heroTimer = createPausableTimer(() => {
+            heroTimer = undefined;
             heroIndex = (heroIndex + 1) % HERO_STATES.length;
             advanceHero();
           }, duration);
         };
 
+        const resumeHeroTimer = () => {
+          if (!heroVisible || heroHovered || document.hidden) return;
+          if (heroTimer) heroTimer.resume();
+          else advanceHero();
+        };
+
         const heroObserver = new IntersectionObserver(
           ([entry]) => {
             heroVisible = entry?.isIntersecting ?? false;
-            if (heroVisible) advanceHero();
-            else clearHeroTimer();
+            if (heroVisible) resumeHeroTimer();
+            else heroTimer?.pause();
           },
           { threshold: 0.08 },
         );
@@ -119,27 +170,26 @@ export function LandingEffects() {
 
         const pauseHero = () => {
           heroHovered = true;
-          clearHeroTimer();
+          heroTimer?.pause();
         };
         const resumeHero = () => {
           heroHovered = false;
-          advanceHero();
+          resumeHeroTimer();
         };
-        const resumeHeroAfterVisibility = () => {
-          root.classList.toggle("is-motion-paused", document.hidden);
-          if (document.hidden) clearHeroTimer();
-          else advanceHero();
+        const syncHeroVisibility = () => {
+          if (document.hidden) heroTimer?.pause();
+          else resumeHeroTimer();
         };
 
         hero.addEventListener("mouseenter", pauseHero);
         hero.addEventListener("mouseleave", resumeHero);
-        document.addEventListener("visibilitychange", resumeHeroAfterVisibility);
+        document.addEventListener("visibilitychange", syncHeroVisibility);
         cleanups.push(() => {
           clearHeroTimer();
           heroObserver.disconnect();
           hero.removeEventListener("mouseenter", pauseHero);
           hero.removeEventListener("mouseleave", resumeHero);
-          document.removeEventListener("visibilitychange", resumeHeroAfterVisibility);
+          document.removeEventListener("visibilitychange", syncHeroVisibility);
           delete hero.dataset.heroState;
         });
       }
@@ -222,7 +272,7 @@ export function LandingEffects() {
     }
 
     return () => {
-      sequenceTimers.forEach((timer) => window.clearTimeout(timer));
+      sequenceTimers.forEach((timer) => timer.cancel());
       cleanups.forEach((cleanup) => cleanup());
       root.classList.remove("lp-reveal-ready", "lp-motion-ready", "is-motion-paused");
     };

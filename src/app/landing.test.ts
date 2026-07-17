@@ -207,6 +207,33 @@ describe("landing page", () => {
     expect(cssSource).toContain(".lp.is-motion-paused");
   });
 
+  it("pauses timed sequence work without consuming hidden-tab time", () => {
+    expect(effectsSource).toContain("createPausableTimer");
+    expect(effectsSource).not.toContain("waitForVisible");
+    expect(effectsSource).toContain("timer.pause()");
+    expect(effectsSource).toContain("timer.resume()");
+  });
+
+  it("keeps lifecycle completion visible without motion and highlights the current row", () => {
+    const motionMediaIndex = cssSource.indexOf(
+      "@media (prefers-reduced-motion: no-preference)",
+    );
+    const markerCheckIndex = cssSource.indexOf(".lp-flow__marker::after");
+
+    expect(markerCheckIndex).toBeGreaterThan(-1);
+    expect(markerCheckIndex).toBeLessThan(motionMediaIndex);
+    expect(cssSource).toContain(".lp-flow__step::before");
+    expect(cssSource).toContain("animation: lp-lifecycle-rule");
+  });
+
+  it("staggers heading and caption reveals within the restrained reveal system", () => {
+    expect(cssSource).toContain(
+      '.lp-reveal-ready [data-reveal="rise"] .lp-section__title',
+    );
+    expect(cssSource).toContain("transition-delay: 80ms");
+    expect(cssSource).toContain("transition-delay: 120ms");
+  });
+
   it("routes the Free plan CTA to the dashboard", () => {
     expect(landingSource).toContain('href={id === "free" ? "/dashboard" : "/pricing"}');
     expect(landingSource).toContain('{id === "free" ? "Start free" : "View pricing"}');
