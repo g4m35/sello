@@ -275,15 +275,24 @@ async function main() {
     const externalUrl = `https://www.mercari.com/us/item/e2e${stamp}/`;
     const marked = await callApi("/api/inventory/listings", token, {
       method: "POST",
-      body: JSON.stringify({ inventoryItemId: itemId, marketplace: "mercari", externalUrl }),
+      body: JSON.stringify({
+        inventoryItemId: itemId,
+        marketplace: "mercari",
+        externalUrl,
+        status: "LISTED",
+      }),
     });
-    const mj = marked.json as { ok?: boolean; listing?: { id?: string; externalUrl?: string | null } };
+    const mj = marked.json as {
+      ok?: boolean;
+      listing?: { id?: string; status?: string; externalUrl?: string | null };
+    };
     check(
       "POST /api/inventory/listings (mercari) -> ok + listing",
       marked.status === 200 && mj.ok === true && !!mj.listing?.id,
       `status ${marked.status}`,
     );
     check("  listing echoes the pasted URL", mj.listing?.externalUrl === externalUrl);
+    check("  listing recorded as LISTED", mj.listing?.status === "LISTED", `${mj.listing?.status}`);
   }
 }
 

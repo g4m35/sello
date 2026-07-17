@@ -950,6 +950,7 @@ export const api = {
       inventoryItemId: string;
       marketplace: Marketplace;
       externalUrl: string;
+      status?: "LISTED";
     },
   ) =>
     request<{

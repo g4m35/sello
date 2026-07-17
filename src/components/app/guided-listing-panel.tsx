@@ -120,10 +120,13 @@ function GuidedListingSection({
     setUrlError(null);
     setSaving(true);
     try {
+      // The seller just posted this listing and pasted its live URL, so record
+      // it as LISTED (not the default UNKNOWN, which renders as "Publishing").
       await api.addMarketplaceListing(token, {
         inventoryItemId: itemId,
         marketplace,
         externalUrl: url.trim(),
+        status: "LISTED",
       });
       setSaved(true);
       onListed();
