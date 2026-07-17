@@ -60,6 +60,7 @@ const ADAPTERS: Record<Marketplace, MarketplaceAdapter> = {
   grailed: createStubAdapter("grailed", "Grailed"),
   poshmark: createStubAdapter("poshmark", "Poshmark"),
   depop: createStubAdapter("depop", "Depop"),
+  mercari: createStubAdapter("mercari", "Mercari"),
   etsy: createStubAdapter("etsy", "Etsy"),
   // These channels publish through dedicated handlers when available; the
   // generic publishDraft adapter remains NOT_IMPLEMENTED.

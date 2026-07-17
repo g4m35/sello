@@ -163,13 +163,24 @@ export const MARKETPLACE_REGISTRY: Record<Marketplace, MarketplaceDescriptor> = 
     capabilities: matrix({ canCreateDraft: true }),
     uiCopy: "Depop uses copy-ready drafts; no official listing API exists.",
   },
+  mercari: {
+    key: "mercari",
+    displayName: "Mercari",
+    integrationMode: "assisted",
+    bestFutureMode: "Assisted export (no official listing API)",
+    defaultStatus: "copy_ready",
+    fallbackMode: "copy_ready",
+    capabilities: matrix({ canCreateDraft: true }),
+    uiCopy: "Mercari uses copy-ready drafts; no official listing API exists.",
+  },
   vinted: {
     key: "vinted",
     displayName: "Vinted",
     integrationMode: "gated_scaffold",
     bestFutureMode: "Vinted Pro API",
     defaultStatus: "access_required",
-    fallbackMode: "assisted_export",
+    // copy_ready is the only fallback the export layer actually implements.
+    fallbackMode: "copy_ready",
     capabilities: matrix({
       canAutoPublish: true,
       canUpdateListing: true,
@@ -188,7 +199,8 @@ export const MARKETPLACE_REGISTRY: Record<Marketplace, MarketplaceDescriptor> = 
     integrationMode: "full_native",
     bestFutureMode: "StockX Public API catalog match, listing creation, activation, and deactivation",
     defaultStatus: "catalog_match_required",
-    fallbackMode: "assisted_export",
+    // Catalog-driven listing has no meaningful paste text, so no fallback.
+    fallbackMode: null,
     capabilities: matrix({
       canAutoPublish: true,
       canCreateDraft: true,
@@ -204,7 +216,10 @@ export const MARKETPLACE_REGISTRY: Record<Marketplace, MarketplaceDescriptor> = 
   tiktok_shop: {
     key: "tiktok_shop",
     displayName: "TikTok Shop",
-    integrationMode: "full_native",
+    // No live TikTok Shop handler exists yet; gated_scaffold keeps the channel
+    // out of the publish queue until one does. The capability matrix below is
+    // the ceiling the Partner API can reach, not a claim of current support.
+    integrationMode: "gated_scaffold",
     bestFutureMode: "TikTok Shop Partner API (full native)",
     defaultStatus: "shop_connection_required",
     fallbackMode: null,

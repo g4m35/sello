@@ -28,6 +28,7 @@ const BodySchema = z
       "grailed",
       "poshmark",
       "depop",
+      "mercari",
       "etsy",
       "tiktok_shop",
       "vinted",

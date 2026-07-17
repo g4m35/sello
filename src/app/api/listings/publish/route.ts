@@ -91,12 +91,18 @@ export async function POST(request: Request) {
       confirmLivePublish,
     });
 
-    // Count only a real, successful publish (2xx). Draft-only NOT_IMPLEMENTED
-    // (501) and failures never burn quota. If settlement is temporarily
-    // unavailable, the already-started reservation stays charged and is marked
-    // for reconciliation; the successful external outcome is still returned so
-    // a seller is not encouraged to publish the same listing again.
-    if (result.httpStatus >= 200 && result.httpStatus < 300) {
+    // Count only a real, successful publish. Draft-only NOT_IMPLEMENTED (501),
+    // failures, and blocked not_enabled outcomes (sandbox returns those as a
+    // 200 with a typed code, but nothing was published) never burn quota. If
+    // settlement is temporarily unavailable, the already-started reservation
+    // stays charged and is marked for reconciliation; the successful external
+    // outcome is still returned so a seller is not encouraged to publish the
+    // same listing again.
+    const publishedForQuota =
+      result.httpStatus >= 200 &&
+      result.httpStatus < 300 &&
+      result.outcome.status !== "not_enabled";
+    if (publishedForQuota) {
       try {
         await settleUsageReservationOrRequireReconciliation(
           usageReservationId,

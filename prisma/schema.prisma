@@ -98,6 +98,7 @@ enum Marketplace {
   grailed
   poshmark
   depop
+  mercari
   etsy
   tiktok_shop
   vinted

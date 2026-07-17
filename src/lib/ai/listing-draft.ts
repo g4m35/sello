@@ -6,6 +6,7 @@ export const MarketplaceSchema = z.enum([
   "grailed",
   "poshmark",
   "depop",
+  "mercari",
   "etsy",
   "tiktok_shop",
   "vinted",

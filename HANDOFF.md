@@ -7,6 +7,64 @@ Never put secrets here. Canonical repo: `~/dev/resale-crosslister-clean`. Curren
 Older session history: `docs/history/HANDOFF-archive-2026-07-09.md`.
 
 ## Last updated
+2026-07-17 — Claude (Fable). **Marketplace guided-automation push on
+`feature/marketplace-guided-automation` (off `main@6b3e5c1`). NOT merged, NOT
+deployed. No live marketplace calls, no prod migration, no secrets.** Research
+(codebase flow map + 2026 API landscape, primary sources) confirmed only
+eBay/StockX/Etsy have live handlers; the assisted channels were a single
+copy-blob. Key external finding: **Depop's official Selling API is now live
+(partner-gated)**; Grailed/Poshmark/Mercari remain no-API; Vinted Pro is
+allowlist+HMAC. Shipped Phase A+C (design + plan in
+`docs/superpowers/{specs,plans}/2026-07-17-*`):
+- **Guided publish** for grailed/poshmark/depop/vinted/mercari: structured
+  field-level export (`ListingExport.fields`, stable keys, empties omitted),
+  new `formatVinted` (no hashtags) + `formatMercari` (3-hashtag cap, 80-char
+  title), a `GuidedListingPanel` (sell-form deep links, per-field copy, photo
+  open links, mark-as-listed URL capture) replacing the copy-blob card.
+- **Closed the safety loop**: `api.addMarketplaceListing` wires the previously
+  UI-less manual orphan route (`POST /api/inventory/listings`) so a manual
+  listing enrolls in the double-sell engine (`queueDelistOtherListings`).
+- **Mercari** added as a first-class assisted channel: additive enum migration
+  `20260717000000_add_mercari_marketplace` (idempotent `ADD VALUE`, **NOT
+  applied** — owner applies via `npm run db:deploy`), schema/zod/adapter/
+  registry/notifications/email-parser/manual-route ripple.
+- **Registry honesty**: `tiktok_shop` → `gated_scaffold` (was `full_native`
+  with no handler; now publish-queue-ineligible), `stockx.fallbackMode` null,
+  `vinted.fallbackMode` copy_ready (the only fallback the export layer
+  implements). Queue payload schema now fails closed for tiktok_shop.
+- **Depop Phase B**: scoped in the design + a ready-to-send partnership
+  application draft (`docs/marketplaces/depop-partnership-application.md`); the
+  gated Etsy-pattern adapter is the follow-on branch, not built this session.
+- Docs: `docs/marketplaces/automation-options.md` refreshed with 2026 sources.
+Gate GREEN in the worktree: prisma valid, lint 0 errors (2 known
+draft-actions warnings), tsc 0, **238 files / 1717 tests**, build 0. Runtime
+boot smoke (dev server, no prod creds): home 200, item page compiles,
+export + manual-listing APIs fail closed 401. E2E-smoke/browser QA of the
+authenticated panel was NOT run: local dev points at prod Supabase and
+e2e-smoke does writes, so the live authenticated flow needs owner sign-off.
+Landing over-claims flagged for owner: the support board still says TikTok
+"Publishes direct" (no handler) and eBay/StockX "full sync/sale detection"
+(partial); not changed this session (landing just shipped).
+
+**Same-day addendum (second session, verification + fixes).** The verification
+gap above is closed. Mercari enum migration APPLIED to the Supabase DB via
+`prisma migrate deploy` (additive, idempotent). `scripts/e2e-smoke.mts`
+modernized to current flows (9 adapters, readiness-gated approval incl. the
+sale-wording/photo blockers, gated eBay typed outcome, honest 501 on grailed,
+structured export fields, mark-as-listed) and run GREEN 32/32 against the dev
+server. Authenticated browser QA of the guided panel done (chrome-devtools,
+throwaway Supabase user, fixture fully deleted after): panel renders per
+selected channel, sell-form links correct, full-text + per-field copy work,
+invalid URL blocked inline, valid URL → success banner + channel refetch;
+console clean. Two defects found and FIXED: (1) publish route settled (burned)
+an autopublish credit on 2xx `not_enabled` no-op outcomes — settlement now also
+requires a real publish outcome; (2) mark-as-listed rows defaulted to UNKNOWN,
+which badges as "Publishing" — the panel now records them as LISTED
+("Published", still delist-eligible). Full gate re-run GREEN after fixes:
+238 files / 1718 tests, lint 0 errors, tsc 0, build 0. Branch at 15 commits,
+still NOT merged/deployed.
+
+## Last updated (previous)
 2026-07-16 — Claude (Fable). Full landing-page redesign on
 `feature/sello-landing-page`. Merged origin/develop (115 commits) into the
 branch first (took develop's page.tsx/globals.css/landing.test.ts as base,

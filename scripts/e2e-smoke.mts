@@ -109,8 +109,12 @@ async function main() {
   check("GET /api/history (empty) -> 200 + attempts[]", history0.status === 200 && Array.isArray(history0Items), `status ${history0.status}`);
 
   const jobs = await callApi("/api/jobs", token);
-  const adapters = (jobs.json as { adapters?: unknown[] })?.adapters ?? [];
-  check("GET /api/jobs -> 4 adapters", jobs.status === 200 && adapters.length === 4, `${adapters.length} adapters`);
+  const adapters = (jobs.json as { adapters?: Array<Record<string, unknown>> })?.adapters ?? [];
+  check("GET /api/jobs -> 9 adapters", jobs.status === 200 && adapters.length === 9, `${adapters.length} adapters`);
+  check(
+    "  mercari adapter registered",
+    adapters.some((a) => JSON.stringify(a).includes("mercari")),
+  );
 
   // 5. Real CSV import: creates a draft item.
   const imp = await callApi("/api/listings/import", token, {
@@ -140,7 +144,7 @@ async function main() {
   if (item) {
     check("  item.priceCents mapped from CSV", item.priceCents === 12300, `${item.priceCents}`);
     check("  item.status === draft", item.status === "draft", `${item.status}`);
-    check("  item.channels has 4 real marketplaces", Array.isArray(item.channels) && (item.channels as unknown[]).length === 4, `${(item.channels as unknown[])?.length}`);
+    check("  item.channels has 9 real marketplaces", Array.isArray(item.channels) && (item.channels as unknown[]).length === 9, `${(item.channels as unknown[])?.length}`);
   }
 
   const itemId = item?.id as string | undefined;
@@ -155,27 +159,56 @@ async function main() {
       check("  readiness present with checks", !!readiness && Array.isArray(readiness.checks), `${readiness?.checks?.length} checks`);
     }
 
-    // 8a. Publishing a DRAFT is correctly refused by the lifecycle gate (409).
+    // 8a. eBay publish is fail-closed locally: sandbox gate returns a typed
+    // 200 EBAY_PUBLISH_NOT_ENABLED outcome and publishes nothing. (Readiness
+    // is evaluated per adapter; only terminal items are refused outright.)
     const pubDraft = await callApi("/api/listings/publish", token, {
       method: "POST",
       body: JSON.stringify({ inventoryItemId: itemId, marketplace: "ebay" }),
     });
-    check("publish on a draft -> 409 (lifecycle gate)", pubDraft.status === 409, `status ${pubDraft.status}`);
+    const pdj = pubDraft.json as { code?: string };
+    check(
+      "publish ebay locally -> 200 EBAY_PUBLISH_NOT_ENABLED (fail-closed)",
+      pubDraft.status === 200 && pdj.code === "EBAY_PUBLISH_NOT_ENABLED",
+      `status ${pubDraft.status}, code ${pdj.code}`,
+    );
 
-    // 8b. Make the draft approvable, then approve it -> item becomes ready.
+    // 8b. Approval is readiness-gated. First prove the gate blocks an item
+    // with no photos, then satisfy readiness and approve for real.
     const draftId = item?.draftId as string | undefined;
     check("imported item has a draftId", !!draftId);
     if (draftId) {
+      const readyPatchBody = {
+        title: `E2E Smoke Item ${stamp} ready`,
+        description: "Authenticated end-to-end smoke item with a sufficiently long description.",
+        bulletPoints: ["Condition like new", "Ships in 1 business day", "Cleanup covered by this script"],
+        recommendedPriceCents: 12300,
+        selectedMarketplaces: ["grailed"],
+        approve: true,
+      };
+
+      const blocked = await callApi(`/api/listings/draft/${draftId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify(readyPatchBody),
+      });
+      check("approve without photos -> 400 (readiness gate)", blocked.status === 400, `status ${blocked.status}`);
+
+      // DB-level photo fixture: satisfies the photo-count readiness check
+      // without a storage object. Cascades away with the inventory item.
+      await prisma.itemPhoto.create({
+        data: {
+          inventoryItemId: itemId,
+          storageBucket: "e2e-smoke",
+          storagePath: `e2e/${stamp}.jpg`,
+          mimeType: "image/jpeg",
+          originalName: "e2e.jpg",
+          position: 0,
+        },
+      });
+
       const patch = await callApi(`/api/listings/draft/${draftId}`, token, {
         method: "PATCH",
-        body: JSON.stringify({
-          title: `E2E Smoke Item ${stamp} ready`,
-          description: "Authenticated end-to-end smoke test item with a sufficiently long description.",
-          bulletPoints: ["Condition like new", "Ships in 1 business day", "Smoke-test listing"],
-          recommendedPriceCents: 12300,
-          selectedMarketplaces: ["ebay"],
-          approve: true,
-        }),
+        body: JSON.stringify(readyPatchBody),
       });
       check("PATCH draft approve -> 200", patch.status === 200, `status ${patch.status}`);
 
@@ -183,24 +216,83 @@ async function main() {
       const dr = (detailReady.json as { item?: Record<string, unknown> })?.item;
       check("item is ready after approval", dr?.lifecycleState === "ready", `${dr?.lifecycleState}`);
 
-      // 8c. Honest publish on a ready item: real NOT_IMPLEMENTED outcome (HTTP 501).
+      // 8c. Honest publish on a stub channel: real NOT_IMPLEMENTED outcome (HTTP 501).
       const pub = await callApi("/api/listings/publish", token, {
         method: "POST",
-        body: JSON.stringify({ inventoryItemId: itemId, marketplace: "ebay" }),
+        body: JSON.stringify({ inventoryItemId: itemId, marketplace: "grailed" }),
       });
       const pj = pub.json as { code?: string; status?: string };
-      check("POST /api/listings/publish -> 501 NOT_IMPLEMENTED", pub.status === 501 && pj.code === "NOT_IMPLEMENTED", `status ${pub.status}, code ${pj.code}`);
+      check("POST /api/listings/publish grailed -> 501 NOT_IMPLEMENTED", pub.status === 501 && pj.code === "NOT_IMPLEMENTED", `status ${pub.status}, code ${pj.code}`);
     }
 
-    // 9. The attempt is now in history with the honest raw status.
+    // 9. Both attempts are in history with honest raw statuses.
     const history1 = await callApi("/api/history", token);
     const attempts = (history1.json as { attempts?: Array<Record<string, unknown>> })?.attempts ?? [];
     const attempt = attempts[0];
-    check("GET /api/history shows the attempt", attempts.length >= 1, `${attempts.length} attempts`);
+    check("GET /api/history shows the attempts", attempts.length >= 2, `${attempts.length} attempts`);
     if (attempt) {
-      check("  attempt.rawStatus === NOT_IMPLEMENTED", attempt.rawStatus === "NOT_IMPLEMENTED", `${attempt.rawStatus}`);
-      check("  attempt.marketplaceName === eBay", attempt.marketplaceName === "eBay", `${attempt.marketplaceName}`);
+      check("  latest attempt.rawStatus === NOT_IMPLEMENTED", attempt.rawStatus === "NOT_IMPLEMENTED", `${attempt.rawStatus}`);
+      check("  latest attempt.marketplaceName === Grailed", attempt.marketplaceName === "Grailed", `${attempt.marketplaceName}`);
     }
+
+    // 10. Guided publish: structured export payload for the new channels.
+    const mercariExport = await callApi(
+      `/api/listings/${itemId}/export?marketplace=mercari`,
+      token,
+    );
+    const me = mercariExport.json as {
+      title?: string;
+      body?: string;
+      fields?: Array<{ key: string; label: string; value: string }>;
+    };
+    check(
+      "GET export?marketplace=mercari -> 200 + fields[]",
+      mercariExport.status === 200 && Array.isArray(me.fields) && me.fields.length > 0,
+      `status ${mercariExport.status}, ${me.fields?.length ?? 0} fields`,
+    );
+    check("  mercari title within 80 chars", (me.title ?? "").length > 0 && (me.title ?? "").length <= 80, `${me.title?.length} chars`);
+    check(
+      "  fields carry stable title/description keys",
+      ["title", "description"].every((k) => !!me.fields?.some((f) => f.key === k)),
+    );
+
+    const vintedExport = await callApi(
+      `/api/listings/${itemId}/export?marketplace=vinted`,
+      token,
+    );
+    const ve = vintedExport.json as { body?: string };
+    check(
+      "GET export?marketplace=vinted -> 200, no hashtags",
+      vintedExport.status === 200 && !!ve.body && !ve.body.includes("#"),
+      `status ${vintedExport.status}`,
+    );
+
+    const badExport = await callApi(`/api/listings/${itemId}/export?marketplace=stockx`, token);
+    check("GET export?marketplace=stockx -> 400", badExport.status === 400, `status ${badExport.status}`);
+
+    // 11. Mark as listed: a seller-pasted mercari URL is recorded for the
+    // double-sell safety engine (cleanup cascades with the inventory item).
+    const externalUrl = `https://www.mercari.com/us/item/e2e${stamp}/`;
+    const marked = await callApi("/api/inventory/listings", token, {
+      method: "POST",
+      body: JSON.stringify({
+        inventoryItemId: itemId,
+        marketplace: "mercari",
+        externalUrl,
+        status: "LISTED",
+      }),
+    });
+    const mj = marked.json as {
+      ok?: boolean;
+      listing?: { id?: string; status?: string; externalUrl?: string | null };
+    };
+    check(
+      "POST /api/inventory/listings (mercari) -> ok + listing",
+      marked.status === 200 && mj.ok === true && !!mj.listing?.id,
+      `status ${marked.status}`,
+    );
+    check("  listing echoes the pasted URL", mj.listing?.externalUrl === externalUrl);
+    check("  listing recorded as LISTED", mj.listing?.status === "LISTED", `${mj.listing?.status}`);
   }
 }
 

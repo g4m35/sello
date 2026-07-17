@@ -16,6 +16,7 @@ describe("marketplace adapters (scaffolding only)", () => {
       "ebay",
       "etsy",
       "grailed",
+      "mercari",
       "poshmark",
       "stockx",
       "tiktok_shop",

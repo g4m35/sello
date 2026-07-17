@@ -112,6 +112,18 @@ describe("parseMarketplaceEmail — marketplace detection", () => {
     expect(band(result.confidence)).toBe("high");
   });
 
+  it("detects Mercari from sender + sale + high confidence (item url)", () => {
+    const result = parse({
+      sourceEmail: "no-reply@mail.mercari.com",
+      subject: 'Sold! "Levi\'s 501 Jeans" has a buyer',
+      textBody:
+        "Your item sold on Mercari. View the order for https://www.mercari.com/us/item/m98765432101/ and ship within 3 days.",
+    });
+    expect(result.marketplaceGuess).toBe("mercari");
+    expect(result.signalType).toBe("sale_detected");
+    expect(band(result.confidence)).toBe("high");
+  });
+
   it("detects StockX payment signal from sender", () => {
     const result = parse({
       sourceEmail: "noreply@stockx.com",

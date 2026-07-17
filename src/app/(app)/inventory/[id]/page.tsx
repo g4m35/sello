@@ -15,6 +15,7 @@ import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
 import { AutoPricing } from "@/components/app/auto-pricing";
 import { StockXMatchCard } from "@/components/app/stockx-match-card";
+import { GuidedListingPanel } from "@/components/app/guided-listing-panel";
 import {
   EbayPreflightCard,
   ebayCategorySelectionPatch,
@@ -39,11 +40,7 @@ import {
   resolveRemoveAction,
 } from "@/lib/view/inventory-actions";
 import { mergeSavedItemState } from "@/lib/view/merge-item-state";
-import { marketplaceName } from "@/lib/view/marketplaces";
-import {
-  ExportMarketplaceSchema,
-  type ExportMarketplace,
-} from "@/lib/marketplace/export-formatters";
+import { ExportMarketplaceSchema } from "@/lib/marketplace/export-formatters";
 import type { Flaw, Measurement } from "@/lib/ai/listing-draft";
 import type { EbayOrphanArtifactView, ItemDetailView } from "@/lib/view/types";
 
@@ -224,12 +221,6 @@ export default function ListingDetailPage() {
   const [cleaningEbayOrphans, setCleaningEbayOrphans] = useState(false);
   const [ebayOrphanScan, setEbayOrphanScan] =
     useState<EbayOrphanArtifactView | null>(null);
-  const [exportBusy, setExportBusy] = useState<ExportMarketplace | null>(null);
-  const [exportResult, setExportResult] = useState<{
-    marketplace: ExportMarketplace;
-    warnings: string[];
-  } | null>(null);
-  const [exportError, setExportError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -495,25 +486,6 @@ export default function ListingDetailPage() {
     }
   }, [token, id, router]);
 
-  const copyExport = useCallback(
-    async (marketplace: ExportMarketplace) => {
-      setExportBusy(marketplace);
-      setExportError(null);
-      setExportResult(null);
-      try {
-        const res = await api.exportListing(token, id, marketplace);
-        await navigator.clipboard.writeText(`${res.title}\n\n${res.body}`);
-        setExportResult({ marketplace, warnings: res.warnings });
-      } catch (e) {
-        setExportError(
-          (e as { error?: string })?.error ?? "Could not copy the listing text.",
-        );
-      } finally {
-        setExportBusy(null);
-      }
-    },
-    [token, id],
-  );
 
   const runLifecycle = useCallback(
     async (action: "mark_sold" | "delist") => {
@@ -1521,51 +1493,13 @@ export default function ListingDetailPage() {
               </div>
             )}
 
-            {selectedExportMarketplaces.length > 0 && (
-              <section className="card">
-                <div className="card__head">
-                  <span className="card__title">Copy listing text</span>
-                </div>
-                <div className="card__body stack-4">
-                  <div className="t-small muted">
-                    Copies paste-ready listing text to your clipboard for selected
-                    manual marketplaces. Nothing is published automatically.
-                  </div>
-                  {selectedExportMarketplaces.map((mp) => (
-                    <div key={mp} className="row" style={{ gap: 12 }}>
-                      <MpLogo id={mp} size={28} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="mp-row__name">{marketplaceName(mp)}</div>
-                      </div>
-                      <Btn
-                        variant="secondary"
-                        size="sm"
-                        icon="copy"
-                        disabled={exportBusy != null}
-                        onClick={() => void copyExport(mp)}
-                      >
-                        {exportBusy === mp ? "Copying…" : `Copy for ${marketplaceName(mp)}`}
-                      </Btn>
-                    </div>
-                  ))}
-                  {exportError && <div className="field__error">{exportError}</div>}
-                  {exportResult && exportResult.warnings.length === 0 && (
-                    <Banner
-                      variant="info"
-                      title={`Copied ${marketplaceName(exportResult.marketplace)} listing text`}
-                      desc={`Paste it into the ${marketplaceName(exportResult.marketplace)} listing form.`}
-                    />
-                  )}
-                  {exportResult && exportResult.warnings.length > 0 && (
-                    <Banner
-                      variant="warn"
-                      title={`Copied ${marketplaceName(exportResult.marketplace)} listing text with gaps`}
-                      desc={exportResult.warnings.join(" · ")}
-                    />
-                  )}
-                </div>
-              </section>
-            )}
+            <GuidedListingPanel
+              token={token}
+              itemId={id}
+              marketplaces={selectedExportMarketplaces}
+              photos={item.photos}
+              onListed={reload}
+            />
 
             <MarketplaceOperationsPanel
               channels={operationChannels}
