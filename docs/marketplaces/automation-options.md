@@ -4,13 +4,24 @@ How far Sello can automate each marketplace, what is gated behind official APIs,
 and the honest current state. This document is research and planning only. It
 does not enable any live marketplace operation. No secrets or API keys live here.
 
-| Channel  | Today                    | Automation path                              |
-| -------- | ------------------------ | -------------------------------------------- |
-| eBay     | Live publish (gated)     | Official Sell APIs + OAuth, allowlisted alpha |
-| Grailed  | Copy-ready draft         | No official listing API                       |
-| Poshmark | Copy-ready draft         | No official public listing API                |
-| Depop    | Copy-ready draft         | Official private API request in progress      |
-| Etsy     | Copy-ready + gated API foundation | Official Etsy Open API v3 — target: live, gated automation |
+Last research refresh: 2026-07-17 (primary developer-portal sources; see §11).
+
+| Channel     | Today                             | Automation path                                                       |
+| ----------- | --------------------------------- | --------------------------------------------------------------------- |
+| eBay        | Live publish (gated)              | Official Sell APIs + OAuth, allowlisted alpha                          |
+| StockX      | Native adapter (gated on creds)   | Official StockX API: catalog match, list, activate, deactivate, sync   |
+| Etsy        | Copy-ready + gated API foundation | Official Etsy Open API v3 — live gated automation once creds + commercial access land |
+| Depop       | Guided publish (copy-ready)       | **Official Depop Selling API is live (2026)** — partner-gated; apply via partnerships@depop.com; OAuth2 + sandbox; SKU-based product upsert, orders, offer webhooks. Target: gated native adapter (Phase B) |
+| Vinted      | Guided publish (copy-ready)       | Official Vinted Pro Integrations API — allowlist + Pro/business sellers only; HMAC-signed requests (not OAuth); items/orders/webhooks. Apply, then build |
+| Mercari     | Guided publish (copy-ready)       | No consumer-marketplace API (Mercari Shops API is a separate B2C product behind a business contract). Guided publish is the ceiling |
+| Grailed     | Guided publish (copy-ready)       | No official listing API                                                |
+| Poshmark    | Guided publish (copy-ready)       | No official public listing API                                         |
+| TikTok Shop | Gated scaffold (no handler)       | TikTok Shop Open Platform: open registration, OAuth2, sandbox. Buildable without partner approval; deferred (off-vertical, GMV-Max ad mandate from 2026-07) |
+
+"Guided publish" = structured field-level export, the marketplace's own sell-form
+deep link, photo access, and mark-as-listed URL capture that enrolls the manual
+listing in the double-sell safety engine. It is user-triggered on the seller's
+own session; Sello never scripts the marketplace's site.
 
 **Product rule:** every marketplace should reach the highest autonomy that an
 official, compliant API allows. Etsy must not stay copy-ready-only: the Etsy Open
@@ -192,9 +203,40 @@ gated behind an allowlist and a global switch, with every attempt audited. Etsy'
 Phase 4 should reuse these gates rather than inventing new ones. See
 `docs/FIRST_LIVE_PUBLISH.md` and `docs/ALPHA_LIVE_ACTIONS.md`.
 
-## Grailed / Poshmark / Depop (reference)
+## Grailed / Poshmark / Mercari (reference)
 
-- **Grailed / Poshmark**: no official public listing API today — copy-ready drafts are
-  the ceiling unless that changes.
-- **Depop**: copy-ready today; an official private API request is in progress. If
-  access is granted, it follows the same drafts-first, gated path as Etsy Phase 3–4.
+- **Grailed / Poshmark / Mercari**: no official public listing API today — guided
+  publish (structured copy-ready export + sell-form deep link + mark-as-listed) is
+  the ceiling unless that changes. Third-party crosslisters go further with
+  browser-extension form fill on the seller's own session; Sello has deliberately
+  not shipped that (unverifiable DOM automation, ToS exposure). Revisit only with
+  owner sign-off.
+
+## Depop (2026-07 update)
+
+Depop's official **Selling API** (partner API) is live: OAuth2, sandbox with
+purchase simulation, SKU-based create/update/delete, order retrieval, offer
+automation, and order webhooks. Access is private: apply by emailing
+partnerships@depop.com. Scopes observed in the reference: `products_read`,
+`products_write`, `orders_read`, `orders_write`, `offers_read`, `offers_write`,
+`shop_read`. Plan: mirror the Etsy Phase 2 gated foundation
+(`feature/depop-api-foundation`), fail-closed env config
+(`DEPOP_API_ENABLED` + credential names, per-seller allowlists), drafts-first,
+then light up per-seller once partnership approval lands.
+
+## 11. Research sources (2026-07-17)
+
+- Depop Selling API: https://partnerapi.depop.com/api-docs/ (overview: private,
+  partner application; sandbox), https://partnerapi.depop.com/api-docs/reference/
+- Vinted Pro Integrations: https://pro-docs.svc.vinted.com/ (items, orders,
+  webhooks; HMAC access keys via the pro portal)
+- Mercari Shops API (business-contract B2C product, not the consumer marketplace):
+  https://api.mercari-shops.com/docs/index.html
+- TikTok Shop Open Platform: https://partner.tiktokshop.com/docv2/page/tts-developer-guide
+- Whatnot Seller API (closed to new applicants): https://developers.whatnot.com/
+- Bonanza (open, low reach): https://api.bonanza.com/docs ; Reverb (open, music
+  vertical): https://www.reverb-api.com/ ; eBid (open, negligible reach):
+  https://ebid.3scale.net/
+- Vestiaire Collective Seller API (approval + volume gated; primary docs are a JS
+  SPA, details partly from connector guides — treat as unverified):
+  https://seller-api-docs.vestiairecollective.com/
