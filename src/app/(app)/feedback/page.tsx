@@ -74,9 +74,10 @@ export default function FeedbackPage() {
   return (
     <>
       <Topbar crumbs={["Feedback"]} />
-      <div className="page stack-4" style={{ maxWidth: 640 }}>
-        <div className="stack-1">
-          <h1 className="t-h2">Send feedback</h1>
+      <main className="page stack-4" style={{ maxWidth: 800 }}>
+        <div className="page__title-row">
+          <span className="eyebrow">HELP SHAPE SELLO</span>
+          <h1 className="page__title">What could work better?</h1>
           <p className="t-small muted">
             Report bugs, confusing flows, pricing issues, or marketplace problems.
             Sello is in early access. Feedback directly shapes what gets built next.
@@ -95,12 +96,12 @@ export default function FeedbackPage() {
             }
           />
         ) : (
-          <div className="stack-3">
-            {error && <div className="t-small danger">{error}</div>}
+          <form className="card card__body stack-4" onSubmit={(event) => { event.preventDefault(); if (!saving) void submit(); }}>
+            {error && <div role="alert" className="t-small danger">{error}</div>}
             <div className="form-grid form-grid--2" style={{ gap: 12 }}>
               <label className="field">
                 <span>Type</span>
-                <select value={type} onChange={(e) => setType(e.target.value)}>
+                <select className="select" value={type} onChange={(e) => setType(e.target.value)}>
                   {TYPES.map(([v, l]) => (
                     <option key={v} value={v}>
                       {l}
@@ -110,7 +111,7 @@ export default function FeedbackPage() {
               </label>
               <label className="field">
                 <span>Severity</span>
-                <select value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                <select className="select" value={severity} onChange={(e) => setSeverity(e.target.value)}>
                   {SEVERITIES.map(([v, l]) => (
                     <option key={v} value={v}>
                       {l}
@@ -121,7 +122,7 @@ export default function FeedbackPage() {
             </div>
             <label className="field">
               <span>Marketplace (optional)</span>
-              <select value={marketplace} onChange={(e) => setMarketplace(e.target.value)}>
+              <select className="select" value={marketplace} onChange={(e) => setMarketplace(e.target.value)}>
                 {MARKETPLACES.map(([v, l]) => (
                   <option key={v} value={v}>
                     {l}
@@ -132,6 +133,7 @@ export default function FeedbackPage() {
             <label className="field">
               <span>Subject</span>
               <input
+                className="input"
                 value={subject}
                 maxLength={200}
                 onChange={(e) => setSubject(e.target.value)}
@@ -141,6 +143,7 @@ export default function FeedbackPage() {
             <label className="field">
               <span>Message</span>
               <textarea
+                className="textarea"
                 value={message}
                 maxLength={5000}
                 rows={6}
@@ -149,13 +152,13 @@ export default function FeedbackPage() {
               />
             </label>
             <div>
-              <Btn variant="primary" onClick={submit} disabled={saving}>
+              <Btn type="submit" variant="accent" size="lg" disabled={saving}>
                 {saving ? "Sending…" : "Send feedback"}
               </Btn>
             </div>
-          </div>
+          </form>
         )}
-      </div>
+      </main>
     </>
   );
 }

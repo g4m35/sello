@@ -59,7 +59,8 @@ describe("new listing quickstart", () => {
     const strings: string[] = [];
     collectStrings(tree, strings);
     const text = strings.join(" ");
-    expect(text).toContain("Upload photos");
+    expect(text).toContain("choose from your device");
+    expect(text).toContain("Nothing is published automatically.");
     expect(text).not.toMatch(/import csv/i);
   });
 });

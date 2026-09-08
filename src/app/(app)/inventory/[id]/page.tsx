@@ -28,8 +28,6 @@ import {
   MarketplaceOperationsPanel,
 } from "@/components/app/marketplace-operations-panel";
 import {
-  formatMoneyCents,
-  estPayoutCents,
   conditionLabel,
   categoryLabel,
   relativeTime,
@@ -630,7 +628,6 @@ export default function ListingDetailPage() {
         (m) => m.label.trim().toLowerCase() === rec.label.toLowerCase(),
       ),
   );
-  const shortId = item.id.slice(0, 8);
   const selectedMarketplaceSet = new Set(edits.selectedMarketplaces);
   const selectedChannels = item.channels.filter((channel) =>
     selectedMarketplaceSet.has(channel.marketplace),
@@ -791,9 +788,7 @@ export default function ListingDetailPage() {
           <div className="page__title-row">
             <div className="row" style={{ gap: 10 }}>
               <Badge status={item.status} label={item.statusLabel} />
-              <span className="t-mono muted t-small">
-                {shortId} · {item.sku ?? "no SKU"}
-              </span>
+              {item.sku && <span className="t-mono muted t-small">SKU {item.sku}</span>}
             </div>
             <h1 className="page__title" style={{ marginTop: 4 }}>
               {head}
@@ -883,8 +878,13 @@ export default function ListingDetailPage() {
           />
         )}
 
+        <nav className="editor-sections" aria-label="Listing sections">
+          <a href="#listing-photos">Photos</a><a href="#listing-details">Item details</a><a href="#listing-price">Pricing</a><a href="#field-channels">Marketplaces</a>
+        </nav>
         <div className="detail">
-          <div className="card">
+          <div className="editor-record">
+            <div className="editor-product">
+            <div className="card editor-gallery" id="listing-photos">
             <FormSection
               title="Photos"
               desc={`${item.photos.length} photos`}
@@ -965,7 +965,9 @@ export default function ListingDetailPage() {
               )}
             </FormSection>
 
-            <FormSection title="Basics">
+            </div>
+            <div className="card editor-basics" id="listing-details">
+            <FormSection title="Item details">
               <Field label="Title" hint={`${edits.title.length}/80`}>
                 <input
                   id="field-title"
@@ -1109,7 +1111,9 @@ export default function ListingDetailPage() {
               </Field>
             </FormSection>
 
-            <details className="disclosure"><summary>Measurements (optional)</summary>
+            </div>
+            </div>
+            <details className="card disclosure"><summary>Measurements (optional)</summary>
             <FormSection
               title="Measurements"
               desc="Exports include filled values; apparel without any says measurements are available upon request"
@@ -1244,7 +1248,7 @@ export default function ListingDetailPage() {
             </FormSection>
             </details>
 
-            <details className="disclosure"><summary>Flaws (optional)</summary>
+            <details className="card disclosure"><summary>Flaws (optional)</summary>
             <FormSection
               title="Flaws"
               desc="Only listed flaws are exported; an empty list never claims flawless"
@@ -1337,22 +1341,14 @@ export default function ListingDetailPage() {
             </FormSection>
             </details>
 
+            <div className="card editor-pricing" id="listing-price">
             <FormSection
               title="Pricing"
-              desc={
-                edits.recommendedPriceCents != null
-                  ? `Est payout ${formatMoneyCents(estPayoutCents(edits.recommendedPriceCents))}`
-                  : "Set a price to see estimated payout"
-              }
+              desc="Set the listing price in USD. Marketplace fees are calculated by the marketplace."
             >
               <div className="form-grid form-grid--3">
                 <Field
-                  label="Sell price"
-                  hint={
-                    edits.recommendedPriceCents != null
-                      ? `payout ${formatMoneyCents(estPayoutCents(edits.recommendedPriceCents))}`
-                      : undefined
-                  }
+                  label="Listing price (USD)"
                 >
                   <input
                     id="field-price"
@@ -1373,9 +1369,10 @@ export default function ListingDetailPage() {
                 onApplyPrice={(priceCents) => patch({ recommendedPriceCents: priceCents })}
               />
             </FormSection>
+            </div>
           </div>
 
-          <div className="readiness">
+          <aside className="readiness" aria-label="Listing review and publishing">
             <section className="card" id="readiness-card">
               <div className="readiness__head">
                 <div className="readiness__ring">
@@ -1436,7 +1433,7 @@ export default function ListingDetailPage() {
               </ul>
             </section>
 
-            <section className="card" id="field-channels">
+            <section className="card editor-channels" id="field-channels">
               <div className="card__head">
                 <span className="card__title">Marketplaces</span>
                 <span className="t-small muted">{item.channels.length} configured</span>
@@ -1458,6 +1455,7 @@ export default function ListingDetailPage() {
                     >
                       <Check
                         checked={selected}
+                        label={`Select ${channel.name}`}
                         disabled={!editable}
                         onChange={() => toggleMarketplace(channel.marketplace)}
                       />
@@ -1540,7 +1538,7 @@ export default function ListingDetailPage() {
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}
             />
             </details>
-          </div>
+          </aside>
         </div>
       </main>
 

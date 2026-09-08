@@ -147,7 +147,7 @@ export function ImportModal({
   const mappedCount = IMPORT_TARGET_FIELDS.filter((f) => mapping[f.key]).length;
 
   return (
-    <Modal open={open} onClose={stage === "importing" ? undefined : handleClose} wide>
+    <Modal title="Import listings" open={open} onClose={stage === "importing" ? undefined : handleClose} wide>
       <div className="modal__head">
         <div>
           <div className="modal__title">Import from CSV</div>
@@ -157,7 +157,7 @@ export function ImportModal({
           </div>
         </div>
         {stage !== "importing" && (
-          <button className="modal__close" onClick={handleClose}>
+          <button type="button" aria-label="Close dialog" className="modal__close" onClick={handleClose}>
             <Icon name="x" size={16} />
           </button>
         )}

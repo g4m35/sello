@@ -304,6 +304,7 @@ export default function HistoryPage() {
       <main className="page">
         <div className="page__head">
           <div>
+            <span className="eyebrow">PUBLISHING RECORD</span>
             <h1 className="page__title">
               Publish <em>history</em>
             </h1>
@@ -316,8 +317,8 @@ export default function HistoryPage() {
         {notImplCount > 0 && (
           <Banner
             variant="info"
-            title="Publishing is not enabled yet"
-            desc="Attempts are recorded for audit. No listing is sent to any marketplace until real adapters ship."
+            title="Some attempts used an unavailable channel"
+            desc="Those attempts did not post a listing. Review the result for each marketplace below."
           />
         )}
 

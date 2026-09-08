@@ -114,7 +114,7 @@ export function BulkDelistModal({
   const eligibleCount = preflight?.eligibleCount ?? 0;
 
   return (
-    <Modal open={open} onClose={closeAllowed ? onClose : undefined} wide>
+    <Modal title="End selected listings" open={open} onClose={closeAllowed ? onClose : undefined} wide>
       <div className="modal__head">
         <div>
           <div className="modal__title">
@@ -125,7 +125,7 @@ export function BulkDelistModal({
           </div>
         </div>
         {closeAllowed && (
-          <button className="modal__close" onClick={onClose}>
+          <button type="button" aria-label="Close dialog" className="modal__close" onClick={onClose}>
             <Icon name="x" size={16} />
           </button>
         )}

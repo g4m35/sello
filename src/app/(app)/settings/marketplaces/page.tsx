@@ -291,8 +291,9 @@ export default function MarketplaceSettingsPage() {
       <main className="page">
         <div className="page__head">
           <div>
+            <span className="eyebrow">CONNECTED ACCOUNTS</span>
             <h1 className="page__title">
-              Marketplaces<em>.</em>
+              Marketplaces
             </h1>
             <p className="t-small muted" style={{ marginTop: 4 }}>
               {labels.heading}

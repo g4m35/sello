@@ -184,6 +184,7 @@ export function EbayPreflightCard({
             className="input"
             style={{ width: 80 }}
             inputMode="numeric"
+                aria-label="eBay listing quantity"
             value={quantityDraft}
             onChange={(e) => setQuantityDraft(e.target.value.replace(/[^\d]/g, ""))}
           />
@@ -270,6 +271,7 @@ export function EbayPreflightCard({
               className="input"
               style={{ width: 120 }}
               inputMode="numeric"
+                aria-label="eBay category ID"
               placeholder="e.g. 15709"
               value={advancedId}
               onChange={(e) => setAdvancedId(e.target.value)}

@@ -213,7 +213,7 @@ export function PublishModal({
           : `Record publish attempt (${selectedCount})`;
 
   return (
-    <Modal open={open} onClose={stage === "running" ? undefined : onClose} wide>
+    <Modal title="Publish listing" open={open} onClose={stage === "running" ? undefined : onClose} wide>
       {stage === "review" && (
         <>
           <div className="modal__head">
@@ -225,7 +225,7 @@ export function PublishModal({
                 {formatMoneyCents(item.priceCents)} · {item.channels.length} configured channels
               </div>
             </div>
-            <button className="modal__close" onClick={onClose}>
+            <button type="button" aria-label="Close dialog" className="modal__close" onClick={onClose}>
               <Icon name="x" size={16} />
             </button>
           </div>
@@ -380,7 +380,7 @@ export function PublishModal({
               <div className="modal__sub">{item.title}</div>
             </div>
             {stage === "result" && (
-              <button className="modal__close" onClick={onClose}>
+              <button type="button" aria-label="Close dialog" className="modal__close" onClick={onClose}>
                 <Icon name="x" size={16} />
               </button>
             )}

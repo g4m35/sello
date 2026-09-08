@@ -6,7 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { useMobileNav } from "@/components/providers/mobile-nav-provider";
 
 export function Topbar({ crumbs = [], right }: { crumbs?: string[]; right?: ReactNode }) {
-  const { toggle } = useMobileNav();
+  const { toggle, open } = useMobileNav();
 
   return (
     <header className="topbar">
@@ -14,6 +14,8 @@ export function Topbar({ crumbs = [], right }: { crumbs?: string[]; right?: Reac
         type="button"
         className="topbar__hamburger btn btn--ghost btn--icon btn--sm"
         aria-label="Toggle navigation"
+        aria-expanded={open}
+        aria-controls="seller-navigation"
         onClick={toggle}
       >
         <Icon name="menu" size={17} />
