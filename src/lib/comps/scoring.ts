@@ -1,4 +1,5 @@
 import type { NormalizedComp } from "@/lib/comps/source";
+import { normalizedSize, sizeFromTitle } from "./size";
 
 export type ScoreItemInput = {
   productName: string;
@@ -109,6 +110,12 @@ export function scoreCompMatch(item: ScoreItemInput, comp: NormalizedComp): Matc
   const reasons: string[] = [];
   const itemBrand = knownBrand(item.brand);
   const compBrand = knownBrand(comp.brand);
+  const itemSize = normalizedSize(item.size);
+  const compSize = normalizedSize(comp.size) ?? sizeFromTitle(comp.title);
+  const titleSize = sizeFromTitle(comp.title);
+  if (itemSize && ((compSize && itemSize !== compSize) || (titleSize && titleSize !== itemSize))) {
+    return { score: 0, classification: "rejected", reasons: ["Size differs; excluded from automatic pricing."] };
+  }
 
   if (itemBrand && compBrand && itemBrand === compBrand) {
     score += 0.28;
@@ -148,15 +155,9 @@ export function scoreCompMatch(item: ScoreItemInput, comp: NormalizedComp): Matc
     reasons.push("Colorway appears in title.");
   }
 
-  if (item.size && comp.size && norm(item.size) === norm(comp.size)) {
+  if (itemSize && compSize && itemSize === compSize) {
     score += 0.08;
     reasons.push("Size matches.");
-  } else if (item.size && comp.size) {
-    score -= 0.12;
-    reasons.push("Size differs.");
-  } else if (item.size && includesNorm(comp.title, item.size)) {
-    score += 0.06;
-    reasons.push("Size appears in title.");
   }
 
   if (item.condition && comp.condition && comp.condition !== "unknown") {
@@ -185,6 +186,14 @@ export function scoreCompMatch(item: ScoreItemInput, comp: NormalizedComp): Matc
     reasons.push("Generic item identity; brand or model signal is missing.");
   }
 
+  if (itemSize && !compSize) {
+    score = Math.min(score, 0.71);
+    reasons.push("Comparable size is unverified.");
+  }
+  if (item.styleCode && !includesNorm(comp.title, item.styleCode)) {
+    score = Math.min(score, 0.71);
+    reasons.push("Comparable style code is unverified.");
+  }
   score = Math.max(0, Math.min(1, Math.round(score * 100) / 100));
   return { score, classification: classify(score), reasons };
 }

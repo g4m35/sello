@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const user = await getSupabaseUserFromCookies();
   if (user) {
-    redirect("/dashboard");
+    redirect("/inventory");
   }
 
   return <LandingPage />;

@@ -59,11 +59,11 @@ export function Sidebar() {
       : pathname === href || pathname.startsWith(href + "/");
 
   const primary: NavItem[] = [
-    { href: "/dashboard", label: "Dashboard", icon: "grid" },
     { href: "/inventory", label: "Inventory", icon: "box", count: counts.items },
     { href: "/inventory/bulk", label: "Bulk intake", icon: "upload" },
   ];
   const config: NavItem[] = [
+    { href: "/dashboard", label: "Overview", icon: "grid" },
     { href: "/history", label: "Publish history", icon: "history" },
     { href: "/channels", label: "Marketplaces", icon: "store", count: counts.channels },
     { href: "/settings/billing", label: "Billing", icon: "tag" },
@@ -91,9 +91,9 @@ export function Sidebar() {
         <button
           type="button"
           className="sidebar__brand-mark"
-          onClick={() => go("/dashboard")}
-          aria-label="Sello — go to dashboard"
-          title="Go to dashboard"
+          onClick={() => go("/inventory")}
+          aria-label="Sello — go to inventory"
+          title="Go to inventory"
         >
           Sello<em>.</em>
         </button>
@@ -115,6 +115,7 @@ export function Sidebar() {
       >
         <Icon name="search" size={14} />
         <input
+          aria-label="Find inventory item"
           placeholder="Find item, SKU…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -137,8 +138,8 @@ export function Sidebar() {
         ))}
       </div>
 
-      <div className="sidebar__section">
-        <div className="sidebar__label">Workspace</div>
+      <details className="sidebar__section" open={config.some((it) => isActive(it.href)) || undefined}>
+        <summary className="sidebar__label">Workspace</summary>
         {config.map((it) => (
           <button
             key={it.href}
@@ -152,7 +153,7 @@ export function Sidebar() {
             {it.count != null && <span className="nav-item__count t-num">{it.count}</span>}
           </button>
         ))}
-      </div>
+      </details>
 
       <div className="sidebar__footer">
         <div className="avatar">{initials}</div>

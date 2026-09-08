@@ -1,3 +1,4 @@
+import type { PublishAuthorization } from "@/lib/automation/policy";
 import type {
   InventoryStatus,
   Prisma,
@@ -279,6 +280,7 @@ export type PublishPrismaLike = {
 };
 
 export type ExecutePublishInput = {
+  authorization?: PublishAuthorization;
   userId: string;
   accountId?: string;
   inventoryItemId: string;
@@ -304,7 +306,7 @@ type AdapterResolver = (marketplace: Marketplace) => {
 
 export type EbayPublishFn = (
   prisma: EbayPublishPrismaLike,
-  input: { userId: string; accountId?: string; inventoryItemId: string },
+  input: { userId: string; accountId?: string; inventoryItemId: string; authorization?: PublishAuthorization },
 ) => Promise<EbayPublishResult>;
 
 const defaultEbayPublish: EbayPublishFn = (prisma, input) =>
@@ -542,6 +544,7 @@ async function executeEbayPublish(
   let result: EbayPublishResult;
   try {
     result = await ebayPublish(prisma as unknown as EbayPublishPrismaLike, {
+      ...(input.authorization ? { authorization: input.authorization } : {}),
       userId: input.userId,
       accountId: input.accountId,
       inventoryItemId: input.inventoryItemId,

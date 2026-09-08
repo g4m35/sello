@@ -46,8 +46,8 @@ describe("scoreCompMatch", () => {
     const scored = scoreCompMatch(
       item,
       comp({
-        title: "The North Face Black Puffer Jacket Medium",
-        size: "Medium",
+        title: "The North Face Black Puffer Jacket",
+        size: null,
       }),
     );
     expect(scored.classification).toBe("possible");
@@ -67,7 +67,7 @@ describe("scoreCompMatch", () => {
     );
     expect(scored.classification).toBe("rejected");
     expect(scored.score).toBeLessThan(0.3);
-    expect(scored.reasons).toContain("Brand differs.");
+    expect(scored.reasons.join(" ")).toContain("Size differs");
   });
 
   it("penalizes generic plain-shirt matches without brand or model signals", () => {
@@ -110,4 +110,10 @@ describe("scoreCompMatch", () => {
     expect(scored.classification).toBe("strong");
     expect(scored.score).toBeGreaterThanOrEqual(0.72);
   });
+});
+
+it("rejects misleading strong-title comparisons with a different explicit shoe size", () => {
+  const item = { productName: "Nike Dunk Low Panda", brand: "Nike", styleCode: "DD1391-100", size: "10", category: "sneakers" };
+  const candidate = { title: "Nike Dunk Low Panda DD1391-100 Size 8.5", brand: "Nike", size: "10", sold: true };
+  expect(scoreCompMatch(item, candidate as never)).toMatchObject({ classification: "rejected", score: 0 });
 });

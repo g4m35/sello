@@ -108,7 +108,7 @@ export const stockxSource: CompSource = {
         sold: isCompletedSale,
         condition: "unknown",
         brand: row.brand,
-        size: row.size ?? query.size,
+        size: row.size ?? null,
         category: row.category ?? query.category,
         rawJson: row.rawJson,
       };

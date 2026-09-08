@@ -139,7 +139,7 @@ export function mapApifyEbaySoldItems(
       sold: true,
       condition: conditionFromText(item.condition),
       brand: firstString(item.brand) ?? query.brand ?? null,
-      size: firstString(item.size) ?? query.size ?? null,
+      size: firstString(item.size) ?? null,
       category: query.category,
       rawJson: raw,
     });

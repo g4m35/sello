@@ -95,16 +95,16 @@ describe("Sidebar brand", () => {
     reactHarness.states = [];
   });
 
-  it("navigates to the dashboard when the Sello logo is clicked", () => {
+  it("navigates to inventory when the Sello logo is clicked", () => {
     reactHarness.cursor = 0;
     const tree = Sidebar();
     const brand = findElement(
       tree,
-      (el) => el.props["aria-label"] === "Sello — go to dashboard",
+      (el) => el.props["aria-label"] === "Sello — go to inventory",
     );
     expect(brand).not.toBeNull();
     (brand?.props.onClick as () => void)();
-    expect(mocks.push).toHaveBeenCalledWith("/dashboard");
+    expect(mocks.push).toHaveBeenCalledWith("/inventory");
   });
 
   it("provides direct access to billing settings", () => {

@@ -433,3 +433,31 @@ describe("publishEbayListing — happy path", () => {
     );
   });
 });
+
+describe("automatic publication payload authorization", () => {
+  function authorizedItem() {
+    const date = new Date("2026-09-08T00:00:00.000Z");
+    const item = { ...readyItem(), updatedAt: date, quantityAvailable: 1 };
+    const draft = { ...item.listingDrafts[0], updatedAt: date };
+    const value = { ...item, listingDrafts: [draft] };
+    return { item: value, input: { userId: "user-1", inventoryItemId: "item-1", authorization: { itemVersion: date.toISOString(), draftVersion: date.toISOString(), priceCents: 24000 } } };
+  }
+  it("publishes the authorized USD price and exactly one unit", async () => {
+    const h = authorizedItem(); const deps = createDeps();
+    await publishEbayListing(createPrisma({ item: h.item }), h.input, deps);
+    const client = vi.mocked(deps.createClient).mock.results[0].value;
+    expect(client.createOrReplaceInventoryItem).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ product: expect.objectContaining({ aspects: expect.objectContaining({ "US Shoe Size": ["10"], Department: ["Men"] }) }) }));
+    expect(client.createOffer).toHaveBeenCalledWith(expect.objectContaining({ availableQuantity: 1, pricingSummary: { price: { value: "240.00", currency: "USD" } } }));
+    expect(client.createOrReplaceInventoryItem).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ availability: { shipToLocationAvailability: { quantity: 1 } } }));
+  });
+  it("rejects an eBay quantity that exceeds single-item stock before token access", async () => {
+    const h = authorizedItem(); h.item.listingDrafts[0].marketplaceDrafts.ebay.quantity = 2; const deps = createDeps();
+    await expect(publishEbayListing(createPrisma({ item: h.item }), h.input, deps)).rejects.toMatchObject({ code: "AUTOMATION_QUANTITY_MISMATCH" });
+    expect(deps.resolveAccessToken).not.toHaveBeenCalled();
+  });
+  it("rejects a draft edited after pricing before token access", async () => {
+    const h = authorizedItem(); h.item.listingDrafts[0].updatedAt = new Date(); const deps = createDeps();
+    await expect(publishEbayListing(createPrisma({ item: h.item }), h.input, deps)).rejects.toMatchObject({ code: "AUTOMATION_LISTING_CHANGED" });
+    expect(deps.resolveAccessToken).not.toHaveBeenCalled();
+  });
+});

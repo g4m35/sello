@@ -82,8 +82,8 @@ export function EbayPreflightCard({
   /** Seller-saved eBay quantity; resale listings default to 1. */
   savedQuantity: number;
   /**
-   * Increments after every successful draft/item save. Once the seller has run
-   * a check, the panel re-checks itself on each bump so eBay readiness stays in
+   * Increments after every successful draft/item save. The panel checks on
+   * mount and re-checks itself on each bump so eBay readiness stays in
    * sync with the latest saved draft without a manual re-click or page reload.
    */
   refreshSignal?: number;
@@ -103,12 +103,10 @@ export function EbayPreflightCard({
   const [quantityDraft, setQuantityDraft] = useState(String(savedQuantity || 1));
   const [aspectDrafts, setAspectDrafts] = useState<Record<string, string>>({});
   const [savedAspectNames, setSavedAspectNames] = useState<string[]>([]);
-  // Whether the seller has run at least one check. Gates auto-recheck so the
-  // panel never fires a request on first mount (checking is an explicit action).
-  const hasChecked = useRef(false);
+  const requestVersion = useRef(0);
 
   const runCheck = useCallback(async () => {
-    hasChecked.current = true;
+    const version = ++requestVersion.current;
     setRunning(true);
     setError(null);
     try {
@@ -118,22 +116,26 @@ export function EbayPreflightCard({
           headers: { Authorization: `Bearer ${token}` },
         }),
       );
+      if (version !== requestVersion.current) return;
       setResult(payload);
       // A fresh check supersedes any per-field "Saved" confirmations.
       setSavedAspectNames([]);
     } catch (err) {
+      if (version !== requestVersion.current) return;
       setError(getErrorMessage(err));
     } finally {
-      setRunning(false);
+      if (version === requestVersion.current) setRunning(false);
     }
   }, [itemId, token]);
 
-  // Re-check after each save once the seller has checked at least once, so the
+  const invalidateCheck = useCallback(() => { requestVersion.current++; }, []);
+
+  // Check on mount and after each save, so the
   // eBay readiness panel reflects the latest saved category/quantity/aspects.
   useEffect(() => {
-    if (refreshSignal === undefined || !hasChecked.current) return;
-    void runCheck();
-  }, [refreshSignal, runCheck]);
+    const timer = setTimeout(() => void runCheck(), 150);
+    return () => { clearTimeout(timer); invalidateCheck(); };
+  }, [refreshSignal, runCheck, invalidateCheck]);
 
   const category = result?.category ?? null;
   const categoryConflict = result?.categoryConflict ?? null;
@@ -160,9 +162,8 @@ export function EbayPreflightCard({
       </div>
       <div className="card__body stack-4">
         <div className="t-small muted">
-          Checks everything eBay needs and previews exactly what Sello would
-          send. Nothing is sent to eBay; production publishing is not enabled
-          yet.
+          Sello checks your connection and listing requirements automatically.
+          This check does not publish anything.
         </div>
 
         <div className="row" style={{ gap: 8 }}>

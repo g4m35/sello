@@ -1,6 +1,8 @@
+import { ListingAutomationSchema } from "@/lib/automation/policy";
+import { automationJobData, runListingJob } from "@/lib/automation/listing-job";
 import { randomUUID } from "node:crypto";
 
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { Prisma } from "@/generated/prisma/client";
 import { generateListingDraftWithGemini, GEMINI_PROMPT_VERSION } from "@/lib/ai/gemini";
@@ -30,6 +32,7 @@ import { requireSupabaseUser } from "@/lib/supabase/server";
 import { extractListingPhotos } from "@/lib/uploads";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   try {
@@ -85,6 +88,7 @@ export async function POST(request: Request) {
   let usageReservationId: string | null = null;
   let usageIdempotencyKey: string | null = null;
   let meteredWorkCompleted = false;
+  let draftWriteStarted = false;
 
   try {
     const user = await requireSupabaseUser(request);
@@ -113,6 +117,8 @@ export async function POST(request: Request) {
     usageReservationId = reservation.reservationId;
 
     const formData = await request.formData();
+    const automationValue = formData.get("automation");
+    const automation = typeof automationValue === "string" ? ListingAutomationSchema.parse(JSON.parse(automationValue)) : null;
     const files = extractListingPhotos(formData);
     const photos = await prepareListingPhotos(files);
 
@@ -166,6 +172,7 @@ export async function POST(request: Request) {
       marketplaceDrafts: gemini.draft.marketplaceDrafts,
     });
 
+    draftWriteStarted = true;
     const [inventoryItem, draft, aiOutput] = await prisma.$transaction([
       prisma.inventoryItem.update({
         where: { id: createdInventoryItemId },
@@ -201,7 +208,7 @@ export async function POST(request: Request) {
             ...f,
             source: f.source ?? "ai",
           })) as Prisma.InputJsonValue,
-          selectedMarketplaces: ["ebay", "grailed", "poshmark", "depop", "etsy"],
+          selectedMarketplaces: automation ? (automation.mode === "publish" ? ["ebay"] : []) : ["ebay", "grailed", "poshmark", "depop", "etsy"],
         },
       }),
       prisma.aiOutput.create({
@@ -216,6 +223,11 @@ export async function POST(request: Request) {
           validatedJson: gemini.draft as Prisma.InputJsonValue,
         },
       }),
+      ...(automation ? [prisma.jobLog.create({ data: automationJobData({
+        id: createdInventoryItemId, inventoryItemId: createdInventoryItemId,
+        accountId: account.id, userId: user.id, policy: automation,
+        warnings: gemini.draft.warnings,
+      }) })] : []),
     ]);
     meteredWorkCompleted = true;
 
@@ -228,12 +240,14 @@ export async function POST(request: Request) {
 
     // Best-effort: gather automatic comps now that the item is identified.
     // No-op (and fast) when no comp source is configured; never blocks the draft.
-    await runCompFetch(prisma, createdInventoryItemId, user.id, {
+    if (automation) {
+      after(() => runListingJob(createdInventoryItemId));
+    } else await runCompFetch(prisma, createdInventoryItemId, user.id, {
       paidProvidersAllowed: runtimeEntitlements.access.paidComps,
       adminOverride: isAdminUser(user),
       accountId: account.id,
       idempotencyKey: `${usageIdempotencyKey}:auto-comps`,
-    }).catch(() => undefined);
+    }).catch((error) => logUnexpectedError("draft_auto_comps", error));
 
     return NextResponse.json({
       inventoryItem,
@@ -245,7 +259,7 @@ export async function POST(request: Request) {
     // response, so a raw Gemini/Prisma/provider error never leaks or is stored.
     const message = safePersistedFailureReason(error, "Listing identification failed.");
 
-    if (inventoryItemId && prisma) {
+    if (inventoryItemId && prisma && !meteredWorkCompleted) {
       await prisma.inventoryItem
         .update({
           where: { id: inventoryItemId },
@@ -267,6 +281,7 @@ export async function POST(request: Request) {
         .catch(() => undefined);
     }
 
+    let retrySafe = false;
     if (usageReservationId && prisma) {
       if (meteredWorkCompleted) {
         await markUsageReconciliationRequired(
@@ -276,17 +291,18 @@ export async function POST(request: Request) {
           prisma,
         ).catch((usageError) => logUnexpectedError("ai_listing_usage_reconcile", usageError));
       } else {
-        await releaseUsageReservation(
+        const released = await releaseUsageReservation(
           usageReservationId,
           new Date(),
           prisma,
           "released",
           { allowStartedWork: true },
-        ).catch((usageError) => logUnexpectedError("ai_listing_usage_release", usageError));
+        ).catch((usageError) => { logUnexpectedError("ai_listing_usage_release", usageError); return false; });
+        retrySafe = released && !draftWriteStarted;
       }
     }
 
     const status = error instanceof AppError ? error.status : 500;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message, ...(retrySafe ? { retrySafe: true } : {}) }, { status });
   }
 }

@@ -58,6 +58,7 @@ export default function InventoryPage() {
   const searchParams = useSearchParams();
   const { token } = useSession();
   const { access, copy, limits } = useFeatureAccess();
+  const bulkBatchLimit = Math.min(10, limits.bulkBatchSize);
 
   const [items, setItems] = useState<ItemView[] | null>(null);
   const [channels, setChannels] = useState<ChannelView[]>([]);
@@ -268,9 +269,9 @@ export default function InventoryPage() {
   const openBulkPublish = useCallback((marketplace: "ebay" | "stockx" = "ebay") => {
     const ids = (items ?? []).filter((it) => selected.has(it.id)).map((it) => it.id);
     if (!ids.length) return;
-    if (ids.length > limits.bulkBatchSize) {
+    if (ids.length > bulkBatchLimit) {
       setActionError(
-        `Your plan allows up to ${limits.bulkBatchSize} items per bulk action.`,
+        `Your plan allows up to ${bulkBatchLimit} items per bulk action.`,
       );
       return;
     }
@@ -282,7 +283,7 @@ export default function InventoryPage() {
     setBulkError(null);
     setBulkPhase("preflight");
     setBulkOpen(true);
-  }, [items, limits.bulkBatchSize, selected]);
+  }, [items, bulkBatchLimit, selected]);
 
   // Preflight the selection when the modal opens. Read-only; no outbound eBay
   // write happens here. State is set only inside the async runner after await.
@@ -340,9 +341,9 @@ export default function InventoryPage() {
   const openBulkDelist = useCallback((marketplace: "ebay" | "stockx" = "ebay") => {
     const ids = (items ?? []).filter((it) => selected.has(it.id)).map((it) => it.id);
     if (!ids.length) return;
-    if (ids.length > limits.bulkBatchSize) {
+    if (ids.length > bulkBatchLimit) {
       setActionError(
-        `Your plan allows up to ${limits.bulkBatchSize} items per bulk action.`,
+        `Your plan allows up to ${bulkBatchLimit} items per bulk action.`,
       );
       return;
     }
@@ -354,7 +355,7 @@ export default function InventoryPage() {
     setDelistError(null);
     setDelistPhase("preflight");
     setDelistOpen(true);
-  }, [items, limits.bulkBatchSize, selected]);
+  }, [items, bulkBatchLimit, selected]);
 
   // Read-only bulk delist preflight on open; no outbound eBay write here.
   useEffect(() => {
@@ -423,7 +424,7 @@ export default function InventoryPage() {
 
   const total = items.length;
   const selectionCount = selectedInView.length;
-  const selectionOverBulkLimit = selectionCount > limits.bulkBatchSize;
+  const selectionOverBulkLimit = selectionCount > bulkBatchLimit;
   const stockxChannel = channels.find((c) => c.marketplace === "stockx");
   const stockxBulkPublishEnabled = Boolean(stockxChannel?.capabilities.publish);
   const stockxBulkDelistEnabled = Boolean(stockxChannel?.capabilities.delist);
@@ -626,7 +627,7 @@ export default function InventoryPage() {
         <div className="page__head">
           <div>
             <h1 className="page__title">
-              Inventory, <em>{total}</em> items
+              Inventory, <em>{total}</em> {total === 1 ? "item" : "items"}
             </h1>
             <div className="page__title-meta">
               {counts.ready} ready · {counts.draft} drafts · {counts.active} active
@@ -688,11 +689,11 @@ export default function InventoryPage() {
               : `${filtered.length} of ${total}`}
           </span>
           <span className="t-small muted">
-            Bulk limit {limits.bulkBatchSize}
+            Bulk limit {bulkBatchLimit}
           </span>
           {selectionOverBulkLimit && (
             <span className="t-small danger">
-              Select {limits.bulkBatchSize} or fewer for bulk actions.
+              Select {bulkBatchLimit} or fewer for bulk actions.
             </span>
           )}
           {selectionCount > 0 && stockxBulkPublishEnabled && (
@@ -800,7 +801,7 @@ export default function InventoryPage() {
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
         selectionCount={bulkIds.length}
-        batchLimit={limits.bulkBatchSize}
+        batchLimit={bulkBatchLimit}
         livePublishAllowed={
           bulkMarketplace === "stockx" ? stockxBulkPublishEnabled : access.liveEbayPublish
         }
@@ -824,7 +825,7 @@ export default function InventoryPage() {
         open={delistOpen}
         onClose={() => setDelistOpen(false)}
         selectionCount={delistIds.length}
-        batchLimit={limits.bulkBatchSize}
+        batchLimit={bulkBatchLimit}
         liveDelistAllowed={
           delistMarketplace === "stockx" ? stockxBulkDelistEnabled : access.ebayDelist
         }

@@ -53,6 +53,8 @@ export type CompFetchResult = {
 };
 
 export type RunCompFetchOptions = {
+  /** Worker applies the price with optimistic concurrency after validating policy. */
+  applyPrice?: boolean;
   sources?: CompSource[];
   force?: boolean;
   paidProvidersAllowed?: boolean;
@@ -498,10 +500,11 @@ export async function runCompFetch(
     where: { inventoryItemId },
     orderBy: { createdAt: "desc" },
   });
-  const summary = summarizeComps(savedComps);
+  const summary = summarizeComps(savedComps.filter((comp) => comp.currency === "USD"));
   let appliedPriceCents: number | null = null;
 
   if (
+    options.applyPrice !== false &&
     summary.confidence === "high" &&
     summary.recommendedListCents != null &&
     item.recommendedPriceCents == null

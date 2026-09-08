@@ -136,7 +136,7 @@ describe("StockX comp source", () => {
       source: "stockx",
       priceCents: 12000,
       sold: false,
-      size: "10",
+      size: null,
     });
     expect(mocks.update).toHaveBeenCalledWith({
       where: { id: "draft-1" },

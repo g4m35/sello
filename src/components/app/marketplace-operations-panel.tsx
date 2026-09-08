@@ -95,15 +95,15 @@ export function sellerPublishStatus(channel: ChannelStateView | null): SellerPub
     case "ready":
       return channel.publishImplemented
         ? {
-            label: "Ready to publish",
+            label: "Listing prepared",
             tone: "ready",
-            meaning: "This item is ready to send to eBay.",
+            meaning: "Listing details are prepared. eBay requirements are checked before posting.",
             nextAction: "Use Publish to eBay, or preview the payload first.",
           }
         : {
             label: "Publish disabled",
             tone: "ready",
-            meaning: "This item is ready, but production publishing is currently disabled.",
+            meaning: "This item is ready, but direct publishing is currently unavailable.",
             nextAction: "Preview the eBay payload, or copy/export to list it manually.",
           };
     default:
@@ -118,7 +118,7 @@ export function sellerPublishStatus(channel: ChannelStateView | null): SellerPub
             label: "Draft only",
             tone: "draft",
             meaning:
-              "This item has not been sent to eBay, and production publishing is currently disabled.",
+              "This item has not been sent to eBay, and direct publishing is currently unavailable.",
             nextAction: "Finish the details, then preview the eBay payload or copy/export.",
           };
   }

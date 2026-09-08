@@ -137,7 +137,7 @@ export class EbaySandboxClient implements EbayApiClient {
 
   async getOrdersModifiedSince(
     modifiedSince: Date,
-    opts: { limit?: number; offset?: number } = {},
+    opts: { limit?: number; offset?: number; modifiedUntil?: Date } = {},
   ): Promise<EbayFulfillmentOrdersPage> {
     if (!this.grantedScopes.includes(EBAY_FULFILLMENT_SCOPE)) {
       throw new EbayIntegrationError(
@@ -148,7 +148,7 @@ export class EbaySandboxClient implements EbayApiClient {
     }
     const limit = Math.min(Math.max(Math.floor(opts.limit ?? 50), 1), 200);
     const offset = Math.max(Math.floor(opts.offset ?? 0), 0);
-    const filter = `lastmodifieddate:[${modifiedSince.toISOString()}..]`;
+    const filter = `lastmodifieddate:[${modifiedSince.toISOString()}..${opts.modifiedUntil?.toISOString() ?? ""}]`;
     const rawPayload = await this.get<unknown>(
       `/sell/fulfillment/v1/order?filter=${encodeURIComponent(filter)}&limit=${limit}&offset=${offset}`,
     );

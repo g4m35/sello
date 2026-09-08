@@ -13,6 +13,7 @@ import { FormSection, Field } from "@/components/ui/form";
 import { Topbar } from "@/components/app/topbar";
 import { ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
+import { ListingAutomationStatus } from "@/components/app/listing-automation-status";
 import { AutoPricing } from "@/components/app/auto-pricing";
 import { StockXMatchCard } from "@/components/app/stockx-match-card";
 import { GuidedListingPanel } from "@/components/app/guided-listing-panel";
@@ -225,6 +226,9 @@ export default function ListingDetailPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = useRef(false);
+  const itemDirtyRef = useRef(false);
+  const draftEditVersion = useRef(0);
+  const itemEditVersion = useRef(0);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
@@ -281,12 +285,15 @@ export default function ListingDetailPage() {
   useEffect(() => {
     let active = true;
     async function run() {
+      const draftVersion = draftEditVersion.current;
+      const itemVersion = itemEditVersion.current;
       try {
         const res = await api.getItem(token, id);
         if (!active) return;
         setItem(res.item);
-        setEdits(editsFrom(res.item));
-        setItemEdits(itemEditsFrom(res.item));
+        // Background completion must not replace pending or in-flight edits.
+        if (!dirtyRef.current && draftVersion === draftEditVersion.current) setEdits(editsFrom(res.item));
+        if (!itemDirtyRef.current && itemVersion === itemEditVersion.current) setItemEdits(itemEditsFrom(res.item));
         setEbayOrphanScan(null);
         setError(null);
       } catch (e) {
@@ -308,6 +315,7 @@ export default function ListingDetailPage() {
   const save = useCallback(
     async (next: DraftEdits) => {
       if (!draftId) return;
+      const version = draftEditVersion.current;
       setSaveState("saving");
       try {
         const res = await api.updateDraft(token, draftId, {
@@ -327,7 +335,7 @@ export default function ListingDetailPage() {
           flaws: savableFlaws(next.flaws),
         });
         setSaveState("saved");
-        dirtyRef.current = false;
+        if (version === draftEditVersion.current) dirtyRef.current = false;
         if (res.item) {
           setItem((prev) => (prev ? mergeSavedItemState(prev, res.item!) : prev));
         }
@@ -343,6 +351,7 @@ export default function ListingDetailPage() {
     (next: DraftEdits) => {
       if (!draftId) return;
       dirtyRef.current = true;
+      draftEditVersion.current++;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         void save(next);
@@ -371,6 +380,7 @@ export default function ListingDetailPage() {
 
   const saveItem = useCallback(
     async (next: ItemEdits) => {
+      const version = itemEditVersion.current;
       setSaveState("saving");
       try {
         const res = await api.updateItem(token, id, {
@@ -381,6 +391,7 @@ export default function ListingDetailPage() {
           colorway: next.colorway.trim() || null,
         });
         setSaveState("saved");
+        if (version === itemEditVersion.current) itemDirtyRef.current = false;
         if (res.item) {
           setItem((prev) => (prev ? mergeSavedItemState(prev, res.item!) : prev));
         }
@@ -397,6 +408,8 @@ export default function ListingDetailPage() {
       setItemEdits((prev) => {
         if (!prev) return prev;
         const next = { ...prev, ...changes };
+        itemDirtyRef.current = true;
+        itemEditVersion.current++;
         if (itemDebounceRef.current) clearTimeout(itemDebounceRef.current);
         itemDebounceRef.current = setTimeout(() => void saveItem(next), AUTOSAVE_MS);
         return next;
@@ -580,7 +593,8 @@ export default function ListingDetailPage() {
     return (
       <>
         <Topbar crumbs={["Inventory"]} />
-        <main className="page">
+        <main className="page listing-editor">
+        <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
           <ErrorState message={error} onRetry={reload} />
         </main>
       </>
@@ -589,7 +603,8 @@ export default function ListingDetailPage() {
     return (
       <>
         <Topbar crumbs={["Inventory"]} />
-        <main className="page">
+        <main className="page listing-editor">
+        <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
           <ErrorState message="Listing not found." />
         </main>
       </>
@@ -765,7 +780,8 @@ export default function ListingDetailPage() {
         }
       />
 
-      <main className="page">
+      <main className="page listing-editor">
+        <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
         {notice && (
           <div style={{ marginBottom: "var(--s-4)" }}>
             <Banner variant="warn" title={notice} />
@@ -1093,6 +1109,7 @@ export default function ListingDetailPage() {
               </Field>
             </FormSection>
 
+            <details className="disclosure"><summary>Measurements (optional)</summary>
             <FormSection
               title="Measurements"
               desc="Exports include filled values; apparel without any says measurements are available upon request"
@@ -1225,7 +1242,9 @@ export default function ListingDetailPage() {
                 </div>
               </div>
             </FormSection>
+            </details>
 
+            <details className="disclosure"><summary>Flaws (optional)</summary>
             <FormSection
               title="Flaws"
               desc="Only listed flaws are exported; an empty list never claims flawless"
@@ -1316,6 +1335,7 @@ export default function ListingDetailPage() {
                 </div>
               </div>
             </FormSection>
+            </details>
 
             <FormSection
               title="Pricing"
@@ -1363,12 +1383,12 @@ export default function ListingDetailPage() {
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div className="card__title">
-                    {item.readiness.ready ? "Ready to publish" : "Needs details"}
+                    {item.readiness.ready ? "Listing prepared" : "Needs your attention"}
                   </div>
                   <div className="t-small muted">
                     {saveState === "saving"
                       ? "Checking readiness…"
-                      : `${item.readiness.doneCount} of ${item.readiness.totalCount} checks`}
+                      : item.readiness.ready ? "Choose where to post below." : "Only the missing details are shown below."}
                   </div>
                 </div>
                 {canLivePublish && (
@@ -1384,7 +1404,7 @@ export default function ListingDetailPage() {
                 )}
               </div>
               <ul className="readiness__list">
-                {item.readiness.checks.map((check) => (
+                {item.readiness.checks.filter((check) => check.state === "miss").map((check) => (
                   <li key={check.id} className={`readiness__item readiness__item--${check.state}`}>
                     <span className="readiness__item-icon">
                       <Icon
@@ -1427,8 +1447,8 @@ export default function ListingDetailPage() {
                     channel.status === "published" && channel.externalListingId
                       ? `ID ${channel.externalListingId}`
                       : channel.publishImplemented
-                        ? "Ready"
-                        : "Draft preview only";
+                        ? "Direct publishing available"
+                        : "Post manually";
                   const selected = edits.selectedMarketplaces.includes(channel.marketplace);
                   return (
                     <div
@@ -1446,7 +1466,7 @@ export default function ListingDetailPage() {
                         <div className="mp-row__name">{channel.name}</div>
                         <div className="mp-row__meta">{meta}</div>
                       </div>
-                      <Badge status={channel.status} />
+                      <Badge status={channel.status === "ready" ? "draft" : channel.status} label={channel.status === "ready" ? "Not posted" : undefined} />
                     </div>
                   );
                 })}
@@ -1501,6 +1521,8 @@ export default function ListingDetailPage() {
               onListed={reload}
             />
 
+            <details className="card disclosure">
+              <summary>Marketplace activity</summary>
             <MarketplaceOperationsPanel
               channels={operationChannels}
               attempts={item.attempts}
@@ -1517,6 +1539,7 @@ export default function ListingDetailPage() {
               onScanEbayOrphans={() => void runEbayOrphanScan()}
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}
             />
+            </details>
           </div>
         </div>
       </main>

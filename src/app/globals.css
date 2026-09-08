@@ -1994,3 +1994,22 @@ img { display: block; max-width: 100%; }
   .kpis { grid-template-columns: 1fr; }
   .modal__foot { flex-wrap: wrap; }
 }
+
+/* Seller workflow: clear actions, readable details, progressively disclosed evidence. */
+.upload-page { max-width: 960px; margin-inline: auto; }
+.upload-card { padding: clamp(20px, 4vw, 40px); }
+.upload-drop .dropzone { min-height: 260px; width: 100%; font-size: 16px; }
+.upload-drop--active { outline: 2px solid var(--accent); border-radius: var(--r-3); }
+.automation-choice { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.automation-choice input { width: 20px; height: 20px; margin-top: 2px; flex-shrink: 0; accent-color: var(--accent); }
+.automation-choice span span { display: block; margin-top: 6px; line-height: 1.6; }
+.automation-status { margin-bottom: 24px; }
+.disclosure > summary { cursor: pointer; padding: 16px; font-size: 14px; font-weight: 550; }
+.disclosure[open] > summary { margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+.disclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.price-recommendation { display: flex; align-items: flex-start; flex-direction: column; gap: 10px; }
+.price-recommendation strong { font-size: 32px; font-variant-numeric: tabular-nums; }
+.listing-editor .page__title { font-family: var(--font-sans); font-size: clamp(24px, 3vw, 32px); line-height: 1.3; }
+.listing-editor .field__label, .listing-editor .field__hint, .listing-editor .readiness__item-sub { font-size: 13px; }
+.listing-editor .t-small { line-height: 1.6; }
+@media (max-width: 700px) { .upload-card { padding: 20px; } .upload-drop .dropzone { min-height: 220px; } .upload-page .form-grid { grid-template-columns: 1fr; } }

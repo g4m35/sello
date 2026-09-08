@@ -53,6 +53,7 @@ describe("StockX match route", () => {
       id: "draft-1",
       inventoryItemId: "item-1",
       marketplaceDrafts: { ebay: { categoryId: "123" } },
+      inventoryItem: { styleCode: null, size: "10", brand: "Nike" },
     });
     mocks.update.mockResolvedValue({});
     mocks.loadItemDetailState.mockResolvedValue({ id: "item-1", stockxMatch: {} });
@@ -76,6 +77,7 @@ describe("StockX match route", () => {
         id: true,
         inventoryItemId: true,
         marketplaceDrafts: true,
+        inventoryItem: { select: { styleCode: true, size: true, brand: true } },
       },
     });
     expect(mocks.update).toHaveBeenCalledWith({
