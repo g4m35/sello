@@ -1,0 +1,81 @@
+Sello
+Studio
+New listing
+Inventory
+Bulk intake
+Publish history
+Marketplaces
+WORKSPACE
+Overview
+Billing
+Settings
+Send feedback
+SE
+Sello preview
+preview@example.test
+Inventory
+YOUR SELLING STUDIO
+Your inventory8
+
+Every item, from first photo to final sale.
+
+Add an item
+All
+8
+Drafts
+3
+Ready
+2
+Active
+3
+Needs attention
+0
+Recently updated
+Oldest updated
+Price: high to low
+Price: low to high
+Title: A to Z
+List
+Grid
+8 of 8
+Refresh
+Nike Dunk Low Panda
+Nike · 10
+Ready to post
+$125
+Not posted
+Carhartt Detroit Jacket
+Carhartt · L
+Ready to post
+$85
+Not posted
+Levi’s 501 Original Jeans
+Levi’s · 32 / 32
+Draft
+$42
+Not posted
+New Balance 990v5
+New Balance · 9.5
+Draft
+$95
+Not posted
+Patagonia Retro-X Fleece
+Patagonia · M
+Draft
+$78
+Not posted
+Ralph Lauren Oxford Shirt
+Ralph Lauren · L
+Active
+$38
+eB
+Adidas Samba OG
+Adidas · 10
+Active
+$65
+eB
+The North Face Nuptse
+The North Face · M
+Active
+$135
+eB

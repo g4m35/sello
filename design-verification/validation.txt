@@ -1,0 +1,177 @@
+
+> resale-crosslister@0.1.0 validate:full
+> npm run lint && npm run typecheck && npm test && npm run prisma:validate && npm run build
+
+
+> resale-crosslister@0.1.0 lint
+> eslint
+
+
+/Users/jheller/dev/sello-worktrees/autonomous-listing/src/app/api/listings/draft/draft-actions.test.ts
+  38:25  warning  '_m' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  38:36  warning  '_f' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 2 problems (0 errors, 2 warnings)
+
+
+> resale-crosslister@0.1.0 typecheck
+> prisma generate && tsc --noEmit --pretty false
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+
+✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 89ms
+
+
+> resale-crosslister@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.10 /Users/jheller/dev/sello-worktrees/autonomous-listing
+
+
+ Test Files  243 passed (243)
+      Tests  1767 passed (1767)
+   Start at  14:56:27
+   Duration  12.42s (transform 3.73s, setup 0ms, import 16.09s, tests 14.23s, environment 14ms)
+
+
+> resale-crosslister@0.1.0 prisma:validate
+> prisma validate
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+The schema at prisma/schema.prisma is valid 🚀
+
+> resale-crosslister@0.1.0 prebuild
+> prisma generate
+
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.prisma.
+
+✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 82ms
+
+
+> resale-crosslister@0.1.0 build
+> next build
+
+▲ Next.js 16.2.10 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.6s
+  Running TypeScript ...
+  Finished TypeScript in 4.1s ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/76) ...
+  Generating static pages using 9 workers (19/76) 
+  Generating static pages using 9 workers (38/76) 
+  Generating static pages using 9 workers (57/76) 
+✓ Generating static pages using 9 workers (76/76) in 116ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /admin/bulk-intake
+├ ƒ /admin/feedback
+├ ƒ /admin/marketplace-operations
+├ ƒ /admin/provider-usage
+├ ƒ /api/account/members
+├ ƒ /api/account/members/[id]
+├ ƒ /api/admin/bulk-intake
+├ ƒ /api/admin/feedback
+├ ƒ /api/admin/feedback/[id]
+├ ƒ /api/admin/marketplace-operations
+├ ƒ /api/admin/provider-usage
+├ ƒ /api/admin/sync-jobs/[jobId]
+├ ƒ /api/billing/checkout
+├ ƒ /api/billing/portal
+├ ƒ /api/billing/usage
+├ ƒ /api/billing/webhook
+├ ƒ /api/bulk/batches
+├ ƒ /api/bulk/batches/[batchId]
+├ ƒ /api/bulk/batches/[batchId]/cancel
+├ ƒ /api/bulk/batches/[batchId]/generate
+├ ƒ /api/bulk/batches/[batchId]/grouping
+├ ƒ /api/bulk/batches/[batchId]/items/[itemId]/convert
+├ ƒ /api/bulk/batches/[batchId]/items/[itemId]/generate
+├ ƒ /api/bulk/batches/[batchId]/photos
+├ ƒ /api/bulk/batches/[batchId]/photos/uploads
+├ ƒ /api/capabilities
+├ ƒ /api/feedback
+├ ƒ /api/history
+├ ƒ /api/internal/listing-automation/run
+├ ƒ /api/inventory/email-signals
+├ ƒ /api/inventory/listings
+├ ƒ /api/inventory/mark-sold
+├ ƒ /api/inventory/notifications
+├ ƒ /api/inventory/review-tasks
+├ ƒ /api/inventory/review-tasks/[id]/resolve
+├ ƒ /api/inventory/sync-jobs/run
+├ ƒ /api/jobs
+├ ƒ /api/listings
+├ ƒ /api/listings/[id]
+├ ƒ /api/listings/[id]/automation
+├ ƒ /api/listings/[id]/ebay-orphans
+├ ƒ /api/listings/[id]/ebay-preflight
+├ ƒ /api/listings/[id]/export
+├ ƒ /api/listings/[id]/photos
+├ ƒ /api/listings/comps
+├ ƒ /api/listings/comps/[compId]
+├ ƒ /api/listings/comps/provider-usage
+├ ƒ /api/listings/comps/refresh
+├ ƒ /api/listings/delist
+├ ƒ /api/listings/delist/bulk
+├ ƒ /api/listings/delist/bulk/preflight
+├ ƒ /api/listings/draft
+├ ƒ /api/listings/draft/[draftId]
+├ ƒ /api/listings/import
+├ ƒ /api/listings/lifecycle
+├ ƒ /api/listings/price
+├ ƒ /api/listings/publish
+├ ƒ /api/listings/publish/bulk
+├ ƒ /api/listings/publish/bulk/preflight
+├ ƒ /api/marketplaces/ebay/account-deletion
+├ ƒ /api/marketplaces/ebay/callback
+├ ƒ /api/marketplaces/ebay/connect
+├ ƒ /api/marketplaces/ebay/disconnect
+├ ƒ /api/marketplaces/ebay/locations
+├ ƒ /api/marketplaces/ebay/readiness
+├ ƒ /api/marketplaces/etsy/callback
+├ ƒ /api/marketplaces/etsy/connect
+├ ƒ /api/marketplaces/etsy/delist
+├ ƒ /api/marketplaces/etsy/disconnect
+├ ƒ /api/marketplaces/etsy/publish
+├ ƒ /api/marketplaces/etsy/readiness
+├ ƒ /api/marketplaces/etsy/status
+├ ƒ /api/marketplaces/etsy/sync
+├ ƒ /api/marketplaces/stockx/callback
+├ ƒ /api/marketplaces/stockx/catalog/search
+├ ƒ /api/marketplaces/stockx/connect
+├ ƒ /api/marketplaces/stockx/disconnect
+├ ƒ /api/marketplaces/stockx/match
+├ ƒ /api/marketplaces/stockx/publish
+├ ƒ /api/marketplaces/stockx/status
+├ ○ /channels
+├ ○ /contact
+├ ○ /dashboard
+├ ○ /feedback
+├ ○ /history
+├ ○ /icon.svg
+├ ○ /inventory
+├ ƒ /inventory/[id]
+├ ○ /inventory/bulk
+├ ○ /inventory/new
+├ ○ /pricing
+├ ○ /privacy
+├ ○ /settings
+├ ○ /settings/billing
+└ ○ /settings/marketplaces
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
