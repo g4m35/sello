@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors";
 
 const mocks = vi.hoisted(() => ({
+  after: vi.fn(),
   generateListingDraftWithGemini: vi.fn(),
   getPrisma: vi.fn(),
   prepareListingPhotos: vi.fn(),
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: mocks.after }));
 vi.mock("@/lib/ai/gemini", () => ({
   generateListingDraftWithGemini: mocks.generateListingDraftWithGemini,
   GEMINI_PROMPT_VERSION: "test-prompt",
@@ -197,7 +199,7 @@ describe("listing draft API auth boundaries", () => {
     },
   );
 
-  it("defaults quantity to 1 and infers a high-confidence eBay category on the new draft", async () => {
+  it.each([null, { mode: "prepare" }, { mode: "publish", marketplace: "ebay", consent: true, minPriceCents: 10000, maxPriceCents: 20000 }])("creates correct defaults and persists per-upload automation: %j", async (automation) => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.prepareListingPhotos.mockResolvedValue([]);
@@ -228,6 +230,7 @@ describe("listing draft API auth boundaries", () => {
           flaws: [],
         },
         marketplaceDrafts: {},
+        warnings: [],
       },
     });
     const listingDraftCreate = vi.fn().mockResolvedValue({ id: "draft-1" });
@@ -238,23 +241,42 @@ describe("listing draft API auth boundaries", () => {
       },
       itemPhoto: { createMany: vi.fn().mockResolvedValue({ count: 0 }) },
       listingDraft: { create: listingDraftCreate },
+      jobLog: { create: vi.fn(async ({ data }) => data) },
       aiOutput: { create: vi.fn().mockResolvedValue({ id: "ai-1" }) },
       $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
     };
     mocks.getPrisma.mockReturnValue(prisma);
     mocks.runCompFetch.mockResolvedValue({ status: "no_comps_found" });
 
-    await POST(
+    const form = new FormData();
+    if (automation) form.set("automation", JSON.stringify(automation));
+    const response = await POST(
       new Request("http://localhost/api/listings/draft", {
         method: "POST",
-        body: new FormData(),
+        body: form,
       }),
     );
 
     const data = listingDraftCreate.mock.calls[0][0].data;
     expect(data.marketplaceDrafts.ebay.quantity).toBe(1);
     expect(data.marketplaceDrafts.ebay.categoryId).toBe("15709");
+    expect(response.status).toBe(200);
+    if (automation) {
+      expect(prisma.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ status: "QUEUED", payload: expect.objectContaining({ accountId: "acc-1", userId: "user-1", policy: automation, warnings: [] }) }) });
+      expect(mocks.after).toHaveBeenCalledOnce();
+      expect(mocks.runCompFetch).not.toHaveBeenCalled();
+    } else expect(prisma.jobLog.create).not.toHaveBeenCalled();
+
   });
+  it.each([true, false])("allows a fresh retry only after a confirmed pre-write release: %s", async (released) => {
+    mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1" });
+    mocks.prepareListingPhotos.mockRejectedValue(new AppError("Invalid photo.", 422));
+    mocks.releaseUsageReservation.mockResolvedValue(released);
+    mocks.getPrisma.mockReturnValue({ inventoryItem: { update: vi.fn(async () => ({})) }, aiOutput: { create: vi.fn(async () => ({})) } });
+    const response = await POST(new Request("http://localhost/api/listings/draft", { method: "POST", body: new FormData() }));
+    expect((await response.json()).retrySafe).toBe(released ? true : undefined);
+  });
+
 });
 
 describe("listing draft AI quota enforcement", () => {

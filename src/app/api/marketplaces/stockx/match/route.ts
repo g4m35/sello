@@ -13,6 +13,7 @@ import {
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 import { loadItemDetailState } from "@/lib/view/load-item-detail";
+import { stockxIdentityIssue } from "@/lib/marketplace/adapters/stockx/identity";
 
 export const runtime = "nodejs";
 
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
         id: true,
         inventoryItemId: true,
         marketplaceDrafts: true,
+        inventoryItem: { select: { styleCode: true, size: true, brand: true } },
       },
     });
 
@@ -63,6 +65,8 @@ export async function POST(request: Request) {
       );
     }
 
+    const identityIssue = stockxIdentityIssue(existingDraft.inventoryItem, input);
+    if (identityIssue) return NextResponse.json({ error: identityIssue }, { status: 422 });
     const marketplaceDrafts = mergeStockXDraft(existingDraft.marketplaceDrafts, input);
     await prisma.listingDraft.update({
       where: { id: existingDraft.id },

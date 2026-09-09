@@ -1,0 +1,64 @@
+{
+  "checks": [
+    "Mobile drawer traps focus, makes background inert, closes with Escape and restores trigger.",
+    "Keyboard focus on grid item has visible card outline.",
+    "Select-all selects exactly 24 visible items from 30; bulk limit warning remains visible.",
+    "Dialog name, focus containment, Escape, outside dismissal, focus restore and busy nondismissal passed.",
+    "inventory: mobile overflow 0px",
+    "upload: mobile overflow 0px",
+    "editor: mobile overflow 0px",
+    "settings: mobile overflow 0px",
+    "dashboard: mobile overflow 0px",
+    "history: mobile overflow 0px",
+    "channels: mobile overflow 0px",
+    "billing: mobile overflow 0px",
+    "bulk: mobile overflow 0px",
+    "feedback: mobile overflow 0px",
+    "Reduced motion: no running animations.",
+    "Inventory API failure shows retry state.",
+    "Empty inventory retains a working intake action."
+  ],
+  "messages": [],
+  "violations": [
+    {
+      "view": "inventory",
+      "violations": []
+    },
+    {
+      "view": "upload",
+      "violations": []
+    },
+    {
+      "view": "editor",
+      "violations": []
+    },
+    {
+      "view": "settings",
+      "violations": []
+    },
+    {
+      "view": "dashboard",
+      "violations": []
+    },
+    {
+      "view": "history",
+      "violations": []
+    },
+    {
+      "view": "channels",
+      "violations": []
+    },
+    {
+      "view": "billing",
+      "violations": []
+    },
+    {
+      "view": "bulk",
+      "violations": []
+    },
+    {
+      "view": "feedback",
+      "violations": []
+    }
+  ]
+}

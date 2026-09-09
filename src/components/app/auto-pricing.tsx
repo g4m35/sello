@@ -396,9 +396,9 @@ export function AutoPricing({
   const sourceList = friendlySources.length > 0 ? friendlySources.join(", ") : "None connected";
   const canAccept =
     summary.recommendedListCents != null &&
-    (summary.confidence === "medium" || summary.confidence === "low") &&
+    (summary.confidence !== "none") &&
     onApplyPrice;
-  const visibleComps = comps.slice(0, 8);
+  const visibleComps = [...comps].sort((a, b) => Number(b.usedInPricing) - Number(a.usedInPricing)).slice(0, 8);
   const basis = basisLabel(summary);
   const soldCount = summary.soldCompCount ?? 0;
   const activeCount = summary.activeCompCount ?? 0;
@@ -593,6 +593,15 @@ export function AutoPricing({
           {refreshBtn}
         </div>
       </div>
+      <div className="price-recommendation">
+        <span className="t-small muted">Suggested listing price</span>
+        <strong>{formatMoneyCents(summary.recommendedListCents)}</strong>
+        <span className="t-small muted">{formatMoneyCents(summary.lowCents)}–{formatMoneyCents(summary.highCents)} across comparable listings</span>
+        {canAccept && <Btn variant="secondary" size="sm" onClick={() => onApplyPrice?.(summary.recommendedListCents as number)}>Use this price</Btn>}
+      </div>
+      {note && <div role="status" className="t-small">{note}</div>}
+      <details className="disclosure">
+      <summary>View comparisons and pricing details</summary>
       <div className="form-grid form-grid--3" style={{ gap: 12 }}>
         {stats.map((s) => (
           <div key={s.label} className="card" style={{ padding: 12 }}>
@@ -607,17 +616,7 @@ export function AutoPricing({
         variant={copy.variant}
         title={copy.title}
         desc={details}
-        actions={
-          canAccept ? (
-            <Btn
-              variant="secondary"
-              size="sm"
-              onClick={() => onApplyPrice?.(summary.recommendedListCents as number)}
-            >
-              Accept recommendation
-            </Btn>
-          ) : undefined
-        }
+
       />
       {summary.confidenceReasons && summary.confidenceReasons.length > 0 && (
         <ul className="stack-1 t-small muted" style={{ paddingLeft: 18 }}>
@@ -631,6 +630,7 @@ export function AutoPricing({
       )}
       {manualCompControls}
       {compList}
+      </details>
     </div>
   );
 }

@@ -112,7 +112,7 @@ export function BulkPublishModal({
   const readyCount = preflight?.readyCount ?? 0;
 
   return (
-    <Modal open={open} onClose={closeAllowed ? onClose : undefined} wide>
+    <Modal title={livePublishAllowed ? "Publish selected listings" : "Preview selected listings"} open={open} onClose={closeAllowed ? onClose : undefined} wide>
       <div className="modal__head">
         <div>
           <div className="modal__title">
@@ -123,7 +123,7 @@ export function BulkPublishModal({
           </div>
         </div>
         {closeAllowed && (
-          <button className="modal__close" onClick={onClose}>
+          <button type="button" aria-label="Close dialog" className="modal__close" onClick={onClose}>
             <Icon name="x" size={16} />
           </button>
         )}

@@ -1,3 +1,4 @@
+import { authorizationMatches, type PublishAuthorization } from "@/lib/automation/policy";
 import type { ItemCondition } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
 
@@ -34,6 +35,7 @@ import type { EbayConfig, EbayMarketplaceId } from "./types";
 type EbayEnv = Record<string, string | undefined>;
 
 type DraftRow = {
+  updatedAt?: Date;
   title: string | null;
   description: string | null;
   recommendedPriceCents: number | null;
@@ -42,6 +44,8 @@ type DraftRow = {
 };
 
 type ItemRow = {
+  quantityAvailable?: number;
+  updatedAt?: Date;
   id: string;
   sellerId: string;
   brand: string | null;
@@ -140,6 +144,7 @@ export type EbayPublishDeps = {
 };
 
 export type EbayPublishInput = {
+  authorization?: PublishAuthorization;
   userId: string;
   accountId?: string;
   inventoryItemId: string;
@@ -282,6 +287,10 @@ export async function publishEbayListing(
     throw new AppError("Inventory item not found.", 404);
   }
 
+  if (input.authorization && !authorizationMatches(input.authorization, item)) {
+    throw new AppError("The listing changed after automatic pricing. Review it before posting.", 409, "AUTOMATION_LISTING_CHANGED");
+  }
+
   const connection = await prisma.marketplaceConnection.findUnique({
     where: input.accountId
       ? {
@@ -321,6 +330,9 @@ export async function publishEbayListing(
       ? savedCategoryId
       : preflight.preview.offer.categoryId;
   const resolvedQuantity = quantity ?? 1;
+  if (input.authorization && (resolvedQuantity !== 1 || item.quantityAvailable !== 1)) {
+    throw new AppError("eBay quantity must match the single item in inventory.", 409, "AUTOMATION_QUANTITY_MISMATCH");
+  }
   const photos = preflight.preview.inventoryItem.product.imageUrls.map((url) => ({
     url,
   }));
@@ -368,7 +380,7 @@ export async function publishEbayListing(
       priceCents: checkedDraft.recommendedPriceCents!,
       quantity: resolvedQuantity,
       categoryId,
-      itemSpecifics: asStringRecord(checkedDraft.itemSpecifics),
+      itemSpecifics: { ...asStringRecord(checkedDraft.itemSpecifics), ...preflight.aspects.values },
     },
     photos,
     sellerConfig: {
@@ -382,8 +394,8 @@ export async function publishEbayListing(
 
   const sku = preflight.preview.sku || resolveEbaySku(mapperInput.item);
   const inventoryPayload =
-    preflight.preview.inventoryItem || buildEbayInventoryItemPayload(mapperInput);
-  const offerPayload = preflight.preview.offer || buildEbayOfferPayload(mapperInput);
+    input.authorization ? buildEbayInventoryItemPayload(mapperInput) : preflight.preview.inventoryItem || buildEbayInventoryItemPayload(mapperInput);
+  const offerPayload = input.authorization ? buildEbayOfferPayload(mapperInput) : preflight.preview.offer || buildEbayOfferPayload(mapperInput);
 
   const accessToken = await deps.resolveAccessToken(prisma, connection, config);
   const client = deps.createClient(accessToken, config.marketplaceId, environment);

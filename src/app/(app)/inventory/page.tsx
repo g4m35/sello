@@ -58,6 +58,7 @@ export default function InventoryPage() {
   const searchParams = useSearchParams();
   const { token } = useSession();
   const { access, copy, limits } = useFeatureAccess();
+  const bulkBatchLimit = Math.min(10, limits.bulkBatchSize);
 
   const [items, setItems] = useState<ItemView[] | null>(null);
   const [channels, setChannels] = useState<ChannelView[]>([]);
@@ -67,7 +68,7 @@ export default function InventoryPage() {
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortValue>("updated_desc");
-  const [view, setView] = useState<"list" | "grid">("list");
+  const [view, setView] = useState<"list" | "grid">("grid");
   const [page, setPage] = useState(1);
 
   const [actionBusy, setActionBusy] = useState(false);
@@ -170,18 +171,8 @@ export default function InventoryPage() {
     [filtered, safePage],
   );
 
-  const filteredIds = useMemo(
-    () => new Set(filtered.map((it) => it.id)),
-    [filtered],
-  );
-
-  const selectedInView = useMemo(
-    () => [...selected].filter((id) => filteredIds.has(id)),
-    [selected, filteredIds],
-  );
-
   const allSelected =
-    filtered.length > 0 && selectedInView.length === filtered.length;
+    paged.length > 0 && paged.every((item) => selected.has(item.id));
 
   const toggleRow = useCallback((id: string) => {
     setSelected((prev) => {
@@ -194,16 +185,16 @@ export default function InventoryPage() {
 
   const toggleAll = useCallback(() => {
     setSelected((prev) => {
-      if (filtered.length > 0 && filtered.every((it) => prev.has(it.id))) {
+      if (paged.length > 0 && paged.every((it) => prev.has(it.id))) {
         const next = new Set(prev);
-        for (const it of filtered) next.delete(it.id);
+        for (const it of paged) next.delete(it.id);
         return next;
       }
       const next = new Set(prev);
-      for (const it of filtered) next.add(it.id);
+      for (const it of paged) next.add(it.id);
       return next;
     });
-  }, [filtered]);
+  }, [paged]);
 
   const exportCsv = useCallback(() => {
     const rows = (items ?? []).filter((it) => selected.has(it.id));
@@ -268,9 +259,9 @@ export default function InventoryPage() {
   const openBulkPublish = useCallback((marketplace: "ebay" | "stockx" = "ebay") => {
     const ids = (items ?? []).filter((it) => selected.has(it.id)).map((it) => it.id);
     if (!ids.length) return;
-    if (ids.length > limits.bulkBatchSize) {
+    if (ids.length > bulkBatchLimit) {
       setActionError(
-        `Your plan allows up to ${limits.bulkBatchSize} items per bulk action.`,
+        `Your plan allows up to ${bulkBatchLimit} items per bulk action.`,
       );
       return;
     }
@@ -282,7 +273,7 @@ export default function InventoryPage() {
     setBulkError(null);
     setBulkPhase("preflight");
     setBulkOpen(true);
-  }, [items, limits.bulkBatchSize, selected]);
+  }, [items, bulkBatchLimit, selected]);
 
   // Preflight the selection when the modal opens. Read-only; no outbound eBay
   // write happens here. State is set only inside the async runner after await.
@@ -340,9 +331,9 @@ export default function InventoryPage() {
   const openBulkDelist = useCallback((marketplace: "ebay" | "stockx" = "ebay") => {
     const ids = (items ?? []).filter((it) => selected.has(it.id)).map((it) => it.id);
     if (!ids.length) return;
-    if (ids.length > limits.bulkBatchSize) {
+    if (ids.length > bulkBatchLimit) {
       setActionError(
-        `Your plan allows up to ${limits.bulkBatchSize} items per bulk action.`,
+        `Your plan allows up to ${bulkBatchLimit} items per bulk action.`,
       );
       return;
     }
@@ -354,7 +345,7 @@ export default function InventoryPage() {
     setDelistError(null);
     setDelistPhase("preflight");
     setDelistOpen(true);
-  }, [items, limits.bulkBatchSize, selected]);
+  }, [items, bulkBatchLimit, selected]);
 
   // Read-only bulk delist preflight on open; no outbound eBay write here.
   useEffect(() => {
@@ -412,7 +403,7 @@ export default function InventoryPage() {
     return (
       <>
         <Topbar crumbs={["Inventory"]} />
-        <main className="page">
+        <main className="page inventory-page">
           <ErrorState message={loadError} onRetry={reload} />
         </main>
       </>
@@ -422,8 +413,8 @@ export default function InventoryPage() {
   if (items === null) return <PageSkeleton />;
 
   const total = items.length;
-  const selectionCount = selectedInView.length;
-  const selectionOverBulkLimit = selectionCount > limits.bulkBatchSize;
+  const selectionCount = (items ?? []).filter((item) => selected.has(item.id)).length;
+  const selectionOverBulkLimit = selectionCount > bulkBatchLimit;
   const stockxChannel = channels.find((c) => c.marketplace === "stockx");
   const stockxBulkPublishEnabled = Boolean(stockxChannel?.capabilities.publish);
   const stockxBulkDelistEnabled = Boolean(stockxChannel?.capabilities.delist);
@@ -485,30 +476,24 @@ export default function InventoryPage() {
 
     if (view === "grid") {
       return (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-            gap: 12,
-          }}
-        >
+        <div className="inventory-grid">
           {paged.map((item) => {
             const isSelected = selected.has(item.id);
             const href = `/inventory/${item.id}`;
             return (
               <div
                 key={item.id}
-                className="card"
-                style={{ padding: 14, position: "relative" }}
+                className={`inventory-card ${isSelected ? "inventory-card--selected" : ""}`}
               >
                 <div
-                  style={{ position: "absolute", top: 10, left: 10, zIndex: 1 }}
+                  className="inventory-card__select"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Check checked={isSelected} onChange={() => toggleRow(item.id)} />
+                  <Check label={`Select ${item.title}`} checked={isSelected} onChange={() => toggleRow(item.id)} />
                 </div>
                 <Link href={href} style={{ display: "block", color: "inherit", textDecoration: "none" }}>
-                  <Thumb image={item.coverImage ?? null} size={88} className="" />
+                  <Thumb image={item.coverImage ?? null} size={240} className="inventory-card__photo" />
+                  <div className="inventory-card__body">
                   <div className="table__product-title" style={{ marginTop: 10 }}>
                     {item.title}
                   </div>
@@ -525,6 +510,7 @@ export default function InventoryPage() {
                   <div style={{ marginTop: 8 }}>
                     <MpDots channels={item.channels} />
                   </div>
+                  </div>
                 </Link>
               </div>
             );
@@ -534,12 +520,12 @@ export default function InventoryPage() {
     }
 
     return (
-      <div className="table-wrap">
+      <div className="table-wrap inventory-table">
         <table className="table">
           <thead>
             <tr>
               <th className="table__check">
-                <Check checked={allSelected} onChange={toggleAll} />
+                <Check label="Select all items on this page" checked={allSelected} onChange={toggleAll} />
               </th>
               <th>Item</th>
               <th>Status</th>
@@ -561,6 +547,7 @@ export default function InventoryPage() {
                   <td className="table__check">
                     <Check
                       checked={isSelected}
+                      label={`Select ${item.title}`}
                       onChange={() => toggleRow(item.id)}
                     />
                   </td>
@@ -570,7 +557,7 @@ export default function InventoryPage() {
                       className="table__product"
                       style={{ display: "flex", color: "inherit", textDecoration: "none" }}
                     >
-                      <Thumb image={item.coverImage ?? null} />
+                      <Thumb image={item.coverImage ?? null} size={64} />
                       <div className="table__product-text">
                         <div className="table__product-title">{item.title}</div>
                         <div className="table__product-meta">
@@ -585,31 +572,11 @@ export default function InventoryPage() {
                       </div>
                     </Link>
                   </td>
-                  <td>
-                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
-                      <Badge status={item.status} label={item.statusLabel} />
-                    </Link>
-                  </td>
-                  <td>
-                    <Link href={href} style={{ color: "inherit", textDecoration: "none", display: "inline-block" }}>
-                      <MpDots channels={item.channels} />
-                    </Link>
-                  </td>
-                  <td className="table__num">
-                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
-                      {formatMoneyCents(item.priceCents)}
-                    </Link>
-                  </td>
-                  <td className="table__num">
-                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
-                      {item.photoCount}
-                    </Link>
-                  </td>
-                  <td>
-                    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
-                      <span className="muted">{relativeTime(item.updatedAt)}</span>
-                    </Link>
-                  </td>
+                  <td data-label="Status"><Badge status={item.status} label={item.statusLabel} /></td>
+                  <td data-label="Marketplaces"><MpDots channels={item.channels} /></td>
+                  <td data-label="Price" className="table__num">{formatMoneyCents(item.priceCents)}</td>
+                  <td data-label="Photos" className="table__num">{item.photoCount}</td>
+                  <td data-label="Updated"><span className="muted">{relativeTime(item.updatedAt)}</span></td>
                 </tr>
               );
             })}
@@ -622,19 +589,16 @@ export default function InventoryPage() {
   return (
     <>
       <Topbar crumbs={["Inventory"]} />
-      <main className="page">
+      <main className="page inventory-page">
         <div className="page__head">
-          <div>
-            <h1 className="page__title">
-              Inventory, <em>{total}</em> items
-            </h1>
-            <div className="page__title-meta">
-              {counts.ready} ready · {counts.draft} drafts · {counts.active} active
-            </div>
+          <div className="page__title-row">
+            <span className="eyebrow">YOUR SELLING STUDIO</span>
+            <h1 className="page__title">Your inventory<span className="title-count">{total}</span></h1>
+            <p className="page__title-meta">Every item, from first photo to final sale.</p>
           </div>
+          <Btn variant="accent" icon="plus" size="lg" onClick={() => router.push("/inventory/new")}>Add an item</Btn>
         </div>
-
-        <div className="toolbar">
+        <div className="toolbar inventory-filters">
           <Tabs
             items={tabItems}
             value={tab}
@@ -647,14 +611,15 @@ export default function InventoryPage() {
           <input
             className="input-search"
             type="search"
-            placeholder="Search title or brand…"
+            aria-label="Search inventory"
+            placeholder="Search your inventory…"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
               setPage(1);
             }}
           />
-          <select
+          <div className="inventory-sort"><select
             className="select"
             style={{ width: "auto" }}
             value={sort}
@@ -669,7 +634,7 @@ export default function InventoryPage() {
                 {o.label}
               </option>
             ))}
-          </select>
+          </select></div>
           <Tabs
             items={[
               { value: "list", label: "List" },
@@ -680,19 +645,17 @@ export default function InventoryPage() {
           />
         </div>
 
-        <div className="toolbar">
-          <Check checked={allSelected} onChange={toggleAll} />
+        <div className={`toolbar inventory-selection ${selectionCount ? "inventory-selection--active" : ""}`}>
+          <Check label="Select all items on this page" checked={allSelected} onChange={toggleAll} />
           <span className="toolbar__count">
             {selectionCount > 0
               ? `${selectionCount} selected`
               : `${filtered.length} of ${total}`}
           </span>
-          <span className="t-small muted">
-            Bulk limit {limits.bulkBatchSize}
-          </span>
+          {selectionCount > 0 && <span className="t-small muted">Up to {bulkBatchLimit} per batch</span>}
           {selectionOverBulkLimit && (
             <span className="t-small danger">
-              Select {limits.bulkBatchSize} or fewer for bulk actions.
+              Select {bulkBatchLimit} or fewer for bulk actions.
             </span>
           )}
           {selectionCount > 0 && stockxBulkPublishEnabled && (
@@ -700,7 +663,7 @@ export default function InventoryPage() {
               StockX requires exact product + size match.
             </span>
           )}
-          <div className="toolbar__divider" />
+          {selectionCount > 0 && <div className="toolbar__divider" />}
           {selectionCount > 0 ? (
             <div className="toolbar__group">
               <Btn
@@ -800,7 +763,7 @@ export default function InventoryPage() {
         open={bulkOpen}
         onClose={() => setBulkOpen(false)}
         selectionCount={bulkIds.length}
-        batchLimit={limits.bulkBatchSize}
+        batchLimit={bulkBatchLimit}
         livePublishAllowed={
           bulkMarketplace === "stockx" ? stockxBulkPublishEnabled : access.liveEbayPublish
         }
@@ -824,7 +787,7 @@ export default function InventoryPage() {
         open={delistOpen}
         onClose={() => setDelistOpen(false)}
         selectionCount={delistIds.length}
-        batchLimit={limits.bulkBatchSize}
+        batchLimit={bulkBatchLimit}
         liveDelistAllowed={
           delistMarketplace === "stockx" ? stockxBulkDelistEnabled : access.ebayDelist
         }

@@ -16,6 +16,7 @@ import {
   type StockXCreateListingPayload,
 } from "./mapper";
 import { evaluateStockXListingReadiness } from "./readiness";
+import { stockxIdentityIssue } from "./identity";
 import { decryptStockXToken } from "./token-crypto";
 import {
   STOCKX_ENVIRONMENT,
@@ -35,6 +36,9 @@ type DraftRow = {
 };
 
 type ItemRow = {
+  styleCode?: string | null;
+  size?: string | null;
+  brand?: string | null;
   id: string;
   sellerId: string;
   accountId?: string | null;
@@ -182,6 +186,11 @@ export async function publishStockXListing(
   if (!item) {
     throw new AppError("Inventory item not found.", 404);
   }
+
+  const stored = item.listingDrafts[0]?.marketplaceDrafts;
+  const selected = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>).stockx : null;
+  const identityIssue = stockxIdentityIssue(item, selected);
+  if (identityIssue) throw new AppError(identityIssue, 422, "STOCKX_MATCH_IDENTITY_MISMATCH");
 
   const connection = await prisma.marketplaceConnection.findUnique({
     where: input.accountId

@@ -525,3 +525,17 @@ describe("runCompFetch", () => {
     );
   });
 });
+
+it("does not treat saved foreign-currency comparisons as USD price evidence", async () => {
+  vi.stubEnv("COMPS_AUTO_DISCOVERY_ENABLED", "true");
+  const rows = Array.from({ length: 6 }, (_, i) => ({ ...comp(i), currency: i === 0 ? "USD" : "CAD", status: "sold", totalPriceCents: 20000, usedInPricing: true, ignoredAsOutlier: false, matchScore: 0.99, soldDate: new Date() }));
+  const db = {
+    inventoryItem: { findFirst: vi.fn(async () => ({ id: "item-1", productName: "The North Face Black Nuptse Puffer Jacket", brand: "The North Face", styleCode: null, size: "Large", category: "streetwear", colorway: "Black", condition: "used_good", recommendedPriceCents: null, listingDrafts: [] })), update: vi.fn() },
+    priceComp: { deleteMany: vi.fn(), createMany: vi.fn(), findMany: vi.fn(async () => rows) },
+    compSearchRun: { create: vi.fn() },
+  };
+  const source: CompSource = { id: "test-source", displayName: "Test", sold: true, resultKind: "sold_comps", isEnabled: () => true, fetchComps: vi.fn(async () => []) };
+  const result = await runCompFetch(db as never, "item-1", "seller-1", { sources: [source], applyPrice: false });
+  expect(result.summary.soldCompCount).toBe(1); expect(result.summary.confidence).not.toBe("high"); expect(db.inventoryItem.update).not.toHaveBeenCalled();
+  vi.unstubAllEnvs();
+});

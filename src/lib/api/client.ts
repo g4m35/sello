@@ -1,3 +1,4 @@
+import type { ListingAutomation } from "@/lib/automation/policy";
 import type { Flaw, Marketplace, Measurement } from "@/lib/ai/listing-draft";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
 import type { PlanId, PlanLimits } from "@/lib/billing/plans";
@@ -26,7 +27,7 @@ import type {
   ItemView,
 } from "@/lib/view/types";
 
-export type ApiError = { error: string; status: number };
+export type ApiError = { error: string; status: number; retrySafe?: boolean };
 
 export type FeatureAccessResponse = {
   access: FeatureAccess;
@@ -219,6 +220,7 @@ async function request<T>(
     const err: ApiError = {
       error: message,
       status: res.status,
+      ...(json?.retrySafe === true ? { retrySafe: true } : {}),
     };
     throw err;
   }
@@ -521,13 +523,16 @@ export const api = {
   },
 
   // Create flow: upload photos -> Gemini identification -> draft.
-  createDraftFromPhotos: (token: string, files: File[]) => {
+  getListingAutomation: (token: string, id: string) => request<{ job: { status: string; message: string } | null }>(`/api/listings/${id}/automation`, token),
+
+  createDraftFromPhotos: (token: string, files: File[], automation?: ListingAutomation, idempotencyKey?: string) => {
     const form = new FormData();
     for (const file of files) form.append("photos", file);
+    if (automation) form.append("automation", JSON.stringify(automation));
     return request<{ inventoryItem: { id: string }; draft: { id: string } }>(
       "/api/listings/draft",
       token,
-      { method: "POST", body: form },
+      { method: "POST", body: form, ...(idempotencyKey ? { headers: { "idempotency-key": idempotencyKey } } : {}) },
     );
   },
 
@@ -1008,6 +1013,7 @@ export const api = {
             ? json.error.message
             : "Publish failed",
       status: res.status,
+      ...(json?.retrySafe === true ? { retrySafe: true } : {}),
     } as ApiError;
   },
 };

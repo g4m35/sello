@@ -1,0 +1,32 @@
+{
+  "scope": "project-local bounded trial, no shared adoption",
+  "entries": [
+    {
+      "registryId": "di-c846ed5e3d71",
+      "source": "https://www.radix-ui.com/primitives/docs/components/dialog",
+      "inputSafety": "cleared",
+      "practiceMaturity": "trial",
+      "evidence": "Official npm metadata and documentation, source-owned integration, tests and rendered review.",
+      "rollback": "Revert UI redesign commit.",
+      "doNotUseWhen": "Non-React runtimes or a smaller native control already fully satisfies the task."
+    },
+    {
+      "registryId": "di-ca576e70e5fe",
+      "source": "https://www.radix-ui.com/primitives/docs/components/progress",
+      "inputSafety": "cleared",
+      "practiceMaturity": "trial",
+      "evidence": "Official npm metadata and documentation, source-owned integration, tests and rendered review.",
+      "rollback": "Revert UI redesign commit.",
+      "doNotUseWhen": "Non-React runtimes or a smaller native control already fully satisfies the task."
+    },
+    {
+      "registryId": "di-7568d4355d3b",
+      "source": "https://lucide.dev/icons/camera",
+      "inputSafety": "cleared",
+      "practiceMaturity": "trial",
+      "evidence": "Official npm metadata and documentation, source-owned integration, tests and rendered review.",
+      "rollback": "Revert UI redesign commit.",
+      "doNotUseWhen": "Non-React runtimes or a smaller native control already fully satisfies the task."
+    }
+  ]
+}

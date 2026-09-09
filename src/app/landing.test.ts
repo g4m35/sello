@@ -239,17 +239,17 @@ describe("landing page", () => {
     expect(landingSource).toContain('{id === "free" ? "Start free" : "View pricing"}');
   });
 
-  it("redirects signed-in users from / to /dashboard", async () => {
+  it("redirects signed-in users from / to /inventory", async () => {
     expect(pageSource).toContain("getSupabaseUserFromCookies");
-    expect(pageSource).toContain('redirect("/dashboard")');
+    expect(pageSource).toContain('redirect("/inventory")');
 
     vi.mocked(redirect).mockClear();
     vi.mocked(getSupabaseUserFromCookies).mockResolvedValueOnce({
       id: "user-1",
     } as Awaited<ReturnType<typeof getSupabaseUserFromCookies>>);
 
-    await expect(HomePage()).rejects.toThrow("REDIRECT:/dashboard");
-    expect(redirect).toHaveBeenCalledWith("/dashboard");
+    await expect(HomePage()).rejects.toThrow("REDIRECT:/inventory");
+    expect(redirect).toHaveBeenCalledWith("/inventory");
   });
 
   it("shows the landing for signed-out visitors", async () => {

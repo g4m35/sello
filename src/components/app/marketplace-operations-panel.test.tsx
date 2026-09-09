@@ -86,12 +86,12 @@ describe("sellerPublishStatus", () => {
   it("describes a ready item with production publishing disabled", () => {
     const status = sellerPublishStatus(channel({ status: "ready", publishImplemented: false }));
     expect(status.label).toBe("Publish disabled");
-    expect(status.meaning).toMatch(/production publishing is currently disabled/i);
+    expect(status.meaning).toMatch(/direct publishing is currently unavailable/i);
   });
 
   it("describes a ready item that can publish", () => {
     const status = sellerPublishStatus(channel({ status: "ready", publishImplemented: true }));
-    expect(status.label).toBe("Ready to publish");
+    expect(status.label).toBe("Listing prepared");
   });
 
   it("describes a published, failed, and draft item", () => {
@@ -121,7 +121,7 @@ describe("MarketplaceOperationsPanel (seller view)", () => {
       attempts: [],
     });
     expect(html).toContain("Publish disabled");
-    expect(html).toMatch(/production publishing is currently disabled/i);
+    expect(html).toMatch(/direct publishing is currently unavailable/i);
   });
 
   it("shows an Error status without leaking the raw provider error by default", () => {

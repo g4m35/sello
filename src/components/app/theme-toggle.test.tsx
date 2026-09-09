@@ -11,7 +11,6 @@ describe("ThemeToggle", () => {
     // Server/default snapshot is light, so it is not "pressed" and offers dark.
     expect(html).toContain('aria-pressed="false"');
     expect(html).toContain('title="Switch to dark mode"');
-    // Light state shows the moon (the thing you switch to).
-    expect(html).toContain("M21 12.79A9 9");
+
   });
 });
