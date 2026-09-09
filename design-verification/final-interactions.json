@@ -1,0 +1,8 @@
+{
+  "checks": [
+    "Editor text survives autosave response and concurrent preparation completion.",
+    "Upload requires photos; automatic posting requires valid ordered price bounds and explicit opt-in.",
+    "Dark theme: zero axe WCAG A/AA violations on inventory."
+  ],
+  "messages": []
+}

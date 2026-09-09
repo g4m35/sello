@@ -12,6 +12,11 @@ The optional `agent:*` workflow can create and validate contract-declared worktr
 
 ## Current Status
 
+The seller interface lives in `src/app/(app)/`, with shared UI in
+`src/components/app/`. The retired, unrouted seller workbench and its private
+panels have been removed; use the current inventory editor, auto-pricing panel,
+and history page for listing, pricing, and marketplace activity.
+
 Sello currently supports the core listing workflow:
 
 - User authentication

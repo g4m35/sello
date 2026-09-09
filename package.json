@@ -29,6 +29,8 @@
     "@google/genai": "^2.12.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@radix-ui/react-dialog": "1.1.23",
+    "@radix-ui/react-progress": "1.1.16",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.6",
     "@vercel/analytics": "^2.0.1",

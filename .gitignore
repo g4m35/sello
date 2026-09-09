@@ -45,3 +45,8 @@ next-env.d.ts
 .env*.local
 
 .cursor/
+
+# Recomputed locally after commits; these bind captured artifacts to the current Git HEAD.
+/design-verification/verification-result.json
+/design-verification/release-evidence.json
+/design-verification/release-gate-result.json

@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "projectId": "sello-studio",
+  "customerFacing": true,
+  "minimumComponents": 3,
+  "components": [
+    {
+      "id": "radix-dialog",
+      "registryId": "di-c846ed5e3d71",
+      "library": "Radix UI",
+      "component": "Dialog",
+      "category": "accessible-primitive",
+      "source": "https://www.radix-ui.com/primitives/docs/components/dialog",
+      "version": "1.1.23",
+      "license": "MIT",
+      "sourcePath": "src/components/ui/primitives.tsx",
+      "usedIn": [
+        "src/components/ui/primitives.tsx"
+      ],
+      "purpose": "Accessible modal review and confirmation, focus containment and safe busy state.",
+      "fallback": "Server-rendered modal content; operations still require client/server confirmation."
+    },
+    {
+      "id": "radix-progress",
+      "registryId": "di-ca576e70e5fe",
+      "library": "Radix UI",
+      "component": "Progress",
+      "category": "interaction",
+      "source": "https://www.radix-ui.com/primitives/docs/components/progress",
+      "version": "1.1.16",
+      "license": "MIT",
+      "sourcePath": "src/components/ui/primitives.tsx",
+      "usedIn": [
+        "src/components/ui/primitives.tsx"
+      ],
+      "purpose": "Known listing completeness with an accessible progress value and static percentage.",
+      "fallback": "Visible static percentage, no animation required."
+    },
+    {
+      "id": "lucide-camera",
+      "registryId": "di-7568d4355d3b",
+      "library": "Lucide",
+      "component": "Camera",
+      "category": "visual",
+      "source": "https://lucide.dev/icons/camera",
+      "version": "1.24.0",
+      "license": "ISC",
+      "sourcePath": "src/app/(app)/inventory/new/page.tsx",
+      "usedIn": [
+        "src/app/(app)/inventory/new/page.tsx"
+      ],
+      "purpose": "An authored photo-capture composition showing item, label and detail guidance.",
+      "fallback": "Photo guidance labels remain readable if SVG is unavailable."
+    }
+  ]
+}

@@ -1,4 +1,8 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+"use client";
+
+import { useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import * as Progress from "@radix-ui/react-progress";
 
 import { Icon, type IconName } from "@/components/ui/icon";
 import { DESIGN_STATUS_LABEL } from "@/lib/view/status";
@@ -57,7 +61,7 @@ export function Btn({
     .filter(Boolean)
     .join(" ");
   return (
-    <button className={cls} disabled={disabled} {...rest}>
+    <button type="button" className={cls} disabled={disabled} {...rest}>
       {icon && <Icon name={icon} size={size === "sm" ? 13 : 14} />}
       {children}
       {iconRight && <Icon name={iconRight} size={size === "sm" ? 13 : 14} />}
@@ -71,7 +75,9 @@ export function Check({
   checked,
   onChange,
   disabled,
+  label = "Select item",
 }: {
+  label?: string;
   checked: boolean;
   onChange?: (next: boolean) => void;
   disabled?: boolean;
@@ -84,6 +90,8 @@ export function Check({
         if (!disabled) onChange?.(!checked);
       }}
       className={`checkbox ${checked ? "checkbox--checked" : ""} ${disabled ? "checkbox--disabled" : ""}`}
+      disabled={disabled}
+      aria-label={label}
       aria-checked={checked}
       role="checkbox"
     >
@@ -93,12 +101,13 @@ export function Check({
 }
 
 /* ---------------- Toggle ---------------- */
-export function Toggle({ on, onChange }: { on: boolean; onChange?: (next: boolean) => void }) {
+export function Toggle({ on, onChange, label = "Enable setting" }: { on: boolean; onChange?: (next: boolean) => void; label?: string }) {
   return (
     <button
       type="button"
       onClick={() => onChange?.(!on)}
       className={`toggle ${on ? "toggle--on" : ""}`}
+      aria-label={label}
       aria-pressed={on}
     >
       <span className="toggle__knob" />
@@ -108,36 +117,34 @@ export function Toggle({ on, onChange }: { on: boolean; onChange?: (next: boolea
 
 /* ---------------- Ring ---------------- */
 export function Ring({ pct = 50, size = 48, color }: { pct?: number; size?: number; color?: string }) {
-  const c = color || (pct >= 100 ? "#2A4218" : pct >= 60 ? "var(--ink)" : "var(--accent)");
+  const value = Math.min(100, Math.max(0, pct));
   return (
-    <div
-      className="ring"
-      style={{ ["--p" as string]: pct, ["--c" as string]: c, width: size, height: size }}
-    >
-      <span className="ring__label">{pct}%</span>
-    </div>
+    <Progress.Root className="ring" value={value} max={100} aria-label="Listing completeness"
+      style={{ ["--p" as string]: value, ["--c" as string]: color ?? "var(--positive)", width: size, height: size }}>
+      <Progress.Indicator className="sr-only" />
+      <span className="ring__label">{value}%</span>
+    </Progress.Root>
   );
 }
 
 /* ---------------- Modal ---------------- */
-export function Modal({
-  open,
-  onClose,
-  children,
-  wide,
-}: {
-  open: boolean;
-  onClose?: () => void;
-  children: ReactNode;
-  wide?: boolean;
+export function Modal({ open, onClose, children, wide, title = "Listing action" }: {
+  open: boolean; onClose?: () => void; children: ReactNode; wide?: boolean; title?: string;
 }) {
-  if (!open) return null;
+  const returnFocus = useRef<HTMLElement | null>(null);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className={`modal ${wide ? "modal--wide" : ""}`} onClick={(e) => e.stopPropagation()}>
-        {children}
-      </div>
-    </div>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose?.(); }}>
+      <Dialog.Overlay className="modal-backdrop">
+        <Dialog.Content className={`modal ${wide ? "modal--wide" : ""}`} aria-describedby={undefined}
+          onOpenAutoFocus={() => { returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; }}
+          onCloseAutoFocus={(event) => { event.preventDefault(); returnFocus.current?.focus(); }}
+          onEscapeKeyDown={(event) => { if (!onClose) event.preventDefault(); }}
+          onPointerDownOutside={(event) => { if (!onClose) event.preventDefault(); }}>
+          <Dialog.Title className="sr-only">{title}</Dialog.Title>
+          {children}
+        </Dialog.Content>
+      </Dialog.Overlay>
+    </Dialog.Root>
   );
 }
 
@@ -153,10 +160,12 @@ export function Tabs({
   onChange?: (value: string) => void;
 }) {
   return (
-    <div className="tabs">
+    <div className="tabs" role="group" aria-label="View options">
       {items.map((it) => (
         <button
           key={it.value}
+          type="button"
+          aria-pressed={value === it.value}
           className={`tab ${value === it.value ? "tab--active" : ""}`}
           onClick={() => onChange?.(it.value)}
         >

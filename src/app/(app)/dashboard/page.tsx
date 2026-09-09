@@ -14,7 +14,6 @@ import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
 import { PublishModal } from "@/components/app/publish-modal";
 import {
   formatMoneyCents,
-  estPayoutCents,
   relativeTime,
 } from "@/lib/view/format";
 import type {
@@ -175,7 +174,7 @@ export default function DashboardPage() {
   if (error)
     return (
       <>
-        <Topbar crumbs={["Dashboard"]} />
+        <Topbar crumbs={["Overview"]} />
         <main className="page">
           <ErrorState message={error} onRetry={reload} />
         </main>
@@ -188,11 +187,12 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Topbar crumbs={["Dashboard"]} />
+      <Topbar crumbs={["Overview"]} />
 
       <main className="page">
         <div className="page__head">
           <div className="page__title-row">
+            <span className="eyebrow">WORKSPACE OVERVIEW</span>
             <h1 className="page__title">
               Good {timeofday}, <em>{firstName}</em>.
             </h1>
@@ -200,6 +200,7 @@ export default function DashboardPage() {
               {readyItems.length} ready · {attention.length} need attention
             </div>
           </div>
+          <Btn variant="accent" icon="plus" size="lg" onClick={() => router.push("/inventory/new")}>Add an item</Btn>
         </div>
 
         <div className="kpis">
@@ -209,9 +210,9 @@ export default function DashboardPage() {
             <div className="kpi__sub">{items.length} total items</div>
           </div>
           <div className="kpi">
-            <div className="kpi__label">Ready to publish</div>
+            <div className="kpi__label">Prepared listings</div>
             <div className="kpi__value t-num">{readyItems.length}</div>
-            <div className="kpi__sub">Approved drafts</div>
+            <div className="kpi__sub">Review before posting</div>
           </div>
           <div className="kpi">
             <div className="kpi__label">Drafts</div>
@@ -332,7 +333,7 @@ export default function DashboardPage() {
                           {formatMoneyCents(item.priceCents)}
                         </div>
                         <div className="t-small t-num">
-                          est {formatMoneyCents(estPayoutCents(item.priceCents))}
+                          Listing price
                         </div>
                       </div>
                     </div>

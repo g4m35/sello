@@ -1,0 +1,54 @@
+id: sello-autonomous-listing
+title: Sello Studio redesign and reliable autonomous listing workflow
+status: in_review
+owner: Codex
+reviewer: autonomy_review
+risk: high
+task_type: marketplace
+base_branch: develop
+working_branch: feature/sello-autonomous-listing
+worktree_path: /Users/jheller/dev/sello-worktrees/autonomous-listing
+created_at: 2026-09-08T12:00:00.000Z
+goal: Prepare listings automatically and execute explicitly authorized publishing within seller price bounds, with persistent progress and honest exceptions.
+context: Owner requested a complete UI redesign using Creative OS after the autonomy implementation. Owner authorized fixing all reviewed Sello issues with full implementation control and requested autonomy. This branch includes the reviewed legacy UI deletion.
+non_goals:
+  - Bypass marketplace access, account permissions, provider budgets, or safety gates.
+  - Purchase services or perform live marketplace operations as validation.
+allowed_paths:
+  - src/**
+  - scripts/**
+  - docs/**
+  - .agent/**
+  - .creative-os/**
+  - design-verification/**
+  - .gitignore
+  - package.json
+  - package-lock.json
+  - README.md
+  - vercel.json
+protected_paths:
+  - prisma/**
+  - .github/**
+required_reading:
+  - AGENTS.md
+  - docs/architecture/invariants.md
+  - src/lib/marketplace/AGENTS.md
+  - src/lib/comps/AGENTS.md
+  - src/lib/inventory-sync/AGENTS.md
+acceptance:
+  - Automatic jobs persist their authorization and sanitized outcomes and claim work once.
+  - Publishing preserves existing readiness, account, quota, idempotency and sold-state checks.
+  - Ambiguous matches and insufficient pricing evidence require review.
+  - The upload, editor and pricing screens remove the audited redundant controls and diagnostics.
+  - Full seller UI follows the Creative OS Studio brief with responsive catalog, capture and editing flows.
+  - Keyboard dialogs, mobile navigation, bulk selection and rendered accessibility are verified.
+validation:
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - docs/operations/autonomous-listing.md
+review_requirements:
+  - Independent review of side effects, concurrency, account ownership, evidence thresholds and UX.
+deployment_authorized: true
+merge_authorized: true
+notes: Owner replied go on 2026-09-09 after the completed review and screenshot presentation; accepted as approval to proceed with the reviewed release through develop and main. Live seller transactions remain governed by per-item consent and existing account gates, not test authorization.

@@ -30,9 +30,11 @@ export function MpDot({ marketplace, status }: { marketplace: string; status: De
 }
 
 export function MpDots({ channels }: { channels: Pick<ChannelStateView, "marketplace" | "status">[] }) {
+  const visible = channels.filter((channel) => ["published", "publishing", "failed"].includes(channel.status));
+  if (!visible.length) return <span className="mp-dots__empty">Not posted</span>;
   return (
     <span className="mp-dots">
-      {channels.map((c) => (
+      {visible.map((c) => (
         <MpDot key={c.marketplace} marketplace={c.marketplace} status={c.status} />
       ))}
     </span>
@@ -55,7 +57,7 @@ export function Thumb({
     >
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt="" />
+        <img src={image} alt="" loading="lazy" decoding="async" />
       ) : (
         <span className="product-thumb__mark" aria-hidden="true">
           S<em>.</em>

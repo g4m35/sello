@@ -1,0 +1,12 @@
+{
+  "task_id": "sello-autonomous-listing",
+  "task_file": ".agent/tasks/sello-autonomous-listing.yaml",
+  "base_branch": "develop",
+  "base_commit": "a838e4001a1dcb5066713028aa22d8c1c2575280",
+  "working_branch": "feature/sello-autonomous-listing",
+  "worktree_path": "/Users/jheller/dev/sello-worktrees/autonomous-listing",
+  "created_at": "2026-09-08T17:19:54.664966+00:00",
+  "updated_at": "2026-09-08T18:56:21.381591+00:00",
+  "started_by": "Codex",
+  "status": "in_review"
+}

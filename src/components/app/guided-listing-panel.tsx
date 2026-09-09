@@ -76,7 +76,6 @@ function GuidedListingSection({
   const [saved, setSaved] = useState(false);
 
   async function load(): Promise<ExportPayload | null> {
-    if (exported) return exported;
     setLoading(true);
     setLoadError(null);
     try {
@@ -102,13 +101,18 @@ function GuidedListingSection({
   async function copyFull() {
     const payload = await load();
     if (!payload) return;
-    await copyText(`${payload.title}\n\n${payload.body}`);
-    setCopiedKey("__full__");
+    try {
+      await copyText(`${payload.title}\n\n${payload.body}`);
+      setCopiedKey("__full__");
+    } catch { setLoadError("Clipboard access failed. Select and copy the fields below."); }
   }
 
-  async function copyField(key: string, value: string) {
-    await copyText(value);
-    setCopiedKey(key);
+  async function copyField(key: string) {
+    const latest = await load();
+    const field = latest?.fields.find((f) => f.key === key);
+    if (!field) return;
+    try { await copyText(field.value); setCopiedKey(key); }
+    catch { setLoadError("Clipboard access failed. Select and copy the field text."); }
   }
 
   async function markListed() {
@@ -159,6 +163,7 @@ function GuidedListingSection({
       </div>
 
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        <Btn variant="secondary" size="sm" disabled={loading} onClick={() => void load()}>Show listing fields</Btn>
         <Btn
           variant="secondary"
           size="sm"
@@ -187,7 +192,7 @@ function GuidedListingSection({
                 variant="ghost"
                 size="sm"
                 icon="copy"
-                onClick={() => void copyField(f.key, f.value)}
+                onClick={() => void copyField(f.key)}
               >
                 {copiedKey === f.key ? "Copied" : "Copy"}
               </Btn>
@@ -234,7 +239,7 @@ function GuidedListingSection({
         <div className="stack-1">
           <Field
             label="Mark as listed"
-            hint={`Paste the ${name} listing URL after you post it, so Sello can keep it in sync.`}
+            hint={`Paste the ${name} listing URL after you post it, so Sello can track where it is posted.`}
             error={urlError ?? undefined}
           >
             <div className="row" style={{ gap: 8 }}>
@@ -276,10 +281,8 @@ export function GuidedListingPanel({
   if (marketplaces.length === 0) return null;
 
   return (
-    <section className="card">
-      <div className="card__head">
-        <span className="card__title">Guided publish</span>
-      </div>
+    <details className="card disclosure">
+      <summary>Post to other marketplaces</summary>
       <div className="card__body stack-4">
         <div className="t-small muted">
           For channels Sello does not publish to directly: open the sell form,
@@ -297,6 +300,6 @@ export function GuidedListingPanel({
           />
         ))}
       </div>
-    </section>
+    </details>
   );
 }
