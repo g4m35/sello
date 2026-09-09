@@ -11,3 +11,5 @@ Screenshots use actual production fonts and source styles. Server-side rendering
 Human taste approval is pending. Creative OS requires owner screenshot review for final release; independent technical review does not substitute for that approval. The implementation is a reviewable client preview, not a production release.
 
 Final follow-up review also approved the native feedback form and prepared-listing dashboard wording. All ten mobile screen scans returned zero axe WCAG A/AA violations; inventory dark theme also passed. Real keyboard dialog/drawer checks, autosave concurrency, empty/error states, and opt-in price-bound validation passed.
+
+September 9 release follow-up: owner replied “go” after the preview presentation. See [owner-release-approval.md](owner-release-approval.md); the previous pending status above describes the September 8 review state.

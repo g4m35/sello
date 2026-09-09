@@ -49,6 +49,6 @@ documentation:
   - docs/operations/autonomous-listing.md
 review_requirements:
   - Independent review of side effects, concurrency, account ownership, evidence thresholds and UX.
-deployment_authorized: false
-merge_authorized: false
-notes: Full control authorizes scoped implementation of sensitive backend fixes; production release and live seller transactions are separate from validation.
+deployment_authorized: true
+merge_authorized: true
+notes: Owner replied go on 2026-09-09 after the completed review and screenshot presentation; accepted as approval to proceed with the reviewed release through develop and main. Live seller transactions remain governed by per-item consent and existing account gates, not test authorization.
