@@ -7,6 +7,7 @@ import { runCompFetch } from "@/lib/comps/fetch";
 import { publishForUser } from "@/lib/marketplace/publish-service";
 import { AppError, logUnexpectedError } from "@/lib/errors";
 import { automaticPriceDecision, hasSingleEbayQuantity, ListingAutomationSchema } from "./policy";
+import { createListingAutomationReview } from "./review";
 
 export const LISTING_QUEUE = "listing-automation-v1";
 export const JobPayloadSchema = z.object({
@@ -34,18 +35,26 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
   if (!job?.inventoryItemId) return;
   const claimed = await db.jobLog.updateMany({ where: { id, status: "QUEUED", updatedAt: job.updatedAt }, data: { status: "RUNNING" } });
   if (claimed.count !== 1) return;
+  let canRetryPreparation = false;
+  let publishStarted = false;
   const checkpoint = async (message: string) => {
     const result = await db.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: { result: { message } } });
     if (result.count !== 1) throw new AppError("Automation was stopped. Review the listing.", 409);
   };
   const finish = async (state: "prepared" | "published" | "needs_review", message: string) => {
-    await db.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: {
-      status: state === "needs_review" ? "FAILED" : "SUCCEEDED", result: { state, message },
-      errorMessage: state === "needs_review" ? message : null,
-    } });
+    await db.$transaction(async (tx) => {
+      const updated = await tx.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: {
+        status: state === "needs_review" ? "FAILED" : "SUCCEEDED", result: { state, message,
+          phase: publishStarted ? "publishing" : "preparing",
+          recoveryAction: state === "needs_review" && canRetryPreparation && !publishStarted ? "retry_preparation" : null },
+        errorMessage: state === "needs_review" ? message : null,
+      } });
+      if (updated.count === 1 && state === "needs_review") await createListingAutomationReview(tx, job, message);
+    });
   };
   try {
     const payload = JobPayloadSchema.parse(job.payload);
+    canRetryPreparation = true;
     if (Date.now() - new Date(payload.authorizedAt).getTime() > 24 * 60 * 60_000) throw new AppError("This authorization expired. Review the listing before posting.", 409);
     const user = await deps.resolveUser(payload.userId);
     const access = await deps.entitlements(user, db);
@@ -82,6 +91,13 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
     if (payload.policy.mode === "prepare") return await finish("prepared", "Listing and price prepared. Review it and choose where to post.");
     await checkpoint("Checking requirements and posting to eBay…");
     if (!priced?.listingDrafts[0]) throw new AppError("Listing not found.", 404);
+    // Persist the boundary before invoking the external action. An interrupted
+    // publish is never eligible for preparation recovery or renewed consent.
+    publishStarted = true;
+    const boundary = await db.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: {
+      result: { phase: "publishing", message: "Checking requirements and posting to eBay…", recoveryAction: null },
+    } });
+    if (boundary.count !== 1) throw new AppError("Automation was stopped. Review the listing.", 409);
     const result = await deps.publish(user, { inventoryItemId: item.id, marketplace: "ebay" }, `${id}:publish:ebay`, payload.accountId, {
       itemVersion: priced.updatedAt.toISOString(), draftVersion: priced.listingDrafts[0].updatedAt.toISOString(), priceCents: price,
     });
@@ -95,8 +111,16 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
 
 export async function runListingQueue(db: Db = getPrisma(), deadline = Date.now() + 180_000) {
   // Interrupted calls need reconciliation, never a second blind publish.
-  await db.jobLog.updateMany({ where: { queueName: LISTING_QUEUE, status: "RUNNING", updatedAt: { lt: new Date(Date.now() - 15 * 60_000) } },
-    data: { status: "FAILED", errorMessage: "Automation was interrupted. Check marketplace activity before retrying.", result: { state: "needs_review", message: "Automation was interrupted. Check marketplace activity before retrying." } } });
+  const stale = await db.jobLog.findMany({ where: { queueName: LISTING_QUEUE, status: "RUNNING", updatedAt: { lt: new Date(Date.now() - 15 * 60_000) } }, take: 10, orderBy: { updatedAt: "asc" } });
+  for (const job of stale) {
+    const message = "Automation was interrupted. Check marketplace activity before retrying.";
+    await db.$transaction(async (tx) => {
+      const updated = await tx.jobLog.updateMany({ where: { id: job.id, status: "RUNNING", updatedAt: job.updatedAt }, data: {
+        status: "FAILED", errorMessage: message, result: { state: "needs_review", message },
+      } });
+      if (updated.count === 1) await createListingAutomationReview(tx, job, message);
+    });
+  }
   const jobs = await db.jobLog.findMany({ where: { queueName: LISTING_QUEUE, status: "QUEUED" }, orderBy: { createdAt: "asc" }, take: 10, select: { id: true } });
   let processed = 0;
   for (const job of jobs) {

@@ -1,10 +1,5 @@
 import { apifyEbaySoldSource } from "@/lib/comps/sources/apify-ebay-sold";
-import { depopActiveSource } from "@/lib/comps/sources/depop-active";
 import { ebayBrowseSource } from "@/lib/comps/sources/ebay-browse";
-import { ebayMarketplaceInsightsSource } from "@/lib/comps/sources/ebay-marketplace-insights";
-import { googleLensSource } from "@/lib/comps/sources/google-lens";
-import { grailedSoldSource } from "@/lib/comps/sources/grailed-sold";
-import { poshmarkSoldSource } from "@/lib/comps/sources/poshmark-sold";
 import { serpapiEbayActiveSource } from "@/lib/comps/sources/serpapi-ebay-active";
 import { stockxSource } from "@/lib/comps/sources/stockx";
 import type { CompSource } from "@/lib/comps/source";
@@ -12,17 +7,13 @@ import type { CompSource } from "@/lib/comps/source";
 // Sold sources first (preferred), active/visual sources last (interim signals).
 // All are env-gated: a source with no configured credentials reports
 // isEnabled() === false and is skipped, so nothing runs unless configured.
-// Note: eBay Marketplace Insights is intentionally absent (access restricted).
+// TODO-only adapters are intentionally absent. Credentials and an enable flag
+// cannot turn an empty implementation into an available comp provider.
 export const COMP_SOURCES: CompSource[] = [
-  ebayMarketplaceInsightsSource,
   stockxSource,
   apifyEbaySoldSource,
-  grailedSoldSource,
-  poshmarkSoldSource,
   ebayBrowseSource,
   serpapiEbayActiveSource,
-  depopActiveSource,
-  googleLensSource,
 ];
 
 export function enabledCompSources(): CompSource[] {
