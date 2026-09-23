@@ -18,7 +18,7 @@ required_reading:
   - src/lib/marketplace/AGENTS.md
   - src/lib/inventory-sync/AGENTS.md
 documentation:
-  - docs/operations/etsy-publish-race-recovery.md
+  - docs/operations/etsy-publish-safety.md
 review_requirements:
   - Independent review of publish concurrency, billing recovery, and sold-state safety.
 goal: Recover sold/edit races around Etsy activation, enforce single-unit publishing, and reconcile unavailable states.
@@ -28,7 +28,7 @@ allowed_paths:
   - src/lib/inventory-sync/jobs/worker.ts
   - src/lib/inventory-sync/jobs/worker.test.ts
   - src/lib/marketplace/adapters/etsy/**
-  - docs/operations/etsy-publish-race-recovery.md
+  - docs/operations/etsy-publish-safety.md
   - .agent/tasks/active/etsy-publish-race-recovery.yaml
   - .agent/state/etsy-publish-race-recovery.json
 protected_paths:
@@ -37,12 +37,12 @@ protected_paths:
   - prisma/**
   - .github/**
 acceptance:
-  - Duplicate and ambiguous attempts fail closed and known drafts resume.
-  - Etsy sold status uses shared transactional reconciliation.
-  - Current documented Etsy authentication and processing profile fields are validated.
+  - Concurrent edits or sales create a distinct durable cleanup job after activation.
+  - Active retries revalidate current inventory and only single-unit items can publish.
+  - Unavailable remote listings reconcile as ended without extra provider writes.
 validation:
   - npm run validate:full
 full_validation_required: true
 deployment_authorized: false
 merge_authorized: false
-notes: Requires integration with etsy-recurring-sync verified delist helper; no provider flags are enabled.
+notes: Follow-up to PR147 review; uses existing leased cleanup worker and leaves all provider flags unchanged.
