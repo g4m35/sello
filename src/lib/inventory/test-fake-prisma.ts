@@ -344,6 +344,14 @@ export function createInventoryFakePrisma(seed: {
   };
 
   const reviewTask = {
+    async findMany({ where }: { where: { accountId: string; inventoryItemId: string; type: string; status: string }; select?: unknown }) {
+      return store.reviewTasks.filter(t => t.accountId === where.accountId && t.inventoryItemId === where.inventoryItemId && t.type === where.type && t.status === where.status)
+        .map(t => ({ id: t.id, dedupeKey: t.dedupeKey, payload: t.payload }));
+    },
+    async updateMany({ where, data }: { where: { accountId: string; inventoryItemId: string; type: string; status: string; dedupeKey: string }; data: { status: string; resolvedAt: Date } }) {
+      const tasks = store.reviewTasks.filter(t => t.accountId === where.accountId && t.inventoryItemId === where.inventoryItemId && t.type === where.type && t.status === where.status && t.dedupeKey === where.dedupeKey);
+      tasks.forEach(t => { t.status = data.status; }); return { count: tasks.length };
+    },
     async findFirst({
       where,
     }: {

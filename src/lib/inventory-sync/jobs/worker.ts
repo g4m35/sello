@@ -380,6 +380,10 @@ type WorkerNotificationDelegate = NotificationPrismaLike["notification"] & {
 
 export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
   ReviewTaskPrismaLike & {
+    reviewTask: ReviewTaskPrismaLike["reviewTask"] & {
+      findMany(args: { where: { accountId: string; inventoryItemId: string; type: "sync_conflict"; status: "open" }; select: { id: true; dedupeKey: true; payload: true } }): Promise<Array<{ id: string; dedupeKey: string | null; payload: Prisma.JsonValue }>>;
+      updateMany(args: { where: { accountId: string; inventoryItemId: string; type: "sync_conflict"; status: "open"; dedupeKey: string }; data: { status: "resolved"; resolvedAt: Date } }): Promise<{ count: number }>;
+    };
     syncJob: WorkerJobDelegate;
     marketplaceListing: WorkerListingDelegate;
     notification: WorkerNotificationDelegate;
@@ -1126,17 +1130,32 @@ async function parkIfOpenSyncConflict(
   inventoryItemId: string,
 ): Promise<RunSummary | null> {
   if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
-  const conflict = await db.reviewTask.findFirst({
-    where: {
-      accountId: job.accountId,
-      type: "sync_conflict",
-      status: "open",
-      inventoryItemId,
-    },
-    select: { id: true },
+  const reviews = await db.reviewTask.findMany({
+    where: { accountId: job.accountId, type: "sync_conflict", status: "open", inventoryItemId },
+    select: { id: true, dedupeKey: true, payload: true },
   });
+  // Only explicitly recognized operational reviews can be ignored after a
+  // confirmed sale. Actual sale-source conflicts and unknown legacy reviews
+  // remain fail-closed; one harmless review cannot mask another real conflict.
+  const conflict = reviews.find((review) => !isOperationalReview(review));
   if (!conflict) return null;
   return finalizeNeedsReview(db, job, "OPEN_SYNC_CONFLICT_REVIEW_REQUIRED");
+}
+
+function isOperationalReview(review: { dedupeKey: string | null; payload: Prisma.JsonValue }): boolean {
+  if (!review.payload || typeof review.payload !== "object" || Array.isArray(review.payload)) return false;
+  const payload = review.payload as Record<string, unknown>;
+  // A mixed/malformed review carrying sale evidence always retains its hold.
+  if (payload.alreadySoldMarketplace || payload.conflictingMarketplace || review.dedupeKey?.startsWith("sold-source-conflict:")) return false;
+  const key = review.dedupeKey;
+  if (typeof payload.listingAutomationJobId === "string" && payload.listingAutomationJobId.length > 0) {
+    return key === `listing-automation:${payload.listingAutomationJobId}`;
+  }
+  if (payload.reason === "etsy_publish_incomplete" && typeof payload.marketplaceListingId === "string") {
+    return key === `etsy-publish:${payload.marketplaceListingId}`;
+  }
+  return typeof payload.syncJobId === "string" && typeof payload.marketplaceListingId === "string" &&
+    key === `sync-job:${payload.syncJobId}:etsy-status`;
 }
 
 async function execEbayDelist(
@@ -1416,6 +1435,11 @@ async function execDetectStatus(
         body: "Check this Etsy listing and its connection before resuming automatic sale checks.", dedupeKey });
       return finalizeNeedsReview(db, job, "ETSY_STATUS_REVIEW_REQUIRED");
     }
+    if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+    await db.reviewTask.updateMany({
+      where: { accountId: job.accountId, inventoryItemId, type: "sync_conflict", status: "open", dedupeKey: `sync-job:${job.id}:etsy-status` },
+      data: { status: "resolved", resolvedAt: new Date() },
+    });
     return finalizeSucceeded(db, job);
   }
 
