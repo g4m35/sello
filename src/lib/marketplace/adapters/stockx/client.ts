@@ -224,6 +224,8 @@ export async function fetchStockXListingStatus(
   return normalizeListingResult(json, listingId);
 }
 
+const STOCKX_REQUEST_TIMEOUT_MS = 15_000;
+
 async function stockxApiRequest(
   config: StockXConfig,
   path: string,
@@ -238,6 +240,9 @@ async function stockxApiRequest(
 
   const init: RequestInit = {
     method,
+    // One deadline includes response bodies and both existing GET attempts.
+    // Mutations still receive exactly one attempt.
+    signal: AbortSignal.timeout(STOCKX_REQUEST_TIMEOUT_MS),
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${options.accessToken}`,

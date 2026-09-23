@@ -131,6 +131,8 @@ export function stockxExternalUserIdFromToken(token: StockXTokenResponse): strin
   return jwtSubject(token.id_token) ?? jwtSubject(token.access_token);
 }
 
+const STOCKX_TOKEN_TIMEOUT_MS = 15_000;
+
 async function postToken(
   config: StockXConfig,
   body: URLSearchParams,
@@ -143,6 +145,7 @@ async function postToken(
     new URL("/oauth/token", ensureTrailingSlash(config.authBaseUrl)),
     {
       method: "POST",
+      signal: AbortSignal.timeout(STOCKX_TOKEN_TIMEOUT_MS),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
     },

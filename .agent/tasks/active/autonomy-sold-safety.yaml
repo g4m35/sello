@@ -14,6 +14,8 @@ context: Owner authorized implementation of automation improvements and independ
 non_goals:
   - New recurring marketplace pollers, live marketplace actions, schema or deployment changes.
 allowed_paths:
+  - src/lib/marketplace/adapters/ebay/client.ts
+  - src/lib/marketplace/adapters/request-timeout.test.ts
   - src/lib/marketplace/lifecycle-sync.ts
   - src/lib/marketplace/lifecycle-sync.test.ts
   - src/lib/marketplace/delist-handler.test.ts
@@ -35,6 +37,7 @@ acceptance:
   - Stale StockX status responses cannot overwrite a terminal listing or newer reconciliation.
   - Pending or unverified StockX delist responses never mark a listing delisted or allow mutation replay.
   - A refresh cannot overwrite a reconnect or competing credential rotation, and losing refreshes never return a stale token.
+  - Marketplace network calls have bounded read and response-body time without adding mutation retries.
   - Provider failures remain fail closed and no live provider calls are used in validation.
 validation:
   - npm run typecheck
