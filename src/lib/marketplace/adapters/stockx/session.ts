@@ -53,6 +53,41 @@ export async function loadStockXConnectionSession(
     );
   }
 
+  const accessToken = await getUsableStockXAccessToken(prisma, connection, config, options);
+
+  return {
+    connection: {
+      id: connection.id,
+      accountId: connection.accountId,
+      externalUserId: connection.externalUserId,
+      accessTokenEnc: connection.accessTokenEnc,
+      refreshTokenEnc: connection.refreshTokenEnc,
+    },
+    accessToken,
+  };
+}
+
+export type StockXTokenConnection = Pick<MarketplaceConnection,
+  "id" | "accountId" | "accessTokenEnc" | "refreshTokenEnc" | "accessTokenExpiresAt"
+>;
+
+export type StockXTokenPrismaLike = {
+  marketplaceConnection: {
+    update(args: {
+      where: { id: string; accountId: string };
+      data: { accessTokenEnc: string; refreshTokenEnc: string; accessTokenExpiresAt: Date };
+    }): Promise<unknown>;
+  };
+};
+
+// Shared by catalog and background actions so token expiry does not strand
+// listing, sale-monitoring or delisting work. Callers load a scoped connection.
+export async function getUsableStockXAccessToken(
+  prisma: StockXTokenPrismaLike,
+  connection: StockXTokenConnection,
+  config: StockXConfig,
+  options?: { fetchImpl?: typeof fetch; now?: number },
+): Promise<string> {
   const now = options?.now ?? Date.now();
   let accessToken = decryptStockXToken(connection.accessTokenEnc, config.tokenEncryptionKey);
 
@@ -68,7 +103,7 @@ export async function loadStockXConnectionSession(
     );
     accessToken = refreshed.access_token;
     await prisma.marketplaceConnection.update({
-      where: { id: connection.id },
+      where: { id: connection.id, accountId: connection.accountId },
       data: {
         accessTokenEnc: encryptStockXToken(refreshed.access_token, config.tokenEncryptionKey),
         refreshTokenEnc: refreshed.refresh_token
@@ -79,14 +114,5 @@ export async function loadStockXConnectionSession(
     });
   }
 
-  return {
-    connection: {
-      id: connection.id,
-      accountId: connection.accountId,
-      externalUserId: connection.externalUserId,
-      accessTokenEnc: connection.accessTokenEnc,
-      refreshTokenEnc: connection.refreshTokenEnc,
-    },
-    accessToken,
-  };
+  return accessToken;
 }

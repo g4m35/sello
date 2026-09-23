@@ -105,7 +105,7 @@ describe("loadStockXConnectionSession", () => {
     expect(mocks.refresh).toHaveBeenCalledWith(config, "refresh-token", expect.any(Function));
     expect(mocks.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "conn-1" },
+        where: { id: "conn-1", accountId: "acc-1" },
         data: expect.objectContaining({
           accessTokenExpiresAt: new Date(now + 3600 * 1000),
         }),

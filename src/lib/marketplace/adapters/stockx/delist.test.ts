@@ -25,6 +25,7 @@ function prisma(overrides: { connection?: boolean; item?: boolean } = {}): Stock
       ),
     },
     marketplaceConnection: {
+      update: vi.fn(async () => ({})),
       findUnique: vi.fn(async () =>
         overrides.connection === false
           ? null
@@ -33,6 +34,7 @@ function prisma(overrides: { connection?: boolean; item?: boolean } = {}): Stock
               accountId: "acc-1",
               accessTokenEnc: "encrypted-access",
               refreshTokenEnc: "encrypted-refresh",
+              accessTokenExpiresAt: new Date(Date.now() + 3600_000),
             },
       ),
     },

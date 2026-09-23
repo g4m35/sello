@@ -271,7 +271,7 @@ describe("executeEbayDelist", () => {
       lastError: null,
     });
     expect(prisma._state.inventoryUpdates).toEqual([
-      { where: { id: "item-1" }, data: { status: "DELISTED" } },
+      { where: { id: "item-1", status: { not: "SOLD" }, soldAt: null, soldSourceMarketplace: null }, data: { status: "DELISTED" } },
     ]);
     expect(prisma._state.events.map((e) => e.kind)).toEqual(
       expect.arrayContaining(["delist_started", "ebay_offer_withdrawn"]),
@@ -295,7 +295,7 @@ describe("executeEbayDelist", () => {
     );
 
     expect(prisma._state.inventoryUpdates).toEqual([
-      { where: { id: "item-1" }, data: { status: "LISTED" } },
+      { where: { id: "item-1", status: { not: "SOLD" }, soldAt: null, soldSourceMarketplace: null }, data: { status: "LISTED" } },
     ]);
   });
 
@@ -514,7 +514,7 @@ describe("executeStockXDelist", () => {
       lastError: null,
     });
     expect(prisma._state.inventoryUpdates).toEqual([
-      { where: { id: "item-1" }, data: { status: "DELISTED" } },
+      { where: { id: "item-1", status: { not: "SOLD" }, soldAt: null, soldSourceMarketplace: null }, data: { status: "DELISTED" } },
     ]);
     expect(prisma._state.events.map((e) => e.kind)).toEqual(
       expect.arrayContaining(["delist_started", "stockx_listing_deactivated"]),
