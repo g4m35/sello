@@ -492,3 +492,14 @@ describe("POST /api/inventory/sync-jobs/run — stale-running reaper", () => {
     expect(serialized).not.toContain(SECRET);
   });
 });
+
+describe("Etsy production worker capability gate", () => {
+  it.each(["delist", "status_sync"] as const)("requires Etsy %s access for the verified account", async operation => {
+    const requireEtsyAccess = vi.fn().mockResolvedValue(undefined);
+    const gate = createProductionExecutionGate({} as never, { resolveUserById: async () => ({ id: "user" }), resolveActiveAccount: async () => ({ id: "account" }), requireEtsyAccess });
+    expect(await gate({ jobId: "job", userId: "user", accountId: "account", inventoryItemId: "item", marketplaceListingId: "listing", marketplace: "etsy", operation })).toMatchObject({ allowed: true });
+    expect(requireEtsyAccess).toHaveBeenCalledWith({ id: "user" }, operation);
+    requireEtsyAccess.mockRejectedValue(new AppError("Etsy access is disabled.", 403, "ETSY_NOT_ENABLED"));
+    expect(await gate({ jobId: "job", userId: "user", accountId: "account", inventoryItemId: "item", marketplaceListingId: "listing", marketplace: "etsy", operation })).toMatchObject({ allowed: false, code: "ETSY_NOT_ENABLED" });
+  });
+});

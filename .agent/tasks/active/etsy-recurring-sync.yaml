@@ -1,0 +1,36 @@
+id: etsy-recurring-sync
+title: Schedule Etsy status monitoring and guarded worker delisting
+status: active
+owner: Codex autonomy_gap_audit
+reviewer: Codex root
+risk: high
+task_type: backend
+base_branch: develop
+working_branch: fix/etsy-recurring-sync
+worktree_path: /Users/jheller/dev/sello-worktrees/etsy-recurring-sync
+created_at: 2026-09-23T06:00:00.000Z
+goal: Route Etsy status checks and sale cleanup through durable account-scoped jobs without enabling production integration.
+allowed_paths:
+  - src/lib/inventory/**
+  - src/lib/inventory-sync/**
+  - src/app/api/internal/listing-automation/run/**
+  - src/app/api/inventory/sync-jobs/run/**
+  - docs/operations/**
+  - .agent/**
+protected_paths:
+  - prisma/**
+  - src/lib/marketplace/adapters/**
+  - .github/**
+acceptance:
+  - Disabled or incomplete integration makes no scheduling database or provider requests.
+  - Etsy jobs preserve account gates and source-sale transactional reconciliation.
+  - Delisting requires observed remote inactive status; errors and ambiguous outcomes require review.
+  - No live provider requests or production configuration changes.
+validation:
+  - Focused monitoring, worker and gate tests.
+  - npm run typecheck
+full_validation_required: true
+review_requirements:
+  - Independent review by root before merge.
+deployment_authorized: true
+merge_authorized: true

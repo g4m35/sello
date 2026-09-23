@@ -1740,3 +1740,45 @@ describe("worker leases, backoff, and admin recovery", () => {
     expect(prisma._store.syncJobs[1].status).toBe("running");
   });
 });
+
+describe("Etsy durable execution", () => {
+  function fixture(type: "detect_status" | "delist_marketplace_listing") {
+    const prisma = createInventoryFakePrisma({ items: [item()], listings: [listing({ id: "l-etsy", marketplace: "etsy", externalListingId: "42" })],
+      syncJobs: [{ id: "etsy-job", userId: "user-1", accountId: "account-1", type, status: "queued", inventoryItemId: "item-1", marketplaceListingId: "l-etsy", payload: {} }] });
+    return { prisma, db: workerDb(prisma) };
+  }
+  it("executes an account-scoped status service once and records verified completion", async () => {
+    const f = fixture("detect_status"); const etsyStatusSync = vi.fn().mockResolvedValue({ synced: true, state: "active", status: "LISTED" });
+    expect(await runQueuedSyncJobs(f.db, {}, allowed({ etsyStatusSync }))).toMatchObject({ succeeded: 1 });
+    expect(etsyStatusSync).toHaveBeenCalledWith({ userId: "user-1", accountId: "account-1", itemId: "item-1" }, f.db);
+    await runQueuedSyncJobs(f.db, {}, allowed({ etsyStatusSync })); expect(etsyStatusSync).toHaveBeenCalledOnce();
+  });
+  it("does not run Etsy without the current execution capability gate", async () => {
+    const f = fixture("detect_status"); const etsyStatusSync = vi.fn();
+    expect(await runQueuedSyncJobs(f.db, {}, { etsyStatusSync })).toMatchObject({ needsReview: 1 }); expect(etsyStatusSync).not.toHaveBeenCalled();
+  });
+  it.each([{ synced: false, reason: "sale_conflict" }, { synced: true, state: "unknown" }])("does not claim failed or unknown status as success", async result => {
+    const f = fixture("detect_status"); const etsyStatusSync = vi.fn().mockResolvedValue(result);
+    expect(await runQueuedSyncJobs(f.db, {}, allowed({ etsyStatusSync }))).toMatchObject({ succeeded: 0 });
+  });
+  it("retries transient Etsy reads and creates review after attempt exhaustion", async () => {
+    const f = fixture("detect_status"); const etsyStatusSync = vi.fn().mockRejectedValue(new Error("private upstream detail"));
+    expect(await runQueuedSyncJobs(f.db, {}, allowed({ etsyStatusSync }))).toMatchObject({ retryWait: 1 });
+    const job = f.prisma._store.syncJobs[0]; job.runAfter = new Date(0); job.attempts = job.maxAttempts - 1;
+    expect(await runQueuedSyncJobs(f.db, {}, allowed({ etsyStatusSync }))).toMatchObject({ needsReview: 1 });
+    expect(f.prisma._store.reviewTasks.some(t => t.type === "sync_conflict")).toBe(true);
+    expect(JSON.stringify(f.prisma._store.syncJobs)).not.toContain("private upstream detail");
+  });
+  it("executes verified removal through the guarded service", async () => {
+    const f = fixture("delist_marketplace_listing"); const etsyDelist = vi.fn().mockResolvedValue({ status: "DELISTED", listingId: "42", changed: true });
+    expect(await runQueuedSyncJobs(f.db, {}, allowed({ etsyDelist }))).toMatchObject({ succeeded: 1 });
+    expect(etsyDelist).toHaveBeenCalledWith({ userId: "user-1", accountId: "account-1", inventoryItemId: "item-1", marketplaceListingId: "l-etsy" }, f.db);
+  });
+  it("parks ambiguous removal and creates visible manual review without replay", async () => {
+    const f = fixture("delist_marketplace_listing"); const etsyDelist = vi.fn().mockRejectedValue(new Error("private provider detail"));
+    expect(await runQueuedSyncJobs(f.db, {}, allowed({ etsyDelist }))).toMatchObject({ needsReview: 1 });
+    expect(f.prisma._store.reviewTasks.some(t => t.type === "manual_delist_required")).toBe(true);
+    await runQueuedSyncJobs(f.db, {}, allowed({ etsyDelist })); expect(etsyDelist).toHaveBeenCalledOnce();
+    expect(JSON.stringify(f.prisma._store.syncJobs)).not.toContain("private provider detail");
+  });
+});

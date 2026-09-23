@@ -236,3 +236,11 @@ describe("queueDelistOtherListings", () => {
     expect(prisma._store.syncJobs).toHaveLength(0);
   });
 });
+
+it("queues an Etsy cleanup after another marketplace sells the item", async () => {
+  const prisma = createInventoryFakePrisma({ items: [baseItem()], listings: [listing({ id: "etsy", marketplace: "etsy", externalListingId: "42" })] });
+  const result = await queueDelistOtherListings(prisma, "item-1", "ebay", "user-1");
+  expect(result.queuedJobIds).toHaveLength(1);
+  expect(result.manualReviewTaskIds).toEqual([]);
+  expect(prisma._store.syncJobs[0]).toMatchObject({ status: "queued", marketplaceListingId: "etsy" });
+});
