@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Plug } from "lucide-react";
 
 import { ConnectionControls } from "./connection-controls";
+import { MpLogo } from "@/components/ui/marketplace";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
 
@@ -117,14 +118,18 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
               : "Not connected";
 
   return (
-    <section className="connection" aria-labelledby="etsy-heading">
-      <div className="connection__head">
-        <div className="connection__identity">
-          <h2 id="etsy-heading">Etsy</h2>
-          <span className="connection__status">{statusLine}</span>
+    <section className="card">
+      <div className="card__head">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <MpLogo id="etsy" size={36} />
+          <div>
+            <div style={{ fontWeight: 500 }}>Etsy</div>
+            <div className="t-small muted">{statusLine}</div>
+          </div>
         </div>
-        <div className="connection__actions">
-          {state === "error" && <button type="button" className="btn btn--secondary" onClick={() => { setState("loading"); setReloadKey(key => key + 1); }}>Try again</button>}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {state === "error" && <button type="button" className="btn btn--secondary btn--sm" onClick={() => { setState("loading"); setReloadKey(key => key + 1); }}>Try again</button>}
           {state === "loading" && (
             <Loader2
               size={14}
@@ -144,9 +149,15 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
         </div>
       </div>
 
+      {state === "ready" && status && !canConnect(status) && !status.connected && (
+        <p className="t-small muted" style={{ padding: "10px 20px", margin: 0 }}>
+          Copy listing details and photos from the editor to publish on Etsy manually.
+        </p>
+      )}
+
       {error && (
         <div
-          className="connection__error" role="alert"
+          className="t-small danger" role="alert"
           style={{ padding: "10px 20px", borderTop: "1px solid var(--line)" }}
         >
           <p style={{ margin: 0 }}>{error}</p>
