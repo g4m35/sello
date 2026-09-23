@@ -104,16 +104,16 @@ describe("Sidebar brand", () => {
     mocks.pathname = "/inventory";
   });
 
-  it("navigates to inventory when the Sello logo is clicked", () => {
+  it("navigates to dashboard when the Sello logo is clicked", () => {
     reactHarness.cursor = 0;
     const tree = Sidebar();
     const brand = findElement(
       tree,
-      (el) => el.props["aria-label"] === "Sello — go to inventory",
+      (el) => el.props["aria-label"] === "Sello — go to dashboard",
     );
     expect(brand).not.toBeNull();
     (brand?.props.onClick as () => void)();
-    expect(mocks.push).toHaveBeenCalledWith("/inventory");
+    expect(mocks.push).toHaveBeenCalledWith("/dashboard");
   });
 
   it("provides direct access to billing settings", () => {

@@ -14,18 +14,17 @@ export default function SettingsPage() {
     <>
       <Topbar crumbs={["Settings"]} />
 
-      <main className="page workspace-settings">
+      <main className="page">
         <div className="page__head">
           <div>
-
             <h1 className="page__title">
-              Your workspace
+              Settings<em>.</em>
             </h1>
             <div className="page__title-meta">Account, billing, and legal</div>
           </div>
         </div>
 
-        <div className="workspace-settings__grid">
+        <div className="stack-4" style={{ display: "grid", gap: 16 }}>
           <section className="card">
             <div className="card__head">
               <span className="card__title">Account</span>

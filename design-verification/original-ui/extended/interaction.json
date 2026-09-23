@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "checks": [
+    {
+      "name": "Inventory row selection exposes bulk actions",
+      "pass": true
+    },
+    {
+      "name": "Sale confirmation dialog closes on Escape and restores focus",
+      "pass": true
+    },
+    {
+      "name": "Sale confirmation removes its task only after success",
+      "pass": true
+    },
+    {
+      "name": "Editor retry updates persistent job state",
+      "pass": true
+    },
+    {
+      "name": "Automatic posting stays opt-in with explicit price bounds",
+      "pass": true
+    },
+    {
+      "name": "Connection modal cancellation preserves account and focus",
+      "pass": true
+    },
+    {
+      "name": "Closed mobile sidebar cannot receive keyboard focus",
+      "pass": true
+    },
+    {
+      "name": "Mobile drawer opens, traps focus and closes with focus restoration",
+      "pass": true
+    },
+    {
+      "name": "Resizing an open mobile drawer releases the desktop page",
+      "pass": true
+    },
+    {
+      "name": "Original inventory table scroll remains contained on mobile",
+      "pass": true
+    },
+    {
+      "name": "Failed review confirmation retains task with visible error",
+      "pass": true
+    },
+    {
+      "name": "Marketplace load error exposes working retry control",
+      "pass": true
+    }
+  ]
+}

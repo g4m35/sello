@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Icon, type IconName } from "@/components/ui/icon";
+import { api } from "@/lib/api/client";
 import { useSession } from "@/components/providers/session-provider";
-import { SelloLogo } from "@/components/app/sello-logo";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { prefetchBillingUsage } from "@/components/billing/usage-snapshot";
 import { useMobileNav } from "@/components/providers/mobile-nav-provider";
 
-type NavItem = { href: string; label: string; icon: IconName };
+type NavItem = { href: string; label: string; icon: IconName; count?: number };
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -18,23 +18,56 @@ export function Sidebar() {
   const { session, token, signOut, name, requestNameEdit } = useSession();
   const { open: drawerOpen, close: closeDrawer } = useMobileNav();
   const [search, setSearch] = useState("");
+  const [counts, setCounts] = useState<{ items?: number; channels?: number }>({});
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([api.listItems(token), api.getChannels(token)])
+      .then(([items, channels]) => {
+        if (active) setCounts({ items: items.items.length, channels: channels.length });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  // Warm the main routes so navigating between screens is instant (the route
+  // bundle + skeleton are ready before the click). Cheap and idempotent.
+  useEffect(() => {
+    for (const href of [
+      "/dashboard",
+      "/inventory",
+      "/inventory/new",
+      "/inventory/bulk",
+      "/history",
+      "/channels",
+      "/settings",
+      "/settings/billing",
+      "/feedback",
+    ]) {
+      router.prefetch?.(href);
+    }
+    prefetchBillingUsage(token);
+  }, [router, token]);
+
   const isActive = (href: string) =>
     href === "/inventory"
       ? pathname.startsWith("/inventory") && !pathname.startsWith("/inventory/bulk")
-      : href === "/settings/marketplaces"
+      : href === "/channels"
         ? pathname === "/channels" || pathname.startsWith("/settings/marketplaces")
       : href === "/settings"
         ? pathname === "/settings"
       : pathname === href || pathname.startsWith(href + "/");
 
   const primary: NavItem[] = [
-    { href: "/inventory", label: "Inventory", icon: "box" },
+    { href: "/dashboard", label: "Dashboard", icon: "grid" },
+    { href: "/inventory", label: "Inventory", icon: "box", count: counts.items },
     { href: "/inventory/bulk", label: "Bulk intake", icon: "upload" },
-    { href: "/history", label: "Publish history", icon: "history" },
-    { href: "/settings/marketplaces", label: "Marketplaces", icon: "store" },
   ];
   const config: NavItem[] = [
-    { href: "/dashboard", label: "Overview", icon: "grid" },
+    { href: "/history", label: "Publish history", icon: "history" },
+    { href: "/channels", label: "Marketplaces", icon: "store", count: counts.channels },
     { href: "/settings/billing", label: "Billing", icon: "tag" },
     { href: "/settings", label: "Settings", icon: "settings" },
     { href: "/feedback", label: "Send feedback", icon: "send" },
@@ -60,23 +93,22 @@ export function Sidebar() {
         <button
           type="button"
           className="sidebar__brand-mark"
-          onClick={() => go("/inventory")}
-          aria-label="Sello — go to inventory"
-          title="Go to inventory"
+          onClick={() => go("/dashboard")}
+          aria-label="Sello — go to dashboard"
+          title="Go to dashboard"
         >
-          <SelloLogo />
+          Sello<em>.</em>
         </button>
       </div>
 
       <button className="nav-new" onClick={() => go("/inventory/new")}>
         <Icon name="plus" size={15} />
         New listing
-
       </button>
 
       <form
         className="input-search"
-        style={{ minWidth: 0 }}
+        style={{ minWidth: 0, height: 32, margin: "0 4px" }}
         onSubmit={(e) => {
           e.preventDefault();
           go(`/inventory?q=${encodeURIComponent(search)}`);
@@ -91,7 +123,7 @@ export function Sidebar() {
         />
       </form>
 
-      <nav className="sidebar__section" aria-label="Selling">
+      <nav aria-label="Primary navigation" className="sidebar__section">
         {primary.map((it) => (
           <button
             key={it.href}
@@ -103,11 +135,13 @@ export function Sidebar() {
           >
             <Icon className="nav-item__icon" name={it.icon} size={15} />
             {it.label}
+            {it.count != null && <span className="nav-item__count t-num">{it.count}</span>}
           </button>
         ))}
       </nav>
 
-      <nav className="sidebar__section" aria-label="Workspace">
+      <nav aria-label="Workspace navigation" className="sidebar__section">
+        <div className="sidebar__label">Workspace</div>
         {config.map((it) => (
           <button
             key={it.href}
@@ -119,6 +153,7 @@ export function Sidebar() {
           >
             <Icon className="nav-item__icon" name={it.icon} size={15} />
             {it.label}
+            {it.count != null && <span className="nav-item__count t-num">{it.count}</span>}
           </button>
         ))}
       </nav>
@@ -154,9 +189,8 @@ export function Sidebar() {
             {email}
           </div>
         </button>
-        </div>
-      <div className="sidebar__utilities"><ThemeToggle />
-        <button className="btn btn--ghost btn--icon btn--sm" aria-label="Sign out" title="Sign out" onClick={() => signOut()}>
+        <ThemeToggle />
+        <button className="btn btn--ghost btn--icon btn--sm" title="Sign out" onClick={() => signOut()}>
           <Icon name="logout" size={14} />
         </button>
       </div>

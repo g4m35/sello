@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "projectId": "sello-marketplace-correction",
+  "projectId": "sello-original-ui",
   "customerFacing": true,
   "minimumComponents": 3,
   "components": [
@@ -37,20 +37,21 @@
       "fallback": "Visible static percentage, no animation required."
     },
     {
-      "id": "lucide-camera",
-      "registryId": "di-7568d4355d3b",
+      "id": "lucide-image",
+      "registryId": "di-994a598cbb32",
       "library": "Lucide",
-      "component": "Camera",
+      "component": "Image",
       "category": "visual",
-      "source": "https://lucide.dev/icons/camera",
+      "source": "https://lucide.dev/icons/image",
       "version": "1.24.0",
       "license": "ISC",
-      "sourcePath": "src/app/(app)/inventory/new/page.tsx",
+      "sourcePath": "src/components/ui/icon.tsx",
       "usedIn": [
-        "src/app/(app)/inventory/new/page.tsx"
+        "src/components/ui/icon.tsx",
+        "src/components/ui/marketplace.tsx"
       ],
-      "purpose": "An authored photo-capture composition showing item, label and detail guidance.",
-      "fallback": "Photo guidance labels remain readable if SVG is unavailable."
+      "purpose": "Image controls and upload affordances in the original listing flow using the existing Lucide image icon.",
+      "fallback": "Item titles and upload labels remain available."
     }
   ]
 }

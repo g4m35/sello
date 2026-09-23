@@ -30,11 +30,9 @@ export function MpDot({ marketplace, status }: { marketplace: string; status: De
 }
 
 export function MpDots({ channels }: { channels: Pick<ChannelStateView, "marketplace" | "status">[] }) {
-  const visible = channels.filter((channel) => ["published", "publishing", "failed"].includes(channel.status));
-  if (!visible.length) return <span className="mp-dots__empty">Not posted</span>;
   return (
     <span className="mp-dots">
-      {visible.map((c) => (
+      {channels.map((c) => (
         <MpDot key={c.marketplace} marketplace={c.marketplace} status={c.status} />
       ))}
     </span>

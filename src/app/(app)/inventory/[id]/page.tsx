@@ -591,8 +591,8 @@ export default function ListingDetailPage() {
     return (
       <>
         <Topbar crumbs={["Inventory"]} />
-        <main className="page listing-editor">
-        <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
+        <main className="page">
+          <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
           <ErrorState message={error} onRetry={reload} />
         </main>
       </>
@@ -601,8 +601,8 @@ export default function ListingDetailPage() {
     return (
       <>
         <Topbar crumbs={["Inventory"]} />
-        <main className="page listing-editor">
-        <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
+        <main className="page">
+          <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
           <ErrorState message="Listing not found." />
         </main>
       </>
@@ -777,7 +777,7 @@ export default function ListingDetailPage() {
         }
       />
 
-      <main className="page listing-editor">
+      <main className="page">
         <ListingAutomationStatus key={id} itemId={id} token={token} onComplete={reload} />
         {notice && (
           <div style={{ marginBottom: "var(--s-4)" }}>
@@ -878,13 +878,8 @@ export default function ListingDetailPage() {
           />
         )}
 
-        <nav className="editor-sections" aria-label="Listing sections">
-          <a href="#listing-photos">Photos</a><a href="#listing-details">Item details</a><a href="#listing-price">Pricing</a><a href="#field-channels">Marketplaces</a>
-        </nav>
         <div className="detail">
-          <div className="editor-record">
-            <div className="editor-product">
-            <div className="card editor-gallery" id="listing-photos">
+          <div className="card">
             <FormSection
               title="Photos"
               desc={`${item.photos.length} photos`}
@@ -965,9 +960,7 @@ export default function ListingDetailPage() {
               )}
             </FormSection>
 
-            </div>
-            <div className="card editor-basics" id="listing-details">
-            <FormSection title="Item details">
+            <FormSection title="Basics">
               <Field label="Title" hint={`${edits.title.length}/80`}>
                 <input
                   id="field-title"
@@ -1111,9 +1104,6 @@ export default function ListingDetailPage() {
               </Field>
             </FormSection>
 
-            </div>
-            </div>
-            <details className="card disclosure"><summary>Measurements (optional)</summary>
             <FormSection
               title="Measurements"
               desc="Exports include filled values; apparel without any says measurements are available upon request"
@@ -1246,9 +1236,7 @@ export default function ListingDetailPage() {
                 </div>
               </div>
             </FormSection>
-            </details>
 
-            <details className="card disclosure"><summary>Flaws (optional)</summary>
             <FormSection
               title="Flaws"
               desc="Only listed flaws are exported; an empty list never claims flawless"
@@ -1339,9 +1327,7 @@ export default function ListingDetailPage() {
                 </div>
               </div>
             </FormSection>
-            </details>
 
-            <div className="card editor-pricing" id="listing-price">
             <FormSection
               title="Pricing"
               desc="Set the listing price in USD. Marketplace fees are calculated by the marketplace."
@@ -1369,7 +1355,6 @@ export default function ListingDetailPage() {
                 onApplyPrice={(priceCents) => patch({ recommendedPriceCents: priceCents })}
               />
             </FormSection>
-            </div>
           </div>
 
           <aside className="readiness" aria-label="Listing review and publishing">
@@ -1385,7 +1370,7 @@ export default function ListingDetailPage() {
                   <div className="t-small muted">
                     {saveState === "saving"
                       ? "Checking readiness…"
-                      : item.readiness.ready ? "Choose where to post below." : "Only the missing details are shown below."}
+                      : `${item.readiness.doneCount} of ${item.readiness.totalCount} checks`}
                   </div>
                 </div>
                 {canLivePublish && (
@@ -1401,7 +1386,7 @@ export default function ListingDetailPage() {
                 )}
               </div>
               <ul className="readiness__list">
-                {item.readiness.checks.filter((check) => check.state === "miss").map((check) => (
+                {item.readiness.checks.map((check) => (
                   <li key={check.id} className={`readiness__item readiness__item--${check.state}`}>
                     <span className="readiness__item-icon">
                       <Icon
@@ -1433,7 +1418,7 @@ export default function ListingDetailPage() {
               </ul>
             </section>
 
-            <section className="card editor-channels" id="field-channels">
+            <section className="card" id="field-channels">
               <div className="card__head">
                 <span className="card__title">Marketplaces</span>
                 <span className="t-small muted">{item.channels.length} configured</span>
@@ -1519,8 +1504,6 @@ export default function ListingDetailPage() {
               onListed={reload}
             />
 
-            <details className="card disclosure">
-              <summary>Marketplace activity</summary>
             <MarketplaceOperationsPanel
               channels={operationChannels}
               attempts={item.attempts}
@@ -1537,7 +1520,6 @@ export default function ListingDetailPage() {
               onScanEbayOrphans={() => void runEbayOrphanScan()}
               onCleanupEbayOrphans={() => void runEbayOrphanCleanup()}
             />
-            </details>
           </aside>
         </div>
       </main>

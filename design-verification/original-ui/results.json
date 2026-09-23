@@ -1,0 +1,928 @@
+{
+  "scope": "Synthetic actual-component fixture; no provider actions or production credentials.",
+  "errors": [],
+  "checks": [
+    {
+      "name": "Inventory row selection exposes bulk actions",
+      "pass": true
+    },
+    {
+      "name": "Sale confirmation dialog closes on Escape and restores focus",
+      "pass": true
+    },
+    {
+      "name": "Sale confirmation removes its task only after success",
+      "pass": true
+    },
+    {
+      "name": "Editor retry updates persistent job state",
+      "pass": true
+    },
+    {
+      "name": "Automatic posting stays opt-in with explicit price bounds",
+      "pass": true
+    },
+    {
+      "name": "Connection modal cancellation preserves account and focus",
+      "pass": true
+    },
+    {
+      "name": "Closed mobile sidebar cannot receive keyboard focus",
+      "pass": true
+    },
+    {
+      "name": "Mobile drawer opens, traps focus and closes with focus restoration",
+      "pass": true
+    },
+    {
+      "name": "Resizing an open mobile drawer releases the desktop page",
+      "pass": true
+    },
+    {
+      "name": "Original inventory table scroll remains contained on mobile",
+      "pass": true
+    },
+    {
+      "name": "Failed review confirmation retains task with visible error",
+      "pass": true
+    },
+    {
+      "name": "Marketplace load error exposes working retry control",
+      "pass": true
+    }
+  ],
+  "a11y": [
+    {
+      "name": "inventory-1440",
+      "violations": []
+    },
+    {
+      "name": "dashboard-1440",
+      "violations": []
+    },
+    {
+      "name": "upload-1440",
+      "violations": []
+    },
+    {
+      "name": "editor-1440",
+      "violations": []
+    },
+    {
+      "name": "marketplaces-1440",
+      "violations": []
+    },
+    {
+      "name": "inventory-dark-1440",
+      "violations": []
+    },
+    {
+      "name": "marketplaces-dark-1440",
+      "violations": []
+    },
+    {
+      "name": "inventory-390",
+      "violations": []
+    },
+    {
+      "name": "dashboard-390",
+      "violations": []
+    },
+    {
+      "name": "upload-390",
+      "violations": []
+    },
+    {
+      "name": "editor-390",
+      "violations": []
+    },
+    {
+      "name": "marketplaces-390",
+      "violations": []
+    },
+    {
+      "name": "inventory-dark-390",
+      "violations": []
+    },
+    {
+      "name": "marketplaces-dark-390",
+      "violations": []
+    }
+  ],
+  "screens": [
+    {
+      "name": "inventory-desktop",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "overflow": -10
+    },
+    {
+      "name": "dashboard-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "upload-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "editor-desktop",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "overflow": -10
+    },
+    {
+      "name": "marketplaces-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "inventory-dark-desktop",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "overflow": -10
+    },
+    {
+      "name": "marketplaces-dark-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "inventory-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "dashboard-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "upload-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "editor-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "marketplaces-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "inventory-dark-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "marketplaces-dark-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "inventory-selected-desktop",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "overflow": -10
+    },
+    {
+      "name": "sale-confirmation-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "editor-retry-desktop",
+      "width": 1440,
+      "scrollWidth": 1430,
+      "overflow": -10
+    },
+    {
+      "name": "upload-consent-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "mobile-navigation",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "review-error-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "marketplace-error-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    }
+  ],
+  "timings": [
+    {
+      "name": "inventory-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5.7,
+        "responseEnd": 537.5,
+        "domInteractive": 1273.2,
+        "domContentLoadedEventEnd": 1273.4,
+        "loadEventEnd": 1642.9,
+        "duration": 1642.9,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 836
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 1396
+        }
+      ],
+      "timeOrigin": 1790139844421.7,
+      "now": 4912.9,
+      "readyState": "complete"
+    },
+    {
+      "name": "dashboard-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5,
+        "responseEnd": 321.8,
+        "domInteractive": 500.6,
+        "domContentLoadedEventEnd": 500.8,
+        "loadEventEnd": 517.6,
+        "duration": 517.6,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 484
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 564
+        }
+      ],
+      "timeOrigin": 1790139849907.3,
+      "now": 3724,
+      "readyState": "complete"
+    },
+    {
+      "name": "upload-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5.1,
+        "responseEnd": 307.1,
+        "domInteractive": 537.5,
+        "domContentLoadedEventEnd": 537.7,
+        "loadEventEnd": 561.4,
+        "duration": 561.4,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 604
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 604
+        }
+      ],
+      "timeOrigin": 1790139854304.7,
+      "now": 3558.8,
+      "readyState": "complete"
+    },
+    {
+      "name": "editor-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 8.4,
+        "responseEnd": 217.2,
+        "domInteractive": 386.3,
+        "domContentLoadedEventEnd": 386.7,
+        "loadEventEnd": 410,
+        "duration": 410,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 392
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 444
+        }
+      ],
+      "timeOrigin": 1790139859726.7,
+      "now": 3871,
+      "readyState": "complete"
+    },
+    {
+      "name": "marketplaces-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5.2,
+        "responseEnd": 261.7,
+        "domInteractive": 489.9,
+        "domContentLoadedEventEnd": 490,
+        "loadEventEnd": 499.4,
+        "duration": 499.4,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 508
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 568
+        }
+      ],
+      "timeOrigin": 1790139864324.4,
+      "now": 3438.1,
+      "readyState": "complete"
+    },
+    {
+      "name": "inventory-dark-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 7.1,
+        "responseEnd": 233.5,
+        "domInteractive": 399.6,
+        "domContentLoadedEventEnd": 399.7,
+        "loadEventEnd": 420.1,
+        "duration": 420.1,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 424
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 480
+        }
+      ],
+      "timeOrigin": 1790139868697.6,
+      "now": 4245.6,
+      "readyState": "complete"
+    },
+    {
+      "name": "marketplaces-dark-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 7.1,
+        "responseEnd": 245,
+        "domInteractive": 479.9,
+        "domContentLoadedEventEnd": 480.2,
+        "loadEventEnd": 489.3,
+        "duration": 489.3,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 492
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 544
+        }
+      ],
+      "timeOrigin": 1790139873781.7,
+      "now": 4917.2,
+      "readyState": "complete"
+    },
+    {
+      "name": "inventory-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.8,
+        "responseEnd": 325.8,
+        "domInteractive": 561,
+        "domContentLoadedEventEnd": 561.1,
+        "loadEventEnd": 590.3,
+        "duration": 590.3,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 544
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 608
+        }
+      ],
+      "timeOrigin": 1790139881027.1,
+      "now": 3651.5,
+      "readyState": "complete"
+    },
+    {
+      "name": "dashboard-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.2,
+        "responseEnd": 230.7,
+        "domInteractive": 395.1,
+        "domContentLoadedEventEnd": 395.6,
+        "loadEventEnd": 408,
+        "duration": 408,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 384
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 444
+        }
+      ],
+      "timeOrigin": 1790139886678.5,
+      "now": 5247.5,
+      "readyState": "complete"
+    },
+    {
+      "name": "upload-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5.9,
+        "responseEnd": 266.1,
+        "domInteractive": 518.1,
+        "domContentLoadedEventEnd": 518.3,
+        "loadEventEnd": 533.6,
+        "duration": 533.6,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 516
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 564
+        }
+      ],
+      "timeOrigin": 1790139892617.6,
+      "now": 3705.1,
+      "readyState": "complete"
+    },
+    {
+      "name": "editor-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 6.5,
+        "responseEnd": 278.2,
+        "domInteractive": 516.1,
+        "domContentLoadedEventEnd": 516.4,
+        "loadEventEnd": 537.4,
+        "duration": 537.4,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 512
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 564
+        }
+      ],
+      "timeOrigin": 1790139898382.2,
+      "now": 4007.7,
+      "readyState": "complete"
+    },
+    {
+      "name": "marketplaces-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.7,
+        "responseEnd": 204.7,
+        "domInteractive": 246.6,
+        "domContentLoadedEventEnd": 246.9,
+        "loadEventEnd": 281,
+        "duration": 281,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 292
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 292
+        }
+      ],
+      "timeOrigin": 1790139903242.5,
+      "now": 3263,
+      "readyState": "complete"
+    },
+    {
+      "name": "inventory-dark-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.9,
+        "responseEnd": 315.4,
+        "domInteractive": 476.1,
+        "domContentLoadedEventEnd": 476.3,
+        "loadEventEnd": 496,
+        "duration": 496,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 472
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 524
+        }
+      ],
+      "timeOrigin": 1790139908622.4,
+      "now": 4040.3,
+      "readyState": "complete"
+    },
+    {
+      "name": "marketplaces-dark-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5.2,
+        "responseEnd": 208,
+        "domInteractive": 263.1,
+        "domContentLoadedEventEnd": 263.3,
+        "loadEventEnd": 290.3,
+        "duration": 290.3,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 308
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 308
+        }
+      ],
+      "timeOrigin": 1790139913267.5,
+      "now": 2823.4,
+      "readyState": "complete"
+    },
+    {
+      "name": "inventory-selected-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.6,
+        "responseEnd": 217.1,
+        "domInteractive": 404.2,
+        "domContentLoadedEventEnd": 405.9,
+        "loadEventEnd": 430.5,
+        "duration": 430.5,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 400
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 468
+        }
+      ],
+      "timeOrigin": 1790139918251.4,
+      "now": 6505.8,
+      "readyState": "complete"
+    },
+    {
+      "name": "sale-confirmation-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.6,
+        "responseEnd": 217.1,
+        "domInteractive": 404.2,
+        "domContentLoadedEventEnd": 405.9,
+        "loadEventEnd": 430.5,
+        "duration": 430.5,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 400
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 468
+        }
+      ],
+      "timeOrigin": 1790139918251.4,
+      "now": 9783.8,
+      "readyState": "complete"
+    },
+    {
+      "name": "editor-retry-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.5,
+        "responseEnd": 328.5,
+        "domInteractive": 579.8,
+        "domContentLoadedEventEnd": 580,
+        "loadEventEnd": 607.7,
+        "duration": 607.7,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 588
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 688
+        }
+      ],
+      "timeOrigin": 1790139933455.3,
+      "now": 8065.7,
+      "readyState": "complete"
+    },
+    {
+      "name": "upload-consent-desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 6,
+        "responseEnd": 410.4,
+        "domInteractive": 476.8,
+        "domContentLoadedEventEnd": 478.1,
+        "loadEventEnd": 530.3,
+        "duration": 530.3,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 620
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 620
+        }
+      ],
+      "timeOrigin": 1790139941602.5,
+      "now": 10091.7,
+      "readyState": "complete"
+    },
+    {
+      "name": "mobile-navigation",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5.2,
+        "responseEnd": 337.2,
+        "domInteractive": 363.9,
+        "domContentLoadedEventEnd": 364.3,
+        "loadEventEnd": 378,
+        "duration": 378,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 440
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 440
+        }
+      ],
+      "timeOrigin": 1790139961557.6,
+      "now": 14148.1,
+      "readyState": "complete"
+    },
+    {
+      "name": "review-error-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 6.3,
+        "responseEnd": 243.4,
+        "domInteractive": 487.5,
+        "domContentLoadedEventEnd": 487.7,
+        "loadEventEnd": 508.3,
+        "duration": 508.3,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 488
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 532
+        }
+      ],
+      "timeOrigin": 1790139986305.5,
+      "now": 8124,
+      "readyState": "complete"
+    },
+    {
+      "name": "marketplace-error-mobile",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 7.9,
+        "responseEnd": 210.8,
+        "domInteractive": 262.1,
+        "domContentLoadedEventEnd": 262.3,
+        "loadEventEnd": 273.4,
+        "duration": 273.4,
+        "transferSize": 581
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 292
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 292
+        }
+      ],
+      "timeOrigin": 1790139994504.9,
+      "now": 5929,
+      "readyState": "complete"
+    }
+  ],
+  "keyboard": [
+    {
+      "tag": "BUTTON",
+      "label": "Toggle navigation",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "All8",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Drafts3",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Ready2",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Active3",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Listing issues0",
+      "sidebar": false
+    },
+    {
+      "tag": "INPUT",
+      "label": "Search inventory",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "List",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Grid",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Select all items on this page",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Refresh",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Select all items on this page",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Select Nike Dunk Low Panda",
+      "sidebar": false
+    },
+    {
+      "tag": "A",
+      "label": "Nike Dunk Low PandaNike · 10 · Used — Good",
+      "sidebar": false
+    },
+    {
+      "tag": "A",
+      "label": "Ready to post",
+      "sidebar": false
+    }
+  ]
+}
