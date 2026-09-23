@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
 
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
 import type { EbayConfig, EbayEnvironment, EbayTokenResponse } from "./types";
@@ -19,11 +20,23 @@ export const EBAY_REQUIRED_SCOPES = [
   "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
 ];
 
-type StatePayload = {
-  userId: string;
-  state: string;
-  expiresAt: number;
-};
+const statePayloadSchema = z.object({
+  userId: z.string().min(1),
+  state: z.string().min(1),
+  expiresAt: z.number().finite(),
+  consent: z.object({
+    environment: z.enum(["sandbox", "production"]),
+    scopes: z.array(z.string().min(1)),
+  }).optional(),
+});
+type StatePayload = z.infer<typeof statePayloadSchema>;
+const tokenResponseSchema = z.object({
+  access_token: z.string().min(1),
+  refresh_token: z.string().min(1).optional(),
+  expires_in: z.number().int().positive(),
+  refresh_token_expires_in: z.number().int().positive().optional(),
+  scope: z.string().optional(),
+});
 
 export function createRandomEbayOAuthState() {
   return randomBytes(32).toString("base64url");
@@ -45,12 +58,14 @@ export function createEbayOAuthStateCookie(args: {
   state: string;
   secret: string;
   now?: Date;
+  consent?: StatePayload["consent"];
 }) {
   const expiresAt = (args.now ?? new Date()).getTime() + 10 * 60 * 1000;
   const payload: StatePayload = {
     userId: args.userId,
     state: args.state,
     expiresAt,
+    consent: args.consent,
   };
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString(
     "base64url",
@@ -74,8 +89,8 @@ export function parseEbayOAuthStateCookie(args: {
     throw invalidState();
   }
 
-  const [encodedPayload, signature] = args.cookieValue.split(".");
-  if (!encodedPayload || !signature) {
+  const [encodedPayload, signature, extra] = args.cookieValue.split(".");
+  if (!encodedPayload || !signature || extra !== undefined) {
     throw invalidState();
   }
 
@@ -85,16 +100,16 @@ export function parseEbayOAuthStateCookie(args: {
 
   let payload: StatePayload;
   try {
-    payload = JSON.parse(
+    payload = statePayloadSchema.parse(JSON.parse(
       Buffer.from(encodedPayload, "base64url").toString("utf8"),
-    ) as StatePayload;
+    ));
   } catch {
     throw invalidState();
   }
 
   if (
     payload.state !== args.expectedState ||
-    payload.expiresAt < (args.now ?? new Date()).getTime()
+    payload.expiresAt <= (args.now ?? new Date()).getTime()
   ) {
     throw invalidState();
   }
@@ -129,7 +144,15 @@ export async function exchangeAuthorizationCode(
     );
   }
 
-  return (await response.json()) as EbayTokenResponse;
+  const parsed = tokenResponseSchema.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    throw new EbayIntegrationError(
+      ebayErrorCodes.tokenExchangeFailed,
+      "eBay returned an invalid token response.",
+      502,
+    );
+  }
+  return parsed.data;
 }
 
 // Application (client-credentials) access token. Used for app-scoped calls that

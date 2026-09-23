@@ -67,7 +67,7 @@ export default function NewListingPage() {
   return <>
     <Topbar crumbs={["Inventory", "New listing"]} right={<Btn variant="ghost" disabled={submitting} onClick={() => router.push("/inventory")}>Cancel</Btn>} />
     <main className="page upload-page">
-      <div className="page__head"><div className="page__title-row"><span className="eyebrow">ADD TO YOUR INVENTORY</span><h1 className="page__title">Start with the photos.</h1><p className="page__title-meta">Your next listing starts with the item in front of you.</p></div></div>
+      <div className="page__head"><div className="page__title-row"><h1 className="page__title">Start with the photos.</h1><p className="page__title-meta">Your next listing starts with the item in front of you.</p></div></div>
       <div className="capture-studio">
       <section className="card upload-card stack-4" aria-label="Create listing from photos">
         <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
@@ -82,7 +82,7 @@ export default function NewListingPage() {
             {previews.length < MAX_FILES && <button className="image-tile image-tile--add" disabled={submitting} onClick={() => input.current?.click()}><Icon name="plus" size={24} />Add photo</button>}
           </div>}
         </div>
-        <div className="capture-options"><span className="eyebrow">AFTER PREPARATION</span><label className="automation-choice"><input type="checkbox" checked={automaticPublish} disabled={submitting} onChange={(e) => { setAutomaticPublish(e.target.checked); requestKey.current = null; }} /><span><strong>Post to eBay automatically</strong><span className="t-small muted">Only with a confident match, reliable sold comparisons, and your authorized price range. Other marketplaces are selected during review.</span></span></label>
+        <div className="capture-options"><label className="automation-choice"><input type="checkbox" checked={automaticPublish} disabled={submitting} onChange={(e) => { setAutomaticPublish(e.target.checked); requestKey.current = null; }} /><span><strong>Post to eBay automatically</strong><span className="t-small muted">Only with a confident match, reliable sold comparisons, and your authorized price range. Other marketplaces are selected during review.</span></span></label>
         {automaticPublish && <div className="stack-3">
           <div className="form-grid form-grid--2">
             <label className="field"><span>Minimum listing price (USD)</span><input className="input" type="number" min="0.01" step="0.01" value={minimum} disabled={submitting} onChange={(e) => { setMinimum(e.target.value); requestKey.current = null; }} /></label>
@@ -95,7 +95,7 @@ export default function NewListingPage() {
         <div className="stack-2"><Btn variant="accent" size="lg" icon="spark" disabled={!previews.length || submitting} onClick={() => void prepare()}>{submitting ? "Identifying your item…" : automaticPublish ? "Prepare and post within my price range" : "Prepare my listing"}</Btn><p role="status" className="t-small muted">{submitting ? "Keep this page open while your photos are identified. Pricing continues in the background once your listing is saved." : automaticPublish ? "Authorization applies only to this item, for the next 24 hours." : "Review before posting. Nothing is published automatically."}</p></div>
       </section>
       <aside className="capture-guide" aria-label="Photo and preparation guide">
-        <div className="capture-guide__head"><span className="eyebrow">A GOOD PHOTO GOES A LONG WAY</span><h2>Show the whole story.</h2><p>A clear view, the label, and any wear help Sello prepare a more accurate listing.</p></div>
+        <div className="capture-guide__head"><h2>Show the whole story.</h2><p>A clear view, the label, and any wear help Sello prepare a more accurate listing.</p></div>
         <div className="capture-shots" aria-label="Suggested photo order"><div><Camera size={25} aria-hidden="true" /><span>01</span><strong>The item</strong></div><div><Tag size={25} aria-hidden="true" /><span>02</span><strong>The label</strong></div><div><ScanLine size={25} aria-hidden="true" /><span>03</span><strong>The details</strong></div></div>
         <ol className="capture-steps"><li><span>1</span><div><strong>Identify & describe</strong><p>Sello reads your photos and prepares the listing details.</p></div></li><li><span>2</span><div><strong>Find a supported price</strong><p>Comparable sales help price the item. Weak matches are left for review.</p></div></li><li><span>3</span><div><strong>You set the posting rules</strong><p>Review first, or authorize eBay posting within your price range.</p></div></li></ol>
         <p className="capture-reassurance"><CircleCheck size={18} aria-hidden="true" /> Missing details stay visible for your review.</p>

@@ -1,5 +1,7 @@
 import type { Marketplace } from "@/generated/prisma/client";
 
+import { EBAY_FULFILLMENT_SCOPE } from "./types";
+
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
 import type {
   EbayApiClient,
@@ -87,6 +89,7 @@ export function ebayReconnectRequiredResponse(
     connected: false,
     ready: false,
     reconnectRequired: true,
+    salesReadPermission: false,
     missing: [missingConnection],
     config: {
       marketplaceId: "EBAY_US",
@@ -133,6 +136,7 @@ export async function getStoredEbayReadiness(
   return toResponse({
     connected: true,
     missing: getMissingFromRow(row),
+    scopes: connection.scopes,
     row,
     environment,
   });
@@ -207,7 +211,7 @@ export async function refreshEbayReadiness(
     update: row,
   });
 
-  return toResponse({ connected: true, missing, row, environment });
+  return toResponse({ connected: true, missing, row, environment, scopes: connection.scopes });
 }
 
 // eBay's Account API answers 4xx (typically 403/404) for sellers who have not
@@ -257,6 +261,7 @@ async function findConnection(
 }
 
 function toResponse(args: {
+  scopes?: string[];
   connected: boolean;
   missing: string[];
   row: EbaySellerConfigRow;
@@ -267,6 +272,7 @@ function toResponse(args: {
     environment: args.environment,
     connected: args.connected,
     ready: args.connected && args.missing.length === 0,
+    salesReadPermission: args.connected ? (args.scopes?.length ? args.scopes.includes(EBAY_FULFILLMENT_SCOPE) : null) : false,
     missing: args.missing,
     config: {
       marketplaceId: "EBAY_US",

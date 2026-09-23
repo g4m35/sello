@@ -192,7 +192,7 @@ export default function DashboardPage() {
       <main className="page">
         <div className="page__head">
           <div className="page__title-row">
-            <span className="eyebrow">WORKSPACE OVERVIEW</span>
+
             <h1 className="page__title">
               Good {timeofday}, <em>{firstName}</em>.
             </h1>

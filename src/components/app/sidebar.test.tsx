@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
+  pathname: "/inventory",
   listItems: vi.fn(),
   getChannels: vi.fn(),
 }));
@@ -29,7 +30,7 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/inventory",
+  usePathname: () => mocks.pathname,
   useRouter: () => ({ push: mocks.push }),
 }));
 
@@ -93,6 +94,14 @@ describe("Sidebar brand", () => {
     vi.clearAllMocks();
     reactHarness.cursor = 0;
     reactHarness.states = [];
+  });
+
+  it("keeps Marketplaces active in connection settings", () => {
+    mocks.pathname = "/settings/marketplaces";
+    const tree = Sidebar();
+    const active = findElement(tree, el => el.props["aria-current"] === "page");
+    expect(textContent(active)).toBe("Marketplaces");
+    mocks.pathname = "/inventory";
   });
 
   it("navigates to inventory when the Sello logo is clicked", () => {

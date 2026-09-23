@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plug, Unplug } from "lucide-react";
+import { Loader2, Plug } from "lucide-react";
 
-import { MpLogo } from "@/components/ui/marketplace";
+import { ConnectionControls } from "./connection-controls";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
 
@@ -107,27 +107,24 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
       : state === "error" || !status
         ? "Etsy status unavailable"
         : !status.apiEnabled
-          ? "Drafts"
+          ? "Copy listings manually"
           : status.connected
             ? status.capabilities.publish
-              ? "Connected · ready"
-              : "Connected · drafts"
+              ? "Connected"
+              : "Connected · manual publishing"
             : !status.capabilities.connect
-              ? "Drafts"
+              ? "Copy listings manually"
               : "Not connected";
 
   return (
-    <section className="card">
-      <div className="card__head">
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <MpLogo id="etsy" size={36} />
-          <div>
-            <div style={{ fontWeight: 500 }}>Etsy</div>
-            <div className="t-small muted">{statusLine}</div>
-          </div>
+    <section className="connection" aria-labelledby="etsy-heading">
+      <div className="connection__head">
+        <div className="connection__identity">
+          <h2 id="etsy-heading">Etsy</h2>
+          <span className="connection__status">{statusLine}</span>
         </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="connection__actions">
+          {state === "error" && <button type="button" className="btn btn--secondary" onClick={() => { setState("loading"); setReloadKey(key => key + 1); }}>Try again</button>}
           {state === "loading" && (
             <Loader2
               size={14}
@@ -147,15 +144,9 @@ export function EtsyConnectionCard({ accessToken }: { accessToken: string | null
         </div>
       </div>
 
-      {state === "ready" && status && !canConnect(status) && !status.connected && (
-        <p className="t-small muted" style={{ padding: "10px 20px", margin: 0 }}>
-          Etsy drafts are available from the listing editor.
-        </p>
-      )}
-
       {error && (
         <div
-          className="t-small danger"
+          className="connection__error" role="alert"
           style={{ padding: "10px 20px", borderTop: "1px solid var(--line)" }}
         >
           <p style={{ margin: 0 }}>{error}</p>
@@ -181,18 +172,11 @@ function EtsyAction({
   status: EtsyStatus;
   busy: boolean;
   onConnect: () => void;
-  onDisconnect: () => void;
+  onDisconnect: () => Promise<void>;
 }) {
   if (status.connected) {
     return (
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onDisconnect}
-        className="btn btn--ghost btn--sm"
-      >
-        <Unplug size={13} aria-hidden="true" /> Disconnect
-      </button>
+      <ConnectionControls name="Etsy" busy={busy} onDisconnect={onDisconnect} />
     );
   }
   if (canConnect(status)) {

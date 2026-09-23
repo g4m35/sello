@@ -304,7 +304,7 @@ export default function HistoryPage() {
       <main className="page">
         <div className="page__head">
           <div>
-            <span className="eyebrow">PUBLISHING RECORD</span>
+
             <h1 className="page__title">
               Publish <em>history</em>
             </h1>
