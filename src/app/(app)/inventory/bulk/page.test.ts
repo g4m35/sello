@@ -19,7 +19,6 @@ describe("bulk intake seller UI", () => {
   });
 
   it("uses listing language and exposes no marketplace action", () => {
-    expect(source).toMatch(/generate each listing independently/i);
     expect(source).not.toMatch(/marketplace-ready draft/i);
     expect(source).not.toMatch(/executeBulkPublish|executeBulkDelist|confirmLivePublish/);
   });

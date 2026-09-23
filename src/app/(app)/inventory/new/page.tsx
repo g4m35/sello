@@ -32,15 +32,20 @@ export default function NewListingPage() {
   const [minimum, setMinimum] = useState("");
   const [maximum, setMaximum] = useState("");
   const [channels, setChannels] = useState<ChannelView[]>([]);
-  const [savedSettings, setSavedSettings] = useState<AutomationSettings | null>(null);
+  const [loadedSettings, setLoadedSettings] = useState<{ token: string; settings: AutomationSettings | null } | null>(null);
   const [useSaved, setUseSaved] = useState(true);
+  const [authorizationSession, setAuthorizationSession] = useState(token);
+  const manualPublish = automaticPublish && authorizationSession === token;
+  const loadingSettings = loadedSettings?.token !== token;
+  const savedSettings = loadingSettings ? null : loadedSettings?.settings;
   const savedPosting = useSaved && savedSettings?.policy.enabled === true;
-  const willPost = savedPosting || automaticPublish;
+  const willPost = savedPosting || manualPublish;
 
   useEffect(() => {
     let active = true;
-    api.getAutomationSettings(token).then((value) => { if (active) setSavedSettings(value); }).catch(() => {
-      // An unknown saved policy never grants publishing consent in this form.
+    api.getAutomationSettings(token).then((value) => { if (active) setLoadedSettings({ token, settings: value }); }).catch(() => {
+      // A failed load enables only explicit preparation or a fresh one-item choice.
+      if (active) setLoadedSettings({ token, settings: null });
     });
     return () => { active = false; };
   }, [token]);
@@ -71,8 +76,8 @@ export default function NewListingPage() {
     previewsRef.current = next; setPreviews(next); requestKey.current = null;
   }
   async function prepare() {
-    if (!previews.length || submitting) return;
-    const policy = ListingAutomationSchema.safeParse(!savedPosting && automaticPublish ? {
+    if (!previews.length || submitting || loadingSettings) return;
+    const policy = ListingAutomationSchema.safeParse(!savedPosting && manualPublish ? {
       mode: "publish", marketplace: "ebay", consent: true,
       minPriceCents: Math.round(Number(minimum) * 100), maxPriceCents: Math.round(Number(maximum) * 100),
     } : { mode: "prepare" });
@@ -203,9 +208,9 @@ export default function NewListingPage() {
             </FormSection>
 
         <div className="form-section">
-        {savedSettings?.policy.enabled ? <label className="automation-choice"><input type="checkbox" checked={useSaved} disabled={submitting} onChange={(event) => { setUseSaved(event.target.checked); setAutomaticPublish(false); requestKey.current = null; }} /><span><strong>Use saved automatic posting</strong><span className="t-small muted">Post to eBay within ${(savedSettings.policy.minPriceCents! / 100).toFixed(2)}–${(savedSettings.policy.maxPriceCents! / 100).toFixed(2)} USD. Uncheck to prepare this listing for review.</span></span></label> : <label className="automation-choice"><input type="checkbox" checked={automaticPublish} disabled={submitting} onChange={(e) => { setAutomaticPublish(e.target.checked); requestKey.current = null; }} /><span><strong>Post to eBay automatically</strong><span className="t-small muted">Only with a confident match, reliable sold comparisons, and your authorized price range. Other marketplaces are selected during review.</span></span></label>}
+        {loadingSettings ? <p role="status">Checking saved automation settings before continuing…</p> : savedSettings?.policy.enabled ? <label className="automation-choice"><input type="checkbox" checked={useSaved} disabled={submitting} onChange={(event) => { setUseSaved(event.target.checked); setAutomaticPublish(false); requestKey.current = null; }} /><span><strong>Use saved automatic posting</strong><span className="t-small muted">Post to eBay within ${(savedSettings.policy.minPriceCents! / 100).toFixed(2)}–${(savedSettings.policy.maxPriceCents! / 100).toFixed(2)} USD. Uncheck to prepare this listing for review.</span></span></label> : <label className="automation-choice"><input type="checkbox" checked={manualPublish} disabled={submitting} onChange={(e) => { setAutomaticPublish(e.target.checked); setAuthorizationSession(token); requestKey.current = null; }} /><span><strong>Post to eBay automatically</strong><span className="t-small muted">Only with a confident match, reliable sold comparisons, and your authorized price range. Other marketplaces are selected during review.</span></span></label>}
         <p className="t-small muted"><Link href="/settings#automation">Set up or manage automatic posting for future uploads</Link></p>
-        {!savedSettings?.policy.enabled && automaticPublish && <div className="stack-3">
+        {!loadingSettings && !savedSettings?.policy.enabled && manualPublish && <div className="stack-3">
           <div className="form-grid form-grid--2">
             <label className="field"><span>Minimum listing price (USD)</span><input className="input" type="number" min="0.01" step="0.01" value={minimum} disabled={submitting} onChange={(e) => { setMinimum(e.target.value); requestKey.current = null; }} /></label>
             <label className="field"><span>Maximum listing price (USD)</span><input className="input" type="number" min="0.01" step="0.01" value={maximum} disabled={submitting} onChange={(e) => { setMaximum(e.target.value); requestKey.current = null; }} /></label>
@@ -238,7 +243,7 @@ export default function NewListingPage() {
                 variant="accent"
                 size="lg"
                 icon="spark"
-                disabled={previews.length === 0 || submitting}
+                disabled={previews.length === 0 || submitting || loadingSettings}
                 onClick={() => void prepare()}
               >
                 {submitting
@@ -246,7 +251,7 @@ export default function NewListingPage() {
                   : willPost ? "Prepare and post within my price range" : "Prepare my listing"}
               </Btn>
               <div role="status" className="t-small muted" style={{ marginTop: 8 }}>
-                {submitting ? "Keep this page open while your photos are identified. Pricing continues in the background once your listing is saved." : savedPosting ? "Your saved authorization applies. You can pause automatic posting in Settings." : automaticPublish ? "Authorization applies only to this item, for the next 24 hours." : "Review before posting. Nothing is published automatically."}
+                {submitting ? "Keep this page open while your photos are identified. Pricing continues in the background once your listing is saved." : savedPosting ? "Your saved authorization applies. You can pause automatic posting in Settings." : manualPublish ? "Authorization applies only to this item, for the next 24 hours." : "Review before posting. Nothing is published automatically."}
               </div>
             </div>
 

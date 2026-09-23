@@ -20,8 +20,8 @@ export function AutomationSettingsCard({ token }: { token: string }) {
     api.getAutomationSettings(token).then((result) => {
       if (!active) return;
       setSettings(result);
-      setMinimum(result.policy.minPriceCents == null ? "" : String(result.policy.minPriceCents / 100));
-      setMaximum(result.policy.maxPriceCents == null ? "" : String(result.policy.maxPriceCents / 100));
+      setMinimum("minPriceCents" in result.policy ? String(result.policy.minPriceCents / 100) : "");
+      setMaximum("maxPriceCents" in result.policy ? String(result.policy.maxPriceCents / 100) : "");
       setError("");
     }).catch(() => { if (active) setError("Could not load automation settings. Retry to check their current status."); });
     return () => { active = false; };
@@ -83,6 +83,6 @@ export function AutomationDefaultNotice({ token }: { token: string }) {
     return () => { active = false; };
   }, [token]);
   return <p className="t-small" role="status">{settings
-    ? settings.policy.enabled ? `Automatic eBay posting is on for newly generated listings, within $${(settings.policy.minPriceCents! / 100).toFixed(2)}–$${(settings.policy.maxPriceCents! / 100).toFixed(2)} USD.` : "Automatic posting is paused. New listings will be prepared for review."
+    ? settings.policy.enabled ? `Automatic eBay posting is on for new uploads, within $${(settings.policy.minPriceCents! / 100).toFixed(2)}–$${(settings.policy.maxPriceCents! / 100).toFixed(2)} USD. Existing batch items may still need review.` : "Automatic posting is paused. New listings will be prepared for review."
     : failed ? "Automation status is unavailable. Check your saved settings before generating listings." : "Checking saved automation settings…"} <Link href="/settings#automation">Manage automation</Link></p>;
 }
