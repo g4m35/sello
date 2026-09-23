@@ -27,7 +27,9 @@ allowed_paths:
   - package.json
   - package-lock.json
   - .github/**
-protected_paths: []
+protected_paths:
+  - .env.local
+  - .env.production
 required_reading:
   - AGENTS.md
   - prisma/AGENTS.md
