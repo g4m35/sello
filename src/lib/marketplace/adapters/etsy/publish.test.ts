@@ -64,4 +64,16 @@ describe("Etsy resumable publishing", () => {
     const args = setup(); args.client.activateListing.mockResolvedValue({ listing_id: 555 });
     await expect(publishEtsyListing(args)).rejects.toThrow("did not confirm");
   });
+  it("revalidates an already-active saved retry before accepting it", async () => {
+    const args = setup(); args.client.getListing.mockResolvedValue({ listing_id: 555, state: "active" });
+    args.assertCanActivate.mockRejectedValue(new Error("draft changed"));
+    await expect(publishEtsyListing({ ...args, existingListingId: "555" })).rejects.toThrow("draft changed");
+    expect(args.client.activateListing).not.toHaveBeenCalled();
+  });
+  it("checks eligibility again after activation commits remotely", async () => {
+    const args = setup(); args.assertCanActivate.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("sold during activation"));
+    await expect(publishEtsyListing(args)).rejects.toThrow("sold during activation");
+    expect(args.client.activateListing).toHaveBeenCalledTimes(1);
+  });
+
 });

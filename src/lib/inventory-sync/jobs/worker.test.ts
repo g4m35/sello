@@ -1748,8 +1748,8 @@ describe("Etsy durable execution", () => {
       syncJobs: [{ id: "etsy-job", userId: "user-1", accountId: "account-1", type, status: "queued", inventoryItemId: "item-1", marketplaceListingId: "l-etsy", payload: {} }] });
     return { prisma, db: workerDb(prisma) };
   }
-  it("executes an account-scoped status service once and records verified completion", async () => {
-    const f = fixture("detect_status"); const etsyStatusSync = vi.fn().mockResolvedValue({ synced: true, state: "active", status: "LISTED" });
+  it.each(["active", "unavailable"])("executes an account-scoped status service once and records verified %s completion", async (state) => {
+    const f = fixture("detect_status"); const etsyStatusSync = vi.fn().mockResolvedValue({ synced: true, state, status: state === "active" ? "LISTED" : "DELISTED" });
     expect(await runQueuedSyncJobs(f.db, {}, allowed({ etsyStatusSync }))).toMatchObject({ succeeded: 1 });
     expect(etsyStatusSync).toHaveBeenCalledWith({ userId: "user-1", accountId: "account-1", itemId: "item-1" }, f.db);
     await runQueuedSyncJobs(f.db, {}, allowed({ etsyStatusSync })); expect(etsyStatusSync).toHaveBeenCalledOnce();

@@ -43,7 +43,7 @@ describe("Etsy delist route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listingUpdate.mockResolvedValue({ count: 1 });
-    mocks.listingFindFirst.mockResolvedValue({ id: "ml", status: "LISTED", externalListingId: "999", updatedAt: new Date(0) });
+    mocks.listingFindFirst.mockResolvedValue({ id: "ml", status: "LISTED", inventoryItem: { soldSourceMarketplace: null }, externalListingId: "999", updatedAt: new Date(0) });
     mocks.getListing.mockReset().mockResolvedValueOnce({ listing_id: 999, state: "active" }).mockResolvedValue({ listing_id: 999, state: "inactive" });
     process.env.ETSY_API_ENABLED = "true";
     process.env.ETSY_DELIST_EMAILS = "seller@example.com";

@@ -50,7 +50,7 @@ export function evaluateEtsyReadiness(
   if (!input.title?.trim()) missing.push("title");
   if (!input.description?.trim()) missing.push("description");
   if (input.priceCents == null || input.priceCents <= 0) missing.push("price");
-  if (input.quantity == null || input.quantity <= 0) missing.push("quantity");
+  if (input.quantity !== 1) missing.push("quantity");
   if (input.photoCount < 1) missing.push("photos");
   if (!present(input.taxonomyId)) missing.push("taxonomy");
   if (!present(input.readinessStateId)) missing.push("processing_profile");

@@ -16,6 +16,7 @@ vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
 }));
 vi.mock("@/lib/inventory/mark-sold", () => ({ markItemSold: mocks.markSold }));
+vi.mock("@/lib/marketplace/lifecycle-sync", () => ({ syncMasterStatusAfterMarketplacePublish: vi.fn(), syncMasterStatusAfterMarketplaceDelist: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({
     inventoryItem: { findFirst: mocks.itemFindFirst },
@@ -101,6 +102,12 @@ describe("Etsy sync route", () => {
     mocks.getListing.mockResolvedValue({ listing_id: 888, state: "sold_out" });
     expect((await POST(postRequest({ itemId: ITEM_ID }))).status).toBe(502);
     expect(mocks.markSold).not.toHaveBeenCalled();
+  });
+
+  it("treats unavailable as an ended listing", async () => {
+    mocks.listingFindUnique.mockResolvedValue({ id: "ml", externalListingId: "999", status: "LISTED", updatedAt: new Date(0) });
+    mocks.getListing.mockResolvedValue({ listing_id: 999, state: "unavailable" });
+    expect(await (await POST(postRequest({ itemId: ITEM_ID }))).json()).toEqual({ synced: true, status: "DELISTED", state: "unavailable" });
   });
 
 });

@@ -44,7 +44,7 @@ Metered execution reserves account usage atomically before work and settles/rele
 
 ## Background jobs
 
-Two durable patterns exist. `src/lib/queues/marketplace-jobs.ts` defines BullMQ/Redis marketplace-job contracts for slow external work. Inventory synchronization uses database-backed `SyncJob` records and the worker under `src/lib/inventory-sync/jobs/`. Both patterns require idempotency, bounded retries, visible failure state, and account scope.
+Background work uses durable Postgres records: `JobLog` queues handle listing preparation and authorized publishing; `SyncJob` records and the worker under `src/lib/inventory-sync/jobs/` handle inventory synchronization. Authenticated Vercel cron routes run the workers. Both mechanisms preserve account scope, idempotency, bounded retries, and visible failure state.
 
 ## Provider budget controls
 
@@ -77,6 +77,5 @@ The application is hosted on Vercel. No tracked Vercel configuration overrides t
 | `src/lib/marketplace/` | Capabilities, adapters, publish/delist orchestration |
 | `src/lib/inventory/` | Sold state, events, review tasks, delist queueing |
 | `src/lib/inventory-sync/` | Durable sync worker |
-| `src/lib/queues/` | BullMQ job contracts |
 | `prisma/` | Schema and forward migrations |
 | `.agent/` | Task contracts and evidence |

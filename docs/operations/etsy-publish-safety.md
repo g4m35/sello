@@ -13,3 +13,14 @@ This change does not enable Etsy credentials, global switches, or seller allowli
 Verified official API requirements (2026-09-23): [request authentication](https://developer.etsy.com/documentation/essentials/requests/) requires `keystring:shared-secret` in the API-key header; [physical listing creation](https://developer.etsy.com/documentation/tutorials/listings/) requires `readiness_state_id`. Configuration now requires the existing `ETSY_CLIENT_SECRET` server variable, and readiness reports a missing processing profile. PKCE token exchange remains unchanged.
 
 Validation uses mocked Etsy/Prisma boundaries: duplicate claim loss, uncertain create quarantine, quota denial, saved-ID ordering, partial image failure, same-ID retry, sold-during-upload, missing activation confirmation, conflicting sale source, stale active response, and wrong remote identity.
+
+
+## Concurrent inventory changes (PR147 follow-up)
+
+Etsy publishing currently accepts exactly one available unit, because status reconciliation cannot yet account for partial multi-unit sales. Both readiness and the authoritative publish endpoint enforce this restriction. Activation also requires the seller's current delist capability, so automated removal is authorized before a listing can go live.
+
+A saved remote-active retry must pass the same current inventory, draft, and photo checks as new activation. Checks repeat after the activation response and before final persistence. If an edit or sale races activation (including a lost activation response), the request enqueues a due-now removal under `etsy-publish-recovery:<listing-id>:<usage-key>`. This durable key is distinct from the original sale-removal job, which may already have parked after seeing a draft; repeated recovery attempts reuse the new job. The route does not perform inline remote writes. The existing leased worker owns authorization, real sale-conflict holds, verified removal, and visible ambiguous-outcome handling.
+
+Removal rechecks the current canonical sale source and never removes the Etsy sold-source listing. `unavailable` is treated consistently as terminal by the status service, worker, and verified removal helper. Confirmed removal still requires a provider read; an HTTP success alone is insufficient.
+
+Regression evidence includes a stateful remote listing where a sale commits between eligibility and activation, the original removal job is already parked, and a distinct recovery job subsequently deactivates the same listing through the real verified adapter. Variants cover activation timeout and final persistence races, concurrent recovery enqueueing, active retry edits, terminal `unavailable`, and quantity/capability blocks.
