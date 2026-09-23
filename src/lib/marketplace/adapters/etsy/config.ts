@@ -24,6 +24,7 @@ export function isEtsyApiEnabled(env: EtsyEnv = process.env): boolean {
 // routes degrade to copy-ready rather than attempting a half-configured call.
 const requiredEnv = [
   "ETSY_CLIENT_ID",
+  "ETSY_CLIENT_SECRET",
   "ETSY_REDIRECT_URI",
   "ETSY_TOKEN_ENCRYPTION_KEY",
 ] as const;
@@ -44,10 +45,8 @@ export function getEtsyConfig(env: EtsyEnv = process.env): EtsyConfig {
 
   return {
     clientId: env.ETSY_CLIENT_ID!,
-    // Etsy public apps use PKCE and do not send a client secret on token
-    // exchange; it stays optional so a secret is only required if the app type
-    // actually uses one.
-    clientSecret: nonPlaceholder(env.ETSY_CLIENT_SECRET) ?? null,
+    // The v3 API key header requires keystring:shared-secret; OAuth still uses PKCE.
+    clientSecret: env.ETSY_CLIENT_SECRET!,
     redirectUri: env.ETSY_REDIRECT_URI!,
     apiBaseUrl: nonPlaceholder(env.ETSY_API_BASE_URL) ?? DEFAULT_API_BASE_URL,
     scopes: parseScopes(env.ETSY_SCOPES) ?? DEFAULT_SCOPES,

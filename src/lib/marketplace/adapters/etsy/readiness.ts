@@ -16,6 +16,7 @@ export type EtsyReadinessInput = {
   photoCount: number;
   // Seller-provided Etsy specifics (null/empty until the seller selects them).
   taxonomyId: number | string | null | undefined;
+  readinessStateId?: number | string | null;
   shippingProfileId: number | string | null | undefined;
   returnPolicyId: number | string | null | undefined;
 };
@@ -52,6 +53,7 @@ export function evaluateEtsyReadiness(
   if (input.quantity == null || input.quantity <= 0) missing.push("quantity");
   if (input.photoCount < 1) missing.push("photos");
   if (!present(input.taxonomyId)) missing.push("taxonomy");
+  if (!present(input.readinessStateId)) missing.push("processing_profile");
   if (!present(input.shippingProfileId)) missing.push("shipping_profile");
   if (!present(input.returnPolicyId)) missing.push("return_policy");
 
@@ -67,6 +69,6 @@ export function evaluateEtsyReadiness(
 
 function present(value: number | string | null | undefined): boolean {
   if (value == null) return false;
-  if (typeof value === "string") return value.trim().length > 0;
-  return Number.isFinite(value) && value > 0;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0;
 }

@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   listingUpdate: vi.fn(),
   getEtsyAuthorizedSession: vi.fn(),
   deactivateListing: vi.fn(),
+  getListing: vi.fn(),
+  listingFindFirst: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -14,10 +16,11 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
 }));
+vi.mock("@/lib/marketplace/lifecycle-sync", () => ({ syncMasterStatusAfterMarketplaceDelist: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({
     inventoryItem: { findFirst: mocks.itemFindFirst },
-    marketplaceListing: { findUnique: mocks.listingFindUnique, update: mocks.listingUpdate },
+    marketplaceListing: { findUnique: mocks.listingFindUnique, findFirst: mocks.listingFindFirst, updateMany: mocks.listingUpdate },
   }),
 }));
 vi.mock("@/lib/marketplace/adapters/etsy/session", () => ({
@@ -39,13 +42,16 @@ function postRequest(body: unknown) {
 describe("Etsy delist route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.listingUpdate.mockResolvedValue({ count: 1 });
+    mocks.listingFindFirst.mockResolvedValue({ id: "ml", status: "LISTED", externalListingId: "999", updatedAt: new Date(0) });
+    mocks.getListing.mockReset().mockResolvedValueOnce({ listing_id: 999, state: "active" }).mockResolvedValue({ listing_id: 999, state: "inactive" });
     process.env.ETSY_API_ENABLED = "true";
     process.env.ETSY_DELIST_EMAILS = "seller@example.com";
     mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "seller@example.com" });
     mocks.itemFindFirst.mockResolvedValue({ id: ITEM_ID });
     mocks.deactivateListing.mockResolvedValue({ listing_id: 999, state: "inactive" });
     mocks.getEtsyAuthorizedSession.mockResolvedValue({
-      client: { deactivateListing: mocks.deactivateListing },
+      client: { getListing: mocks.getListing, deactivateListing: mocks.deactivateListing },
       shopId: 777,
     });
   });
@@ -93,8 +99,8 @@ describe("Etsy delist route", () => {
     expect(response.status).toBe(200);
     expect(mocks.deactivateListing).toHaveBeenCalledWith(777, "999");
     expect(mocks.listingUpdate).toHaveBeenCalledWith({
-      where: { id: "ml" },
-      data: { status: "DELISTED", lastSyncAt: expect.any(Date), lastError: null },
+      where: { id: "ml", status: "LISTED", externalListingId: "999", updatedAt: new Date(0) },
+      data: { status: "DELISTED", endedAt: expect.any(Date), lastSyncAt: expect.any(Date), lastError: null },
     });
     expect(mocks.getEtsyAuthorizedSession).toHaveBeenCalledWith({
       userId: "u1",
@@ -108,4 +114,17 @@ describe("Etsy delist route", () => {
     expect(response.status).toBe(404);
     expect(mocks.deactivateListing).not.toHaveBeenCalled();
   });
+  it("does not claim removal when Etsy remains active", async () => {
+    mocks.listingFindUnique.mockResolvedValue({ id: "ml", status: "LISTED", externalListingId: "999" });
+    mocks.getListing.mockReset().mockResolvedValue({ listing_id: 999, state: "active" });
+    expect((await POST(postRequest({ itemId: ITEM_ID, confirm: true }))).status).toBe(409);
+    expect(mocks.listingUpdate).not.toHaveBeenCalled();
+  });
+  it("never overwrites a sold listing", async () => {
+    mocks.listingFindUnique.mockResolvedValue({ id: "ml", status: "SOLD", externalListingId: "999" });
+    expect((await POST(postRequest({ itemId: ITEM_ID, confirm: true }))).status).toBe(200);
+    expect(mocks.listingUpdate).not.toHaveBeenCalled();
+    expect(mocks.deactivateListing).not.toHaveBeenCalled();
+  });
+
 });

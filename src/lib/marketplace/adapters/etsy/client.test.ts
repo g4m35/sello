@@ -6,7 +6,7 @@ import type { EtsyConfig } from "./types";
 
 const config: EtsyConfig = {
   clientId: "etsy-keystring",
-  clientSecret: null,
+  clientSecret: "test-shared-secret",
   redirectUri: "https://sello.wtf/cb",
   apiBaseUrl: "https://api.etsy.com/v3/application",
   scopes: ["listings_w"],
@@ -31,7 +31,7 @@ describe("etsy client auth", () => {
     await client.getMe();
     const [, init] = fetchImpl.mock.calls[0];
     const headers = init?.headers as Record<string, string>;
-    expect(headers["x-api-key"]).toBe("etsy-keystring");
+    expect(headers["x-api-key"]).toBe("etsy-keystring:test-shared-secret");
     expect(headers["Authorization"]).toBe("Bearer 12345.secret-token");
   });
 
@@ -54,7 +54,8 @@ describe("etsy client auth", () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(url).toBe("https://api.etsy.com/v3/application/shops/1/listings/5");
     expect(init?.method).toBe("PATCH");
-    expect(JSON.parse(init?.body as string)).toEqual({ state: "active" });
+    expect((init?.body as URLSearchParams).get("state")).toBe("active");
+    expect((init?.headers as Record<string, string>)["Content-Type"]).toBe("application/x-www-form-urlencoded; charset=utf-8");
   });
 });
 
@@ -99,4 +100,19 @@ describe("mapResponseError (sanitized)", () => {
       expect(JSON.stringify(payload)).not.toContain("stack trace");
     }
   });
+});
+
+describe("Etsy response validation", () => {
+  it("rejects malformed listing identity", async () => {
+    const { client } = clientWith(() => new Response(JSON.stringify({ listing_id: "bad" }), { status: 200 }));
+    await expect(client.getListing(123)).rejects.toThrow("invalid listing response");
+  });
+  it("refuses a client without the required shared secret", () => {
+    expect(() => createEtsyClient({ config: { ...config, clientSecret: null }, accessToken: "test" })).toThrow("shared secret");
+  });
+});
+
+it("rejects a malformed successful image-upload response", async () => {
+  const { client } = clientWith(() => new Response(JSON.stringify({}), { status: 200 }));
+  await expect(client.uploadListingImage(1, 2, { data: new Uint8Array([1]), fileName: "photo.jpg" })).rejects.toThrow("did not confirm the image upload");
 });

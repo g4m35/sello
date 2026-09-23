@@ -10,9 +10,7 @@ import {
   etsyErrorCodes,
   toEtsyErrorPayload,
 } from "@/lib/marketplace/adapters/etsy/errors";
-import { getEtsyAuthorizedSession } from "@/lib/marketplace/adapters/etsy/session";
-import { syncEtsyListing } from "@/lib/marketplace/adapters/etsy/sync";
-import { ETSY_ENVIRONMENT } from "@/lib/marketplace/adapters/etsy/types";
+import { syncEtsyListingForAccount } from "@/lib/marketplace/adapters/etsy/status-sync";
 import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -35,39 +33,7 @@ export async function POST(request: Request) {
     const body = BodySchema.parse(await request.json());
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    const item = await prisma.inventoryItem.findFirst({
-      where: { id: body.itemId, accountId: account.id },
-      select: { id: true },
-    });
-    if (!item) {
-      throw new AppError("Item not found", 404);
-    }
-
-    const listing = await prisma.marketplaceListing.findUnique({
-      where: {
-        inventoryItemId_marketplace_environment: {
-          inventoryItemId: item.id,
-          marketplace: "etsy",
-          environment: ETSY_ENVIRONMENT,
-        },
-      },
-    });
-    if (!listing?.externalListingId) {
-      return NextResponse.json({ synced: false, reason: "no_listing" });
-    }
-
-    const session = await getEtsyAuthorizedSession({ userId: user.id, accountId: account.id });
-    const result = await syncEtsyListing({
-      client: session.client,
-      listingId: listing.externalListingId,
-    });
-
-    await prisma.marketplaceListing.update({
-      where: { id: listing.id },
-      data: { status: result.status, lastSyncAt: new Date(), lastError: null },
-    });
-
-    return NextResponse.json({ synced: true, status: result.status, state: result.state });
+    return NextResponse.json(await syncEtsyListingForAccount({ userId: user.id, accountId: account.id, itemId: body.itemId }, prisma));
   } catch (error) {
     if (error instanceof AppError && !(error as { code?: string }).code?.startsWith("ETSY_")) {
       return NextResponse.json({ error: getErrorMessage(error) }, { status: error.status });

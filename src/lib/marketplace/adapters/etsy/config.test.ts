@@ -40,6 +40,7 @@ describe("getEtsyConfig (fail-closed)", () => {
   it("throws notConfigured when a required variable is missing or a placeholder", () => {
     for (const variable of [
       "ETSY_CLIENT_ID",
+      "ETSY_CLIENT_SECRET",
       "ETSY_REDIRECT_URI",
       "ETSY_TOKEN_ENCRYPTION_KEY",
     ]) {
@@ -57,13 +58,12 @@ describe("getEtsyConfig (fail-closed)", () => {
       ...fullEnv,
       ETSY_API_BASE_URL: undefined,
       ETSY_SCOPES: undefined,
-      ETSY_CLIENT_SECRET: undefined,
+
     });
     expect(config.apiBaseUrl).toBe("https://api.etsy.com/v3/application");
     expect(config.scopes).toContain("listings_w");
     expect(config.scopes).toContain("listings_d");
-    // PKCE public apps need no secret; it stays null rather than blocking config.
-    expect(config.clientSecret).toBeNull();
+    expect(config.clientSecret).toBe("secret");
   });
 
   it("parses a custom space- or comma-separated scope list", () => {
