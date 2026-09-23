@@ -521,6 +521,21 @@ describe("executeStockXDelist", () => {
     );
   });
 
+  it("retains the mutation guard when StockX has only accepted a delist", async () => {
+    const prisma = createPrisma({ listing: stockxListing });
+    const adapter = vi.fn().mockRejectedValue(new StockXIntegrationError(
+      stockxErrorCodes.delistUnconfirmed, "StockX has not confirmed this listing ended.", 502,
+      { reconciliationRequired: true },
+    ));
+    await expect(executeStockXDelist(prisma, input, adapter)).rejects.toMatchObject({ code: stockxErrorCodes.delistUnconfirmed });
+    expect(prisma._state.attempts[0]).toMatchObject({ status: "RUNNING", code: "STOCKX_DELIST_OUTCOME_UNKNOWN" });
+    expect(prisma._state.listing?.status).toBe("NEEDS_REVIEW");
+    expect(prisma._state.inventoryUpdates).toHaveLength(0);
+    expect(prisma._state.events.some(e => e.kind === "stockx_listing_deactivated")).toBe(false);
+    await expect(executeStockXDelist(prisma, input, adapter)).rejects.toThrow();
+    expect(adapter).toHaveBeenCalledTimes(1);
+  });
+
   it("persists failure and leaves the StockX listing published when deactivate fails", async () => {
     const prisma = createPrisma({ listing: stockxListing });
 

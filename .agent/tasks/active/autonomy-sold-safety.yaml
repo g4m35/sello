@@ -33,6 +33,7 @@ acceptance:
   - Atomic marketplace lifecycle writes cannot overwrite a sold item, including a concurrent or manually recorded sale.
   - StockX publishing, delisting and status checks refresh expired tokens within the existing account-scoped connection.
   - Stale StockX status responses cannot overwrite a terminal listing or newer reconciliation.
+  - Pending or unverified StockX delist responses never mark a listing delisted or allow mutation replay.
   - Provider failures remain fail closed and no live provider calls are used in validation.
 validation:
   - npm run typecheck
@@ -42,4 +43,4 @@ review_requirements:
   - Independent code review before integration.
 deployment_authorized: false
 merge_authorized: false
-notes: Full local integration gate passed (1820 tests); independent review and integration pending.
+notes: Full integration gate passed for terminal-state and refresh fixes (1820 tests). Pending-delist follow-up passed typecheck, focused lint and full test suite (1824 tests). Pending asynchronous delists require manual reconciliation; independent review and integration pending.

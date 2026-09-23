@@ -45,9 +45,9 @@ function client(overrides: Partial<StockXDelistClient> = {}): StockXDelistClient
   return {
     deactivateListing: vi.fn(async () => ({
       listingId: "stockx-listing-1",
-      status: null,
+      status: "DEACTIVATED",
       operationId: "operation-2",
-      operationStatus: "PENDING",
+      operationStatus: "SUCCEEDED",
       operationUrl: "https://api.stockx.com/v2/selling/listings/stockx-listing-1/operations/operation-2",
       rawJson: {},
     })),
@@ -90,6 +90,23 @@ describe("delistStockXListing", () => {
       listingId: "stockx-listing-1",
       operationId: "operation-2",
     });
+  });
+
+  it.each([
+    { status: null, operationStatus: "PENDING" },
+    { status: null, operationStatus: "SUCCEEDED" },
+    { status: "ACTIVE", operationStatus: "COMPLETED" },
+  ])("does not claim a delist from operation $operationStatus and listing $status", async (remote) => {
+    const c = client({ deactivateListing: vi.fn(async () => ({
+      listingId: "stockx-listing-1", ...remote, operationId: "operation-2", operationUrl: null, rawJson: {},
+    })) });
+    await expect(delistStockXListing(prisma(), {
+      userId: "user-1", accountId: "acc-1", inventoryItemId: "item-1", listingId: "stockx-listing-1",
+    }, { env: stockxEnv, resolveAccessToken: () => "access-token", createClient: () => c })).rejects.toMatchObject({
+      code: stockxErrorCodes.delistUnconfirmed, status: 502,
+    });
+    expect(c.deactivateListing).toHaveBeenCalledTimes(1);
+    expect(c.deleteListing).not.toHaveBeenCalled();
   });
 
   it("deletes a StockX listing when deactivate is rejected for the current listing state", async () => {
