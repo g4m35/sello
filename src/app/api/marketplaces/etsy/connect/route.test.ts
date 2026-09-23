@@ -28,6 +28,7 @@ const ETSY_KEYS = [
   "ETSY_API_ENABLED",
   "ETSY_CONNECT_EMAILS",
   "ETSY_CLIENT_ID",
+  "ETSY_CLIENT_SECRET",
   "ETSY_REDIRECT_URI",
   "ETSY_TOKEN_ENCRYPTION_KEY",
   "ETSY_OAUTH_STATE_SECRET",
@@ -39,6 +40,7 @@ describe("Etsy connect route", () => {
     process.env.ETSY_API_ENABLED = "true";
     process.env.ETSY_CONNECT_EMAILS = "seller@example.com";
     process.env.ETSY_CLIENT_ID = "etsy-keystring";
+    process.env.ETSY_CLIENT_SECRET = "test-shared-secret";
     process.env.ETSY_REDIRECT_URI = "https://sello.wtf/api/marketplaces/etsy/callback";
     process.env.ETSY_TOKEN_ENCRYPTION_KEY = "a".repeat(64);
     process.env.ETSY_OAUTH_STATE_SECRET = "x".repeat(40);

@@ -1,8 +1,12 @@
+import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { AppError, getErrorMessage } from "@/lib/errors";
+import { AppError, getErrorMessage, logUnexpectedError } from "@/lib/errors";
 import { getActiveAccount } from "@/lib/billing/account";
+import { reserveUsageOrThrow, markUsageWorkStarted, releaseUsageReservation, markUsageReconciliationRequired, settleUsageReservationOrRequireReconciliation } from "@/lib/billing/usage";
+import { syncMasterStatusAfterMarketplacePublish } from "@/lib/marketplace/lifecycle-sync";
+import { createReviewTask } from "@/lib/inventory/review-tasks";
 import { getPrisma } from "@/lib/prisma";
 import { requireEtsyCapability } from "@/lib/marketplace/adapters/etsy/capabilities";
 import {
@@ -29,6 +33,7 @@ const BodySchema = z
     // Seller-provided Etsy specifics Sello cannot infer.
     taxonomyId: idSchema,
     shippingProfileId: idSchema,
+    readinessStateId: idSchema,
     returnPolicyId: idSchema,
     whoMade: z.string().min(1),
     whenMade: z.string().min(1),
@@ -62,6 +67,9 @@ export async function POST(request: Request) {
     if (!item) {
       throw new AppError("Item not found", 404);
     }
+    if (["SOLD", "ARCHIVED", "DELISTING"].includes(item.status) || item.soldAt || item.soldSourceMarketplace || item.quantityAvailable < 1) {
+      throw new AppError("Sold, archived, or unavailable inventory cannot be published.", 409);
+    }
     const draft = item.listingDrafts[0] ?? null;
 
     const connection = await prisma.marketplaceConnection.findUnique({
@@ -77,7 +85,7 @@ export async function POST(request: Request) {
     const title = draft?.title ?? item.productName;
     const description = draft?.description ?? "";
     const priceCents = draft?.recommendedPriceCents ?? item.recommendedPriceCents ?? null;
-    const quantity = 1;
+    const quantity = item.quantityAvailable;
 
     const readiness = evaluateEtsyReadiness({
       apiEnabled: true,
@@ -89,6 +97,7 @@ export async function POST(request: Request) {
       quantity,
       photoCount: item.photos.length,
       taxonomyId: body.taxonomyId ?? null,
+      readinessStateId: body.readinessStateId ?? null,
       shippingProfileId: body.shippingProfileId ?? null,
       returnPolicyId: body.returnPolicyId ?? null,
     });
@@ -112,7 +121,7 @@ export async function POST(request: Request) {
     });
     if (
       existing?.externalListingId &&
-      (existing.status === "LISTED" || existing.status === "LISTING")
+      existing.status === "LISTED"
     ) {
       return NextResponse.json({
         skipped: true,
@@ -129,6 +138,7 @@ export async function POST(request: Request) {
       priceCents: priceCents as number,
       quantity,
       taxonomyId: body.taxonomyId as number | string,
+      readinessStateId: body.readinessStateId ?? null,
       shippingProfileId: body.shippingProfileId as number | string,
       returnPolicyId: body.returnPolicyId ?? null,
       whoMade: body.whoMade,
@@ -137,39 +147,103 @@ export async function POST(request: Request) {
     });
     const images = await loadEtsyImagesForItem(item.photos);
 
-    const result = await publishEtsyListing({
-      client: session.client,
-      shopId: session.shopId,
-      listingBody,
-      images,
-      activate: body.activate,
+    if (images.length !== item.photos.length) {
+      throw new EtsyIntegrationError(etsyErrorCodes.imageUploadFailed, "Some photos could not be loaded. Retry before publishing to Etsy.", 422);
+    }
+    const listing = existing ?? await prisma.marketplaceListing.upsert({
+      where: { inventoryItemId_marketplace_environment: { inventoryItemId: item.id, marketplace: "etsy", environment: ETSY_ENVIRONMENT } },
+      create: { inventoryItemId: item.id, marketplace: "etsy", environment: ETSY_ENVIRONMENT, status: "NOT_LISTED" },
+      update: {},
     });
-
-    const status = result.state === "active" ? "LISTED" : "NOT_LISTED";
-    await prisma.marketplaceListing.upsert({
-      where: {
-        inventoryItemId_marketplace_environment: {
-          inventoryItemId: item.id,
-          marketplace: "etsy",
-          environment: ETSY_ENVIRONMENT,
+    // An attempt without an ID may have reached Etsy before its response was
+    // lost. Never turn that uncertainty into another create request.
+    if (!["NOT_LISTED", "FAILED", "NEEDS_REVIEW"].includes(listing.status) || (!listing.externalListingId && listing.status !== "NOT_LISTED")) {
+      throw new EtsyIntegrationError(etsyErrorCodes.publishFailed, "This Etsy attempt is in progress or needs review. Sync the existing listing before retrying.", 409);
+    }
+    const photoSnapshot = (photos: typeof item.photos) => JSON.stringify(photos.map(({ id, position, storageBucket, storagePath }) => ({ id, position, storageBucket, storagePath })).sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)));
+    const snapshotHash = createHash("sha256").update(JSON.stringify({ listingBody, photos: photoSnapshot(item.photos) })).digest("hex");
+    const metadata = listing.metadata && typeof listing.metadata === "object" && !Array.isArray(listing.metadata) ? listing.metadata : {};
+    if (listing.externalListingId && metadata.etsyPublishSnapshotHash !== snapshotHash) {
+      throw new EtsyIntegrationError(etsyErrorCodes.publishFailed, "This saved Etsy draft differs from the current listing. Review it in Etsy before retrying.", 409);
+    }
+    // Read the durable billing lifecycle, including crashes between settlement
+    // and the final listing write. A local flag cannot prove a unit is held.
+    const previousUsageKey = typeof metadata.etsyPublishUsageKey === "string" ? metadata.etsyPublishUsageKey : null;
+    const previousUsage = previousUsageKey ? await prisma.usageReservation.findUnique({
+      where: { accountId_metric_idempotencyKey: { accountId: account.id, metric: "autopublish", idempotencyKey: previousUsageKey } },
+      select: { status: true, operationId: true },
+    }) : null;
+    if (previousUsage && previousUsage.operationId !== `${item.id}:etsy`) throw new AppError("Etsy usage belongs to a different operation.", 409);
+    const reuseUsage = previousUsage?.status === "reserved" || previousUsage?.status === "settled";
+    if (listing.externalListingId && !reuseUsage) {
+      const remote = await session.client.getListing(listing.externalListingId);
+      if (String(remote.listing_id) !== listing.externalListingId || remote.state !== "draft") {
+        throw new EtsyIntegrationError(etsyErrorCodes.publishFailed, "Verify the saved Etsy listing and its usage before retrying.", 409);
+      }
+    }
+    const usageKey = reuseUsage && previousUsageKey ? previousUsageKey : randomUUID();
+    const claim = await prisma.marketplaceListing.updateMany({
+      where: { id: listing.id, status: listing.status, updatedAt: listing.updatedAt,
+        inventoryItem: { accountId: account.id, status: { notIn: ["SOLD", "ARCHIVED", "DELISTING"] }, quantityAvailable: { gt: 0 }, soldAt: null, soldSourceMarketplace: null } },
+      data: { status: "LISTING", lastError: null, metadata: { ...metadata, etsyPublishSnapshotHash: snapshotHash, etsyPublishUsageKey: usageKey } },
+    });
+    if (claim.count !== 1) throw new EtsyIntegrationError(etsyErrorCodes.publishFailed, "Inventory or the Etsy attempt changed. Refresh before retrying.", 409);
+    let reservationId: string | null = null;
+    let externalStarted = false;
+    let knownListingId = listing.externalListingId;
+    let result: Awaited<ReturnType<typeof publishEtsyListing>>;
+    try {
+      const reservation = await reserveUsageOrThrow({ accountId: account.id, metric: "autopublish", idempotencyKey: usageKey, now: new Date(), operationType: "marketplace_publish", operationId: `${item.id}:etsy`, user }, prisma);
+      reservationId = reservation.reservationId;
+      if (reservation.status !== "settled" && !await markUsageWorkStarted(reservationId, new Date(), prisma)) throw new AppError("The publish reservation is no longer active.", 409);
+      externalStarted = true;
+      result = await publishEtsyListing({
+        client: session.client, shopId: session.shopId, listingBody, images, activate: body.activate,
+        existingListingId: knownListingId,
+        requireExistingActive: reservation.status === "settled",
+        persistDraft: async (listingId) => {
+          await prisma.marketplaceListing.update({ where: { id: listing.id }, data: { externalListingId: String(listingId), externalUrl: `https://www.etsy.com/listing/${listingId}` } });
+          knownListingId = String(listingId);
         },
-      },
-      create: {
-        inventoryItemId: item.id,
-        marketplace: "etsy",
-        environment: ETSY_ENVIRONMENT,
-        status,
-        externalListingId: String(result.listingId),
-        lastSyncAt: new Date(),
-        lastError: null,
-      },
-      update: {
-        status,
-        externalListingId: String(result.listingId),
-        lastSyncAt: new Date(),
-        lastError: null,
-      },
-    });
+        assertCanActivate: async () => {
+          const unsold = await prisma.inventoryItem.findFirst({ where: { id: item.id, accountId: account.id, status: { notIn: ["SOLD", "ARCHIVED", "DELISTING"] }, quantityAvailable: quantity, soldAt: null, soldSourceMarketplace: null, updatedAt: item.updatedAt, } , include: { photos: true, listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } } });
+          const latestDraft = unsold?.listingDrafts[0] ?? null;
+          if (!unsold || photoSnapshot(unsold.photos) !== photoSnapshot(item.photos) || latestDraft?.id !== draft?.id || latestDraft?.updatedAt.getTime() !== draft?.updatedAt.getTime()) throw new AppError("Inventory changed. The Etsy draft was saved but cannot be activated.", 409);
+        },
+      });
+
+      if (result.state === "active") {
+        await settleUsageReservationOrRequireReconciliation(reservationId, new Date(), "ETSY_PUBLISH_SETTLEMENT_FAILED", prisma);
+      } else {
+        await releaseUsageReservation(reservationId, new Date(), prisma, "released", { allowStartedWork: true });
+      }
+      const saved = await prisma.marketplaceListing.updateMany({
+        where: { id: listing.id, status: "LISTING", inventoryItem: { accountId: account.id, status: { notIn: ["SOLD", "ARCHIVED", "DELISTING"] }, soldAt: null, soldSourceMarketplace: null } },
+        data: { status: result.state === "active" ? "LISTED" : "NOT_LISTED", lastSyncAt: new Date(), lastError: null, metadata: { ...metadata, etsyPublishSnapshotHash: snapshotHash, etsyPublishUsageKey: usageKey } },
+      });
+      if (saved.count !== 1) throw new AppError("Inventory changed during publishing. Review the saved Etsy listing and its removal task.", 409);
+      await prisma.reviewTask.updateMany({ where: { accountId: account.id, dedupeKey: `etsy-publish:${listing.id}`, status: "open" }, data: { status: "resolved", resolvedAt: new Date() } });
+      await prisma.marketplaceEvent.create({ data: { marketplaceListingId: listing.id, kind: "etsy_publish_confirmed", data: { state: result.state, listingId: result.listingId } } });
+      if (result.state === "active") await syncMasterStatusAfterMarketplacePublish(prisma, item.id);
+    } catch (error) {
+      // A crash leaves LISTING in place; a caught ambiguous create becomes
+      // NEEDS_REVIEW. Neither path is eligible for another create.
+      await prisma.marketplaceListing.updateMany({
+        where: { id: listing.id, status: "LISTING" },
+        data: { status: !externalStarted ? listing.status : "NEEDS_REVIEW", ...(!externalStarted ? { metadata } : {}), lastError: knownListingId ? "Etsy publish incomplete. Retry using the saved listing." : "Etsy publish outcome unknown. Review Etsy before any new attempt." },
+      }).catch((persistenceError) => logUnexpectedError("etsy_publish_claim", persistenceError));
+      if (externalStarted) {
+        await createReviewTask(prisma, { userId: user.id, accountId: account.id, inventoryItemId: item.id, marketplace: "etsy", type: "sync_conflict", dedupeKey: `etsy-publish:${listing.id}`, title: "Review incomplete Etsy publish", description: knownListingId ? "Etsy may have changed this saved listing. Check its status before retrying." : "Etsy may have created a draft without returning its ID. Check your shop before creating another listing.", payload: { reason: "etsy_publish_incomplete", marketplaceListingId: listing.id, externalListingId: knownListingId } }).catch((reviewError) => logUnexpectedError("etsy_publish_review", reviewError));
+      }
+      if (reservationId) {
+        const cleanup = externalStarted
+          ? markUsageReconciliationRequired(reservationId, new Date(), "ETSY_PUBLISH_OUTCOME_UNKNOWN", prisma)
+          : releaseUsageReservation(reservationId, new Date(), prisma, "released", { allowStartedWork: true });
+        await cleanup.catch((usageError) => logUnexpectedError("etsy_publish_usage", usageError));
+      }
+      throw error;
+    }
+    const status = result.state === "active" ? "LISTED" : "NOT_LISTED";
 
     return NextResponse.json({
       ok: true,

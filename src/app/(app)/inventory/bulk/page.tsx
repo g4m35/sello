@@ -1,5 +1,7 @@
 "use client";
 
+import { AutomationDefaultNotice } from "@/components/app/automation-settings";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -247,10 +249,11 @@ export default function BulkIntakePage() {
             Bulk photo <em>intake</em>
           </h1>
           <div className="page__title-meta">
-            Group photos, generate each listing independently, and review before publishing.
+            Group photos and prepare each listing using your saved automation settings.
           </div>
         </div>
 
+        <AutomationDefaultNotice key={token} token={token} />
         {error ? <Banner variant="error" title="Bulk intake needs attention" desc={error} /> : null}
 
         {!batch ? (

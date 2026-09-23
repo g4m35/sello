@@ -936,6 +936,7 @@ model Account {
   updatedAt     DateTime  @updatedAt
   disabledAt    DateTime?
   disableReason String?
+  automationPolicy Json?
 
   members                AccountMember[]
   subscription           Subscription?

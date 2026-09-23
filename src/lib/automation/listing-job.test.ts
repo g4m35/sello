@@ -109,3 +109,35 @@ describe("durable automatic listing jobs", () => {
     expect(h.db.reviewTask.findFirst).toHaveBeenCalledWith({ where: { accountId: "account", type: "sync_conflict", status: "open", inventoryItemId: "item", marketplace: null, dedupeKey: "listing-automation:job" }, select: { id: true } });
   });
 });
+
+describe("revocable standing job authorization", () => {
+  const revision = "00000000-0000-4000-8000-000000000001";
+  const policy = { version: 1, enabled: true, revision, authorizedBy: "user", authorizedAt: "2020-01-01T00:00:00.000Z", minPriceCents: 10000, maxPriceCents: 20000 };
+  function standing() {
+    const h = harness();
+    Object.assign(h.job.payload, { standingAuthorization: { revision }, authorizedAt: "2020-01-01T00:00:00.000Z" });
+    const account = { ownerUserId: "user", disabledAt: null, automationPolicy: { ...policy } };
+    Object.assign(h.db, { account: { findUnique: vi.fn(async () => account) } });
+    return { ...h, account };
+  }
+  it("continues past 24h only with a still-current standing policy", async () => {
+    const h = standing(); await h.run(); expect(h.job.status).toBe("SUCCEEDED");
+    expect(h.deps.publish).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), "account", expect.objectContaining({ standingAuthorization: { revision } }));
+  });
+  it.each(["pause", "revision", "ownership"])("rejects %s before spending on comps", async (change) => {
+    const h = standing();
+    if (change === "pause") h.account.automationPolicy.enabled = false;
+    if (change === "revision") h.account.automationPolicy.revision = "00000000-0000-4000-8000-000000000002";
+    if (change === "ownership") h.account.ownerUserId = "new-owner";
+    await h.run(); expect(h.deps.fetchComps).not.toHaveBeenCalled(); expect(h.deps.publish).not.toHaveBeenCalled(); expect(h.job.status).toBe("FAILED");
+  });
+  it("honors pause while paid comparisons are in flight", async () => {
+    const h = standing();
+    h.deps.fetchComps.mockImplementation(async () => { h.account.automationPolicy.enabled = false; return { summary: { recommendedListCents: 15000, confidence: "high", soldCompCount: 10, pricingBasis: "sold_comps" } }; });
+    await h.run(); expect(h.deps.publish).not.toHaveBeenCalled(); expect(h.job.status).toBe("FAILED");
+  });
+  it("rechecks membership after preparation before publishing", async () => {
+    const h = standing(); h.deps.entitlements.mockResolvedValueOnce({ account: { id: "account" }, access: { paidComps: true } }).mockResolvedValueOnce({ account: { id: "other" }, access: { paidComps: true } });
+    await h.run(); expect(h.deps.publish).not.toHaveBeenCalled();
+  });
+});

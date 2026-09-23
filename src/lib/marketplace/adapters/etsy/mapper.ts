@@ -15,6 +15,7 @@ export type EtsyListingMapInput = {
   priceCents: number;
   quantity: number;
   taxonomyId: number | string;
+  readinessStateId?: number | string | null;
   shippingProfileId: number | string;
   returnPolicyId?: number | string | null;
   whoMade: string;
@@ -34,6 +35,7 @@ export function buildEtsyDraftBody(input: EtsyListingMapInput): Record<string, u
     when_made: input.whenMade,
     taxonomy_id: Number(input.taxonomyId),
     shipping_profile_id: Number(input.shippingProfileId),
+    readiness_state_id: Number(input.readinessStateId),
     ...(present(input.returnPolicyId)
       ? { return_policy_id: Number(input.returnPolicyId) }
       : {}),

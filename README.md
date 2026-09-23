@@ -17,6 +17,17 @@ The seller interface lives in `src/app/(app)/`, with shared UI in
 panels have been removed; use the current inventory editor, auto-pricing panel,
 and history page for listing, pricing, and marketplace activity.
 
+Account owners can save eBay automatic-posting authorization and price bounds in
+Settings. New photo uploads and bulk listings inherit it; pausing or changing the
+authorization prevents queued work from using the old permission. Existing
+inventory is never authorized retroactively. Confidence, pricing evidence,
+marketplace readiness, usage limits and live-action switches still apply. See
+[`standing automation`](docs/operations/standing-automation.md) for rollout and
+[`Etsy background sync`](docs/operations/etsy-background-sync.md) for guarded sale
+monitoring and removal. Etsy still requires configured application access and a
+connected shop; the integration does not silently enable those capabilities.
+
+
 Sello currently supports the core listing workflow:
 
 - User authentication

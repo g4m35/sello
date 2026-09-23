@@ -1,3 +1,4 @@
+import type { StandingAuthorization } from "./settings-schema";
 import { z } from "zod";
 
 // Per-upload consent. Existing listings never acquire permission implicitly.
@@ -13,7 +14,7 @@ export const ListingAutomationSchema = z.discriminatedUnion("mode", [
 ]).refine((p) => p.mode === "prepare" || p.minPriceCents <= p.maxPriceCents, "Minimum price must not exceed maximum price.");
 
 export type ListingAutomation = z.infer<typeof ListingAutomationSchema>;
-export type PublishAuthorization = { itemVersion: string; draftVersion: string; priceCents: number };
+export type PublishAuthorization = { itemVersion: string; draftVersion: string; priceCents: number; standingAuthorization?: StandingAuthorization };
 
 export function automaticPriceDecision(input: {
   confidence: number | null;

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { EtsyIntegrationError, etsyErrorCodes } from "./errors";
 import type { EtsyConfig } from "./types";
 
@@ -29,6 +30,9 @@ export function createEtsyClient(args: {
   fetchImpl?: typeof fetch;
 }) {
   const { config, accessToken } = args;
+  if (!config.clientSecret?.trim()) {
+    throw new EtsyIntegrationError(etsyErrorCodes.notConfigured, "Etsy shared secret is required.", 503);
+  }
   const fetchImpl = args.fetchImpl ?? fetch;
   const baseUrl = config.apiBaseUrl.replace(/\/+$/, "");
 
@@ -38,17 +42,20 @@ export function createEtsyClient(args: {
   ): Promise<T> {
     const { rawBody, headers, ...rest } = init;
     const finalHeaders: Record<string, string> = {
-      "x-api-key": config.clientId,
+      "x-api-key": `${config.clientId}:${config.clientSecret}`,
       Authorization: `Bearer ${accessToken}`,
       ...(headers as Record<string, string> | undefined),
     };
     if (rest.body !== undefined && !rawBody) {
-      finalHeaders["Content-Type"] = "application/json";
+      finalHeaders["Content-Type"] = rest.body instanceof URLSearchParams
+        ? "application/x-www-form-urlencoded; charset=utf-8"
+        : "application/json; charset=utf-8";
     }
 
     const response = await fetchImpl(`${baseUrl}${path}`, {
       ...rest,
       headers: finalHeaders,
+      signal: init.signal ?? AbortSignal.timeout(30_000),
     });
 
     if (!response.ok) {
@@ -61,7 +68,24 @@ export function createEtsyClient(args: {
     return (await response.json()) as T;
   }
 
+  // createDraftListing/updateListing use the form encoding shown in Etsy's
+  // official listing tutorial. Inventory PUT keeps its nested JSON payload.
+  const listingForm = (body: Record<string, unknown>) => new URLSearchParams(
+    Object.entries(body).filter(([, value]) => value !== undefined && value !== null)
+      .map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : String(value)]),
+  );
+  const listingSchema = z.object({ listing_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), state: z.string().optional(), url: z.string().optional(), quantity: z.number().optional() });
+  const listingRequest = async (path: string, init?: RequestInit): Promise<EtsyListing> => {
+    const result = listingSchema.safeParse(await request<unknown>(path, init));
+    if (!result.success) throw new EtsyIntegrationError(etsyErrorCodes.apiFailed, "Etsy returned an invalid listing response.", 502);
+    return result.data;
+  };
   return {
+    getListingImages: async (listingId: number | string) => {
+      const result = z.object({ results: z.array(z.object({ listing_image_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), rank: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) })) }).safeParse(await request<unknown>(`/listings/${listingId}/images`));
+      if (!result.success) throw new EtsyIntegrationError(etsyErrorCodes.apiFailed, "Etsy returned invalid listing images.", 502);
+      return result.data;
+    },
     getMe: () => request<EtsyMeResponse>("/users/me"),
     getShop: (shopId: number | string) => request<EtsyShop>(`/shops/${shopId}`),
     getShopShippingProfiles: (shopId: number | string) =>
@@ -73,23 +97,23 @@ export function createEtsyClient(args: {
         "/seller-taxonomy/nodes",
       ),
     getListing: (listingId: number | string) =>
-      request<EtsyListing>(`/listings/${listingId}`),
+      listingRequest(`/listings/${listingId}`),
     getShopReceipts: (shopId: number | string) =>
       request<{ results: unknown[] }>(`/shops/${shopId}/receipts`),
 
     createDraftListing: (shopId: number | string, body: Record<string, unknown>) =>
-      request<EtsyListing>(`/shops/${shopId}/listings`, {
+      listingRequest(`/shops/${shopId}/listings`, {
         method: "POST",
-        body: JSON.stringify(body),
+        body: listingForm(body),
       }),
     updateListing: (
       shopId: number | string,
       listingId: number | string,
       body: Record<string, unknown>,
     ) =>
-      request<EtsyListing>(`/shops/${shopId}/listings/${listingId}`, {
+      listingRequest(`/shops/${shopId}/listings/${listingId}`, {
         method: "PATCH",
-        body: JSON.stringify(body),
+        body: listingForm(body),
       }),
     updateListingInventory: (
       listingId: number | string,
@@ -102,14 +126,14 @@ export function createEtsyClient(args: {
     // Publish = move a draft to active; deactivate (end) = move to inactive. Etsy
     // models both as a listing state change, not a separate verb.
     activateListing: (shopId: number | string, listingId: number | string) =>
-      request<EtsyListing>(`/shops/${shopId}/listings/${listingId}`, {
+      listingRequest(`/shops/${shopId}/listings/${listingId}`, {
         method: "PATCH",
-        body: JSON.stringify({ state: "active" }),
+        body: listingForm({ state: "active" }),
       }),
     deactivateListing: (shopId: number | string, listingId: number | string) =>
-      request<EtsyListing>(`/shops/${shopId}/listings/${listingId}`, {
+      listingRequest(`/shops/${shopId}/listings/${listingId}`, {
         method: "PATCH",
-        body: JSON.stringify({ state: "inactive" }),
+        body: listingForm({ state: "inactive" }),
       }),
     deleteListing: (listingId: number | string) =>
       request<void>(`/listings/${listingId}`, { method: "DELETE" }),
@@ -128,10 +152,14 @@ export function createEtsyClient(args: {
       if (typeof image.rank === "number") {
         form.append("rank", String(image.rank));
       }
-      return request<{ listing_image_id: number }>(
+      return request<unknown>(
         `/shops/${shopId}/listings/${listingId}/images`,
         { method: "POST", body: form, rawBody: true },
-      );
+      ).then((response) => {
+        const result = z.object({ listing_image_id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).safeParse(response);
+        if (!result.success) throw new EtsyIntegrationError(etsyErrorCodes.imageUploadFailed, "Etsy did not confirm the image upload.", 502);
+        return result.data;
+      });
     },
   };
 }

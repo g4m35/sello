@@ -1,0 +1,46 @@
+id: standing-ebay-policy
+title: Revocable account authorization for automatic eBay posting
+status: active
+owner: standing_policy_backend
+reviewer: root
+risk: high
+task_type: backend
+base_branch: develop
+working_branch: feature/standing-ebay-policy
+worktree_path: /Users/jheller/dev/sello-worktrees/standing-ebay-policy
+created_at: 2026-09-23T05:00:00.000Z
+goal: Let owners authorize future eBay uploads once with revocable price bounds.
+context: Owner requests complete automation while preserving marketplace safety.
+non_goals:
+  - Retroactive publication or live marketplace verification.
+allowed_paths:
+  - src/lib/automation/**
+  - src/app/api/automation/settings/**
+  - src/app/api/listings/draft/**
+  - src/app/api/listings/passive-comp-fetch.test.ts
+  - src/lib/bulk-intake/service*
+  - src/lib/marketplace/adapters/ebay/publish*
+  - prisma/**
+  - .agent/**
+protected_paths:
+  - .github/**
+  - src/lib/billing/**
+  - src/lib/auth/**
+required_reading:
+  - AGENTS.md
+  - prisma/AGENTS.md
+  - src/lib/marketplace/AGENTS.md
+acceptance:
+  - Default off, owner-only settings writes, account-scoped reads.
+  - New intake only; existing jobs recheck revision before providers and publish.
+  - Existing explicit per-listing authorization remains supported.
+validation:
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - prisma/migrations/20260923080000_account_automation_policy/README.md
+review_requirements:
+  - Independent review of authorization, migration, account isolation, and publish races.
+deployment_authorized: false
+merge_authorized: false
+notes: Root integrates and obtains independent high-risk review; migration never applied by this agent.

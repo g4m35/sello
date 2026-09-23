@@ -28,8 +28,9 @@ describe("no passive comp fetch on detail/editor load", () => {
     expect(sql).not.toContain("enabledCompSources");
   });
 
-  it("auto comp fetching is wired only to the draft and refresh POST routes", () => {
-    expect(source("src/app/api/listings/draft/route.ts")).toContain("runCompFetch");
+  it("automatic comps run through durable preparation and explicit refresh", () => {
+    expect(source("src/app/api/listings/draft/route.ts")).toContain("automationJobData");
+    expect(source("src/lib/automation/listing-job.ts")).toContain("runCompFetch");
     expect(source("src/app/api/listings/comps/refresh/route.ts")).toContain("runCompFetch");
   });
 });

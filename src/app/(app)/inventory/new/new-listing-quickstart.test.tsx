@@ -61,6 +61,7 @@ describe("new listing quickstart", () => {
   beforeEach(() => {
     reactHarness.cursor = 0;
     reactHarness.states = [];
+    reactHarness.states[7] = { token: "t", settings: { canManage: true, policy: { enabled: false, revision: null } } };
     vi.clearAllMocks();
     apiMocks.createDraftFromPhotos.mockResolvedValue({ inventoryItem: { id: "created-item" } });
   });
@@ -91,6 +92,27 @@ describe("new listing quickstart", () => {
     reactHarness.states[5] = "200";
     findPrepareButton(NewListingPage())!.props.onClick();
     await vi.waitFor(() => expect(apiMocks.createDraftFromPhotos).toHaveBeenCalledWith("t", [file], { mode: "publish", marketplace: "ebay", consent: true, minPriceCents: 10000, maxPriceCents: 20000 }, expect.any(String)));
+  });
+  it("uses saved authorization without renewing per-item consent", async () => {
+    const file = new File(["photo"], "item.jpg", { type: "image/jpeg" });
+    reactHarness.states[0] = [{ file, url: "blob:photo" }];
+    reactHarness.states[7] = { token: "t", settings: { canManage: true, policy: { enabled: true, revision: "saved", minPriceCents: 1000, maxPriceCents: 20000 } } };
+    findPrepareButton(NewListingPage())!.props.onClick();
+    await vi.waitFor(() => expect(apiMocks.createDraftFromPhotos).toHaveBeenCalledWith("t", [file], undefined, expect.any(String)));
+  });
+  it("lets a seller opt a single listing out of saved automatic posting", async () => {
+    const file = new File(["photo"], "item.jpg", { type: "image/jpeg" });
+    reactHarness.states[0] = [{ file, url: "blob:photo" }];
+    reactHarness.states[7] = { token: "t", settings: { canManage: true, policy: { enabled: true, revision: "saved", minPriceCents: 1000, maxPriceCents: 20000 } } };
+    reactHarness.states[8] = false;
+    findPrepareButton(NewListingPage())!.props.onClick();
+    await vi.waitFor(() => expect(apiMocks.createDraftFromPhotos).toHaveBeenCalledWith("t", [file], { mode: "prepare" }, expect.any(String)));
+  });
+  it.each([null, { token: "old-token", settings: { canManage: true, policy: { enabled: true, revision: "old", minPriceCents: 100, maxPriceCents: 200 } } }])("does not submit before the current session settings load", (settings) => {
+    reactHarness.states[0] = [{ file: new File(["photo"], "item.jpg"), url: "blob:photo" }];
+    reactHarness.states[7] = settings;
+    findPrepareButton(NewListingPage())!.props.onClick();
+    expect(apiMocks.createDraftFromPhotos).not.toHaveBeenCalled();
   });
   it("does not submit automatic posting with invalid bounds", () => {
     reactHarness.states[0] = [{ file: new File(["photo"], "item.jpg"), url: "blob:photo" }];

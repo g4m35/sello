@@ -1,3 +1,5 @@
+import { StandingAuthorizationSchema, type StandingAuthorization } from "./settings-schema";
+import { assertStandingAuthorization } from "./settings";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { getPrisma } from "@/lib/prisma";
@@ -13,7 +15,7 @@ export const LISTING_QUEUE = "listing-automation-v1";
 export const JobPayloadSchema = z.object({
   version: z.literal(1), accountId: z.string(), userId: z.string(),
   policy: ListingAutomationSchema, authorizedAt: z.string().datetime(),
-  warnings: z.array(z.string()),
+  warnings: z.array(z.string()), standingAuthorization: StandingAuthorizationSchema.optional(),
 }).strict();
 type Db = ReturnType<typeof getPrisma>;
 
@@ -56,7 +58,7 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
   try {
     const payload = JobPayloadSchema.parse(job.payload);
     canRetryPreparation = true;
-    if (Date.now() - new Date(payload.authorizedAt).getTime() > 24 * 60 * 60_000) throw new AppError("This authorization expired. Review the listing before posting.", 409);
+    if (!payload.standingAuthorization && Date.now() - new Date(payload.authorizedAt).getTime() > 24 * 60 * 60_000) throw new AppError("This authorization expired. Review the listing before posting.", 409);
     const user = await deps.resolveUser(payload.userId);
     const access = await deps.entitlements(user, db);
     if (user.id !== payload.userId || access.account.id !== payload.accountId) throw new AppError("Account access changed. Review this listing.", 403);
@@ -73,6 +75,7 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
       blocker = "identification_review";
       return await finish("needs_review", "Confirm the identified item and its details.");
     }
+    if (payload.standingAuthorization) await assertStandingAuthorization(db, payload.accountId, payload.standingAuthorization);
     await checkpoint("Finding comparable sold listings…");
     const comps = await deps.fetchComps(db, item.id, user.id, {
       accountId: payload.accountId, paidProvidersAllowed: access.access.paidComps,
@@ -98,13 +101,18 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
     if (!priced?.listingDrafts[0]) throw new AppError("Listing not found.", 404);
     // Persist the boundary before invoking the external action. An interrupted
     // publish is never eligible for preparation recovery or renewed consent.
+    if (payload.standingAuthorization) {
+      await assertStandingAuthorization(db, payload.accountId, payload.standingAuthorization);
+      const currentAccess = await deps.entitlements(user, db);
+      if (currentAccess.account.id !== payload.accountId) throw new AppError("Account access changed. Review this listing.", 403);
+    }
     publishStarted = true;
     const boundary = await db.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: {
       result: { phase: "publishing", message: "Checking requirements and posting to eBay…", recoveryAction: null },
     } });
     if (boundary.count !== 1) throw new AppError("Automation was stopped. Review the listing.", 409);
     const result = await deps.publish(user, { inventoryItemId: item.id, marketplace: "ebay" }, `${id}:publish:ebay`, payload.accountId, {
-      itemVersion: priced.updatedAt.toISOString(), draftVersion: priced.listingDrafts[0].updatedAt.toISOString(), priceCents: price,
+      itemVersion: priced.updatedAt.toISOString(), draftVersion: priced.listingDrafts[0].updatedAt.toISOString(), priceCents: price, ...(payload.standingAuthorization ? { standingAuthorization: payload.standingAuthorization } : {}),
     });
     if (result.outcome.status === "published") return await finish("published", "Published to eBay. The marketplace result is recorded in activity.");
     return await finish("needs_review", "eBay did not confirm a published listing. Review marketplace activity before retrying.");
@@ -136,7 +144,7 @@ export async function runListingQueue(db: Db = getPrisma(), deadline = Date.now(
   return processed;
 }
 
-export function automationJobData(input: { id: string; inventoryItemId: string; accountId: string; userId: string; policy: z.infer<typeof ListingAutomationSchema>; warnings: string[] }) {
+export function automationJobData(input: { id: string; inventoryItemId: string; accountId: string; userId: string; policy: z.infer<typeof ListingAutomationSchema>; warnings: string[]; standingAuthorization?: StandingAuthorization }) {
   const { id, inventoryItemId, ...payload } = input;
   return { id, inventoryItemId, queueName: LISTING_QUEUE, jobName: "prepare-and-publish", status: "QUEUED" as const,
     payload: { version: 1, authorizedAt: new Date().toISOString(), ...payload } as Prisma.InputJsonValue,

@@ -11,7 +11,7 @@ import { enqueueSyncJob, type SyncJobPrismaLike } from "./sync-jobs";
 import { marketplaceLabel } from "./notifications";
 
 // Queues delist work for every OTHER live listing of a sold item, idempotently.
-// The sold-source marketplace is never touched. eBay and StockX have real
+// The sold-source marketplace is never touched. eBay, StockX and Etsy have real
 // delist adapters, so those jobs are queued for a worker to execute; everything
 // else is parked as needs_review AND a manual_delist_required ReviewTask is
 // created with the listing URL + clear instructions. NO live marketplace/network
@@ -22,6 +22,7 @@ import { marketplaceLabel } from "./notifications";
 const MARKETPLACES_WITH_DELIST_ADAPTER: ReadonlySet<Marketplace> = new Set<Marketplace>([
   "ebay",
   "stockx",
+  "etsy",
 ]);
 
 export function hasDelistAdapter(marketplace: Marketplace): boolean {

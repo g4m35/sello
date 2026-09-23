@@ -36,7 +36,7 @@ export async function syncEtsyListing(args: {
   const listing = await args.client.getListing(args.listingId);
   const state = listing.state ?? "unknown";
   return {
-    listingId: args.listingId,
+    listingId: listing.listing_id,
     state,
     status: mapEtsyListingStatus(listing.state),
   };

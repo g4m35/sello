@@ -450,6 +450,17 @@ describe("automatic publication payload authorization", () => {
     expect(client.createOffer).toHaveBeenCalledWith(expect.objectContaining({ availableQuantity: 1, pricingSummary: { price: { value: "240.00", currency: "USD" } } }));
     expect(client.createOrReplaceInventoryItem).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ availability: { shipToLocationAvailability: { quantity: 1 } } }));
   });
+  it("honors a policy pause received while the eBay offer is being created", async () => {
+    const h = authorizedItem(); const deps = createDeps();
+    const revision = "00000000-0000-4000-8000-000000000001";
+    const policy = { version: 1, enabled: true, revision, authorizedBy: "user-1", authorizedAt: "2026-09-01T00:00:00.000Z", minPriceCents: 10000, maxPriceCents: 30000 };
+    const db = createPrisma({ item: h.item });
+    db.account = { findUnique: vi.fn(async () => ({ automationPolicy: policy, ownerUserId: "user-1", disabledAt: null })) };
+    const client = { createOrReplaceInventoryItem: vi.fn(async () => {}), createOffer: vi.fn(async () => { policy.enabled = false; return { offerId: "offer" }; }), publishOffer: vi.fn(async () => ({ listingId: "listing" })) };
+    vi.mocked(deps.createClient).mockReturnValue(client);
+    await expect(publishEbayListing(db, { ...h.input, accountId: "account", authorization: { ...h.input.authorization, standingAuthorization: { revision } } }, deps)).rejects.toBeDefined();
+    expect(client.createOffer).toHaveBeenCalledOnce(); expect(client.publishOffer).not.toHaveBeenCalled();
+  });
   it("rejects an eBay quantity that exceeds single-item stock before token access", async () => {
     const h = authorizedItem(); h.item.listingDrafts[0].marketplaceDrafts.ebay.quantity = 2; const deps = createDeps();
     await expect(publishEbayListing(createPrisma({ item: h.item }), h.input, deps)).rejects.toMatchObject({ code: "AUTOMATION_QUANTITY_MISMATCH" });

@@ -39,6 +39,7 @@ export type EtsyReadinessRequirement =
   | "shop"
   | "taxonomy"
   | "shipping_profile"
+  | "processing_profile"
   | "return_policy"
   | "title"
   | "description"
