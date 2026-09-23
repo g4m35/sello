@@ -395,6 +395,7 @@ img { display: block; max-width: 100%; }
 .sidebar { background: var(--surface-sunk); color: var(--ink); border-right: 1px solid var(--line); padding: 20px 14px 14px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 0; height: 100dvh; overflow-y: auto; z-index: 40; }
 .sidebar__brand { padding: 0 10px 4px; }
 .sidebar__brand-mark { display: flex; align-items: center; min-height: 40px; font: 750 24px var(--font-sans); letter-spacing: -1px; background: transparent; border: 0; padding: 0; color: inherit; cursor: pointer; }
+.sello-logo { display: block; width: 76px; height: 28px; overflow: visible; }
 .sidebar__section { display: flex; flex-direction: column; gap: 3px; }
 .nav-item { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 9px 10px; border-radius: 6px; color: var(--ink-2); cursor: pointer; font-size: 13px; font-weight: 500; transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease); border: 0; background: transparent; text-align: left; width: 100%; }
 .nav-item:hover { background: var(--wash); color: var(--ink); }

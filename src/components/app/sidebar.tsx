@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { Icon, type IconName } from "@/components/ui/icon";
 import { useSession } from "@/components/providers/session-provider";
+import { SelloLogo } from "@/components/app/sello-logo";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { prefetchBillingUsage } from "@/components/billing/usage-snapshot";
 import { useMobileNav } from "@/components/providers/mobile-nav-provider";
@@ -63,7 +64,7 @@ export function Sidebar() {
           aria-label="Sello — go to inventory"
           title="Go to inventory"
         >
-          Sello
+          <SelloLogo />
         </button>
       </div>
 

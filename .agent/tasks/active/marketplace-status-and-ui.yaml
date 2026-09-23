@@ -45,6 +45,6 @@ documentation:
   - .creative-os/marketplace-revision.md
 review_requirements:
   - Independent review of readiness semantics, account isolation, UI, accessibility and tests.
-deployment_authorized: false
-merge_authorized: false
-notes: Independent source review approved; final owner visual review and production authorization remain pending.
+deployment_authorized: true
+merge_authorized: true
+notes: Owner approved screenshot and explicitly requested ship it on September 22, including sharpening the corner logo. Independent source review approved.

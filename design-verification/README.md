@@ -8,4 +8,4 @@ Screenshots render the actual modified Sello components and production fonts wit
 - `console.json` and `geometry.json`: browser-captured artifacts; geometry uses the unmodified Creative OS capture helper. `validation.txt`: full repository validation.
 - `archive-2026-09-09/`: preserved prior design, tests and approval. That approval does not accept this revision.
 
-Independent code review approved. Owner screenshot taste review is pending. No new production deployment or live OAuth exercise was performed. Derived digest-bound gate files are regenerated after committing source and remain gitignored. The fixture checks supplement the Next production build; they do not validate live provider health.
+Independent code review approved. Owner approved the screenshot and release on September 22; see owner-release-approval.md. No new production deployment or live OAuth exercise was performed. Derived digest-bound gate files are regenerated after committing source and remain gitignored. The fixture checks supplement the Next production build; they do not validate live provider health.

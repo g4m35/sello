@@ -82,12 +82,12 @@
           "tag": "button",
           "id": "",
           "role": "",
-          "hasText": true,
+          "hasText": false,
           "interactive": true,
           "rect": {
             "x": 24,
             "y": 20,
-            "width": 55,
+            "width": 76,
             "height": 40
           },
           "fixed": true,
@@ -95,6 +95,48 @@
         },
         {
           "index": 5,
+          "parent": 4,
+          "tag": "svg",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 24,
+            "y": 26,
+            "width": 76,
+            "height": 28
+          },
+          "fixed": true,
+          "pointerEvents": "auto"
+        },
+        {
+          "index": 6,
+          "parent": 5,
+          "tag": "path",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 24,
+            "y": 28,
+            "width": 76,
+            "height": 24
+          },
+          "fixed": true,
+          "pointerEvents": "auto",
+          "rects": [
+            {
+              "x": 24,
+              "y": 28,
+              "width": 76,
+              "height": 24
+            }
+          ]
+        },
+        {
+          "index": 7,
           "parent": 2,
           "tag": "button",
           "id": "",
@@ -111,8 +153,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 6,
-          "parent": 5,
+          "index": 8,
+          "parent": 7,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -128,7 +170,7 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 7,
+          "index": 9,
           "parent": 2,
           "tag": "form",
           "id": "",
@@ -145,8 +187,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 8,
-          "parent": 7,
+          "index": 10,
+          "parent": 9,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -162,8 +204,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 9,
-          "parent": 8,
+          "index": 11,
+          "parent": 10,
           "tag": "path",
           "id": "",
           "role": "",
@@ -187,8 +229,8 @@
           ]
         },
         {
-          "index": 10,
-          "parent": 8,
+          "index": 12,
+          "parent": 10,
           "tag": "circle",
           "id": "",
           "role": "",
@@ -212,8 +254,8 @@
           ]
         },
         {
-          "index": 11,
-          "parent": 7,
+          "index": 13,
+          "parent": 9,
           "tag": "input",
           "id": "",
           "role": "",
@@ -229,7 +271,7 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 12,
+          "index": 14,
           "parent": 2,
           "tag": "nav",
           "id": "",
@@ -246,8 +288,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 13,
-          "parent": 12,
+          "index": 15,
+          "parent": 14,
           "tag": "button",
           "id": "",
           "role": "",
@@ -263,8 +305,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 14,
-          "parent": 13,
+          "index": 16,
+          "parent": 15,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -280,58 +322,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 15,
-          "parent": 14,
-          "tag": "path",
-          "id": "",
-          "role": "",
-          "hasText": false,
-          "interactive": false,
-          "rect": {
-            "x": 25,
-            "y": 212,
-            "width": 12,
-            "height": 8
-          },
-          "fixed": true,
-          "pointerEvents": "auto",
-          "rects": [
-            {
-              "x": 25,
-              "y": 212,
-              "width": 12,
-              "height": 8
-            }
-          ]
-        },
-        {
-          "index": 16,
-          "parent": 14,
-          "tag": "path",
-          "id": "",
-          "role": "",
-          "hasText": false,
-          "interactive": false,
-          "rect": {
-            "x": 27,
-            "y": 219,
-            "width": 10,
-            "height": 6
-          },
-          "fixed": true,
-          "pointerEvents": "auto",
-          "rects": [
-            {
-              "x": 27,
-              "y": 219,
-              "width": 10,
-              "height": 6
-            }
-          ]
-        },
-        {
           "index": 17,
-          "parent": 14,
+          "parent": 16,
           "tag": "path",
           "id": "",
           "role": "",
@@ -356,7 +348,57 @@
         },
         {
           "index": 18,
-          "parent": 12,
+          "parent": 16,
+          "tag": "path",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 27,
+            "y": 219,
+            "width": 10,
+            "height": 6
+          },
+          "fixed": true,
+          "pointerEvents": "auto",
+          "rects": [
+            {
+              "x": 27,
+              "y": 219,
+              "width": 10,
+              "height": 6
+            }
+          ]
+        },
+        {
+          "index": 19,
+          "parent": 16,
+          "tag": "path",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 25,
+            "y": 212,
+            "width": 12,
+            "height": 8
+          },
+          "fixed": true,
+          "pointerEvents": "auto",
+          "rects": [
+            {
+              "x": 25,
+              "y": 212,
+              "width": 12,
+              "height": 8
+            }
+          ]
+        },
+        {
+          "index": 20,
+          "parent": 14,
           "tag": "button",
           "id": "",
           "role": "",
@@ -372,8 +414,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 19,
-          "parent": 18,
+          "index": 21,
+          "parent": 20,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -389,8 +431,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 20,
-          "parent": 19,
+          "index": 22,
+          "parent": 21,
           "tag": "path",
           "id": "",
           "role": "",
@@ -414,8 +456,8 @@
           ]
         },
         {
-          "index": 21,
-          "parent": 19,
+          "index": 23,
+          "parent": 21,
           "tag": "path",
           "id": "",
           "role": "",
@@ -439,8 +481,8 @@
           ]
         },
         {
-          "index": 22,
-          "parent": 12,
+          "index": 24,
+          "parent": 14,
           "tag": "button",
           "id": "",
           "role": "",
@@ -456,8 +498,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 23,
-          "parent": 22,
+          "index": 25,
+          "parent": 24,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -473,8 +515,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 24,
-          "parent": 23,
+          "index": 26,
+          "parent": 25,
           "tag": "path",
           "id": "",
           "role": "",
@@ -498,8 +540,8 @@
           ]
         },
         {
-          "index": 25,
-          "parent": 23,
+          "index": 27,
+          "parent": 25,
           "tag": "path",
           "id": "",
           "role": "",
@@ -523,8 +565,8 @@
           ]
         },
         {
-          "index": 26,
-          "parent": 23,
+          "index": 28,
+          "parent": 25,
           "tag": "path",
           "id": "",
           "role": "",
@@ -548,8 +590,8 @@
           ]
         },
         {
-          "index": 27,
-          "parent": 12,
+          "index": 29,
+          "parent": 14,
           "tag": "button",
           "id": "",
           "role": "",
@@ -565,8 +607,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 28,
-          "parent": 27,
+          "index": 30,
+          "parent": 29,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -582,8 +624,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 29,
-          "parent": 28,
+          "index": 31,
+          "parent": 30,
           "tag": "path",
           "id": "",
           "role": "",
@@ -607,8 +649,8 @@
           ]
         },
         {
-          "index": 30,
-          "parent": 28,
+          "index": 32,
+          "parent": 30,
           "tag": "path",
           "id": "",
           "role": "",
@@ -632,8 +674,8 @@
           ]
         },
         {
-          "index": 31,
-          "parent": 28,
+          "index": 33,
+          "parent": 30,
           "tag": "path",
           "id": "",
           "role": "",
@@ -657,7 +699,7 @@
           ]
         },
         {
-          "index": 32,
+          "index": 34,
           "parent": 2,
           "tag": "nav",
           "id": "",
@@ -674,8 +716,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 33,
-          "parent": 32,
+          "index": 35,
+          "parent": 34,
           "tag": "button",
           "id": "",
           "role": "",
@@ -691,8 +733,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 34,
-          "parent": 33,
+          "index": 36,
+          "parent": 35,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -708,8 +750,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 35,
-          "parent": 34,
+          "index": 37,
+          "parent": 36,
           "tag": "rect",
           "id": "",
           "role": "",
@@ -727,56 +769,6 @@
             {
               "x": 26,
               "y": 399,
-              "width": 4,
-              "height": 4
-            }
-          ]
-        },
-        {
-          "index": 36,
-          "parent": 34,
-          "tag": "rect",
-          "id": "",
-          "role": "",
-          "hasText": false,
-          "interactive": false,
-          "rect": {
-            "x": 33,
-            "y": 399,
-            "width": 4,
-            "height": 4
-          },
-          "fixed": true,
-          "pointerEvents": "auto",
-          "rects": [
-            {
-              "x": 33,
-              "y": 399,
-              "width": 4,
-              "height": 4
-            }
-          ]
-        },
-        {
-          "index": 37,
-          "parent": 34,
-          "tag": "rect",
-          "id": "",
-          "role": "",
-          "hasText": false,
-          "interactive": false,
-          "rect": {
-            "x": 33,
-            "y": 406,
-            "width": 4,
-            "height": 4
-          },
-          "fixed": true,
-          "pointerEvents": "auto",
-          "rects": [
-            {
-              "x": 33,
-              "y": 406,
               "width": 4,
               "height": 4
             }
@@ -784,7 +776,57 @@
         },
         {
           "index": 38,
-          "parent": 34,
+          "parent": 36,
+          "tag": "rect",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 33,
+            "y": 399,
+            "width": 4,
+            "height": 4
+          },
+          "fixed": true,
+          "pointerEvents": "auto",
+          "rects": [
+            {
+              "x": 33,
+              "y": 399,
+              "width": 4,
+              "height": 4
+            }
+          ]
+        },
+        {
+          "index": 39,
+          "parent": 36,
+          "tag": "rect",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 33,
+            "y": 406,
+            "width": 4,
+            "height": 4
+          },
+          "fixed": true,
+          "pointerEvents": "auto",
+          "rects": [
+            {
+              "x": 33,
+              "y": 406,
+              "width": 4,
+              "height": 4
+            }
+          ]
+        },
+        {
+          "index": 40,
+          "parent": 36,
           "tag": "rect",
           "id": "",
           "role": "",
@@ -808,8 +850,8 @@
           ]
         },
         {
-          "index": 39,
-          "parent": 32,
+          "index": 41,
+          "parent": 34,
           "tag": "button",
           "id": "",
           "role": "",
@@ -825,8 +867,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 40,
-          "parent": 39,
+          "index": 42,
+          "parent": 41,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -842,8 +884,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 41,
-          "parent": 40,
+          "index": 43,
+          "parent": 42,
           "tag": "path",
           "id": "",
           "role": "",
@@ -867,8 +909,8 @@
           ]
         },
         {
-          "index": 42,
-          "parent": 40,
+          "index": 44,
+          "parent": 42,
           "tag": "circle",
           "id": "",
           "role": "",
@@ -892,8 +934,8 @@
           ]
         },
         {
-          "index": 43,
-          "parent": 32,
+          "index": 45,
+          "parent": 34,
           "tag": "button",
           "id": "",
           "role": "",
@@ -909,8 +951,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 44,
-          "parent": 43,
+          "index": 46,
+          "parent": 45,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -926,8 +968,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 45,
-          "parent": 44,
+          "index": 47,
+          "parent": 46,
           "tag": "path",
           "id": "",
           "role": "",
@@ -951,8 +993,8 @@
           ]
         },
         {
-          "index": 46,
-          "parent": 44,
+          "index": 48,
+          "parent": 46,
           "tag": "circle",
           "id": "",
           "role": "",
@@ -976,8 +1018,8 @@
           ]
         },
         {
-          "index": 47,
-          "parent": 32,
+          "index": 49,
+          "parent": 34,
           "tag": "button",
           "id": "",
           "role": "",
@@ -993,8 +1035,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 48,
-          "parent": 47,
+          "index": 50,
+          "parent": 49,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -1010,8 +1052,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 49,
-          "parent": 48,
+          "index": 51,
+          "parent": 50,
           "tag": "path",
           "id": "",
           "role": "",
@@ -1035,8 +1077,8 @@
           ]
         },
         {
-          "index": 50,
-          "parent": 48,
+          "index": 52,
+          "parent": 50,
           "tag": "path",
           "id": "",
           "role": "",
@@ -1060,7 +1102,7 @@
           ]
         },
         {
-          "index": 51,
+          "index": 53,
           "parent": 2,
           "tag": "div",
           "id": "",
@@ -1077,8 +1119,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 52,
-          "parent": 51,
+          "index": 54,
+          "parent": 53,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1094,8 +1136,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 53,
-          "parent": 51,
+          "index": 55,
+          "parent": 53,
           "tag": "button",
           "id": "",
           "role": "",
@@ -1111,8 +1153,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 54,
-          "parent": 53,
+          "index": 56,
+          "parent": 55,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1128,8 +1170,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 55,
-          "parent": 53,
+          "index": 57,
+          "parent": 55,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1145,7 +1187,7 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 56,
+          "index": 58,
           "parent": 2,
           "tag": "div",
           "id": "",
@@ -1162,8 +1204,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 57,
-          "parent": 56,
+          "index": 59,
+          "parent": 58,
           "tag": "button",
           "id": "",
           "role": "",
@@ -1179,8 +1221,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 58,
-          "parent": 57,
+          "index": 60,
+          "parent": 59,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -1196,8 +1238,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 59,
-          "parent": 58,
+          "index": 61,
+          "parent": 60,
           "tag": "circle",
           "id": "",
           "role": "",
@@ -1221,8 +1263,8 @@
           ]
         },
         {
-          "index": 60,
-          "parent": 58,
+          "index": 62,
+          "parent": 60,
           "tag": "path",
           "id": "",
           "role": "",
@@ -1240,56 +1282,6 @@
             {
               "x": 28,
               "y": 964,
-              "width": 1,
-              "height": 1
-            }
-          ]
-        },
-        {
-          "index": 61,
-          "parent": 58,
-          "tag": "path",
-          "id": "",
-          "role": "",
-          "hasText": false,
-          "interactive": false,
-          "rect": {
-            "x": 35,
-            "y": 971,
-            "width": 1,
-            "height": 1
-          },
-          "fixed": true,
-          "pointerEvents": "auto",
-          "rects": [
-            {
-              "x": 35,
-              "y": 971,
-              "width": 1,
-              "height": 1
-            }
-          ]
-        },
-        {
-          "index": 62,
-          "parent": 58,
-          "tag": "path",
-          "id": "",
-          "role": "",
-          "hasText": false,
-          "interactive": false,
-          "rect": {
-            "x": 28,
-            "y": 971,
-            "width": 1,
-            "height": 1
-          },
-          "fixed": true,
-          "pointerEvents": "auto",
-          "rects": [
-            {
-              "x": 28,
-              "y": 971,
               "width": 1,
               "height": 1
             }
@@ -1297,7 +1289,57 @@
         },
         {
           "index": 63,
-          "parent": 58,
+          "parent": 60,
+          "tag": "path",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 35,
+            "y": 971,
+            "width": 1,
+            "height": 1
+          },
+          "fixed": true,
+          "pointerEvents": "auto",
+          "rects": [
+            {
+              "x": 35,
+              "y": 971,
+              "width": 1,
+              "height": 1
+            }
+          ]
+        },
+        {
+          "index": 64,
+          "parent": 60,
+          "tag": "path",
+          "id": "",
+          "role": "",
+          "hasText": false,
+          "interactive": false,
+          "rect": {
+            "x": 28,
+            "y": 971,
+            "width": 1,
+            "height": 1
+          },
+          "fixed": true,
+          "pointerEvents": "auto",
+          "rects": [
+            {
+              "x": 28,
+              "y": 971,
+              "width": 1,
+              "height": 1
+            }
+          ]
+        },
+        {
+          "index": 65,
+          "parent": 60,
           "tag": "path",
           "id": "",
           "role": "",
@@ -1321,8 +1363,8 @@
           ]
         },
         {
-          "index": 64,
-          "parent": 56,
+          "index": 66,
+          "parent": 58,
           "tag": "button",
           "id": "",
           "role": "",
@@ -1338,8 +1380,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 65,
-          "parent": 64,
+          "index": 67,
+          "parent": 66,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -1355,8 +1397,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 66,
-          "parent": 65,
+          "index": 68,
+          "parent": 67,
           "tag": "path",
           "id": "",
           "role": "",
@@ -1380,8 +1422,8 @@
           ]
         },
         {
-          "index": 67,
-          "parent": 65,
+          "index": 69,
+          "parent": 67,
           "tag": "path",
           "id": "",
           "role": "",
@@ -1405,7 +1447,7 @@
           ]
         },
         {
-          "index": 68,
+          "index": 70,
           "parent": 1,
           "tag": "div",
           "id": "",
@@ -1422,8 +1464,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 69,
-          "parent": 68,
+          "index": 71,
+          "parent": 70,
           "tag": "header",
           "id": "",
           "role": "",
@@ -1439,8 +1481,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 70,
-          "parent": 69,
+          "index": 72,
+          "parent": 71,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1456,8 +1498,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 71,
-          "parent": 70,
+          "index": 73,
+          "parent": 72,
           "tag": "strong",
           "id": "",
           "role": "",
@@ -1473,8 +1515,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 72,
-          "parent": 68,
+          "index": 74,
+          "parent": 70,
           "tag": "main",
           "id": "",
           "role": "",
@@ -1490,8 +1532,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 73,
-          "parent": 72,
+          "index": 75,
+          "parent": 74,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1507,8 +1549,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 74,
-          "parent": 73,
+          "index": 76,
+          "parent": 75,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1524,8 +1566,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 75,
-          "parent": 74,
+          "index": 77,
+          "parent": 76,
           "tag": "h1",
           "id": "",
           "role": "",
@@ -1541,8 +1583,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 76,
-          "parent": 74,
+          "index": 78,
+          "parent": 76,
           "tag": "p",
           "id": "",
           "role": "",
@@ -1558,8 +1600,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 77,
-          "parent": 72,
+          "index": 79,
+          "parent": 74,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1575,8 +1617,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 78,
-          "parent": 77,
+          "index": 80,
+          "parent": 79,
           "tag": "section",
           "id": "",
           "role": "",
@@ -1592,8 +1634,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 79,
-          "parent": 78,
+          "index": 81,
+          "parent": 80,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1609,8 +1651,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 80,
-          "parent": 79,
+          "index": 82,
+          "parent": 81,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1626,8 +1668,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 81,
-          "parent": 80,
+          "index": 83,
+          "parent": 82,
           "tag": "h2",
           "id": "ebay-heading",
           "role": "",
@@ -1643,8 +1685,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 82,
-          "parent": 80,
+          "index": 84,
+          "parent": 82,
           "tag": "span",
           "id": "",
           "role": "",
@@ -1660,8 +1702,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 83,
-          "parent": 79,
+          "index": 85,
+          "parent": 81,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1677,8 +1719,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 84,
-          "parent": 83,
+          "index": 86,
+          "parent": 85,
           "tag": "button",
           "id": "",
           "role": "",
@@ -1694,8 +1736,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 85,
-          "parent": 84,
+          "index": 87,
+          "parent": 86,
           "tag": "svg",
           "id": "",
           "role": "",
@@ -1711,8 +1753,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 86,
-          "parent": 85,
+          "index": 88,
+          "parent": 87,
           "tag": "path",
           "id": "",
           "role": "",
@@ -1736,8 +1778,8 @@
           ]
         },
         {
-          "index": 87,
-          "parent": 83,
+          "index": 89,
+          "parent": 85,
           "tag": "button",
           "id": "",
           "role": "",
@@ -1753,8 +1795,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 88,
-          "parent": 78,
+          "index": 90,
+          "parent": 80,
           "tag": "dl",
           "id": "",
           "role": "",
@@ -1770,8 +1812,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 89,
-          "parent": 88,
+          "index": 91,
+          "parent": 90,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1787,8 +1829,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 90,
-          "parent": 89,
+          "index": 92,
+          "parent": 91,
           "tag": "dt",
           "id": "",
           "role": "",
@@ -1804,8 +1846,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 91,
-          "parent": 89,
+          "index": 93,
+          "parent": 91,
           "tag": "dd",
           "id": "",
           "role": "",
@@ -1821,8 +1863,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 92,
-          "parent": 88,
+          "index": 94,
+          "parent": 90,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1838,8 +1880,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 93,
-          "parent": 92,
+          "index": 95,
+          "parent": 94,
           "tag": "dt",
           "id": "",
           "role": "",
@@ -1855,8 +1897,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 94,
-          "parent": 92,
+          "index": 96,
+          "parent": 94,
           "tag": "dd",
           "id": "",
           "role": "",
@@ -1872,8 +1914,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 95,
-          "parent": 78,
+          "index": 97,
+          "parent": 80,
           "tag": "p",
           "id": "",
           "role": "",
@@ -1889,8 +1931,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 96,
-          "parent": 77,
+          "index": 98,
+          "parent": 79,
           "tag": "section",
           "id": "",
           "role": "",
@@ -1906,8 +1948,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 97,
-          "parent": 96,
+          "index": 99,
+          "parent": 98,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1923,8 +1965,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 98,
-          "parent": 97,
+          "index": 100,
+          "parent": 99,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1940,8 +1982,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 99,
-          "parent": 98,
+          "index": 101,
+          "parent": 100,
           "tag": "h2",
           "id": "stockx-heading",
           "role": "",
@@ -1957,8 +1999,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 100,
-          "parent": 98,
+          "index": 102,
+          "parent": 100,
           "tag": "span",
           "id": "",
           "role": "",
@@ -1974,8 +2016,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 101,
-          "parent": 97,
+          "index": 103,
+          "parent": 99,
           "tag": "div",
           "id": "",
           "role": "",
@@ -1991,8 +2033,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 102,
-          "parent": 101,
+          "index": 104,
+          "parent": 103,
           "tag": "button",
           "id": "",
           "role": "",
@@ -2008,8 +2050,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 103,
-          "parent": 96,
+          "index": 105,
+          "parent": 98,
           "tag": "p",
           "id": "",
           "role": "",
@@ -2025,8 +2067,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 104,
-          "parent": 77,
+          "index": 106,
+          "parent": 79,
           "tag": "section",
           "id": "",
           "role": "",
@@ -2042,8 +2084,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 105,
-          "parent": 104,
+          "index": 107,
+          "parent": 106,
           "tag": "div",
           "id": "",
           "role": "",
@@ -2059,8 +2101,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 106,
-          "parent": 105,
+          "index": 108,
+          "parent": 107,
           "tag": "div",
           "id": "",
           "role": "",
@@ -2076,8 +2118,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 107,
-          "parent": 106,
+          "index": 109,
+          "parent": 108,
           "tag": "h2",
           "id": "etsy-heading",
           "role": "",
@@ -2093,8 +2135,8 @@
           "pointerEvents": "auto"
         },
         {
-          "index": 108,
-          "parent": 106,
+          "index": 110,
+          "parent": 108,
           "tag": "span",
           "id": "",
           "role": "",

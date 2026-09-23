@@ -2,7 +2,7 @@
 
 Reviewer: Codex agent autonomy_review. Approved current diff after identifying and resolving the omitted-scope OAuth blocker. Signed consent binds the exact request scopes and environment; explicit narrower/empty grants and legacy unknown metadata remain conservative. Zod validates OAuth state and token responses. Identity checks, account-scoped encrypted persistence, and existing selling readiness remain intact. No live OAuth or provider action was exercised.
 
-Source accessibility, loading/error behavior, tests, security and architecture were reviewed. Root subsequently ran the full repository gate and browser interaction checks. Owner visual acceptance remains pending; this is a draft preview, not a production release.
+Source accessibility, loading/error behavior, tests, security and architecture were reviewed. Root subsequently ran the full repository gate and browser interaction checks. Owner subsequently approved the screenshot and requested release, including a sharp vector corner logo; see owner-release-approval.md.
 
 | Before | After |
 | --- | --- |
