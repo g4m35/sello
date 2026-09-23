@@ -25,6 +25,7 @@ allowed_paths:
   - src/lib/marketplace/**
   - src/lib/comps/**
   - src/lib/api/**
+  - .gitignore
   - .env.example
   - .agent/**
   - .creative-os/**

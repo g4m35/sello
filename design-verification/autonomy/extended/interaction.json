@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "scope": "Synthetic actual-component fixture",
+  "checks": [
+    {
+      "name": "sale modal explains effects",
+      "pass": true
+    },
+    {
+      "name": "escape returns focus",
+      "pass": true
+    },
+    {
+      "name": "confirmed task removed",
+      "pass": true
+    },
+    {
+      "name": "monitoring failure visible",
+      "pass": true
+    },
+    {
+      "name": "failed task remains with error",
+      "pass": true
+    },
+    {
+      "name": "bulk submits edited groups",
+      "pass": true
+    },
+    {
+      "name": "bulk eliminates manual save",
+      "pass": true
+    },
+    {
+      "name": "retry accepted status replaces failed job",
+      "pass": true
+    }
+  ]
+}
