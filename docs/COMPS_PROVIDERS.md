@@ -51,12 +51,10 @@ Active asking prices (not sold). Used as ceiling/context; confidence is capped a
 medium when pricing rests on active listings only.
 **Cost/rate:** eBay Browse has generous app-token rate limits; calls are cheap.
 
-### 3. eBay active (SerpApi) — optional fallback (dormant stub)
-```
-COMPS_SERPAPI_EBAY_ACTIVE_ENABLED="false"
-SERPAPI_API_KEY="[SERPAPI_API_KEY]"
-```
-Not implemented yet (returns `[]`); leave disabled. Only a backup to eBay Browse.
+The runtime registry also includes the implemented StockX market-data adapter,
+subject to its account connection and provider controls. Empty placeholder
+adapters have been removed; flags for SerpApi, Marketplace Insights, Grailed,
+Poshmark, Depop or Google Lens do not enable a comparison provider.
 
 ## Refresh cooldown
 
@@ -94,8 +92,6 @@ COMPS_EBAY_ACTIVE_ENABLED="false"
 COMPS_APIFY_EBAY_SOLD_ENABLED="false"
 APIFY_TOKEN="[APIFY_API_TOKEN]"
 APIFY_EBAY_SOLD_ACTOR="[apify_actor_id_or_slug]"
-COMPS_SERPAPI_EBAY_ACTIVE_ENABLED="false"
-SERPAPI_API_KEY="[OPTIONAL_SERPAPI_API_KEY]"
 COMPS_REFRESH_COOLDOWN_SECONDS="60"
 COMPS_MAX_PROVIDER_RESULTS="20"
 COMPS_MAX_QUERY_VARIANTS="2"

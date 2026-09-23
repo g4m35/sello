@@ -1,10 +1,10 @@
 import { apifyEbaySoldSource } from "@/lib/comps/sources/apify-ebay-sold";
 import { ebayBrowseSource } from "@/lib/comps/sources/ebay-browse";
-import { serpapiEbayActiveSource } from "@/lib/comps/sources/serpapi-ebay-active";
 import { stockxSource } from "@/lib/comps/sources/stockx";
 import type { CompSource } from "@/lib/comps/source";
 
-// Sold sources first (preferred), active/visual sources last (interim signals).
+// Implemented sources only. Sold results are preferred during pricing;
+// active market levels remain context rather than completed-sale evidence.
 // All are env-gated: a source with no configured credentials reports
 // isEnabled() === false and is skipped, so nothing runs unless configured.
 // TODO-only adapters are intentionally absent. Credentials and an enable flag
@@ -13,7 +13,6 @@ export const COMP_SOURCES: CompSource[] = [
   stockxSource,
   apifyEbaySoldSource,
   ebayBrowseSource,
-  serpapiEbayActiveSource,
 ];
 
 export function enabledCompSources(): CompSource[] {

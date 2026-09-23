@@ -14,6 +14,17 @@ allowed_paths:
   - src/app/api/listings/[id]/automation/**
   - src/lib/comps/registry.ts
   - src/lib/comps/registry.test.ts
+  - src/lib/comps/flags.ts
+  - src/lib/comps/flags.test.ts
+  - src/lib/comps/sources/serpapi-ebay-active.ts
+  - src/lib/comps/sources/ebay-marketplace-insights.ts
+  - src/lib/comps/sources/grailed-sold.ts
+  - src/lib/comps/sources/poshmark-sold.ts
+  - src/lib/comps/sources/depop-active.ts
+  - src/lib/comps/sources/google-lens.ts
+  - src/lib/comps/sources/stubs.test.ts
+  - .env.example
+  - docs/COMPS_PROVIDERS.md
   - docs/operations/autonomous-listing.md
   - .agent/**
 protected_paths:

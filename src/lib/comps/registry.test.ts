@@ -5,9 +5,9 @@ import { COMP_SOURCES, enabledCompSources } from "./registry";
 afterEach(() => vi.unstubAllEnvs());
 describe("implemented comp provider availability", () => {
   it("does not advertise TODO providers even when their flags and credentials exist", () => {
-    for (const key of ["PRICE_COMP_EBAY_MARKETPLACE_INSIGHTS_ENABLED", "EBAY_MARKETPLACE_INSIGHTS_ACCESS_APPROVED", "PRICE_COMP_GRAILED_SOLD_ENABLED", "PRICE_COMP_POSHMARK_SOLD_ENABLED", "PRICE_COMP_DEPOP_ACTIVE_ENABLED", "PRICE_COMP_GOOGLE_LENS_ENABLED"]) vi.stubEnv(key, "true");
-    for (const key of ["EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET", "GRAILED_COMPS_API_KEY", "POSHMARK_COMPS_API_KEY", "DEPOP_COMPS_API_KEY", "GOOGLE_LENS_API_KEY"]) vi.stubEnv(key, "configured");
-    const unimplemented = ["ebay-marketplace-insights", "grailed-sold", "poshmark-sold", "depop-active", "google-lens"];
+    for (const key of ["PRICE_COMP_EBAY_MARKETPLACE_INSIGHTS_ENABLED", "EBAY_MARKETPLACE_INSIGHTS_ACCESS_APPROVED", "PRICE_COMP_GRAILED_SOLD_ENABLED", "PRICE_COMP_POSHMARK_SOLD_ENABLED", "PRICE_COMP_DEPOP_ACTIVE_ENABLED", "PRICE_COMP_GOOGLE_LENS_ENABLED", "COMPS_SERPAPI_EBAY_ACTIVE_ENABLED"]) vi.stubEnv(key, "true");
+    for (const key of ["EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET", "GRAILED_COMPS_API_KEY", "POSHMARK_COMPS_API_KEY", "DEPOP_COMPS_API_KEY", "GOOGLE_LENS_API_KEY", "SERPAPI_API_KEY"]) vi.stubEnv(key, "configured");
+    const unimplemented = ["ebay-marketplace-insights", "grailed-sold", "poshmark-sold", "depop-active", "google-lens", "serpapi-ebay-active"];
     expect(COMP_SOURCES.map((source) => source.id).filter((id) => unimplemented.includes(id))).toEqual([]);
     expect(enabledCompSources().map((source) => source.id).filter((id) => unimplemented.includes(id))).toEqual([]);
   });

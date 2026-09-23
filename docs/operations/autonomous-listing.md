@@ -24,7 +24,7 @@ New jobs persist a checkpoint before attempting publication. Failures before tha
 
 Failure and interrupted-job parking create a deduplicated listing review task in the inventory owner's account in the same transaction as the failed status. The existing attention queue can therefore show the failure even after the seller leaves the editor. Explicit retry resolves only that job's review task in the transaction that creates replacement preparation; other sale and delisting tasks remain open.
 
-Only implemented comparison sources participate in runtime discovery or availability reporting. Placeholder adapters for Marketplace Insights, Grailed, Poshmark, Depop and Google Lens are excluded until they have real, tested implementations; enabling their environment flags does not make comparisons available.
+Only implemented comparison sources participate in runtime discovery or availability reporting. Empty adapters for Marketplace Insights, Grailed, Poshmark, Depop, Google Lens and SerpApi have been deleted with their unused configuration. Historical provider labels remain readable, but old enable flags do not make comparisons available.
 
 Failed uploads permit a new request key only when reservation release is confirmed and the draft-writing transaction never began. Ambiguous network/write outcomes retain the original key. A background completion refresh preserves the seller's unsaved or in-flight editor changes.
 
