@@ -1,0 +1,12 @@
+{
+  "task_id": "marketplace-status-and-ui",
+  "task_file": ".agent/tasks/active/marketplace-status-and-ui.yaml",
+  "base_branch": "develop",
+  "base_commit": "b77050620a9ec45c3fd0a3a28b4be05172e29667",
+  "working_branch": "fix/marketplace-status-and-ui",
+  "worktree_path": "/Users/jheller/dev/sello-worktrees/marketplace-status-and-ui",
+  "created_at": "2026-09-23T01:45:00.000Z",
+  "updated_at": "2026-09-23T02:08:21.203670+00:00",
+  "started_by": "Codex",
+  "status": "in_review"
+}

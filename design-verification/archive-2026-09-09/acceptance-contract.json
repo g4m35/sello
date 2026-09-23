@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "projectId": "sello-marketplace-correction",
+  "projectId": "sello-studio",
   "releaseTier": "client-preview",
   "buildMode": "hybrid",
   "customerFacing": true,
@@ -18,5 +18,5 @@
     "desktopMinWidth": 1024,
     "mobileWidth": 390
   },
-  "frozenAt": "2026-09-23T01:50:00.000Z"
+  "frozenAt": "2026-09-08T18:30:53.636639+00:00"
 }

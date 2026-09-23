@@ -1,73 +1,20 @@
 {
-  "environment": "Browserbase cloud through temporary fixture tunnel; warm cache smoke, not production RUM",
+  "environment": "Browserbase cloud fixture, warm-cache smoke; not production performance",
   "timing": {
     "navigation": [
       {
-        "domContentLoadedMs": 306.79999999998836,
-        "loadMs": 331.0999999999767,
-        "transferBytes": 300
-      }
-    ],
-    "resources": [
-      {
-        "name": "/app.css",
-        "durationMs": 0,
-        "transferBytes": 300
-      },
-      {
-        "name": "/app.js",
-        "durationMs": 0,
-        "transferBytes": 300
-      },
-      {
-        "name": "/media/a343f882a40d2cc9-s.p.1sj6eobyi31rd.woff2",
-        "durationMs": 0,
-        "transferBytes": 300
-      },
-      {
-        "name": "/media/e41d5df559864f9e-s.p.1g73gv09-xcb6.woff2",
-        "durationMs": 0,
-        "transferBytes": 300
-      },
-      {
-        "name": "/media/051742360c26797e-s.p.1bkzbscqrt8rl.woff2",
-        "durationMs": 0,
-        "transferBytes": 300
-      },
-      {
-        "name": "/favicon.ico",
-        "durationMs": 1.7000000000116415,
-        "transferBytes": 0
-      },
-      {
-        "name": "/product-0.svg",
-        "durationMs": 314.3999999999651,
-        "transferBytes": 300
-      },
-      {
-        "name": "/product-2.svg",
-        "durationMs": 308.70000000001164,
-        "transferBytes": 300
-      },
-      {
-        "name": "/product-1.svg",
-        "durationMs": 320.80000000004657,
-        "transferBytes": 300
-      },
-      {
-        "name": "/product-3.svg",
-        "durationMs": 493.3999999999651,
-        "transferBytes": 300
+        "domContentLoadedMs": 990.3000000000466,
+        "loadMs": 1213.2000000001863
       }
     ],
     "paint": [
       {
         "name": "first-paint",
-        "startTime": 360
+        "startTime": 832
       },
       {
         "name": "first-contentful-paint",
-        "startTime": 360
+        "startTime": 1008
       }
     ]
   }

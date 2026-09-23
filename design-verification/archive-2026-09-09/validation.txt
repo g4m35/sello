@@ -7,7 +7,7 @@
 > eslint
 
 
-/Users/jheller/dev/sello-worktrees/marketplace-status-and-ui/src/app/api/listings/draft/draft-actions.test.ts
+/Users/jheller/dev/sello-worktrees/autonomous-listing/src/app/api/listings/draft/draft-actions.test.ts
   38:25  warning  '_m' is assigned a value but never used  @typescript-eslint/no-unused-vars
   38:36  warning  '_f' is assigned a value but never used  @typescript-eslint/no-unused-vars
 
@@ -21,20 +21,20 @@ Loaded Prisma config from prisma.config.ts.
 
 Prisma schema loaded from prisma/schema.prisma.
 
-✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 86ms
+✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 89ms
 
 
 > resale-crosslister@0.1.0 test
 > vitest run
 
 
- RUN  v4.1.10 /Users/jheller/dev/sello-worktrees/marketplace-status-and-ui
+ RUN  v4.1.10 /Users/jheller/dev/sello-worktrees/autonomous-listing
 
 
  Test Files  243 passed (243)
-      Tests  1781 passed (1781)
-   Start at  22:03:58
-   Duration  11.99s (transform 4.68s, setup 0ms, import 18.52s, tests 13.97s, environment 20ms)
+      Tests  1767 passed (1767)
+   Start at  14:56:27
+   Duration  12.42s (transform 3.73s, setup 0ms, import 16.09s, tests 14.23s, environment 14ms)
 
 
 > resale-crosslister@0.1.0 prisma:validate
@@ -52,7 +52,7 @@ Loaded Prisma config from prisma.config.ts.
 
 Prisma schema loaded from prisma/schema.prisma.
 
-✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 81ms
+✔ Generated Prisma Client (7.8.0) to ./src/generated/prisma in 82ms
 
 
 > resale-crosslister@0.1.0 build
@@ -61,15 +61,15 @@ Prisma schema loaded from prisma/schema.prisma.
 ▲ Next.js 16.2.10 (Turbopack)
 
   Creating an optimized production build ...
-✓ Compiled successfully in 2.3s
+✓ Compiled successfully in 2.6s
   Running TypeScript ...
-  Finished TypeScript in 4.5s ...
+  Finished TypeScript in 4.1s ...
   Collecting page data using 9 workers ...
   Generating static pages using 9 workers (0/76) ...
   Generating static pages using 9 workers (19/76) 
   Generating static pages using 9 workers (38/76) 
   Generating static pages using 9 workers (57/76) 
-✓ Generating static pages using 9 workers (76/76) in 144ms
+✓ Generating static pages using 9 workers (76/76) in 116ms
   Finalizing page optimization ...
 
 Route (app)

@@ -96,7 +96,7 @@ export default function ChannelsPage() {
       <main className="page">
         <div className="page__head">
           <div>
-            <span className="eyebrow">YOUR SALES CHANNELS</span>
+
             <h1 className="page__title">
               Marketplaces
             </h1>

@@ -1,0 +1,50 @@
+id: marketplace-status-and-ui
+title: Honest eBay permissions and restrained seller interface
+status: in_review
+owner: Codex
+reviewer: autonomy_review
+risk: high
+task_type: marketplace
+base_branch: develop
+working_branch: fix/marketplace-status-and-ui
+worktree_path: /Users/jheller/dev/sello-worktrees/marketplace-status-and-ui
+created_at: 2026-09-23T01:45:00.000Z
+goal: Distinguish connection and sales permission, and simplify the seller interface shown by the owner.
+context: Owner rejects current UI and reports connected eBay despite the monitoring warning; prior full implementation authorization remains applicable.
+non_goals:
+  - Change granted OAuth permissions or bypass seller authorization.
+  - Change publishing, reconciliation, session authentication or database schema.
+allowed_paths:
+  - src/app/**
+  - src/components/**
+  - src/lib/marketplace/adapters/ebay/readiness.ts
+  - src/lib/marketplace/adapters/ebay/readiness.test.ts
+  - src/lib/marketplace/adapters/ebay/types.ts
+  - src/lib/marketplace/adapters/ebay/oauth.ts
+  - src/lib/marketplace/adapters/ebay/oauth.test.ts
+  - .agent/**
+  - .creative-os/**
+  - design-verification/**
+  - docs/**
+protected_paths:
+  - prisma/**
+  - .github/**
+required_reading:
+  - AGENTS.md
+  - src/lib/marketplace/AGENTS.md
+acceptance:
+  - Unknown historical permissions remain unknown; confirmed missing permissions display the sales-access gap.
+  - A successful OAuth grant without a scope field retains only the scopes bound to its signed consent request.
+  - Selling readiness remains independent of sales-read permission.
+  - Settings is readable at desktop and 390px, with keyboard controls and honest loading/error states.
+  - Redundant seller headings and sidebar decorations are removed from source.
+validation:
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - .creative-os/marketplace-revision.md
+review_requirements:
+  - Independent review of readiness semantics, account isolation, UI, accessibility and tests.
+deployment_authorized: false
+merge_authorized: false
+notes: Independent source review approved; final owner visual review and production authorization remain pending.

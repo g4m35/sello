@@ -37,6 +37,10 @@ export async function GET(request: Request) {
       userId: user.id,
       state,
       secret: getEbayOAuthStateSecret(),
+      consent: {
+        environment: config.environment,
+        scopes: authorizationUrl.searchParams.get("scope")!.split(/\s+/).filter(Boolean),
+      },
     });
 
     const response = wantsJson(request)

@@ -76,7 +76,7 @@ export default function FeedbackPage() {
       <Topbar crumbs={["Feedback"]} />
       <main className="page stack-4" style={{ maxWidth: 800 }}>
         <div className="page__title-row">
-          <span className="eyebrow">HELP SHAPE SELLO</span>
+
           <h1 className="page__title">What could work better?</h1>
           <p className="t-small muted">
             Report bugs, confusing flows, pricing issues, or marketplace problems.

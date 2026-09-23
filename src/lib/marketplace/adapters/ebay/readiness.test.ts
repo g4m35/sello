@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EBAY_FULFILLMENT_SCOPE } from "./types";
 import { EbayIntegrationError, ebayErrorCodes } from "./errors";
 import {
   getStoredEbayReadiness,
@@ -7,7 +8,7 @@ import {
   type EbayReadinessPrismaLike,
 } from "./readiness";
 
-function createPrisma(connection: null | { id: string } = { id: "connection-1" }) {
+function createPrisma(connection: null | { id: string; scopes?: string[] } = { id: "connection-1" }) {
   const configRows: unknown[] = [];
   const prisma: EbayReadinessPrismaLike & { configRows: unknown[] } = {
     configRows,
@@ -36,7 +37,7 @@ function createPrisma(connection: null | { id: string } = { id: "connection-1" }
               refreshTokenEnc: "enc",
               accessTokenExpiresAt: new Date(Date.now() + 60_000),
               refreshTokenExpiresAt: null,
-              scopes: [],
+              scopes: connection.scopes ?? [],
             }
           : null;
       },
@@ -58,6 +59,20 @@ function createPrisma(connection: null | { id: string } = { id: "connection-1" }
 }
 
 describe("eBay readiness", () => {
+  it.each([{ scopes: [], expected: null }, { scopes: ["https://api.ebay.com/oauth/api_scope/sell.inventory"], expected: false }, { scopes: [EBAY_FULFILLMENT_SCOPE], expected: true }])("separates sales permission from complete selling setup ($scopes)", async ({ scopes, expected }) => {
+    const prisma = createPrisma({ id: "connection-1", scopes });
+    prisma.ebaySellerConfig.findFirst = async () => ({ marketplaceId: "EBAY_US", paymentPolicyId: "payment", fulfillmentPolicyId: "shipping", returnPolicyId: "return", merchantLocationKey: "location", readinessStatus: "READY", readinessCheckedAt: new Date() });
+    const result = await getStoredEbayReadiness(prisma, "user-1", "production", "acc-1");
+    expect(result).toMatchObject({ connected: true, ready: true, salesReadPermission: expected });
+    expect(result).not.toHaveProperty("scopes");
+    expect(result).not.toHaveProperty("accessTokenEnc");
+  });
+
+  it("does not reveal another account's permissions", async () => {
+    const result = await getStoredEbayReadiness(createPrisma({ id: "connection-1", scopes: [EBAY_FULFILLMENT_SCOPE] }), "user-1", "production", "other-account");
+    expect(result).toMatchObject({ connected: false, ready: false, salesReadPermission: false });
+  });
+
   it("reports a missing connection without requiring eBay config", async () => {
     await expect(
       getStoredEbayReadiness(createPrisma(null), "user-1", "sandbox"),
@@ -200,6 +215,7 @@ describe("eBay readiness", () => {
       },
     }, "sandbox");
 
+    expect(result.salesReadPermission).toBeNull();
     expect(result.ready).toBe(true);
     expect(result.missing).toEqual([]);
     expect(prisma.configRows[0]).toMatchObject({
