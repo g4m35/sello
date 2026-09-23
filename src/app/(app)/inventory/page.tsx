@@ -50,7 +50,7 @@ const TAB_LABEL: Record<TabValue, string> = {
   ready: "Ready",
   active: "Active",
   sold: "Sold",
-  error: "Needs attention",
+  error: "Listing issues",
 };
 
 const PAGE_SIZE = 24;
@@ -134,7 +134,7 @@ export default function InventoryPage() {
       error: 0,
     };
     // Bucket by display readiness, not raw lifecycle, so an approved-but-not-
-    // ready item counts under "Needs attention", matching the dashboard.
+    // ready item counts under "Listing issues", matching the dashboard.
     for (const it of items ?? []) base[inventoryDisplayBucket(it)] += 1;
     return base;
   }, [items]);

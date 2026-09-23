@@ -8,7 +8,7 @@ import type {
   SyncJobStatus,
   SyncJobType,
 } from "@/generated/prisma/client";
-import { safeFailureText } from "@/lib/errors";
+import { logUnexpectedError, safeFailureText } from "@/lib/errors";
 import {
   recordInventoryEvent,
   type InventoryEventPrismaLike,
@@ -560,17 +560,16 @@ export type RunQueuedSummary = {
 };
 
 /**
- * Claim a batch then run each. Returns a SANITIZED summary only — never job
+ * Claim each job only when ready to execute it. Returns a SANITIZED summary only — never job
  * payloads or secrets. Safe to call repeatedly (idempotent per job).
  */
 export async function runQueuedSyncJobs(
   db: SyncWorkerPrismaLike = getPrisma() as unknown as SyncWorkerPrismaLike,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; deadline?: number } = {},
   deps: RunSyncJobDeps = {},
 ): Promise<RunQueuedSummary> {
-  const claimedJobs = await claimQueuedSyncJobs(db, opts);
   const summary: RunQueuedSummary = {
-    claimed: claimedJobs.length,
+    claimed: 0,
     succeeded: 0,
     failed: 0,
     skipped: 0,
@@ -578,9 +577,22 @@ export async function runQueuedSyncJobs(
     retryWait: 0,
   };
 
-  for (const job of claimedJobs) {
+  for (let i = 0; i < clampLimit(opts.limit); i++) {
+    if (Date.now() >= (opts.deadline ?? Infinity)) break;
+    const [job] = await claimQueuedSyncJobs(db, { limit: 1 });
+    if (!job) break;
+    summary.claimed++;
     if (!job.leaseOwner) continue;
-    const { status } = await runSyncJob(db, job.id, job.leaseOwner, deps);
+    // A DB failure may leave this lease for conservative stale recovery, but
+    // must not strand a whole preclaimed batch or stop other sellers' jobs.
+    let status: string;
+    try {
+      ({ status } = await runSyncJob(db, job.id, job.leaseOwner, deps));
+    } catch (error) {
+      logUnexpectedError("inventory_sync_job", error);
+      summary.failed++;
+      continue;
+    }
     switch (status) {
       case "succeeded":
         summary.succeeded += 1;
