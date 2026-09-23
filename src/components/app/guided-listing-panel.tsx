@@ -286,8 +286,8 @@ export function GuidedListingPanel({
       <div className="card__body stack-4">
         <div className="t-small muted">
           For channels Sello does not publish to directly: open the sell form,
-          copy each field, add the photos, then paste the live URL back so the
-          double-sell safety net covers it. Nothing is published automatically.
+          copy each field, add the photos, then paste the live URL back to track the listing in Sello.
+          These marketplaces require you to check for sales and remove sold items yourself.
         </div>
         {marketplaces.map((mp) => (
           <GuidedListingSection
