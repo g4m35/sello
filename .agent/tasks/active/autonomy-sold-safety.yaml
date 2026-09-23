@@ -34,6 +34,7 @@ acceptance:
   - StockX publishing, delisting and status checks refresh expired tokens within the existing account-scoped connection.
   - Stale StockX status responses cannot overwrite a terminal listing or newer reconciliation.
   - Pending or unverified StockX delist responses never mark a listing delisted or allow mutation replay.
+  - A refresh cannot overwrite a reconnect or competing credential rotation, and losing refreshes never return a stale token.
   - Provider failures remain fail closed and no live provider calls are used in validation.
 validation:
   - npm run typecheck

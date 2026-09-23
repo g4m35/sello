@@ -31,11 +31,12 @@ describe.each(actions)("StockX $name production token handling", ({ resolve }) =
     const fetchMock = vi.fn(async () => Response.json({ access_token: "new-access", refresh_token: "new-refresh", expires_in: 3600, token_type: "Bearer" }));
     vi.stubGlobal("fetch", fetchMock);
     const update = vi.fn<StockXTokenPrismaLike["marketplaceConnection"]["update"]>().mockResolvedValue({});
-    const token = await resolve(connection(true), config, { marketplaceConnection: { update } });
+    const original = connection(true);
+    const token = await resolve(original, config, { marketplaceConnection: { update } });
     expect(token).toBe("new-access");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const mutation = update.mock.calls[0]![0];
-    expect(mutation.where).toEqual({ id: "connection-1", accountId: "account-1" });
+    expect(mutation.where).toEqual({ id: "connection-1", accountId: "account-1", accessTokenEnc: original.accessTokenEnc, refreshTokenEnc: original.refreshTokenEnc });
     expect(decryptStockXToken(mutation.data.accessTokenEnc, key)).toBe("new-access");
     expect(decryptStockXToken(mutation.data.refreshTokenEnc, key)).toBe("new-refresh");
   });
