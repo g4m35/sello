@@ -589,7 +589,7 @@ describe("executePublish — eBay dispatch", () => {
     expect(update.data.externalListingId).toBe("listing-x");
     expect(update.data.status).toBe("LISTED");
     expect(prisma._state.inventoryUpdates).toEqual([
-      { where: { id: "item-1" }, data: { status: "LISTED" } },
+      { where: { id: "item-1", status: { not: "SOLD" }, soldAt: null, soldSourceMarketplace: null }, data: { status: "LISTED" } },
     ]);
     expect(prisma._state.events.map((e) => e.kind)).toEqual(
       expect.arrayContaining([

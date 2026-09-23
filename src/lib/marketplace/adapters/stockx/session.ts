@@ -53,6 +53,41 @@ export async function loadStockXConnectionSession(
     );
   }
 
+  const accessToken = await getUsableStockXAccessToken(prisma, connection, config, options);
+
+  return {
+    connection: {
+      id: connection.id,
+      accountId: connection.accountId,
+      externalUserId: connection.externalUserId,
+      accessTokenEnc: connection.accessTokenEnc,
+      refreshTokenEnc: connection.refreshTokenEnc,
+    },
+    accessToken,
+  };
+}
+
+export type StockXTokenConnection = Pick<MarketplaceConnection,
+  "id" | "accountId" | "accessTokenEnc" | "refreshTokenEnc" | "accessTokenExpiresAt"
+>;
+
+export type StockXTokenPrismaLike = {
+  marketplaceConnection: {
+    update(args: {
+      where: { id: string; accountId: string; accessTokenEnc: string; refreshTokenEnc: string };
+      data: { accessTokenEnc: string; refreshTokenEnc: string; accessTokenExpiresAt: Date };
+    }): Promise<unknown>;
+  };
+};
+
+// Shared by catalog and background actions so token expiry does not strand
+// listing, sale-monitoring or delisting work. Callers load a scoped connection.
+export async function getUsableStockXAccessToken(
+  prisma: StockXTokenPrismaLike,
+  connection: StockXTokenConnection,
+  config: StockXConfig,
+  options?: { fetchImpl?: typeof fetch; now?: number },
+): Promise<string> {
   const now = options?.now ?? Date.now();
   let accessToken = decryptStockXToken(connection.accessTokenEnc, config.tokenEncryptionKey);
 
@@ -67,26 +102,34 @@ export async function loadStockXConnectionSession(
       options?.fetchImpl ?? fetch,
     );
     accessToken = refreshed.access_token;
-    await prisma.marketplaceConnection.update({
-      where: { id: connection.id },
-      data: {
-        accessTokenEnc: encryptStockXToken(refreshed.access_token, config.tokenEncryptionKey),
-        refreshTokenEnc: refreshed.refresh_token
-          ? encryptStockXToken(refreshed.refresh_token, config.tokenEncryptionKey)
-          : connection.refreshTokenEnc,
-        accessTokenExpiresAt: new Date(now + refreshed.expires_in * 1000),
-      },
-    });
+    try {
+      await prisma.marketplaceConnection.update({
+        where: {
+          id: connection.id, accountId: connection.accountId,
+          accessTokenEnc: connection.accessTokenEnc,
+          refreshTokenEnc: connection.refreshTokenEnc,
+        },
+        data: {
+          accessTokenEnc: encryptStockXToken(refreshed.access_token, config.tokenEncryptionKey),
+          refreshTokenEnc: refreshed.refresh_token
+            ? encryptStockXToken(refreshed.refresh_token, config.tokenEncryptionKey)
+            : connection.refreshTokenEnc,
+          accessTokenExpiresAt: new Date(now + refreshed.expires_in * 1000),
+        },
+      });
+    } catch (error) {
+      // A reconnect or competing rotation replaced the exact credential pair
+      // used for this refresh. Never overwrite it or use this stale identity.
+      if (error && typeof error === "object" && "code" in error && error.code === "P2025") {
+        throw new StockXIntegrationError(
+          stockxErrorCodes.tokenRefreshFailed,
+          "The StockX connection changed during refresh. Retry with the current connection.",
+          409,
+        );
+      }
+      throw error;
+    }
   }
 
-  return {
-    connection: {
-      id: connection.id,
-      accountId: connection.accountId,
-      externalUserId: connection.externalUserId,
-      accessTokenEnc: connection.accessTokenEnc,
-      refreshTokenEnc: connection.refreshTokenEnc,
-    },
-    accessToken,
-  };
+  return accessToken;
 }

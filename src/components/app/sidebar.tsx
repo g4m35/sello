@@ -21,7 +21,7 @@ export function Sidebar() {
   const isActive = (href: string) =>
     href === "/inventory"
       ? pathname.startsWith("/inventory") && !pathname.startsWith("/inventory/bulk")
-      : href === "/channels"
+      : href === "/settings/marketplaces"
         ? pathname === "/channels" || pathname.startsWith("/settings/marketplaces")
       : href === "/settings"
         ? pathname === "/settings"
@@ -31,7 +31,7 @@ export function Sidebar() {
     { href: "/inventory", label: "Inventory", icon: "box" },
     { href: "/inventory/bulk", label: "Bulk intake", icon: "upload" },
     { href: "/history", label: "Publish history", icon: "history" },
-    { href: "/channels", label: "Marketplaces", icon: "store" },
+    { href: "/settings/marketplaces", label: "Marketplaces", icon: "store" },
   ];
   const config: NavItem[] = [
     { href: "/dashboard", label: "Overview", icon: "grid" },

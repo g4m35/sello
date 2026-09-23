@@ -52,6 +52,7 @@ function prisma(overrides: {
       ),
     },
     marketplaceConnection: {
+      update: vi.fn(async () => ({})),
       findUnique: vi.fn(async () =>
         overrides.connection === null
           ? null
@@ -62,6 +63,7 @@ function prisma(overrides: {
               // Tests inject resolveAccessToken, so these are never decrypted.
               accessTokenEnc: overrides.connection?.accessTokenEnc ?? "encrypted-access",
               refreshTokenEnc: "encrypted-refresh",
+              accessTokenExpiresAt: new Date(Date.now() + 3600_000),
             },
       ),
     },

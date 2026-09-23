@@ -6,19 +6,17 @@ import { useRouter } from "next/navigation";
 import { useSession } from "@/components/providers/session-provider";
 import { api } from "@/lib/api/client";
 import { isPublishReady } from "@/lib/view/item-readiness-bucket";
-import { Badge, Btn, Check } from "@/components/ui/primitives";
+import { Badge, Btn } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/icon";
 import { MpLogo, MpDots, Thumb } from "@/components/ui/marketplace";
 import { Topbar } from "@/components/app/topbar";
 import { EmptyState, ErrorState, PageSkeleton } from "@/components/app/states";
-import { PublishModal } from "@/components/app/publish-modal";
 import {
   formatMoneyCents,
   relativeTime,
 } from "@/lib/view/format";
 import type {
   AttemptView,
-  ChannelView,
   ItemView,
 } from "@/lib/view/types";
 
@@ -47,13 +45,8 @@ export default function DashboardPage() {
 
   const [items, setItems] = useState<ItemView[]>([]);
   const [attempts, setAttempts] = useState<AttemptView[]>([]);
-  const [channels, setChannels] = useState<ChannelView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishItem, setPublishItem] = useState<ItemView | null>(null);
 
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
@@ -62,15 +55,13 @@ export default function DashboardPage() {
     let active = true;
     async function run() {
       try {
-        const [itemsRes, historyRes, channelsRes] = await Promise.all([
+        const [itemsRes, historyRes] = await Promise.all([
           api.listItems(token),
           api.getHistory(token),
-          api.getChannels(token),
         ]);
         if (!active) return;
         setItems(itemsRes.items);
         setAttempts(historyRes.attempts);
-        setChannels(channelsRes);
         setError(null);
       } catch (e) {
         if (active) {
@@ -113,15 +104,6 @@ export default function DashboardPage() {
     [draftItems],
   );
 
-  // Reset picked selection whenever the ready set changes, using React's
-  // render-phase derived-state pattern (no effect needed).
-  const readySig = readyItems.map((i) => i.id).join(",");
-  const [pickedSig, setPickedSig] = useState<string | null>(null);
-  if (readySig !== pickedSig) {
-    setPickedSig(readySig);
-    setPicked(new Set(readyItems.map((i) => i.id)));
-  }
-
   const attention: AttentionRow[] = useMemo(() => {
     const fromFailed: AttentionRow[] = failedItems.map((i) => ({
       id: `err-${i.id}`,
@@ -153,23 +135,6 @@ export default function DashboardPage() {
     return [...fromFailed, ...fromRegressed, ...fromDrafts];
   }, [failedItems, regressedItems, incompleteDrafts]);
 
-  const togglePick = (id: string) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const openPublish = () => {
-    const target =
-      readyItems.find((i) => picked.has(i.id)) ?? readyItems[0] ?? null;
-    if (!target) return;
-    setPublishItem(target);
-    setPublishOpen(true);
-  };
-
   if (loading) return <PageSkeleton />;
   if (error)
     return (
@@ -183,7 +148,6 @@ export default function DashboardPage() {
 
   const firstName = firstWord(name);
   const timeofday = greetingForHour(new Date().getHours());
-  const pickedReadyCount = readyItems.filter((i) => picked.has(i.id)).length;
 
   return (
     <>
@@ -291,9 +255,9 @@ export default function DashboardPage() {
                   size="sm"
                   icon="send"
                   disabled={readyItems.length === 0}
-                  onClick={openPublish}
+                  onClick={() => router.push("/inventory?tab=ready")}
                 >
-                  Publish {pickedReadyCount || readyItems.length}
+                  Review ready listings
                 </Btn>
               </div>
               {readyItems.length === 0 ? (
@@ -311,14 +275,10 @@ export default function DashboardPage() {
                       key={item.id}
                       className="attn-row"
                       style={{
-                        gridTemplateColumns: "20px 44px 1fr auto auto",
+                        gridTemplateColumns: "44px 1fr auto auto",
                       }}
                       onClick={() => router.push(`/inventory/${item.id}`)}
                     >
-                      <Check
-                        checked={picked.has(item.id)}
-                        onChange={() => togglePick(item.id)}
-                      />
                       <Thumb image={item.coverImage ?? null} size={44} />
                       <div style={{ minWidth: 0 }}>
                         <div className="attn-row__title">{item.title}</div>
@@ -344,39 +304,6 @@ export default function DashboardPage() {
           </div>
 
           <div className="stack-6">
-            <section className="card">
-              <div className="card__head">
-                <span className="card__title">Marketplace health</span>
-              </div>
-              <div>
-                {channels.length === 0 ? (
-                  <div className="health-row" style={{ cursor: "default" }}>
-                    <span className="health-dot" />
-                    <div className="mp-row__name">No channels configured</div>
-                    <span />
-                  </div>
-                ) : (
-                  channels.map((ch) => (
-                    <div
-                      key={ch.marketplace}
-                      className="health-row"
-                      onClick={() => router.push("/channels")}
-                    >
-                      <MpLogo id={ch.marketplace} size={26} />
-                      <div style={{ minWidth: 0 }}>
-                        <div className="mp-row__name">{ch.name}</div>
-                      </div>
-                      <span
-                        className={`health-dot ${
-                          ch.capabilities.draftPreview ? "health-dot--ok" : ""
-                        }`}
-                      />
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
             <section className="card">
               <div className="card__head">
                 <span className="card__title">Recent activity</span>
@@ -410,12 +337,6 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      <PublishModal
-        open={publishOpen}
-        onClose={() => setPublishOpen(false)}
-        item={publishItem}
-        onPublished={reload}
-      />
     </>
   );
 }

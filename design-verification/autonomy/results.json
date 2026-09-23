@@ -1,0 +1,108 @@
+{
+  "errors": [],
+  "checks": [
+    {
+      "name": "sale modal explains effects",
+      "pass": true
+    },
+    {
+      "name": "escape returns focus",
+      "pass": true
+    },
+    {
+      "name": "confirmed task removed",
+      "pass": true
+    },
+    {
+      "name": "monitoring failure visible",
+      "pass": true
+    },
+    {
+      "name": "failed task remains with error",
+      "pass": true
+    },
+    {
+      "name": "bulk submits edited groups",
+      "pass": true
+    },
+    {
+      "name": "bulk eliminates manual save",
+      "pass": true
+    },
+    {
+      "name": "retry accepted status replaces failed job",
+      "pass": true
+    }
+  ],
+  "geometry": [
+    {
+      "name": "inventory-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "confirm-sale-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "inventory-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "confirm-removal-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "resolve-error-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "bulk-running-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "bulk-running-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    },
+    {
+      "name": "retry-preparation-desktop",
+      "width": 1440,
+      "scrollWidth": 1440,
+      "overflow": 0
+    },
+    {
+      "name": "retry-running-mobile",
+      "width": 390,
+      "scrollWidth": 390,
+      "overflow": 0
+    }
+  ],
+  "a11y": [
+    {
+      "view": "inventory",
+      "violations": []
+    },
+    {
+      "view": "bulk",
+      "violations": [],
+      "overflow": 0,
+      "progress": {
+        "label": "Batch preparation",
+        "value": "0"
+      }
+    }
+  ]
+}

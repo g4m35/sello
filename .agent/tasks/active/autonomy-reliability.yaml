@@ -1,0 +1,56 @@
+id: autonomy-reliability
+title: Durable preparation and visible marketplace recovery
+status: active
+owner: Codex
+reviewer: autonomy_review
+risk: high
+task_type: inventory
+base_branch: develop
+working_branch: fix/autonomy-reliability
+worktree_path: /Users/jheller/dev/sello-worktrees/autonomy-reliability
+created_at: 2026-09-23T03:58:00.000Z
+goal: Integrate independently reviewed fixes to durable bulk preparation, sales monitoring, terminal sold state and actionable recovery.
+context: Owner explicitly requested shipping the approved UI and using subagents to improve full automation and product flow.
+non_goals:
+  - Bypass marketplace permissions, security controls or seller consent.
+  - Database migrations, purchases or subscriptions.
+allowed_paths:
+  - src/app/**
+  - src/components/**
+  - src/lib/ai/**
+  - src/lib/automation/**
+  - src/lib/bulk-intake/**
+  - src/lib/inventory/**
+  - src/lib/inventory-sync/**
+  - src/lib/marketplace/**
+  - src/lib/comps/**
+  - src/lib/api/**
+  - .gitignore
+  - .env.example
+  - .agent/**
+  - .creative-os/**
+  - design-verification/**
+  - docs/**
+protected_paths:
+  - prisma/**
+  - .github/**
+required_reading:
+  - AGENTS.md
+  - src/lib/marketplace/AGENTS.md
+  - src/lib/inventory-sync/AGENTS.md
+acceptance:
+  - Sold inventory cannot return to saleable state through stale lifecycle writes.
+  - Marketplace success requires confirmed external evidence; unknown outcomes remain protected.
+  - Bulk work survives navigation and preparation retries never renew publishing consent.
+  - Worker stages isolate failures and preserve sale protection priority.
+  - Account-scoped exceptions and recovery are visible to sellers.
+validation:
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - docs/operations/autonomous-listing.md
+review_requirements:
+  - Independent review of all integration changes and meaningful fake-provider failure/concurrency tests.
+deployment_authorized: true
+merge_authorized: true
+notes: User ship-it and full-control authorization applies to this requested automation improvement; live marketplace transactions are not validation.

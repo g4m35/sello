@@ -1,0 +1,46 @@
+id: autonomy-job-recovery
+title: Guarded listing preparation recovery and honest comp sources
+status: in_review
+owner: Codex
+reviewer: root
+risk: high
+task_type: marketplace
+base_branch: develop
+working_branch: fix/autonomy-job-recovery
+worktree_path: /Users/jheller/dev/sello-worktrees/autonomy-job-recovery
+goal: Allow explicit preparation-only recovery without replaying publishing and remove unavailable comp adapters from runtime availability.
+allowed_paths:
+  - src/lib/automation/**
+  - src/app/api/listings/[id]/automation/**
+  - src/lib/comps/registry.ts
+  - src/lib/comps/registry.test.ts
+  - src/lib/comps/flags.ts
+  - src/lib/comps/flags.test.ts
+  - src/lib/comps/sources/serpapi-ebay-active.ts
+  - src/lib/comps/sources/ebay-marketplace-insights.ts
+  - src/lib/comps/sources/grailed-sold.ts
+  - src/lib/comps/sources/poshmark-sold.ts
+  - src/lib/comps/sources/depop-active.ts
+  - src/lib/comps/sources/google-lens.ts
+  - src/lib/comps/sources/stubs.test.ts
+  - src/lib/comps/sources/stockx.ts
+  - src/lib/comps/sources/stockx.test.ts
+  - .env.example
+  - docs/COMPS_PROVIDERS.md
+  - docs/operations/autonomous-listing.md
+  - .agent/**
+protected_paths:
+  - prisma/**
+  - .github/**
+  - src/app/(app)/**
+acceptance:
+  - Recovery is account scoped, explicit, concurrency safe and always preparation only.
+  - Ambiguous publishing cannot be replayed or receive renewed publishing consent.
+  - Existing provider budgets, quotas, cooldowns and review requirements remain enforced.
+  - Unimplemented comp sources cannot report runtime availability.
+  - Failed and interrupted jobs create deduplicated account-scoped attention tasks; retry resolves only the originating task.
+validation:
+  - Focused recovery, worker, route and provider registry tests
+  - TypeScript and ESLint
+deployment_authorized: false
+merge_authorized: false

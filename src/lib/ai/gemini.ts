@@ -37,6 +37,7 @@ export type GeminiDraftResult = {
 
 export async function generateListingDraftWithGemini(
   photos: PreparedListingPhoto[],
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<GeminiDraftResult> {
   const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const ai = new GoogleGenAI({ apiKey: getRequiredEnv("GEMINI_API_KEY") });
@@ -46,6 +47,8 @@ export async function generateListingDraftWithGemini(
     model,
     contents: [{ text: listingDraftPrompt }, ...imageParts],
     config: {
+      abortSignal: options.signal,
+      httpOptions: { timeout: options.timeoutMs ?? 120_000 },
       responseMimeType: "application/json",
       responseSchema: geminiListingDraftResponseSchema,
     },

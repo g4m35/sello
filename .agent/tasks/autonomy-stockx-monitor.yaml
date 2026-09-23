@@ -1,0 +1,38 @@
+id: autonomy-stockx-monitor
+title: Recurring bounded StockX status monitoring
+status: in_review
+owner: implement_stockx_monitor
+reviewer: Codex
+risk: high
+task_type: inventory
+base_branch: develop
+working_branch: fix/autonomy-stockx-monitor
+worktree_path: /Users/jheller/dev/sello-worktrees/autonomy-stockx-monitor
+created_at: 2026-09-23T00:00:00.000Z
+goal: Queue recurring checks for connected active StockX listings through the existing guarded status worker.
+context: Owner requested subagent implementation of autonomous listing and inventory flows.
+non_goals:
+  - Change provider adapters, worker execution gates, schema, or production settings.
+allowed_paths:
+  - src/lib/inventory/stockx-status-monitor.ts
+  - src/lib/inventory/stockx-status-monitor.test.ts
+  - docs/operations/stockx-status-monitor.md
+  - .agent/tasks/autonomy-stockx-monitor.yaml
+  - .agent/completions/autonomy-stockx-monitor.md
+protected_paths:
+  - prisma/**
+  - .github/**
+acceptance:
+  - Due connected listings enqueue bounded account-scoped detect_status work without external calls.
+  - Concurrent scheduler calls and repeat windows do not duplicate pending jobs.
+  - Paused or failed work is not silently retried; explicit successful recovery permits future checks.
+validation:
+  - npm test -- --run src/lib/inventory/stockx-status-monitor.test.ts
+  - npm run typecheck
+full_validation_required: true
+documentation:
+  - docs/operations/stockx-status-monitor.md
+review_requirements:
+  - Independent review before root integration and release.
+deployment_authorized: false
+merge_authorized: false

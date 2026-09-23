@@ -1,0 +1,90 @@
+{
+  "name": "desktop",
+  "schemaVersion": 1,
+  "capture": "navigation-timing",
+  "timing": {
+    "type": "navigate",
+    "startTime": 0,
+    "requestStart": 5.7,
+    "responseEnd": 629.7,
+    "domInteractive": 1941,
+    "domContentLoadedEventEnd": 1941.2,
+    "loadEventEnd": 2262.6,
+    "duration": 2262.6,
+    "transferSize": 580
+  },
+  "paints": [
+    {
+      "name": "first-paint",
+      "startTime": 1292
+    },
+    {
+      "name": "first-contentful-paint",
+      "startTime": 1960
+    }
+  ],
+  "timeOrigin": 1790137067019.5,
+  "now": 7084.7,
+  "readyState": "complete",
+  "scope": "Synthetic actual-component fixture through temporary Cloudflare tunnel; not production performance.",
+  "samples": [
+    {
+      "name": "desktop",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 5.7,
+        "responseEnd": 629.7,
+        "domInteractive": 1941,
+        "domContentLoadedEventEnd": 1941.2,
+        "loadEventEnd": 2262.6,
+        "duration": 2262.6,
+        "transferSize": 580
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 1292
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 1960
+        }
+      ],
+      "timeOrigin": 1790137067019.5,
+      "now": 7084.7,
+      "readyState": "complete"
+    },
+    {
+      "name": "mobile-390",
+      "schemaVersion": 1,
+      "capture": "navigation-timing",
+      "timing": {
+        "type": "navigate",
+        "startTime": 0,
+        "requestStart": 4.3,
+        "responseEnd": 242,
+        "domInteractive": 1253.8,
+        "domContentLoadedEventEnd": 1254.1,
+        "loadEventEnd": 1280,
+        "duration": 1280,
+        "transferSize": 580
+      },
+      "paints": [
+        {
+          "name": "first-paint",
+          "startTime": 668
+        },
+        {
+          "name": "first-contentful-paint",
+          "startTime": 1268
+        }
+      ],
+      "timeOrigin": 1790137079319.4,
+      "now": 6640.5,
+      "readyState": "complete"
+    }
+  ]
+}

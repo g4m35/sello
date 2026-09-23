@@ -271,7 +271,7 @@ describe("executeEbayDelist", () => {
       lastError: null,
     });
     expect(prisma._state.inventoryUpdates).toEqual([
-      { where: { id: "item-1" }, data: { status: "DELISTED" } },
+      { where: { id: "item-1", status: { not: "SOLD" }, soldAt: null, soldSourceMarketplace: null }, data: { status: "DELISTED" } },
     ]);
     expect(prisma._state.events.map((e) => e.kind)).toEqual(
       expect.arrayContaining(["delist_started", "ebay_offer_withdrawn"]),
@@ -295,7 +295,7 @@ describe("executeEbayDelist", () => {
     );
 
     expect(prisma._state.inventoryUpdates).toEqual([
-      { where: { id: "item-1" }, data: { status: "LISTED" } },
+      { where: { id: "item-1", status: { not: "SOLD" }, soldAt: null, soldSourceMarketplace: null }, data: { status: "LISTED" } },
     ]);
   });
 
@@ -514,11 +514,26 @@ describe("executeStockXDelist", () => {
       lastError: null,
     });
     expect(prisma._state.inventoryUpdates).toEqual([
-      { where: { id: "item-1" }, data: { status: "DELISTED" } },
+      { where: { id: "item-1", status: { not: "SOLD" }, soldAt: null, soldSourceMarketplace: null }, data: { status: "DELISTED" } },
     ]);
     expect(prisma._state.events.map((e) => e.kind)).toEqual(
       expect.arrayContaining(["delist_started", "stockx_listing_deactivated"]),
     );
+  });
+
+  it("retains the mutation guard when StockX has only accepted a delist", async () => {
+    const prisma = createPrisma({ listing: stockxListing });
+    const adapter = vi.fn().mockRejectedValue(new StockXIntegrationError(
+      stockxErrorCodes.delistUnconfirmed, "StockX has not confirmed this listing ended.", 502,
+      { reconciliationRequired: true },
+    ));
+    await expect(executeStockXDelist(prisma, input, adapter)).rejects.toMatchObject({ code: stockxErrorCodes.delistUnconfirmed });
+    expect(prisma._state.attempts[0]).toMatchObject({ status: "RUNNING", code: "STOCKX_DELIST_OUTCOME_UNKNOWN" });
+    expect(prisma._state.listing?.status).toBe("NEEDS_REVIEW");
+    expect(prisma._state.inventoryUpdates).toHaveLength(0);
+    expect(prisma._state.events.some(e => e.kind === "stockx_listing_deactivated")).toBe(false);
+    await expect(executeStockXDelist(prisma, input, adapter)).rejects.toThrow();
+    expect(adapter).toHaveBeenCalledTimes(1);
   });
 
   it("persists failure and leaves the StockX listing published when deactivate fails", async () => {

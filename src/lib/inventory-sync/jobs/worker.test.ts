@@ -103,6 +103,51 @@ function listing(partial: Partial<FakeListing> & { id: string }): FakeListing {
   };
 }
 
+describe("queue drain isolation", () => {
+  function seeded() {
+    return createInventoryFakePrisma({ items: [item()], syncJobs: ["j-1", "j-2"].map(id => ({
+      id, userId: "user-1", type: "notify_user" as const, status: "queued" as const,
+      inventoryItemId: "item-1", payload: { kind: "sold_delisting", title: "Sold", body: "Sold.", inventoryItemId: "item-1" },
+    })) });
+  }
+  it("leaves all jobs unclaimed when the deadline has passed", async () => {
+    const prisma = seeded();
+    expect(await runQueuedSyncJobs(workerDb(prisma), { deadline: Date.now() - 1 })).toMatchObject({ claimed: 0 });
+    expect(prisma._store.syncJobs.map(job => job.status)).toEqual(["queued", "queued"]);
+  });
+  it("does not preclaim the next job when time expires during execution", async () => {
+    const prisma = seeded();
+    let now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    const db = workerDb(prisma);
+    const original = db.syncJob.findFirst.bind(db.syncJob);
+    let reads = 0;
+    const read = vi.spyOn(db.syncJob, "findFirst").mockImplementation(async (...args) => {
+      const result = await original(...args);
+      if (++reads === 2) now += 2000;
+      return result;
+    });
+    try {
+      expect(await runQueuedSyncJobs(db, { limit: 10, deadline: now + 1000 })).toMatchObject({ claimed: 1, succeeded: 1 });
+      expect(prisma._store.syncJobs.map(job => job.status)).toEqual(["succeeded", "queued"]);
+    } finally { read.mockRestore(); clock.mockRestore(); }
+  });
+  it("a job read failure leaves only that lease for recovery and allows the next job", async () => {
+    const prisma = seeded();
+    const db = workerDb(prisma);
+    const original = db.syncJob.findFirst.bind(db.syncJob);
+    let reads = 0;
+    const read = vi.spyOn(db.syncJob, "findFirst").mockImplementation(async (...args) => {
+      if (++reads === 2) throw new Error("database unavailable");
+      return original(...args);
+    });
+    try {
+      expect(await runQueuedSyncJobs(db, { limit: 10 })).toMatchObject({ claimed: 2, failed: 1, succeeded: 1 });
+      expect(prisma._store.syncJobs.map(job => job.status)).toEqual(["running", "succeeded"]);
+    } finally { read.mockRestore(); }
+  });
+});
+
 describe("claimQueuedSyncJobs", () => {
   it("claims only queued + due jobs and never a future runAfter job", async () => {
     const future = new Date(Date.now() + 60_000);
@@ -257,40 +302,6 @@ describe("runSyncJob — delist_marketplace_listing (eBay)", () => {
     expect(prisma._store.syncJobs[0].status).toBe("succeeded");
     expect(prisma._store.listings[0].endedAt).toBeInstanceOf(Date);
     expect(prisma._store.events.some((e) => e.type === "delist_succeeded")).toBe(true);
-  });
-
-  it("a successfully-cleaned-up SOLD item stays SOLD (restores status after master-flip)", async () => {
-    const prisma = createInventoryFakePrisma({
-      // Item already sold on grailed; an eBay cleanup delist is queued.
-      items: [
-        item({
-          status: "SOLD",
-          soldAt: new Date(),
-          quantityAvailable: 0,
-          soldSourceMarketplace: "grailed",
-          soldSourceListingId: "g1",
-          lockVersion: 1,
-        }),
-      ],
-      listings: [listing({ id: "l-ebay", marketplace: "ebay", externalListingId: "e1" })],
-      syncJobs: [ebayJobSeed()],
-    });
-    const db = workerDb(prisma);
-    // Simulate executeEbayDelist's internal syncMasterStatusAfterMarketplaceDelist
-    // overwriting the master status back to DELISTED.
-    const ebayDelist = vi.fn().mockImplementation(async () => {
-      prisma._store.items[0].status = "DELISTED";
-      return { ok: true };
-    });
-
-    const summary = await runQueuedSyncJobs(db, { limit: 10 }, allowed({ ebayDelist }));
-
-    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
-    expect(ebayDelist).toHaveBeenCalledTimes(1);
-    // The worker re-read the sold item and restored SOLD after the master flip.
-    expect(prisma._store.items[0].status).toBe("SOLD");
-    // The listing was actually ended (endedAt stamped).
-    expect(prisma._store.listings[0].endedAt).toBeInstanceOf(Date);
   });
 
   it("a NON-sold item is left as executeEbayDelist set it (no forced SOLD)", async () => {

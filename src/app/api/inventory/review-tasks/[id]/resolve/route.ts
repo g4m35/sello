@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getActiveAccount } from "@/lib/billing/account";
 import { AppError, safeErrorResponse } from "@/lib/errors";
-import { markItemSold } from "@/lib/inventory/mark-sold";
+import { markItemSold, type MarkSoldPrismaLike } from "@/lib/inventory/mark-sold";
 import { getPrisma } from "@/lib/prisma";
 import { requireSupabaseUserFromRequestOrCookies } from "@/lib/supabase/server";
 
@@ -45,45 +45,33 @@ export async function POST(
     const body = BodySchema.parse(await request.json());
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
-    const task = await prisma.reviewTask.findFirst({
-      where: { id, accountId: account.id, status: "open" },
-      select: {
-        type: true,
-        inventoryItemId: true,
-        marketplace: true,
-        payload: true,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      const task = await tx.reviewTask.findFirst({
+        where: { id, accountId: account.id, status: "open" },
+        select: { type: true, inventoryItemId: true, marketplace: true, payload: true },
+      });
+      if (!task) throw new AppError("Review task not found.", 404);
 
-    if (!task) {
-      throw new AppError("Review task not found.", 404);
-    }
+      // This conditional write locks the task until this entire transaction
+      // commits. Concurrent confirmation/dismissal must win this same claim.
+      // A process interruption rolls it back alongside the sale and delist work.
+      const updated = await tx.reviewTask.updateMany({
+        where: { id, accountId: account.id, status: "open" },
+        data: { status: body.status, resolvedAt: new Date() },
+      });
+      if (updated.count !== 1) throw new AppError("Review task not found.", 404);
 
-    const resolvedAt = new Date();
-    const updated = await prisma.reviewTask.updateMany({
-      where: { id, accountId: account.id, status: "open" },
-      data: { status: body.status, resolvedAt },
-    });
-
-    if (updated.count === 0) {
-      // Either not owned, not found, or already closed — never reveal which.
-      throw new AppError("Review task not found.", 404);
-    }
-
-    if (body.status === "resolved" && task.type === "confirm_possible_sale") {
-      if (!task.inventoryItemId || !task.marketplace) {
-        await prisma.reviewTask.updateMany({
-          where: { id, accountId: account.id, status: "resolved", resolvedAt },
-          data: { status: "open", resolvedAt: null },
-        });
-        throw new AppError(
-          "This sale confirmation is missing required listing details.",
-          409,
-          "SALE_CONFIRMATION_INCOMPLETE",
-        );
-      }
-      try {
-        await markItemSold(prisma as never, {
+      if (body.status === "resolved" && task.type === "confirm_possible_sale") {
+        if (!task.inventoryItemId || !task.marketplace) {
+          throw new AppError("This sale confirmation is missing required listing details.", 409, "SALE_CONFIRMATION_INCOMPLETE");
+        }
+        // Canonical mark-sold normally opens its own transaction. Join the
+        // enclosing transaction here; never open a separately committed sale.
+        const saleDb: MarkSoldPrismaLike = {
+          ...tx,
+          $transaction: async (work) => work(tx),
+        };
+        await markItemSold(saleDb, {
           inventoryItemId: task.inventoryItemId,
           userId: user.id,
           accountId: account.id,
@@ -93,16 +81,8 @@ export async function POST(
           soldPriceCents: payloadNumber(task.payload, "price"),
           source: "manual",
         });
-      } catch (error) {
-        // Re-open only the claim made by this request. If another actor changed
-        // the task meanwhile, the conditional update leaves their choice intact.
-        await prisma.reviewTask.updateMany({
-          where: { id, accountId: account.id, status: "resolved", resolvedAt },
-          data: { status: "open", resolvedAt: null },
-        });
-        throw error;
       }
-    }
+    });
 
     return NextResponse.json({ ok: true, id, status: body.status });
   } catch (error) {

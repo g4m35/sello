@@ -1,5 +1,7 @@
 "use client";
 
+import { InventoryAttention } from "@/components/app/inventory-attention";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -48,7 +50,7 @@ const TAB_LABEL: Record<TabValue, string> = {
   ready: "Ready",
   active: "Active",
   sold: "Sold",
-  error: "Needs attention",
+  error: "Listing issues",
 };
 
 const PAGE_SIZE = 24;
@@ -64,7 +66,7 @@ export default function InventoryPage() {
   const [channels, setChannels] = useState<ChannelView[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<TabValue>("all");
+  const [tab, setTab] = useState<TabValue>(() => searchParams.get("tab") === "ready" ? "ready" : "all");
   const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortValue>("updated_desc");
@@ -132,7 +134,7 @@ export default function InventoryPage() {
       error: 0,
     };
     // Bucket by display readiness, not raw lifecycle, so an approved-but-not-
-    // ready item counts under "Needs attention", matching the dashboard.
+    // ready item counts under "Listing issues", matching the dashboard.
     for (const it of items ?? []) base[inventoryDisplayBucket(it)] += 1;
     return base;
   }, [items]);
@@ -598,6 +600,7 @@ export default function InventoryPage() {
           </div>
           <Btn variant="accent" icon="plus" size="lg" onClick={() => router.push("/inventory/new")}>Add an item</Btn>
         </div>
+        <InventoryAttention key={token} token={token} onResolved={reload} />
         <div className="toolbar inventory-filters">
           <Tabs
             items={tabItems}

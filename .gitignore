@@ -50,3 +50,7 @@ next-env.d.ts
 /design-verification/verification-result.json
 /design-verification/release-evidence.json
 /design-verification/release-gate-result.json
+
+/design-verification/autonomy/verification-result.json
+/design-verification/autonomy/release-evidence.json
+/design-verification/autonomy/release-gate-result.json

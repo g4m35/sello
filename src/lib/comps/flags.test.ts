@@ -7,7 +7,6 @@ import {
   isApifyEbaySoldEnabled,
   isCompsAutoDiscoveryEnabled,
   isEbayActiveEnabled,
-  isSerpapiEbayActiveEnabled,
 } from "@/lib/comps/flags";
 
 describe("comps provider flags", () => {
@@ -67,16 +66,6 @@ describe("comps provider flags", () => {
           EBAY_CLIENT_SECRET: "secret",
         }),
       ).toBe(true);
-    });
-  });
-
-  describe("serpapi ebay active (optional)", () => {
-    it("requires the flag and SERPAPI_API_KEY, off by default", () => {
-      expect(isSerpapiEbayActiveEnabled({})).toBe(false);
-      expect(
-        isSerpapiEbayActiveEnabled({ COMPS_SERPAPI_EBAY_ACTIVE_ENABLED: "true", SERPAPI_API_KEY: "k" }),
-      ).toBe(true);
-      expect(isSerpapiEbayActiveEnabled({ COMPS_SERPAPI_EBAY_ACTIVE_ENABLED: "true" })).toBe(false);
     });
   });
 

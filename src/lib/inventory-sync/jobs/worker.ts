@@ -8,7 +8,7 @@ import type {
   SyncJobStatus,
   SyncJobType,
 } from "@/generated/prisma/client";
-import { safeFailureText } from "@/lib/errors";
+import { logUnexpectedError, safeFailureText } from "@/lib/errors";
 import {
   recordInventoryEvent,
   type InventoryEventPrismaLike,
@@ -308,27 +308,6 @@ type WorkerListingDelegate = {
   }): Promise<{ id: string }>;
 };
 
-// After a successful eBay delist, executeEbayDelist internally re-derives the
-// master InventoryItem.status (via syncMasterStatusAfterMarketplaceDelist), which
-// can flip a just-sold item back to LISTED/DELISTED. The worker re-reads the item
-// (ownership-scoped) to detect a sold item whose status was overwritten and
-// restore SOLD. Only the two fields needed for that decision are selected.
-type WorkerInventoryItemRow = {
-  status: InventoryStatus;
-  soldSourceMarketplace: Marketplace | null;
-};
-
-type WorkerInventoryItemDelegate = {
-  findFirst(args: {
-    where: { id: string; sellerId: string };
-    select: { status: true; soldSourceMarketplace: true };
-  }): Promise<WorkerInventoryItemRow | null>;
-  update(args: {
-    where: { id: string };
-    data: { status: InventoryStatus };
-  }): Promise<{ id: string }>;
-};
-
 type RecoverableMarketplaceAttemptRow = {
   id: string;
   code: string;
@@ -401,7 +380,6 @@ export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
   ReviewTaskPrismaLike & {
     syncJob: WorkerJobDelegate;
     marketplaceListing: WorkerListingDelegate;
-    inventoryItem: WorkerInventoryItemDelegate;
     notification: WorkerNotificationDelegate;
     publishAttempt?: WorkerPublishAttemptDelegate;
   };
@@ -582,17 +560,16 @@ export type RunQueuedSummary = {
 };
 
 /**
- * Claim a batch then run each. Returns a SANITIZED summary only — never job
+ * Claim each job only when ready to execute it. Returns a SANITIZED summary only — never job
  * payloads or secrets. Safe to call repeatedly (idempotent per job).
  */
 export async function runQueuedSyncJobs(
   db: SyncWorkerPrismaLike = getPrisma() as unknown as SyncWorkerPrismaLike,
-  opts: { limit?: number } = {},
+  opts: { limit?: number; deadline?: number } = {},
   deps: RunSyncJobDeps = {},
 ): Promise<RunQueuedSummary> {
-  const claimedJobs = await claimQueuedSyncJobs(db, opts);
   const summary: RunQueuedSummary = {
-    claimed: claimedJobs.length,
+    claimed: 0,
     succeeded: 0,
     failed: 0,
     skipped: 0,
@@ -600,9 +577,22 @@ export async function runQueuedSyncJobs(
     retryWait: 0,
   };
 
-  for (const job of claimedJobs) {
+  for (let i = 0; i < clampLimit(opts.limit); i++) {
+    if (Date.now() >= (opts.deadline ?? Infinity)) break;
+    const [job] = await claimQueuedSyncJobs(db, { limit: 1 });
+    if (!job) break;
+    summary.claimed++;
     if (!job.leaseOwner) continue;
-    const { status } = await runSyncJob(db, job.id, job.leaseOwner, deps);
+    // A DB failure may leave this lease for conservative stale recovery, but
+    // must not strand a whole preclaimed batch or stop other sellers' jobs.
+    let status: string;
+    try {
+      ({ status } = await runSyncJob(db, job.id, job.leaseOwner, deps));
+    } catch (error) {
+      logUnexpectedError("inventory_sync_job", error);
+      summary.failed++;
+      continue;
+    }
     switch (status) {
       case "succeeded":
         summary.succeeded += 1;
@@ -1189,18 +1179,6 @@ async function execEbayDelist(
     } as Prisma.InputJsonValue,
   });
 
-  // A SOLD item must stay SOLD. executeEbayDelist runs
-  // syncMasterStatusAfterMarketplaceDelist internally, which re-derives the master
-  // InventoryItem.status from the remaining listings and can overwrite the SOLD
-  // that markItemSold just wrote (flipping it back to LISTED/DELISTED). Re-read the
-  // item (ownership-scoped): if it is sold (soldSourceMarketplace set) but its
-  // status was clobbered, restore SOLD with a single update.
-  await restoreSoldStatusIfClobbered(
-    db,
-    listing.inventoryItem.sellerId,
-    inventoryItemId,
-  );
-
   return finalizeSucceeded(db, job);
 }
 
@@ -1262,30 +1240,7 @@ async function execStockXDelist(
     } as Prisma.InputJsonValue,
   });
 
-  await restoreSoldStatusIfClobbered(
-    db,
-    listing.inventoryItem.sellerId,
-    inventoryItemId,
-  );
-
   return finalizeSucceeded(db, job);
-}
-
-async function restoreSoldStatusIfClobbered(
-  db: SyncWorkerPrismaLike,
-  userId: string,
-  inventoryItemId: string,
-): Promise<void> {
-  const item = await db.inventoryItem.findFirst({
-    where: { id: inventoryItemId, sellerId: userId },
-    select: { status: true, soldSourceMarketplace: true },
-  });
-  if (item && item.soldSourceMarketplace !== null && item.status !== "SOLD") {
-    await db.inventoryItem.update({
-      where: { id: inventoryItemId },
-      data: { status: "SOLD" },
-    });
-  }
 }
 
 // Create (deduped) a manual_delist_required review task + a delist_failed

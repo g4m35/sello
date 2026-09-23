@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "keys": [
+    {
+      "tag": "BUTTON",
+      "label": "Sello — go to inventory"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "New listing"
+    },
+    {
+      "tag": "INPUT",
+      "label": "Find inventory item"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Inventory"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Bulk intake"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Publish history"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Marketplaces"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Overview"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Billing"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Settings"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Send feedback"
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Sello previewpreview@example.test"
+    }
+  ]
+}

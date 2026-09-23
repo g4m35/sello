@@ -1,0 +1,12 @@
+{
+  "task_id": "autonomy-reliability",
+  "task_file": ".agent/tasks/active/autonomy-reliability.yaml",
+  "base_branch": "develop",
+  "base_commit": "70027bb0eccd160db586082895ef807bbb0563e1",
+  "working_branch": "fix/autonomy-reliability",
+  "worktree_path": "/Users/jheller/dev/sello-worktrees/autonomy-reliability",
+  "created_at": "2026-09-23T03:58:00.000Z",
+  "updated_at": "2026-09-23T04:21:00.000Z",
+  "started_by": "Codex",
+  "status": "in_review"
+}
