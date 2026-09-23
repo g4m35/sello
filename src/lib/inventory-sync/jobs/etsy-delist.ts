@@ -5,7 +5,7 @@ import { ETSY_ENVIRONMENT } from "@/lib/marketplace/adapters/etsy/types";
 
 export const etsyDelistDeps = { session: async (input: Parameters<typeof getEtsyAuthorizedSession>[0]) =>
   (await import("@/lib/marketplace/adapters/etsy/session")).getEtsyAuthorizedSession(input) };
-const INACTIVE_STATES = new Set(["inactive", "expired", "removed"]);
+const INACTIVE_STATES = new Set(["inactive", "expired", "removed", "unavailable"]);
 
 /** The worker owns capability, account-membership, conflict and lease gates.
  * Read before and after deactivation: a completed HTTP request alone is not
@@ -18,8 +18,10 @@ export async function executeEtsyWorkerDelist(
   const listing = await db.marketplaceListing.findFirst({
     where: { id: input.marketplaceListingId, inventoryItemId: input.inventoryItemId,
       marketplace: "etsy", environment: ETSY_ENVIRONMENT, inventoryItem: { accountId: input.accountId } },
+    include: { inventoryItem: { select: { soldSourceMarketplace: true } } },
   });
   if (!listing?.externalListingId) throw new AppError("The Etsy listing could not be found. Review it before removal.", 409, "ETSY_DELIST_LISTING_MISSING");
+  if (listing.inventoryItem.soldSourceMarketplace === "etsy") return { status: "SOLD" as const, changed: false, listingId: listing.externalListingId };
   if (["SOLD", "DELISTED", "ENDED"].includes(listing.status)) return { status: listing.status as "SOLD" | "DELISTED" | "ENDED", changed: false, listingId: listing.externalListingId };
   const session = await deps.session({ userId: input.userId, accountId: input.accountId });
   const remote = await session.client.getListing(listing.externalListingId);

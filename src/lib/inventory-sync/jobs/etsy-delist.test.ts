@@ -3,7 +3,7 @@ vi.mock("@/lib/marketplace/adapters/etsy/session", () => ({ getEtsyAuthorizedSes
 import { executeEtsyWorkerDelist } from "./etsy-delist";
 const input = { userId: "user", accountId: "account", inventoryItemId: "item", marketplaceListingId: "listing" };
 function fixture(states = ["active", "inactive"]) {
-  const row = { id: "listing", externalListingId: "42", status: "LISTED", updatedAt: new Date(0) };
+  const row = { id: "listing", externalListingId: "42", status: "LISTED", inventoryItem: { soldSourceMarketplace: null as string | null }, updatedAt: new Date(0) };
   const db = { marketplaceListing: { findFirst: vi.fn().mockResolvedValue(row), updateMany: vi.fn().mockResolvedValue({ count: 1 }) } };
   const getListing = vi.fn(); states.forEach(state => getListing.mockResolvedValueOnce({ listing_id: 42, state }));
   const deactivateListing = vi.fn().mockResolvedValue({ listing_id: 42 });
@@ -13,13 +13,13 @@ function fixture(states = ["active", "inactive"]) {
 describe("verified Etsy worker removal", () => {
   it("scopes the listing to account and verifies remote deactivation before local success", async () => {
     const f = fixture(); await f.run();
-    expect(f.db.marketplaceListing.findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({ id: "listing", marketplace: "etsy", inventoryItem: { accountId: "account" } }) });
+    expect(f.db.marketplaceListing.findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({ id: "listing", marketplace: "etsy", inventoryItem: { accountId: "account" } }), include: { inventoryItem: { select: { soldSourceMarketplace: true } } } });
     expect(f.deactivateListing).toHaveBeenCalledWith(7, "42");
     expect(f.getListing).toHaveBeenCalledTimes(2);
     expect(f.db.marketplaceListing.updateMany).toHaveBeenCalledWith({ where: expect.objectContaining({ updatedAt: new Date(0), status: "LISTED" }), data: expect.objectContaining({ status: "DELISTED" }) });
   });
-  it("does not resend deactivation when Etsy already confirms inactive", async () => {
-    const f = fixture(["inactive"]); await f.run(); expect(f.deactivateListing).not.toHaveBeenCalled();
+  it.each(["inactive", "unavailable"])("does not resend deactivation when Etsy already confirms %s", async (state) => {
+    const f = fixture([state]); await f.run(); expect(f.deactivateListing).not.toHaveBeenCalled();
   });
   it.each(["sold_out", "unknown", "draft"])("does not remove an unconfirmed active listing: %s", async state => {
     const f = fixture([state]); await expect(f.run()).rejects.toThrow("status needs review"); expect(f.deactivateListing).not.toHaveBeenCalled(); expect(f.db.marketplaceListing.updateMany).not.toHaveBeenCalled();
@@ -41,4 +41,10 @@ describe("verified Etsy worker removal", () => {
   it("does not make provider calls for missing owned listing", async () => {
     const f = fixture(); f.db.marketplaceListing.findFirst.mockResolvedValue(null); await expect(f.run()).rejects.toThrow("could not be found"); expect(f.getListing).not.toHaveBeenCalled();
   });
+  it("uses the latest canonical Etsy sale source even if the queue payload was older", async () => {
+    const f = fixture(); f.row.inventoryItem.soldSourceMarketplace = "etsy";
+    await expect(f.run()).resolves.toMatchObject({ status: "SOLD", changed: false });
+    expect(f.getListing).not.toHaveBeenCalled(); expect(f.deactivateListing).not.toHaveBeenCalled();
+  });
+
 });

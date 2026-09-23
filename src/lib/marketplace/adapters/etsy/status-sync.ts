@@ -25,7 +25,7 @@ export async function syncEtsyListingForAccount(
   const session = await getEtsyAuthorizedSession({ userId: input.userId, accountId: input.accountId });
   const result = await syncEtsyListing({ client: session.client, listingId: listing.externalListingId });
   if (String(result.listingId) !== listing.externalListingId) throw new EtsyIntegrationError(etsyErrorCodes.syncFailed, "Etsy returned a different listing.", 502);
-  if (!["active", "sold_out", "inactive", "expired", "removed", "draft", "edit"].includes(result.state)) return { synced: false, reason: "unknown_status" };
+  if (!["active", "sold_out", "inactive", "expired", "removed", "unavailable", "draft", "edit"].includes(result.state)) return { synced: false, reason: "unknown_status" };
   if (result.status === "SOLD") {
     const sold = await markItemSold(prisma, {
       inventoryItemId: item.id, userId: input.userId, accountId: input.accountId,
