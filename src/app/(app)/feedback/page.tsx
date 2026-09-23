@@ -74,10 +74,9 @@ export default function FeedbackPage() {
   return (
     <>
       <Topbar crumbs={["Feedback"]} />
-      <main className="page stack-4" style={{ maxWidth: 800 }}>
-        <div className="page__title-row">
-
-          <h1 className="page__title">What could work better?</h1>
+      <main className="page stack-4" style={{ maxWidth: 640 }}>
+        <div className="stack-1">
+          <h1 className="t-h2">Send feedback</h1>
           <p className="t-small muted">
             Report bugs, confusing flows, pricing issues, or marketplace problems.
             Sello is in early access. Feedback directly shapes what gets built next.
@@ -96,7 +95,7 @@ export default function FeedbackPage() {
             }
           />
         ) : (
-          <form className="card card__body stack-4" onSubmit={(event) => { event.preventDefault(); if (!saving) void submit(); }}>
+          <form className="stack-3" onSubmit={(event) => { event.preventDefault(); if (!saving) void submit(); }}>
             {error && <div role="alert" className="t-small danger">{error}</div>}
             <div className="form-grid form-grid--2" style={{ gap: 12 }}>
               <label className="field">
@@ -132,8 +131,7 @@ export default function FeedbackPage() {
             </label>
             <label className="field">
               <span>Subject</span>
-              <input
-                className="input"
+              <input className="input"
                 value={subject}
                 maxLength={200}
                 onChange={(e) => setSubject(e.target.value)}
@@ -142,8 +140,7 @@ export default function FeedbackPage() {
             </label>
             <label className="field">
               <span>Message</span>
-              <textarea
-                className="textarea"
+              <textarea className="textarea"
                 value={message}
                 maxLength={5000}
                 rows={6}
@@ -152,7 +149,7 @@ export default function FeedbackPage() {
               />
             </label>
             <div>
-              <Btn type="submit" variant="accent" size="lg" disabled={saving}>
+              <Btn type="submit" variant="primary" disabled={saving}>
                 {saving ? "Sending…" : "Send feedback"}
               </Btn>
             </div>

@@ -1,0 +1,46 @@
+id: restore-original-ui
+title: Restore original Sello presentation while retaining automation
+status: active
+owner: Codex
+reviewer: autonomy_review
+risk: medium
+task_type: frontend
+base_branch: develop
+working_branch: fix/restore-original-ui
+worktree_path: /Users/jheller/dev/sello-worktrees/restore-original-ui
+created_at: 2026-09-23T04:45:00.000Z
+goal: Restore the owner-selected a838e40 UI without reverting backend automation and correctness fixes.
+context: Owner rejected both recent redesigns and explicitly selected the original interface.
+non_goals:
+  - Revert backend jobs, consent, pricing budgets, account isolation, or marketplace safety fixes.
+  - New visual design or live provider transactions.
+allowed_paths:
+  - src/app/[(]app[)]/**
+  - src/app/globals.css
+  - src/components/**
+  - .agent/**
+  - .creative-os/**
+  - design-verification/**
+  - .gitignore
+protected_paths:
+  - src/app/api/**
+  - src/lib/**
+  - prisma/**
+  - .github/**
+required_reading:
+  - AGENTS.md
+  - .creative-os/original-ui-restoration.md
+acceptance:
+  - Original presentation is restored and desktop/mobile verified.
+  - All automation and correctness behaviors remain available.
+  - Backend and API files are unchanged.
+validation:
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - .creative-os/original-ui-restoration.md
+review_requirements:
+  - Independent review of restored presentation and retained functional behavior.
+deployment_authorized: true
+merge_authorized: true
+notes: Owner-directed original-interface rollback; retain current backend and safety behavior.

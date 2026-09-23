@@ -139,7 +139,7 @@ export default function DashboardPage() {
   if (error)
     return (
       <>
-        <Topbar crumbs={["Overview"]} />
+        <Topbar crumbs={["Dashboard"]} />
         <main className="page">
           <ErrorState message={error} onRetry={reload} />
         </main>
@@ -151,7 +151,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Topbar crumbs={["Overview"]} />
+      <Topbar crumbs={["Dashboard"]} />
 
       <main className="page">
         <div className="page__head">
@@ -164,7 +164,6 @@ export default function DashboardPage() {
               {readyItems.length} ready · {attention.length} need attention
             </div>
           </div>
-          <Btn variant="accent" icon="plus" size="lg" onClick={() => router.push("/inventory/new")}>Add an item</Btn>
         </div>
 
         <div className="kpis">

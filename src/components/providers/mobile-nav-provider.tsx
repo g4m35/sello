@@ -41,7 +41,7 @@ export function MobileNavProvider({ children }: { children: React.ReactNode }) {
       if (e.shiftKey && (document.activeElement === first || !sidebar?.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     }
-    const media = window.matchMedia("(min-width: 761px)");
+    const media = window.matchMedia("(min-width: 641px)");
     const onResize = () => { if (media.matches) close(); };
     media.addEventListener("change", onResize);
     document.addEventListener("keydown", handleKey);

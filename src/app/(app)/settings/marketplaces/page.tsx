@@ -7,10 +7,12 @@ import {
   Loader2,
   Plug,
   RefreshCw,
+  XCircle,
 } from "lucide-react";
 
 import { Topbar } from "@/components/app/topbar";
 import { ConnectionControls } from "./connection-controls";
+import { MpLogo } from "@/components/ui/marketplace";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
 import type { EbayReadinessResponse } from "@/lib/marketplace/adapters/ebay/types";
@@ -278,48 +280,105 @@ export default function MarketplaceSettingsPage() {
   const checking = loadState === "idle" || loadState === "loading";
   const statusLabel = loadState === "error" ? "Status unavailable" : getEbayConnectionStatus(readiness);
   const needsSalesPermission = connected && readiness?.salesReadPermission !== true;
-  const busy = actionState === "loading";
 
   return (
     <>
-      <Topbar crumbs={["Settings"]} />
-      <main className="page marketplace-settings">
+      <Topbar crumbs={["Settings", "Marketplaces"]} />
+      <main className="page">
         <div className="page__head">
           <div>
-            <h1 className="page__title">Marketplaces</h1>
-            <p className="page__title-meta">Manage your accounts and the access each marketplace gives Sello.</p>
+            <h1 className="page__title">
+              Marketplaces<em>.</em>
+            </h1>
+            <p className="t-small muted" style={{ marginTop: 4 }}>
+              {labels.heading}
+            </p>
           </div>
         </div>
-        <div className="connections">
-          <section className="connection" aria-labelledby="ebay-heading">
-            <div className="connection__head">
-              <div className="connection__identity">
-                <h2 id="ebay-heading">eBay{environment === "sandbox" ? " sandbox" : ""}</h2>
-                <span className={`connection__status${connected && !readiness?.reconnectRequired ? " connection__status--connected" : ""}`}>{statusLabel}</span>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* eBay */}
+          <section className="card">
+            {/* Header row */}
+            <div className="card__head" style={{ flexWrap: "wrap", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                <MpLogo id="ebay" size={36} />
+                <div style={{ minWidth: 0 }}>
+                  <h2 style={{ margin: 0, fontSize: 14, fontWeight: 500 }}>{labels.account}</h2>
+                  <p className="t-small muted" style={{ margin: 0 }}>{statusLabel}</p>
+                </div>
               </div>
-              <div className="connection__actions">
-                {!checking && loadState !== "error" && actionModel.showPrimaryConnect && <button type="button" onClick={connectEbay} disabled={!session || busy} className="btn btn--primary">
-                  {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Plug size={16} aria-hidden="true" />}
-                  {actionModel.primaryConnectLabel}
-                </button>}
-                {connected && <ConnectionControls name="eBay" busy={busy} onDisconnect={disconnectEbay} onRecheck={refreshReadiness} />}
-                {loadState === "error" && <button type="button" className="btn btn--secondary" onClick={loadReadiness}>Try again</button>}
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, flexShrink: 0 }}>
+                {!checking && loadState !== "error" && actionModel.showPrimaryConnect && (
+                  <button
+                    type="button"
+                    onClick={connectEbay}
+                    disabled={!session || actionState === "loading"}
+                    className="btn btn--primary btn--sm"
+                  >
+                    <Plug size={13} aria-hidden="true" />
+                    {actionModel.primaryConnectLabel}
+                  </button>
+                )}
+                {connected && !ready && (
+                  <button
+                    type="button"
+                    onClick={refreshReadiness}
+                    disabled={actionState === "loading"}
+                    className="btn btn--secondary btn--sm"
+                  >
+                    <RefreshCw size={13} aria-hidden="true" />
+                    Recheck
+                  </button>
+                )}
+                {connected && <ConnectionControls name="eBay" busy={actionState === "loading"} onDisconnect={disconnectEbay} onRecheck={refreshReadiness} />}
+                {loadState === "error" && <button type="button" onClick={loadReadiness} className="btn btn--secondary btn--sm">Try again</button>}
               </div>
             </div>
-            {connected && readiness && <dl className="connection__facts">
-              <div><dt>Selling setup</dt><dd>{ready ? "Complete" : "Needs setup"}</dd></div>
-              <div><dt>Sales access</dt><dd className={needsSalesPermission ? "connection__warning" : undefined}>{getEbaySalesPermissionLabel(readiness)}</dd></div>
-            </dl>}
-            {needsSalesPermission && <p className="connection__notice">{readiness?.salesReadPermission == null ? "Your account is connected, but Sello did not save its permissions. Reconnect once to enable sale monitoring." : "Your account is connected, but sales access is missing. Reconnect eBay to enable sale monitoring."}</p>}
-            {readiness?.reconnectRequired && <p className="connection__notice">Your eBay connection expired or was revoked. Reconnect to restore access.</p>}
-            {connected && !ready && <div className="connection__setup">
-              <p>{setupMessage.body}</p>
-              <ul className="connection__missing">{missingItems.map(item => <li key={item}><strong>{ebayReadinessLabels[item]}</strong><span>{ebayReadinessHelp[item]}</span></li>)}</ul>
-              <div className="connection__actions">
-                <a href="https://www.ebay.com/sh/buspolicy" target="_blank" rel="noreferrer" className="btn btn--secondary">Business policies</a>
-                <button type="button" onClick={refreshReadiness} disabled={busy} className="btn btn--secondary"><RefreshCw size={16} aria-hidden="true" />Recheck setup</button>
+
+            {connected && readiness && (
+              <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--line)" }}>
+                <p className="t-small" style={{ margin: 0 }}>Selling setup: {ready ? "Complete" : "Needs setup"} · Sales access: {getEbaySalesPermissionLabel(readiness)}</p>
+                {needsSalesPermission && <p className="t-small muted" style={{ margin: "8px 0 0" }}>{readiness.salesReadPermission == null ? "Your account is connected, but Sello did not save its permissions. Reconnect once to enable sale monitoring." : "Your account is connected, but sales access is missing. Reconnect eBay to enable sale monitoring."}</p>}
               </div>
-            </div>}
+            )}
+            {readiness?.reconnectRequired && <p className="t-small muted" style={{ padding: "10px 20px", margin: 0 }}>Your eBay connection expired or was revoked. Reconnect to restore access.</p>}
+
+            {/* Setup incomplete banner */}
+            {connected && !ready && (
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--line)" }}>
+                <div className="banner banner--warn">
+                  <div style={{ minWidth: 0 }}>
+                    <p className="banner__title" style={{ margin: 0 }}>
+                      {setupMessage.heading}
+                    </p>
+                    <p className="banner__desc" style={{ margin: "4px 0 0" }}>
+                      {setupMessage.body}
+                    </p>
+                    <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 12 }}>
+                      <a
+                        href="https://www.ebay.com/sh/buspolicy"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
+                      >
+                        Open eBay business policies
+                      </a>
+                      <a
+                        href="https://www.ebay.com/sh/ovw"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontWeight: 500, textDecoration: "underline", textUnderlineOffset: 3 }}
+                      >
+                        Open Seller Hub
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Inventory location form — collapsed by default */}
             {offerLocationSetup && (
               <div style={{ padding: "0 20px", borderBottom: "1px solid var(--line)" }}>
@@ -401,10 +460,86 @@ export default function MarketplaceSettingsPage() {
               </div>
             )}
 
+            {/* Missing items — only show when connected and setup incomplete */}
+            {connected && !ready && missingItems.length > 0 && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 10,
+                  padding: "16px 20px",
+                }}
+                className="readiness-grid"
+              >
+                {missingItems.map((item) => (
+                  <div
+                    key={item}
+                    style={{
+                      borderRadius: "var(--r-3)",
+                      border: "1px solid var(--line)",
+                      background: "var(--surface-sunk)",
+                      padding: "var(--s-4)",
+                    }}
+                  >
+                    <XCircle
+                      size={18}
+                      style={{ color: "var(--ink-4)" }}
+                      aria-hidden="true"
+                    />
+                    <p style={{ margin: "10px 0 2px", fontSize: 12.5, fontWeight: 500 }}>
+                      {ebayReadinessLabels[item]}
+                    </p>
+                    <p className="t-small muted" style={{ margin: 0 }}>
+                      Missing
+                    </p>
+                    <p
+                      className="t-small muted"
+                      style={{ margin: "8px 0 0", lineHeight: 1.5 }}
+                    >
+                      {ebayReadinessHelp[item]}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {(checking || busy) && <p className="connection__progress" role="status"><Loader2 size={16} className="animate-spin" aria-hidden="true" />{checking ? "Checking eBay…" : "Updating eBay…"}</p>}
-            {error && <div className="connection__error" role="alert"><p>{error}</p>{errorCode === "CONNECTION_LIMIT_REACHED" && <Link href="/settings/billing">View plans</Link>}</div>}
+            {/* Syncing indicator */}
+            {(checking || actionState === "loading") && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  borderTop: "1px solid var(--line)",
+                  padding: "10px 20px",
+                }}
+                className="t-small muted"
+                role="status"
+              >
+                <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                Syncing eBay state
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div
+                style={{ borderTop: "1px solid var(--line)", padding: "10px 20px" }}
+                className="t-small danger"
+                role="alert"
+              >
+                <p style={{ margin: 0 }}>{error}</p>
+                {errorCode === "CONNECTION_LIMIT_REACHED" && (
+                  <p style={{ margin: "6px 0 0" }}>
+                    <Link href="/settings/billing" style={{ textDecoration: "underline" }}>
+                      Upgrade plan
+                    </Link>
+                  </p>
+                )}
+              </div>
+            )}
           </section>
+
           <StockXConnectionCard accessToken={session?.access_token ?? null} />
           <EtsyConnectionCard accessToken={session?.access_token ?? null} />
         </div>

@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "stops": [
+    {
+      "tag": "BUTTON",
+      "label": "Toggle navigation",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "All8",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Drafts3",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Ready2",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Active3",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Listing issues0",
+      "sidebar": false
+    },
+    {
+      "tag": "INPUT",
+      "label": "Search inventory",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "List",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Grid",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Select all items on this page",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Refresh",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Select all items on this page",
+      "sidebar": false
+    },
+    {
+      "tag": "BUTTON",
+      "label": "Select Nike Dunk Low Panda",
+      "sidebar": false
+    },
+    {
+      "tag": "A",
+      "label": "Nike Dunk Low PandaNike · 10 · Used — Good",
+      "sidebar": false
+    },
+    {
+      "tag": "A",
+      "label": "Ready to post",
+      "sidebar": false
+    }
+  ]
+}

@@ -27,6 +27,15 @@
       "evidence": "Official npm metadata and documentation, source-owned integration, tests and rendered review.",
       "rollback": "Revert UI redesign commit.",
       "doNotUseWhen": "Non-React runtimes or a smaller native control already fully satisfies the task."
+    },
+    {
+      "registryId": "di-994a598cbb32",
+      "source": "https://lucide.dev/icons/image",
+      "inputSafety": "cleared",
+      "practiceMaturity": "trial",
+      "evidence": "Existing installed lucide-react package and source-owned Icon mapping; used by original inventory photo placeholders.",
+      "rollback": "Restore prior component manifest.",
+      "doNotUseWhen": "A real item photograph is available."
     }
   ]
 }

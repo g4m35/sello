@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "samples": [
+    {
+      "schemaVersion": 1,
+      "capture": "reduced-motion",
+      "matchMediaSupported": true,
+      "prefersReducedMotion": true,
+      "source": "get-animations",
+      "runningAnimations": 0,
+      "persistentAnimations": 0,
+      "animatedElements": 0,
+      "samples": [],
+      "documentState": {
+        "reducedMotion": null
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "capture": "reduced-motion",
+      "matchMediaSupported": true,
+      "prefersReducedMotion": true,
+      "source": "get-animations",
+      "runningAnimations": 0,
+      "persistentAnimations": 0,
+      "animatedElements": 0,
+      "samples": [],
+      "documentState": {
+        "reducedMotion": null
+      }
+    }
+  ]
+}
