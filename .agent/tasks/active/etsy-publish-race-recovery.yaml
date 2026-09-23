@@ -1,0 +1,48 @@
+id: etsy-publish-race-recovery
+title: Recover Etsy activation races without duplicating cleanup
+status: active
+owner: Codex etsy_safety
+reviewer: etsy_integration_review
+risk: high
+task_type: backend
+base_branch: develop
+working_branch: fix/etsy-publish-race-recovery
+worktree_path: /Users/jheller/dev/sello-worktrees/etsy-publish-race-recovery
+created_at: 2026-09-23T05:50:00.000Z
+context: Owner requested correction of incomplete marketplace automation; root delegated Etsy safety.
+non_goals:
+  - Enable Etsy credentials or switches.
+  - Live marketplace calls or database migrations.
+required_reading:
+  - AGENTS.md
+  - src/lib/marketplace/AGENTS.md
+  - src/lib/inventory-sync/AGENTS.md
+documentation:
+  - docs/operations/etsy-publish-race-recovery.md
+review_requirements:
+  - Independent review of publish concurrency, billing recovery, and sold-state safety.
+goal: Recover sold/edit races around Etsy activation, enforce single-unit publishing, and reconcile unavailable states.
+allowed_paths:
+  - src/app/api/marketplaces/etsy/**
+  - src/lib/inventory-sync/jobs/etsy-delist*
+  - src/lib/inventory-sync/jobs/worker.ts
+  - src/lib/inventory-sync/jobs/worker.test.ts
+  - src/lib/marketplace/adapters/etsy/**
+  - docs/operations/etsy-publish-race-recovery.md
+  - .agent/tasks/active/etsy-publish-race-recovery.yaml
+  - .agent/state/etsy-publish-race-recovery.json
+protected_paths:
+  - package.json
+  - package-lock.json
+  - prisma/**
+  - .github/**
+acceptance:
+  - Duplicate and ambiguous attempts fail closed and known drafts resume.
+  - Etsy sold status uses shared transactional reconciliation.
+  - Current documented Etsy authentication and processing profile fields are validated.
+validation:
+  - npm run validate:full
+full_validation_required: true
+deployment_authorized: false
+merge_authorized: false
+notes: Requires integration with etsy-recurring-sync verified delist helper; no provider flags are enabled.

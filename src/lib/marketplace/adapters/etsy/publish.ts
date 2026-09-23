@@ -40,7 +40,10 @@ export async function publishEtsyListing(args: {
   await args.persistDraft(draft.listing_id);
   // An activation timeout may have succeeded remotely. Reconcile, never create
   // or reactivate another listing based on a missing local success response.
-  if (draft.state === "active") return { listingId: draft.listing_id, state: "active", images: [] };
+  if (draft.state === "active") {
+    await args.assertCanActivate();
+    return { listingId: draft.listing_id, state: "active", images: [] };
+  }
   if (args.requireExistingActive || draft.state !== "draft") {
     throw new EtsyIntegrationError(etsyErrorCodes.publishFailed, "Only a verified Etsy draft can be activated. Review this listing in Etsy.", 409);
   }
@@ -69,6 +72,7 @@ export async function publishEtsyListing(args: {
     if (activated.listing_id !== draft.listing_id || activated.state !== "active") {
       throw new EtsyIntegrationError(etsyErrorCodes.publishFailed, "Etsy did not confirm activation. Sync this saved listing before retrying.", 409);
     }
+    await args.assertCanActivate();
     return { listingId: draft.listing_id, state: "active", images };
   }
   return { listingId: draft.listing_id, state: "draft", images };

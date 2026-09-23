@@ -1416,7 +1416,7 @@ async function execDetectStatus(
       const result = await (deps.etsyStatusSync ?? (await import("@/lib/marketplace/adapters/etsy/status-sync")).syncEtsyListingForAccount)({
         userId: job.userId, accountId: job.accountId, itemId: inventoryItemId,
       }, db as unknown as ReturnType<typeof getPrisma>);
-      if (!result.synced || !result.state || !["active", "sold_out", "inactive", "expired", "removed"].includes(result.state)) {
+      if (!result.synced || !result.state || !["active", "sold_out", "inactive", "expired", "removed", "unavailable"].includes(result.state)) {
         throw new AppError("Etsy status needs review.", 409);
       }
     } catch (error) {

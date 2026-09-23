@@ -63,3 +63,7 @@ describe("evaluateEtsyReadiness", () => {
     expect(result.missing).toEqual([]);
   });
 });
+
+it.each([0, 2, 1.5, null])("requires one unit rather than unreconciled multi-unit inventory: %s", (quantity) => {
+  expect(evaluateEtsyReadiness({ ...connectedReady, quantity }).missing).toContain("quantity");
+});

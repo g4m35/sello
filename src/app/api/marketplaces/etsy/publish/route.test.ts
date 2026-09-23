@@ -5,6 +5,10 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
   connectionFindUnique: vi.fn(),
   listingFindUnique: vi.fn(),
+  listingFindFirst: vi.fn(),
+  reviewsFindMany: vi.fn(),
+  syncJobUpsert: vi.fn(),
+  syncJobUpdateMany: vi.fn(),
   listingUpsert: vi.fn(),
   listingUpdateMany: vi.fn(),
   listingUpdate: vi.fn(),
@@ -23,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     updateListing: vi.fn(),
     uploadListingImage: vi.fn(),
     activateListing: vi.fn(),
+    deactivateListing: vi.fn(),
   },
 }));
 
@@ -38,10 +43,11 @@ vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({
     inventoryItem: { findFirst: mocks.findFirst },
     usageReservation: { findUnique: mocks.usageFindUnique },
-    reviewTask: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    syncJob: { upsert: mocks.syncJobUpsert, updateMany: mocks.syncJobUpdateMany },
+    reviewTask: { findMany: mocks.reviewsFindMany, updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     marketplaceEvent: { create: vi.fn().mockResolvedValue({}) },
     marketplaceConnection: { findUnique: mocks.connectionFindUnique },
-    marketplaceListing: { findUnique: mocks.listingFindUnique, upsert: mocks.listingUpsert, updateMany: mocks.listingUpdateMany, update: mocks.listingUpdate },
+    marketplaceListing: { findFirst: mocks.listingFindFirst, findUnique: mocks.listingFindUnique, upsert: mocks.listingUpsert, updateMany: mocks.listingUpdateMany, update: mocks.listingUpdate },
   }),
 }));
 vi.mock("@/lib/marketplace/adapters/etsy/session", () => ({
@@ -52,6 +58,8 @@ vi.mock("@/lib/marketplace/adapters/etsy/media", () => ({
 }));
 
 import { POST } from "./route";
+import { executeEtsyWorkerDelist } from "@/lib/inventory-sync/jobs/etsy-delist";
+import { getPrisma } from "@/lib/prisma";
 
 const ITEM_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -103,6 +111,10 @@ describe("Etsy publish route", () => {
     vi.clearAllMocks();
     process.env.ETSY_API_ENABLED = "true";
     process.env.ETSY_PUBLISH_EMAILS = "seller@example.com";
+    process.env.ETSY_DELIST_EMAILS = "seller@example.com";
+    mocks.reviewsFindMany.mockResolvedValue([]);
+    mocks.syncJobUpsert.mockResolvedValue({ id: "recovery", status: "queued" });
+    mocks.syncJobUpdateMany.mockResolvedValue({ count: 1 });
     mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "seller@example.com" });
     mocks.loadEtsyImagesForItem.mockResolvedValue([{ data: new Uint8Array([1]), fileName: "a.jpg", rank: 1 }]);
     mocks.client.getListing.mockResolvedValue({ listing_id: 555, state: "draft" });
@@ -125,6 +137,7 @@ describe("Etsy publish route", () => {
   afterEach(() => {
     delete process.env.ETSY_API_ENABLED;
     delete process.env.ETSY_PUBLISH_EMAILS;
+    delete process.env.ETSY_DELIST_EMAILS;
   });
 
   it("fails closed when the API switch is off", async () => {
@@ -244,7 +257,7 @@ describe("Etsy publish route", () => {
     mocks.findFirst.mockResolvedValueOnce(readyItem()).mockResolvedValueOnce(null);
     mocks.connectionFindUnique.mockResolvedValue({ id: "conn" }); mocks.listingFindUnique.mockResolvedValue(null);
     expect((await POST(postRequest(readyBody()))).status).toBe(409);
-    expect(mocks.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ updatedAt: new Date(0) }), include: { photos: true, listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } } }));
+    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ updatedAt: new Date(0) }), include: { photos: true, listingDrafts: { orderBy: { updatedAt: "desc" }, take: 1 } } }));
     expect(mocks.client.activateListing).not.toHaveBeenCalled();
   });
   it("resumes an image failure using the same draft and quota reservation", async () => {
@@ -329,6 +342,66 @@ describe("Etsy publish route", () => {
     expect(mocks.reserveUsage.mock.calls[1][0].idempotencyKey).not.toBe(firstKey);
     expect(mocks.client.getListing).toHaveBeenCalledWith("555");
     expect(mocks.client.createDraftListing).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects multi-unit inventory before reserving usage or contacting Etsy", async () => {
+    mocks.findFirst.mockResolvedValue({ ...readyItem(), quantityAvailable: 2 });
+    expect((await POST(postRequest(readyBody()))).status).toBe(422);
+    expect(mocks.reserveUsage).not.toHaveBeenCalled(); expect(mocks.client.createDraftListing).not.toHaveBeenCalled();
+  });
+  it("requires removal capability before permitting activation", async () => {
+    delete process.env.ETSY_DELIST_EMAILS;
+    expect((await POST(postRequest(readyBody()))).status).toBe(403);
+    expect(mocks.client.createDraftListing).not.toHaveBeenCalled();
+  });
+  it.each(["confirmed", "timeout", "final_save"])("removes a listing activated after another sale even when original removal parked: %s", async (mode) => {
+    let sold = false; let remoteState = "draft";
+    const row = { id: "ml1", status: "NOT_LISTED", inventoryItem: { soldSourceMarketplace: "ebay" }, externalListingId: null as string | null, updatedAt: new Date(0) };
+    const originalJob = { id: "original-sale-removal", status: "needs_review", idempotencyKey: `delist:${ITEM_ID}:ml1` };
+    const jobs = new Map<string, { id: string; status: string; idempotencyKey: string }>([[originalJob.idempotencyKey, originalJob]]);
+    mocks.findFirst.mockImplementation(async ({ where, select }) => {
+      if (select) return { soldSourceMarketplace: sold ? "ebay" : null };
+      if (sold && where.status) return null;
+      return sold ? { ...readyItem(), status: "SOLD", quantityAvailable: 0, soldSourceMarketplace: "ebay" } : readyItem();
+    });
+    mocks.connectionFindUnique.mockResolvedValue({ id: "conn" }); mocks.listingFindUnique.mockResolvedValue(null);
+    mocks.listingUpsert.mockResolvedValue(row); mocks.listingFindFirst.mockResolvedValue(row);
+    mocks.listingUpdate.mockImplementation(async ({ data }) => Object.assign(row, data));
+    mocks.listingUpdateMany.mockImplementation(async ({ where, data }) => {
+      if (where.status !== row.status || (sold && where.inventoryItem)) return { count: 0 };
+      Object.assign(row, data); return { count: 1 };
+    });
+    mocks.client.activateListing.mockImplementation(async () => {
+      // Sale committed after eligibility passed. Its original delist observed
+      // a remote draft and parked before this activation completed.
+      if (mode !== "final_save") sold = true;
+      remoteState = "active";
+      if (mode === "timeout") throw new Error("response lost");
+      return { listing_id: 555, state: "active" };
+    });
+    mocks.settleUsage.mockImplementation(async () => { if (mode === "final_save") sold = true; });
+    mocks.client.getListing.mockImplementation(async () => ({ listing_id: 555, state: remoteState }));
+    mocks.client.deactivateListing.mockImplementation(async () => { remoteState = "inactive"; return { listing_id: 555, state: remoteState }; });
+    mocks.syncJobUpsert.mockImplementation(async ({ where, create }) => {
+      if (!jobs.has(where.idempotencyKey)) jobs.set(where.idempotencyKey, { ...create, id: "recovery" });
+      return jobs.get(where.idempotencyKey);
+    });
+    mocks.syncJobUpdateMany.mockImplementation(async ({ data }) => {
+      const recovery = [...jobs.values()].find(job => job.id === "recovery")!; Object.assign(recovery, data); return { count: 1 };
+    });
+    const response = await POST(postRequest(readyBody()));
+    expect(response.status).toBe(mode === "timeout" ? 500 : 409);
+    expect(remoteState).toBe("active");
+    expect(originalJob.status).toBe("needs_review");
+    expect(jobs.size).toBe(2); expect([...jobs.values()].find(job => job.id === "recovery")?.status).toBe("queued");
+    // Execute the real provider-verifying worker adapter for the new durable
+    // action. Production's worker supplies the lease and authorization gates.
+    await executeEtsyWorkerDelist({ userId: "u1", accountId: "acc-1", inventoryItemId: ITEM_ID, marketplaceListingId: "ml1" }, getPrisma());
+    expect(remoteState).toBe("inactive"); expect(row.status).toBe("DELISTED");
+    expect(mocks.client.deactivateListing).toHaveBeenCalledTimes(1);
+    expect((await POST(postRequest(readyBody()))).status).toBe(409);
+    expect(mocks.client.activateListing).toHaveBeenCalledTimes(1);
+    expect(mocks.client.deactivateListing).toHaveBeenCalledTimes(1);
   });
 
 });
