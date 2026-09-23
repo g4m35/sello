@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError } from "@/lib/errors";
 
 const mocks = vi.hoisted(() => ({
+  snapshotAutomation: vi.fn(),
   after: vi.fn(),
   generateListingDraftWithGemini: vi.fn(),
   getPrisma: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("@/lib/ai/gemini", () => ({
 }));
 vi.mock("@/lib/comps/fetch", () => ({ runCompFetch: mocks.runCompFetch }));
 vi.mock("@/lib/prisma", () => ({ getPrisma: mocks.getPrisma }));
+vi.mock("@/lib/automation/settings", () => ({ snapshotAutomation: mocks.snapshotAutomation }));
 vi.mock("@/lib/billing/account", () => ({ getActiveAccount: mocks.getActiveAccount }));
 vi.mock("@/lib/auth/feature-access", () => ({
   resolveRuntimeEntitlements: mocks.resolveRuntimeEntitlements,
@@ -55,6 +57,7 @@ import { POST as ACTION } from "./[draftId]/route";
 describe("listing draft API auth boundaries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.snapshotAutomation.mockResolvedValue({ policy: { mode: "prepare" } });
     mocks.reserveUsageOrThrow.mockResolvedValue({
       reservationId: "usage-reservation-1",
       idempotent: false,
@@ -125,7 +128,7 @@ describe("listing draft API auth boundaries", () => {
     ["allowed@example.com", true],
     ["not-allowed@example.com", false],
   ])(
-    "passes paidProvidersAllowed=%s entitlement into draft auto-discovery",
+    "queues durable preparation for %s; worker rechecks provider entitlement",
     async (email, paidProvidersAllowed) => {
       vi.stubEnv("PAID_COMPS_EMAILS", "allowed@example.com");
       mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email });
@@ -162,6 +165,7 @@ describe("listing draft API auth boundaries", () => {
             flaws: [],
           },
           marketplaceDrafts: {},
+          warnings: [],
         },
       });
       const prisma = {
@@ -169,6 +173,7 @@ describe("listing draft API auth boundaries", () => {
           create: vi.fn().mockResolvedValue({ id: "item-1" }),
           update: vi.fn().mockResolvedValue({ id: "item-1" }),
         },
+        jobLog: { create: vi.fn(async ({ data }) => data) },
         itemPhoto: { createMany: vi.fn().mockResolvedValue({ count: 0 }) },
         listingDraft: { create: vi.fn().mockResolvedValue({ id: "draft-1" }) },
         aiOutput: { create: vi.fn().mockResolvedValue({ id: "ai-1" }) },
@@ -185,21 +190,13 @@ describe("listing draft API auth boundaries", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(mocks.runCompFetch).toHaveBeenCalledWith(
-        prisma,
-        expect.any(String),
-        "user-1",
-        {
-          paidProvidersAllowed,
-          adminOverride: false,
-          accountId: "acc-1",
-          idempotencyKey: expect.any(String),
-        },
-      );
+      expect(prisma.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ payload: expect.objectContaining({ policy: { mode: "prepare" }, accountId: "acc-1", userId: "user-1" }) }) });
+      expect(mocks.runCompFetch).not.toHaveBeenCalled();
+      expect(mocks.after).toHaveBeenCalledOnce();
     },
   );
 
-  it.each([null, { mode: "prepare" }, { mode: "publish", marketplace: "ebay", consent: true, minPriceCents: 10000, maxPriceCents: 20000 }])("creates correct defaults and persists per-upload automation: %j", async (automation) => {
+  it.each([null, "standing", { mode: "prepare" }, { mode: "publish", marketplace: "ebay", consent: true, minPriceCents: 10000, maxPriceCents: 20000 }])("creates correct defaults and persists per-upload automation: %j", async (automation) => {
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.prepareListingPhotos.mockResolvedValue([]);
@@ -248,8 +245,10 @@ describe("listing draft API auth boundaries", () => {
     mocks.getPrisma.mockReturnValue(prisma);
     mocks.runCompFetch.mockResolvedValue({ status: "no_comps_found" });
 
+    const standing = { policy: { mode: "publish", marketplace: "ebay", consent: true, minPriceCents: 1000, maxPriceCents: 50000 }, standingAuthorization: { revision: "00000000-0000-4000-8000-000000000001" } };
+    if (automation === "standing") mocks.snapshotAutomation.mockResolvedValue(standing);
     const form = new FormData();
-    if (automation) form.set("automation", JSON.stringify(automation));
+    if (automation && automation !== "standing") form.set("automation", JSON.stringify(automation));
     const response = await POST(
       new Request("http://localhost/api/listings/draft", {
         method: "POST",
@@ -261,11 +260,12 @@ describe("listing draft API auth boundaries", () => {
     expect(data.marketplaceDrafts.ebay.quantity).toBe(1);
     expect(data.marketplaceDrafts.ebay.categoryId).toBe("15709");
     expect(response.status).toBe(200);
-    if (automation) {
-      expect(prisma.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ status: "QUEUED", payload: expect.objectContaining({ accountId: "acc-1", userId: "user-1", policy: automation, warnings: [] }) }) });
+    {
+      expect(prisma.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ status: "QUEUED", payload: expect.objectContaining({ accountId: "acc-1", userId: "user-1", policy: automation === "standing" ? standing.policy : automation ?? { mode: "prepare" }, warnings: [] }) }) });
+      if (automation === "standing") expect(prisma.jobLog.create.mock.calls[0][0].data.payload.standingAuthorization).toEqual(standing.standingAuthorization);
       expect(mocks.after).toHaveBeenCalledOnce();
       expect(mocks.runCompFetch).not.toHaveBeenCalled();
-    } else expect(prisma.jobLog.create).not.toHaveBeenCalled();
+    }
 
   });
   it.each([true, false])("allows a fresh retry only after a confirmed pre-write release: %s", async (released) => {
@@ -282,6 +282,7 @@ describe("listing draft API auth boundaries", () => {
 describe("listing draft AI quota enforcement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.snapshotAutomation.mockResolvedValue({ policy: { mode: "prepare" } });
     mocks.requireSupabaseUser.mockResolvedValue({ id: "user-1", email: "u@example.com" });
     mocks.getActiveAccount.mockResolvedValue({ id: "acc-1", ownerUserId: "user-1", plan: "free" });
     mocks.reserveUsageOrThrow.mockResolvedValue({

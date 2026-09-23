@@ -2,6 +2,7 @@ import { BulkStepTimeout, withinBulkDeadline } from "./deadline";
 import { bulkJobId } from "./job-id";
 import { randomUUID } from "node:crypto";
 
+import { snapshotAutomation } from "@/lib/automation/settings";
 import { automationJobData } from "@/lib/automation/listing-job";
 
 import { Prisma } from "@/generated/prisma/client";
@@ -835,6 +836,7 @@ export async function generateBulkItem(
   let writeStarted = false;
   let providerStarted = false;
   try {
+    const automation = await snapshotAutomation(prisma, args.account.id, item.createdAt);
     const photos = await withinBulkDeadline(() => downloadListingPhotos(
       item.photos.map((photo, position) => ({
         storageBucket: photo.storageBucket,
@@ -964,7 +966,7 @@ export async function generateBulkItem(
       await tx.jobLog.create({ data: automationJobData({
         id: bulkJobId("prepare", item.id), inventoryItemId,
         accountId: args.account.id, userId: args.user.id,
-        policy: { mode: "prepare" },
+        ...automation,
         warnings: [...gemini.draft.warnings, ...(reviewReason ? [reviewReason] : [])],
       }) });
     });

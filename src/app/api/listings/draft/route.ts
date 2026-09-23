@@ -1,3 +1,4 @@
+import { snapshotAutomation } from "@/lib/automation/settings";
 import { ListingAutomationSchema } from "@/lib/automation/policy";
 import { automationJobData, runListingJob } from "@/lib/automation/listing-job";
 import { randomUUID } from "node:crypto";
@@ -14,12 +15,10 @@ import {
   reserveUsageOrThrow,
   settleUsageReservationOrRequireReconciliation,
 } from "@/lib/billing/usage";
-import { isAdminUser } from "@/lib/auth/admin";
 import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
 import { accountScope } from "@/lib/billing/scope";
 import { applyDefaultEbayDraftFields } from "@/lib/listing/default-ebay-draft";
 import { asStringRecord } from "@/lib/listing/ebay-draft-fields";
-import { runCompFetch } from "@/lib/comps/fetch";
 import {
   AppError,
   logUnexpectedError,
@@ -118,7 +117,8 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const automationValue = formData.get("automation");
-    const automation = typeof automationValue === "string" ? ListingAutomationSchema.parse(JSON.parse(automationValue)) : null;
+    const savedAutomation = typeof automationValue === "string" ? null : await snapshotAutomation(prisma, account.id, new Date());
+    const automation = typeof automationValue === "string" ? ListingAutomationSchema.parse(JSON.parse(automationValue)) : savedAutomation!.policy;
     const files = extractListingPhotos(formData);
     const photos = await prepareListingPhotos(files);
 
@@ -208,7 +208,7 @@ export async function POST(request: Request) {
             ...f,
             source: f.source ?? "ai",
           })) as Prisma.InputJsonValue,
-          selectedMarketplaces: automation ? (automation.mode === "publish" ? ["ebay"] : []) : ["ebay", "grailed", "poshmark", "depop", "etsy"],
+          selectedMarketplaces: automation.mode === "publish" ? ["ebay"] : [],
         },
       }),
       prisma.aiOutput.create({
@@ -223,11 +223,12 @@ export async function POST(request: Request) {
           validatedJson: gemini.draft as Prisma.InputJsonValue,
         },
       }),
-      ...(automation ? [prisma.jobLog.create({ data: automationJobData({
+      prisma.jobLog.create({ data: automationJobData({
         id: createdInventoryItemId, inventoryItemId: createdInventoryItemId,
         accountId: account.id, userId: user.id, policy: automation,
+        ...(savedAutomation?.standingAuthorization ? { standingAuthorization: savedAutomation.standingAuthorization } : {}),
         warnings: gemini.draft.warnings,
-      }) })] : []),
+      }) }),
     ]);
     meteredWorkCompleted = true;
 
@@ -238,16 +239,8 @@ export async function POST(request: Request) {
       prisma,
     );
 
-    // Best-effort: gather automatic comps now that the item is identified.
-    // No-op (and fast) when no comp source is configured; never blocks the draft.
-    if (automation) {
-      after(() => runListingJob(createdInventoryItemId));
-    } else await runCompFetch(prisma, createdInventoryItemId, user.id, {
-      paidProvidersAllowed: runtimeEntitlements.access.paidComps,
-      adminOverride: isAdminUser(user),
-      accountId: account.id,
-      idempotencyKey: `${usageIdempotencyKey}:auto-comps`,
-    }).catch((error) => logUnexpectedError("draft_auto_comps", error));
+    // Persisted preparation survives the response and is resumed by the queue.
+    after(() => runListingJob(createdInventoryItemId));
 
     return NextResponse.json({
       inventoryItem,
