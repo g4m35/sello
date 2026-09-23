@@ -21,3 +21,11 @@ Photo registration, grouping/enqueue, claiming, provider-start authorization, ca
 The bulk worker leaves jobs queued when less than 90 seconds remain; route duration for one after-response job is 180 seconds. This is admission headroom, not a hard abort deadline for an already-running external call. Final interruption recovery remains necessary.
 
 Follow-up validation: 60 focused tests passed, including the two real PostgreSQL checks and cancellation interleaving regressions. TypeScript, ESLint and diff checks passed.
+
+## Bounded external waits
+
+The scheduler deadline now reaches bulk generation. Each item has a 120-second total work cap and reserves 20 seconds for database settlement. Photo download waits are capped at 30 seconds and the remaining provider budget. Gemini waits are bounded at the pure generation boundary, with the installed SDK receiving AbortSignal and a finite HTTP timeout; existing callers also receive a finite default timeout. Neither the complete service nor its database writes are raced.
+
+If a started Gemini call times out, the item is parked as BULK_GENERATION_UNCERTAIN and usage is marked for reconciliation, never released or automatically retried. Aborting the client request does not establish that the provider canceled billing. A late photo/provider promise cannot resume inventory writes. A download timeout before provider start releases the unused reservation and remains a visible failure.
+
+Validation: 64 focused tests passed including real PostgreSQL UUID checks, simulated stalled downloads and Gemini with late resolution, reservation preservation, no late writes, and SDK abort/timeout forwarding. TypeScript, focused ESLint and diff checks passed. No live calls.

@@ -604,6 +604,47 @@ describe("bulk intake service", () => {
     expect(prisma.bulkBatch.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "canceled" }) }));
   });
 
+  it.each(["photos", "gemini"])("bounds stalled %s without late writes or blind provider retries", async (stage) => {
+    vi.useFakeTimers();
+    try {
+      const initial = generationItem();
+      const final = { ...initial, status: stage === "gemini" ? "needs_review" : "failed", errorCode: stage === "gemini" ? "BULK_GENERATION_UNCERTAIN" : "BULK_GENERATION_TIMEOUT" };
+      const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(final);
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+      const create = vi.fn();
+      const prisma = {
+        bulkItem: { findFirst, updateMany, findMany: vi.fn().mockResolvedValue([{ status: final.status }]) },
+        bulkBatch: { update: vi.fn(), findUnique: vi.fn().mockResolvedValue({ status: "processing" }) },
+        inventoryItem: { create }, jobLog: { create: vi.fn() },
+      };
+      usePrisma(prisma);
+      let finishLate!: () => void;
+      const stalled = new Promise((resolve) => { finishLate = () => resolve({}); });
+      if (stage === "gemini") mocks.generateListingDraftWithGemini.mockReturnValue(stalled);
+      else mocks.downloadListingPhotos.mockReturnValue(stalled);
+      const work = generateBulkItem({ batchId: initial.batchId, itemId: initial.id, account, user, deadline: Date.now() + 21_000 });
+      await vi.advanceTimersByTimeAsync(1_001);
+      const result = await work;
+      expect(result.errorCode).toBe(final.errorCode);
+      expect(create).not.toHaveBeenCalled();
+      if (stage === "gemini") {
+        expect(mocks.generateListingDraftWithGemini).toHaveBeenCalledOnce();
+        expect(mocks.generateListingDraftWithGemini.mock.calls[0]![1].signal.aborted).toBe(true);
+        expect(mocks.markUsageReconciliationRequired).toHaveBeenCalledWith("usage-reservation-1", expect.any(Date), "BULK_GENERATION_UNCERTAIN", prisma);
+        expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
+        expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "needs_review", errorCode: "BULK_GENERATION_UNCERTAIN" }) }));
+      } else {
+        expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
+        expect(mocks.markUsageWorkStarted).not.toHaveBeenCalled();
+        expect(mocks.releaseUsageReservation).toHaveBeenCalledOnce();
+      }
+      finishLate();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(create).not.toHaveBeenCalled();
+      expect(prisma.jobLog.create).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("moves quota-exhausted items to review without calling Gemini", async () => {
     const initial = generationItem();
     const final = { ...initial, status: "needs_review", reviewReason: "Upgrade for more.", errorCode: "QUOTA_EXCEEDED_AI_LISTING" };

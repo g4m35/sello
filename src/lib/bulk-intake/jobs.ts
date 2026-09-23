@@ -67,7 +67,7 @@ export const bulkJobDeps = {
   generate: generateBulkItem,
 };
 
-export async function runBulkGenerationJob(id: string, db: Db = getPrisma(), deps = bulkJobDeps) {
+export async function runBulkGenerationJob(id: string, db: Db = getPrisma(), deps = bulkJobDeps, deadline = Date.now() + 120_000) {
   const job = await db.jobLog.findFirst({ where: { id, queueName: BULK_GENERATION_QUEUE, status: "QUEUED" } });
   if (!job) return;
   const claimed = await db.jobLog.updateMany({ where: { id, status: "QUEUED", updatedAt: job.updatedAt }, data: { status: "RUNNING" } });
@@ -83,7 +83,7 @@ export async function runBulkGenerationJob(id: string, db: Db = getPrisma(), dep
     if (batch.status === "canceled") throw new AppError("This batch was canceled.", 409);
     assertBulkBatchSize({ ...access.account, plan: access.plan }, batch.items.length, user);
     const result = await deps.generate({ batchId: payload.batchId, itemId: payload.itemId,
-      account: { ...access.account, plan: access.plan }, user, expectedAttempts: payload.attempts }, db);
+      account: { ...access.account, plan: access.plan }, user, expectedAttempts: payload.attempts, deadline }, db);
     await db.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: {
       status: result.inventoryItemId ? "SUCCEEDED" : "FAILED",
       result: { state: result.status, inventoryItemId: result.inventoryItemId },
@@ -129,7 +129,7 @@ export async function runBulkGenerationQueue(db: Db = getPrisma(), deadline = Da
   let processed = 0;
   for (const job of jobs) {
     if (Date.now() + BULK_GENERATION_MIN_BUDGET_MS > deadline) break;
-    await runBulkGenerationJob(job.id, db);
+    await runBulkGenerationJob(job.id, db, bulkJobDeps, deadline);
     processed++;
   }
   return processed;

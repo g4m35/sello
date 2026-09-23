@@ -1,3 +1,4 @@
+import { BulkStepTimeout, withinBulkDeadline } from "./deadline";
 import { bulkJobId } from "./job-id";
 import { randomUUID } from "node:crypto";
 
@@ -710,11 +711,14 @@ export async function generateBulkItem(
     batchId: string;
     itemId: string;
     expectedAttempts?: number;
+    deadline?: number;
     account: AccountRecord;
     user: BulkIntakeUser;
   },
   prisma: Db = getPrisma(),
 ): Promise<BulkGenerationResult> {
+  const deadline = Math.min(args.deadline ?? Infinity, Date.now() + 120_000);
+  const providerDeadline = deadline - 20_000; // Keep time for persistence/reconciliation.
   const item = await prisma.bulkItem.findFirst({
     where: {
       id: args.itemId,
@@ -829,8 +833,9 @@ export async function generateBulkItem(
   }
 
   let writeStarted = false;
+  let providerStarted = false;
   try {
-    const photos = await downloadListingPhotos(
+    const photos = await withinBulkDeadline(() => downloadListingPhotos(
       item.photos.map((photo, position) => ({
         storageBucket: photo.storageBucket,
         storagePath: photo.storagePath,
@@ -838,7 +843,8 @@ export async function generateBulkItem(
         originalName: photo.originalName,
         position,
       })),
-    );
+    ), Math.min(providerDeadline, Date.now() + 30_000));
+    if (Date.now() >= providerDeadline) throw new BulkStepTimeout();
     // Linearize cancellation against provider start. Once this commits, cancel
     // can stop saving the result but the already-started provider may finish.
     await prisma.$transaction(async (transaction) => {
@@ -853,7 +859,10 @@ export async function generateBulkItem(
         throw new AppError("The usage reservation is no longer active.", 409, "USAGE_RESERVATION_NOT_ACTIVE");
       }
     });
-    const gemini = await generateListingDraftWithGemini(photos);
+    const gemini = await withinBulkDeadline((signal, timeoutMs) => {
+      providerStarted = true;
+      return generateListingDraftWithGemini(photos, { signal, timeoutMs: timeoutMs + 1_000 });
+    }, providerDeadline);
     const { identification, listingDraft } = gemini.draft;
     const marketplaceDrafts = applyDefaultEbayDraftFields({
       title: listingDraft.title,
@@ -977,11 +986,11 @@ export async function generateBulkItem(
       );
     });
   } catch (error) {
-    if (writeStarted) {
+    if (writeStarted || (providerStarted && error instanceof BulkStepTimeout)) {
       await markUsageReconciliationRequired(usageReservationId, new Date(), "BULK_GENERATION_UNCERTAIN", prisma);
       await prisma.bulkItem.updateMany({
         where: { id: item.id, accountId: args.account.id, generationAttempts: item.generationAttempts + 1, status: "generating", inventoryItemId: null },
-        data: { status: "needs_review", errorCode: "BULK_GENERATION_UNCERTAIN", errorMessage: "Saving could not be confirmed. Review this item before retrying.", generationEndedAt: new Date() },
+        data: { status: "needs_review", errorCode: "BULK_GENERATION_UNCERTAIN", errorMessage: writeStarted ? "Saving could not be confirmed. Review this item before retrying." : "The AI request timed out and its outcome is unknown. Review this item and usage before retrying.", generationEndedAt: new Date() },
       });
       await refreshBulkBatch(args.batchId, prisma);
       return generationResult(args.batchId, item.id, args.account.id, prisma);

@@ -91,7 +91,7 @@ describe("durable bulk queue", () => {
   it("passes an expected attempt and current entitlements to the budget-guarded service", async () => {
     const { db, prisma, deps, spies } = fake();
     await runBulkGenerationJob("job-1", prisma, deps);
-    expect(spies.generate).toHaveBeenCalledWith({ batchId: batch.id, itemId: item.id, user, account, expectedAttempts: 0 }, prisma);
+    expect(spies.generate).toHaveBeenCalledWith({ batchId: batch.id, itemId: item.id, user, account, expectedAttempts: 0, deadline: expect.any(Number) }, prisma);
     expect(db.jobLog.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "SUCCEEDED" }) }));
   });
   it("parks interrupted jobs without replaying a provider", async () => {
