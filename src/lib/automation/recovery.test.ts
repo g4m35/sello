@@ -4,7 +4,7 @@ import { automationJobData } from "./listing-job";
 import { preparationRecoveryAction, retryListingPreparation } from "./recovery";
 
 function harness() {
-  const job = { ...automationJobData({ id: "old", inventoryItemId: "item", accountId: "account", userId: "original-user", policy: { mode: "prepare" }, warnings: ["Confirm size"] }), status: "FAILED", updatedAt: new Date(), result: { message: "Provider unavailable" } as Record<string, unknown> };
+  const job = { ...automationJobData({ id: "old", inventoryItemId: "item", accountId: "account", userId: "original-user", policy: { mode: "prepare" }, warnings: [] }), status: "FAILED", updatedAt: new Date(), result: { message: "Provider unavailable" } as Record<string, unknown> };
   const db = {
     jobLog: { findFirst: vi.fn(async () => job), updateMany: vi.fn(async () => ({ count: 1 })), create: vi.fn() },
     inventoryItem: { findFirst: vi.fn(async () => ({ status: "DRAFT_READY", quantityAvailable: 1 })) },
@@ -20,7 +20,7 @@ describe("explicit preparation recovery", () => {
     const h = harness(); const id = await h.run();
     expect(h.db.jobLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { inventoryItemId: "item", inventoryItem: { accountId: "account" }, queueName: "listing-automation-v1" } }));
     expect(h.db.jobLog.updateMany).toHaveBeenCalledWith({ where: { id: "old", status: "FAILED", updatedAt: h.job.updatedAt }, data: { result: { message: "Provider unavailable", recoveryJobId: id } } });
-    expect(h.db.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ id, status: "QUEUED", payload: expect.objectContaining({ accountId: "account", userId: "current-user", policy: { mode: "prepare" }, warnings: ["Confirm size"] }) }) });
+    expect(h.db.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ id, status: "QUEUED", payload: expect.objectContaining({ accountId: "account", userId: "current-user", policy: { mode: "prepare" }, warnings: [] }) }) });
     expect(h.db.reviewTask.updateMany).toHaveBeenCalledWith({ where: { accountId: "account", inventoryItemId: "item", type: "sync_conflict", status: "open", dedupeKey: "listing-automation:old" }, data: { status: "resolved", resolvedAt: expect.any(Date) } });
   });
   it("does not recreate expired publishing consent on pre-publish recovery", async () => {
@@ -54,5 +54,17 @@ describe("explicit preparation recovery", () => {
   });
   it("does not expose recovery for invalid payloads", () => {
     expect(preparationRecoveryAction({ status: "FAILED", payload: {}, result: { phase: "preparing", recoveryAction: "retry_preparation" } })).toBeNull();
+  });
+  it("does not offer or enqueue futile retries for immutable identification warnings", async () => {
+    const h = harness(); Object.assign(h.job.payload, { warnings: ["Confirm size"] });
+    h.job.result = { phase: "preparing", recoveryAction: "retry_preparation" };
+    expect(preparationRecoveryAction(h.job)).toBeNull();
+    await expect(h.run()).rejects.toMatchObject({ status: 409 });
+    expect(h.db.jobLog.create).not.toHaveBeenCalled(); expect(h.db.reviewTask.updateMany).not.toHaveBeenCalled();
+  });
+  it("does not retry an identification-confidence review blocker", async () => {
+    const h = harness(); h.job.result = { blocker: "identification_review", phase: "preparing", recoveryAction: null };
+    expect(preparationRecoveryAction(h.job)).toBeNull();
+    await expect(h.run()).rejects.toMatchObject({ status: 409 }); expect(h.db.jobLog.create).not.toHaveBeenCalled();
   });
 });

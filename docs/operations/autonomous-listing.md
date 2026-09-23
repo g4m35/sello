@@ -18,6 +18,8 @@ An interrupted RUNNING listing job becomes review-required after 15 minutes. It 
 
 Failed preparation can be explicitly retried through `POST /api/listings/:id/automation` with `{ "action": "retry_preparation" }`. The authenticated active account must still own a single, unsold draft. A transaction links the old failure to one new job; concurrent retries cannot create duplicate work. The new job always has **prepare-only** permission and preserves identification warnings and confidence gates. Provider budgets, cooldowns, quotas and current access remain enforced. It does not regenerate Gemini output, erase uncertain evidence, restore expired publish consent, or post a listing.
 
+Saved identification warnings and explicit identification-confidence blockers do not offer preparation retry: comparisons cannot resolve those issues. They retain the review task and direct the seller to review the listing instead of repeatedly queuing the same failure.
+
 New jobs persist a checkpoint before attempting publication. Failures before that checkpoint may offer preparation recovery; failures at or after it cannot. Historical publishing jobs with no trustworthy checkpoint require manual marketplace review. The progress endpoint exposes `recoveryAction: "retry_preparation"` only for eligible failures, and never exposes the stored authorization payload.
 
 Failure and interrupted-job parking create a deduplicated listing review task in the inventory owner's account in the same transaction as the failed status. The existing attention queue can therefore show the failure even after the seller leaves the editor. Explicit retry resolves only that job's review task in the transaction that creates replacement preparation; other sale and delisting tasks remain open.

@@ -60,6 +60,7 @@ describe("durable automatic listing jobs", () => {
   it("parks uncertain identity without buying comparisons", async () => {
     const h = harness(); h.item.confidence = 0.5; await h.run();
     expect(h.deps.fetchComps).not.toHaveBeenCalled(); expect(h.deps.publish).not.toHaveBeenCalled();
+    expect(h.job.result).toMatchObject({ blocker: "identification_review", recoveryAction: null });
   });
   it("does not change prices or publish outside the authorized range", async () => {
     const h = harness(); h.deps.fetchComps.mockResolvedValue({ summary: { recommendedListCents: 50000, confidence: "high", soldCompCount: 10, pricingBasis: "sold_comps" } });

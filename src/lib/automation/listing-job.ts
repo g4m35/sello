@@ -37,6 +37,7 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
   if (claimed.count !== 1) return;
   let canRetryPreparation = false;
   let publishStarted = false;
+  let blocker: "identification_review" | null = null;
   const checkpoint = async (message: string) => {
     const result = await db.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: { result: { message } } });
     if (result.count !== 1) throw new AppError("Automation was stopped. Review the listing.", 409);
@@ -44,7 +45,7 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
   const finish = async (state: "prepared" | "published" | "needs_review", message: string) => {
     await db.$transaction(async (tx) => {
       const updated = await tx.jobLog.updateMany({ where: { id, status: "RUNNING" }, data: {
-        status: state === "needs_review" ? "FAILED" : "SUCCEEDED", result: { state, message,
+        status: state === "needs_review" ? "FAILED" : "SUCCEEDED", result: { state, message, blocker,
           phase: publishStarted ? "publishing" : "preparing",
           recoveryAction: state === "needs_review" && canRetryPreparation && !publishStarted ? "retry_preparation" : null },
         errorMessage: state === "needs_review" ? message : null,
@@ -67,7 +68,11 @@ export async function runListingJob(id: string, db: Db = getPrisma(), deps = lis
     const draft = item?.listingDrafts[0];
     if (!item || !draft || item.status !== "DRAFT_READY" || item.quantityAvailable !== 1) throw new AppError("This listing needs review before automation can continue.", 409);
     if (payload.policy.mode === "publish" && !hasSingleEbayQuantity(draft.marketplaceDrafts)) return await finish("needs_review", "eBay quantity must match the single item in inventory.");
-    if (item.confidence == null || item.confidence < 0.9 || payload.warnings.length) return await finish("needs_review", "Confirm the identified item and its details.");
+    if (item.confidence == null || item.confidence < 0.9 || payload.warnings.length) {
+      canRetryPreparation = false;
+      blocker = "identification_review";
+      return await finish("needs_review", "Confirm the identified item and its details.");
+    }
     await checkpoint("Finding comparable sold listings…");
     const comps = await deps.fetchComps(db, item.id, user.id, {
       accountId: payload.accountId, paidProvidersAllowed: access.access.paidComps,

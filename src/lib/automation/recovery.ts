@@ -15,6 +15,9 @@ export function preparationRecoveryAction(job: RecoverableJob): "retry_preparati
   const payload = JobPayloadSchema.safeParse(job.payload);
   const result = resultRecord(job.result);
   if (job.status !== "FAILED" || !payload.success || result.recoveryJobId || result.phase === "publishing") return null;
+  // Preparation reuses the saved identification; it cannot clear AI warnings
+  // or establish confidence by rerunning comparisons.
+  if (payload.data.warnings.length || result.blocker === "identification_review") return null;
   // Legacy prepare-only jobs cannot have published. Legacy publishing jobs have
   // no trustworthy checkpoint, so require manual marketplace reconciliation.
   return payload.data.policy.mode === "prepare" || (result.phase === "preparing" && result.recoveryAction === "retry_preparation")
