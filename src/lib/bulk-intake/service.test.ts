@@ -260,9 +260,10 @@ describe("bulk intake service", () => {
     const after = batchRecord("needs_review", groupedItem.photos, [groupedItem]);
     const findFirst = vi.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(after);
     const tx = {
+      $executeRawUnsafe: vi.fn(),
       bulkPhoto: { updateMany: vi.fn(), update: vi.fn() },
       bulkItem: { deleteMany: vi.fn(), createMany: vi.fn(), updateMany: vi.fn() },
-      bulkBatch: { update: vi.fn() },
+      bulkBatch: { update: vi.fn(), findFirst },
     };
     const prisma = {
       bulkBatch: { findFirst },
@@ -505,7 +506,7 @@ describe("bulk intake service", () => {
     expect(mocks.reserveUsageOrThrow).not.toHaveBeenCalled();
   });
 
-  it("recovers stale generation and expires its reserved usage", async () => {
+  it("parks stale generation for review and reconciles its reserved usage", async () => {
     vi.stubEnv("BULK_INTAKE_ENABLED", "");
     const itemId = "20000000-0000-4000-8000-000000000099";
     const now = new Date("2026-07-10T12:00:00Z");
@@ -515,7 +516,7 @@ describe("bulk intake service", () => {
         findMany: vi
           .fn()
           .mockResolvedValueOnce([{ id: itemId, generationAttempts: 2 }])
-          .mockResolvedValueOnce([{ status: "failed" }]),
+          .mockResolvedValueOnce([{ status: "needs_review" }]),
         updateMany,
       },
       bulkBatch: {
@@ -541,18 +542,15 @@ describe("bulk intake service", () => {
           generationAttempts: 2,
         }),
         data: expect.objectContaining({
-          status: "failed",
+          status: "needs_review",
           errorCode: "BULK_GENERATION_STALE",
         }),
       }),
     );
-    expect(mocks.releaseUsageReservation).toHaveBeenCalledWith(
-      "reservation-stale",
-      now,
-      prisma,
-      "expired",
-      { allowStartedWork: true },
+    expect(mocks.markUsageReconciliationRequired).toHaveBeenCalledWith(
+      "reservation-stale", now, "BULK_GENERATION_STALE", prisma,
     );
+    expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
   });
 
   it("moves quota-exhausted items to review without calling Gemini", async () => {
@@ -626,12 +624,13 @@ describe("bulk intake service", () => {
     expect(JSON.stringify(failureWrite)).not.toContain("secret-token");
   });
 
-  it("converts a successful item into the normal inventory and listing flow once", async () => {
+  it.each(["confirmed", "uncertain"])("creates one prepare-only job with the listing when the transaction is %s", async (outcome) => {
     const initial = generationItem();
     const final = { ...initial, status: "listing_ready", inventoryItemId: "40000000-0000-4000-8000-000000000001" };
     const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(final);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const tx = {
+      jobLog: { create: vi.fn() },
       inventoryItem: { create: vi.fn() },
       itemPhoto: { createMany: vi.fn() },
       listingDraft: { create: vi.fn() },
@@ -648,7 +647,10 @@ describe("bulk intake service", () => {
         update: vi.fn(),
         findUnique: vi.fn().mockResolvedValue({ status: "processing" }),
       },
-      $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => callback(tx)),
+      $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => {
+        await callback(tx);
+        if (outcome === "uncertain") throw new Error("Commit acknowledgement lost");
+      }),
     };
     mocks.getPrisma.mockReturnValue(prisma);
     mocks.generateListingDraftWithGemini.mockResolvedValue({
@@ -702,15 +704,48 @@ describe("bulk intake service", () => {
       expect.objectContaining({ data: expect.objectContaining({ accountId: account.id }) }),
     );
     expect(tx.listingDraft.create).toHaveBeenCalledOnce();
+    expect(tx.jobLog.create).toHaveBeenCalledOnce();
+    expect(tx.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      id: `bulk-prepare:${initial.id}`, queueName: "listing-automation-v1",
+      payload: expect.objectContaining({ accountId: account.id, userId: user.id, policy: { mode: "prepare" } }),
+    }) });
     expect(tx.aiOutput.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ provider: "gemini" }) }),
     );
-    expect(mocks.settleUsageReservationOrRequireReconciliation).toHaveBeenCalledWith(
-      "usage-reservation-1",
-      expect.any(Date),
-      "BULK_AI_LISTING_SETTLEMENT_FAILED",
-      prisma,
-    );
+    if (outcome === "confirmed") {
+      expect(mocks.settleUsageReservationOrRequireReconciliation).toHaveBeenCalledWith(
+        "usage-reservation-1", expect.any(Date), "BULK_AI_LISTING_SETTLEMENT_FAILED", prisma,
+      );
+    } else {
+      expect(mocks.settleUsageReservationOrRequireReconciliation).not.toHaveBeenCalled();
+      expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
+      expect(mocks.markUsageReconciliationRequired).toHaveBeenCalledWith(
+        "usage-reservation-1", expect.any(Date), "BULK_GENERATION_UNCERTAIN", prisma,
+      );
+      expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ generationAttempts: initial.generationAttempts + 1, inventoryItemId: null }),
+        data: expect.objectContaining({ errorCode: "BULK_GENERATION_UNCERTAIN", status: "needs_review" }),
+      }));
+    }
+  });
+
+  it("does not replay a queued attempt after another attempt already started", async () => {
+    const initial = { ...generationItem("failed"), generationAttempts: 2 };
+    const findFirst = vi.fn().mockResolvedValue(initial);
+    const updateMany = vi.fn();
+    mocks.getPrisma.mockReturnValue({ bulkItem: { findFirst, updateMany } });
+    await generateBulkItem({ batchId: initial.batchId, itemId: initial.id, account, user, expectedAttempts: 1 });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(mocks.reserveUsageOrThrow).not.toHaveBeenCalled();
+    expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
+  });
+
+  it("refuses a new generation attempt when interrupted work needs reconciliation", async () => {
+    const initial = { ...generationItem("needs_review"), errorCode: "BULK_GENERATION_STALE" };
+    mocks.getPrisma.mockReturnValue({ bulkItem: { findFirst: vi.fn().mockResolvedValue(initial) } });
+    await expect(generateBulkItem({ batchId: initial.batchId, itemId: initial.id, account, user }))
+      .rejects.toMatchObject({ code: "BULK_GENERATION_REVIEW_REQUIRED" });
+    expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
   });
 
   it("returns an existing normal inventory conversion idempotently", async () => {
@@ -744,6 +779,7 @@ describe("bulk intake service", () => {
     const after = { ...batchRecord("canceled", [], [{ ...unfinished, status: "canceled" }, completed]), canceledAt: now };
     const findFirst = vi.fn().mockResolvedValueOnce(before).mockResolvedValueOnce(after);
     const tx = {
+      $executeRawUnsafe: vi.fn(),
       bulkItem: {
         updateMany: vi.fn(),
         findMany: vi.fn().mockResolvedValue([{ status: "canceled" }, { status: "listing_ready" }]),
@@ -756,7 +792,7 @@ describe("bulk intake service", () => {
         findMany: vi.fn().mockResolvedValue([{ id: unfinished.id }]),
       },
       usageReservation: {
-        findMany: vi.fn().mockResolvedValue([{ id: "canceled-reservation-1" }]),
+        findMany: vi.fn().mockResolvedValue([{ id: "canceled-reservation-1", workStartedAt: null }, { id: "started-reservation", workStartedAt: now }]),
       },
       $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => callback(tx)),
     };
@@ -765,6 +801,7 @@ describe("bulk intake service", () => {
     const result = await cancelBulkBatch(before.id, account.id);
 
     expect(result.status).toBe("canceled");
+    expect(mocks.markUsageReconciliationRequired).toHaveBeenCalledWith("started-reservation", expect.any(Date), "BULK_GENERATION_CANCELED", prisma);
     expect(tx.bulkItem.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ batchId: before.id }),
@@ -778,7 +815,6 @@ describe("bulk intake service", () => {
       expect.any(Date),
       prisma,
       "released",
-      { allowStartedWork: true },
     );
   });
 

@@ -622,11 +622,11 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ groups }) },
     ),
 
-  startBulkGeneration: (token: string, batchId: string) =>
+  startBulkGeneration: (token: string, batchId: string, groups?: { photoIds: string[] }[]) =>
     request<{ itemIds: string[]; batch: BulkBatchView }>(
       `/api/bulk/batches/${batchId}/generate`,
       token,
-      { method: "POST", body: JSON.stringify({}) },
+      { method: "POST", body: JSON.stringify({ groups }) },
     ),
 
   generateBulkItem: (token: string, batchId: string, itemId: string) =>
