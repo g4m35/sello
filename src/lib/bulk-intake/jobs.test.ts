@@ -1,3 +1,4 @@
+import { bulkJobId } from "./job-id";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { getPrisma } from "@/lib/prisma";
 
@@ -44,7 +45,7 @@ describe("durable bulk queue", () => {
     expect(service.requireOwnedBulkBatch).toHaveBeenCalledWith(batch.id, account.id, db);
     expect(service.groupBulkPhotosInTransaction).toHaveBeenCalledWith({ batchId: batch.id, account, user, groups }, db);
     expect(db.jobLog.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "bulk-identify:item-1:0" }, create: expect.objectContaining({ payload, status: "QUEUED" }), update: {},
+      where: { id: bulkJobId("identify", "item-1", 0) }, create: expect.objectContaining({ payload, status: "QUEUED" }), update: {},
     }));
     expect(service.groupBulkPhotosInTransaction.mock.invocationCallOrder[0]).toBeLessThan(db.jobLog.upsert.mock.invocationCallOrder[0]!);
     expect(db.bulkBatch.update).toHaveBeenCalledWith({ where: { id: batch.id }, data: { status: "processing" } });
@@ -53,7 +54,7 @@ describe("durable bulk queue", () => {
     const { db, prisma } = fake();
     await enqueueBulkGeneration({ batchId: batch.id, account, user }, prisma);
     await enqueueBulkGeneration({ batchId: batch.id, account, user }, prisma);
-    expect(db.jobLog.upsert.mock.calls.map(([arg]) => arg.where.id)).toEqual(["bulk-identify:item-1:0", "bulk-identify:item-1:0"]);
+    expect(db.jobLog.upsert.mock.calls.map(([arg]) => arg.where.id)).toEqual([bulkJobId("identify", "item-1", 0), bulkJobId("identify", "item-1", 0)]);
     expect(db.jobLog.updateMany.mock.calls.every(([arg]) => arg.where.status === "FAILED")).toBe(true);
   });
   it("does not enqueue completed, canceled, or uncertain items", async () => {
@@ -102,10 +103,10 @@ describe("durable bulk queue", () => {
     expect(db.jobLog.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: job.id, status: "RUNNING", updatedAt: job.updatedAt }, data: expect.objectContaining({ status: "FAILED" }) }));
     expect(service.generateBulkItem).not.toHaveBeenCalled();
   });
-  it("does not begin queued work after the scheduler deadline", async () => {
+  it("leaves work queued when less than 90 seconds remain", async () => {
     const { db, prisma } = fake();
     db.jobLog.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: "job-1" }]);
-    expect(await runBulkGenerationQueue(prisma, Date.now() - 1)).toBe(0);
+    expect(await runBulkGenerationQueue(prisma, Date.now() + 89_000)).toBe(0);
     expect(db.jobLog.findFirst).not.toHaveBeenCalled();
   });
 });

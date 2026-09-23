@@ -11,3 +11,13 @@ Validation: 54 focused tests across bulk services, workers, API routes and exist
 Integration required: invoke `runBulkGenerationQueue(db, deadline)` from `@/lib/bulk-intake/jobs` in the existing authenticated worker, after sale protection and with a bounded allocation that leaves listing preparation time. Root owns full integrated validation and independent review. No schema or dependencies changed.
 
 Limitations: scheduler availability is required for work beyond the first item. Interruptions during paid generation intentionally need review rather than a silent duplicate provider attempt. Initial photo uploading still requires the browser until the stored-photo registration finishes. Generated listings are prepared automatically but bulk submission grants no marketplace publishing consent.
+
+## Independent review corrections
+
+JobLog IDs now use namespaced deterministic UUID v8 values instead of non-UUID strings. Two tests ran against an isolated local PostgreSQL 15 cluster: both job kinds inserted into a UUID primary key, repeated attempts deduplicated, and the former IDs were rejected. No application database was accessed; the temporary cluster was stopped and removed. These PostgreSQL tests explicitly skip on hosts without local PostgreSQL binaries.
+
+Photo registration, grouping/enqueue, claiming, provider-start authorization, cancellation, and summary refresh now share the same per-batch advisory lock. Claiming and the processing status update are atomic. A canceled item is checked before reservation and again after photo download under the lock before marking provider work started. Cancellation cannot revert the batch to processing; in-flight provider work may finish but cannot save over a canceled item.
+
+The bulk worker leaves jobs queued when less than 90 seconds remain; route duration for one after-response job is 180 seconds. This is admission headroom, not a hard abort deadline for an already-running external call. Final interruption recovery remains necessary.
+
+Follow-up validation: 60 focused tests passed, including the two real PostgreSQL checks and cancellation interleaving regressions. TypeScript, ESLint and diff checks passed.

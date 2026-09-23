@@ -1,3 +1,4 @@
+import { bulkJobId } from "./job-id";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -60,6 +61,22 @@ import {
   recoverStaleBulkGeneration,
   requireOwnedBulkBatch,
 } from "./service";
+
+function usePrisma<T extends object>(value: T) {
+  const db = value as T & { $executeRawUnsafe?: unknown; $transaction?: (callback: (tx: object) => unknown) => unknown };
+  db.$executeRawUnsafe ??= vi.fn();
+  const transaction = db.$transaction ?? (async (callback: (tx: object) => unknown) => callback(db));
+  db.$transaction = vi.fn((callback: (tx: object) => unknown) => transaction((tx: object) => {
+    const merged = { ...db, ...tx } as Record<string, unknown>;
+    for (const key of Object.keys(tx)) {
+      const original = (db as Record<string, unknown>)[key];
+      const override = (tx as Record<string, unknown>)[key];
+      if (original && override && typeof original === "object" && typeof override === "object") merged[key] = { ...original, ...override };
+    }
+    return callback(merged);
+  }));
+  mocks.getPrisma.mockReturnValue(db);
+}
 
 const account = { id: "00000000-0000-4000-8000-000000000001", ownerUserId: "user-1", plan: "free" as const };
 const user = { id: "user-1", email: "seller@example.com" };
@@ -180,7 +197,7 @@ describe("bulk intake service", () => {
 
   it("scopes every batch lookup to the active account and hides unowned ids", async () => {
     const findFirst = vi.fn().mockResolvedValue(null);
-    mocks.getPrisma.mockReturnValue({ bulkBatch: { findFirst } });
+    usePrisma({ bulkBatch: { findFirst } });
 
     await expect(
       requireOwnedBulkBatch("10000000-0000-4000-8000-000000000001", account.id),
@@ -199,7 +216,7 @@ describe("bulk intake service", () => {
     const existing = { ...batchRecord(), idempotencyKey: "bulk-request-123" };
     const findFirst = vi.fn().mockResolvedValue(existing);
     const create = vi.fn();
-    mocks.getPrisma.mockReturnValue({ bulkBatch: { findFirst, create } });
+    usePrisma({ bulkBatch: { findFirst, create } });
 
     const result = await createBulkBatch({
       account,
@@ -213,7 +230,7 @@ describe("bulk intake service", () => {
   });
 
   it("enforces the plan item cap before creating a batch", async () => {
-    mocks.getPrisma.mockReturnValue({ bulkBatch: { findFirst: vi.fn(), create: vi.fn() } });
+    usePrisma({ bulkBatch: { findFirst: vi.fn(), create: vi.fn() } });
     await expect(
       createBulkBatch({ account, user, expectedItems: 11 }),
     ).rejects.toMatchObject({ code: "BULK_BATCH_TOO_LARGE" });
@@ -222,7 +239,7 @@ describe("bulk intake service", () => {
   it("blocks new batch creation when the kill switch is not explicitly enabled", async () => {
     vi.stubEnv("BULK_INTAKE_ENABLED", "");
     const create = vi.fn();
-    mocks.getPrisma.mockReturnValue({ bulkBatch: { create } });
+    usePrisma({ bulkBatch: { create } });
 
     await expect(createBulkBatch({ account, user, expectedItems: 1 })).rejects.toMatchObject({
       status: 503,
@@ -235,7 +252,7 @@ describe("bulk intake service", () => {
     vi.stubEnv("BULK_INTAKE_ENABLED", "");
     const existing = { ...batchRecord(), idempotencyKey: "bulk-request-recovery" };
     const create = vi.fn();
-    mocks.getPrisma.mockReturnValue({
+    usePrisma({
       bulkBatch: { findFirst: vi.fn().mockResolvedValue(existing), create },
     });
 
@@ -269,7 +286,7 @@ describe("bulk intake service", () => {
       bulkBatch: { findFirst },
       $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => callback(tx)),
     };
-    mocks.getPrisma.mockReturnValue(prisma);
+    usePrisma(prisma);
 
     const result = await groupBulkPhotos({
       batchId: before.id,
@@ -297,7 +314,7 @@ describe("bulk intake service", () => {
 
   it("creates account-and-batch-scoped signed upload grants", async () => {
     const before = batchRecord("created");
-    mocks.getPrisma.mockReturnValue({
+    usePrisma({
       bulkBatch: { findFirst: vi.fn().mockResolvedValue(before) },
     });
     const uploadId = "30000000-0000-4000-8000-000000000010";
@@ -353,7 +370,7 @@ describe("bulk intake service", () => {
         callback(transaction),
       ),
     };
-    mocks.getPrisma.mockReturnValue(prisma);
+    usePrisma(prisma);
 
     const result = await registerBulkPhotos({
       batchId: before.id,
@@ -399,7 +416,7 @@ describe("bulk intake service", () => {
       bulkPhoto: { createMany },
       $executeRawUnsafe: vi.fn().mockResolvedValue(1),
     };
-    mocks.getPrisma.mockReturnValue({
+    usePrisma({
       bulkBatch: { findFirst, update },
       bulkPhoto: { createMany },
       $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<void>) =>
@@ -430,7 +447,7 @@ describe("bulk intake service", () => {
 
   it("rejects a storage path outside the authenticated account and batch", async () => {
     const before = batchRecord("created");
-    mocks.getPrisma.mockReturnValue({
+    usePrisma({
       bulkBatch: { findFirst: vi.fn().mockResolvedValue(before) },
     });
 
@@ -455,7 +472,7 @@ describe("bulk intake service", () => {
 
   it("removes an unregistered object that fails server-side validation", async () => {
     const before = batchRecord("created");
-    mocks.getPrisma.mockReturnValue({
+    usePrisma({
       bulkBatch: { findFirst: vi.fn().mockResolvedValue(before) },
     });
     mocks.storageInfo.mockResolvedValue({
@@ -487,7 +504,7 @@ describe("bulk intake service", () => {
   it("blocks new item generation while the kill switch is off", async () => {
     vi.stubEnv("BULK_INTAKE_ENABLED", "");
     const updateMany = vi.fn();
-    mocks.getPrisma.mockReturnValue({
+    usePrisma({
       bulkItem: {
         findFirst: vi.fn().mockResolvedValue(generationItem()),
         updateMany,
@@ -527,7 +544,7 @@ describe("bulk intake service", () => {
         findUnique: vi.fn().mockResolvedValue({ id: "reservation-stale", status: "reserved" }),
       },
     };
-    mocks.getPrisma.mockReturnValue(prisma);
+    usePrisma(prisma);
 
     await expect(
       recoverStaleBulkGeneration(batchRecord().id, account.id, now),
@@ -553,10 +570,44 @@ describe("bulk intake service", () => {
     expect(mocks.releaseUsageReservation).not.toHaveBeenCalled();
   });
 
+  it("does not reserve or call Gemini if cancellation wins immediately after the claim", async () => {
+    const initial = generationItem();
+    const canceled = { ...initial, status: "canceled" };
+    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(null).mockResolvedValue(canceled);
+    const lock = vi.fn();
+    const prisma = { $executeRawUnsafe: lock, bulkItem: { findFirst, updateMany: vi.fn().mockResolvedValue({ count: 1 }) }, bulkBatch: { update: vi.fn() } };
+    usePrisma(prisma);
+    const result = await generateBulkItem({ batchId: initial.batchId, itemId: initial.id, account, user });
+    expect(result.status).toBe("canceled");
+    expect(lock).toHaveBeenCalledWith(expect.any(String), `bulk-generation:${initial.batchId}`);
+    expect(mocks.reserveUsageOrThrow).not.toHaveBeenCalled();
+    expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
+  });
+
+  it("rechecks cancellation under the batch lock after downloading photos", async () => {
+    const initial = generationItem();
+    const canceled = { ...initial, status: "canceled" };
+    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce({ id: initial.id }).mockResolvedValueOnce(null).mockResolvedValue(canceled);
+    const lock = vi.fn();
+    const prisma = {
+      $executeRawUnsafe: lock,
+      bulkItem: { findFirst, updateMany: vi.fn().mockResolvedValue({ count: 1 }), findMany: vi.fn().mockResolvedValue([{ status: "canceled" }]) },
+      bulkBatch: { update: vi.fn(), findUnique: vi.fn().mockResolvedValue({ status: "canceled" }) },
+    };
+    usePrisma(prisma);
+    const result = await generateBulkItem({ batchId: initial.batchId, itemId: initial.id, account, user });
+    expect(result.status).toBe("canceled");
+    expect(lock).toHaveBeenCalledTimes(3); // claim, provider-start guard, summary
+    expect(mocks.markUsageWorkStarted).not.toHaveBeenCalled();
+    expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
+    expect(mocks.releaseUsageReservation).toHaveBeenCalled();
+    expect(prisma.bulkBatch.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "canceled" }) }));
+  });
+
   it("moves quota-exhausted items to review without calling Gemini", async () => {
     const initial = generationItem();
     const final = { ...initial, status: "needs_review", reviewReason: "Upgrade for more.", errorCode: "QUOTA_EXCEEDED_AI_LISTING" };
-    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(final);
+    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(final);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = {
       bulkItem: {
@@ -569,7 +620,7 @@ describe("bulk intake service", () => {
         findUnique: vi.fn().mockResolvedValue({ status: "processing" }),
       },
     };
-    mocks.getPrisma.mockReturnValue(prisma);
+    usePrisma(prisma);
     mocks.reserveUsageOrThrow.mockRejectedValue(
       new AppError("Upgrade for more.", 402, "QUOTA_EXCEEDED_AI_LISTING"),
     );
@@ -589,7 +640,7 @@ describe("bulk intake service", () => {
   it("isolates an AI failure to the item and persists only a safe retry message", async () => {
     const initial = generationItem();
     const final = { ...initial, status: "failed", errorCode: "AI_GENERATION_FAILED", errorMessage: "AI listing generation failed. Retry this item." };
-    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(final);
+    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(final);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = {
       bulkItem: {
@@ -602,7 +653,7 @@ describe("bulk intake service", () => {
         findUnique: vi.fn().mockResolvedValue({ status: "processing" }),
       },
     };
-    mocks.getPrisma.mockReturnValue(prisma);
+    usePrisma(prisma);
     mocks.generateListingDraftWithGemini.mockRejectedValue(
       new Error("provider secret-token raw payload"),
     );
@@ -627,7 +678,7 @@ describe("bulk intake service", () => {
   it.each(["confirmed", "uncertain"])("creates one prepare-only job with the listing when the transaction is %s", async (outcome) => {
     const initial = generationItem();
     const final = { ...initial, status: "listing_ready", inventoryItemId: "40000000-0000-4000-8000-000000000001" };
-    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(final);
+    const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(final);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const tx = {
       jobLog: { create: vi.fn() },
@@ -648,11 +699,13 @@ describe("bulk intake service", () => {
         findUnique: vi.fn().mockResolvedValue({ status: "processing" }),
       },
       $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => {
-        await callback(tx);
-        if (outcome === "uncertain") throw new Error("Commit acknowledgement lost");
+        const createsBefore = tx.inventoryItem.create.mock.calls.length;
+        const result = await callback(tx);
+        if (outcome === "uncertain" && tx.inventoryItem.create.mock.calls.length > createsBefore) throw new Error("Commit acknowledgement lost");
+        return result;
       }),
     };
-    mocks.getPrisma.mockReturnValue(prisma);
+    usePrisma(prisma);
     mocks.generateListingDraftWithGemini.mockResolvedValue({
       model: "gemini-test",
       rawText: "{}",
@@ -706,7 +759,7 @@ describe("bulk intake service", () => {
     expect(tx.listingDraft.create).toHaveBeenCalledOnce();
     expect(tx.jobLog.create).toHaveBeenCalledOnce();
     expect(tx.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      id: `bulk-prepare:${initial.id}`, queueName: "listing-automation-v1",
+      id: bulkJobId("prepare", initial.id), queueName: "listing-automation-v1",
       payload: expect.objectContaining({ accountId: account.id, userId: user.id, policy: { mode: "prepare" } }),
     }) });
     expect(tx.aiOutput.create).toHaveBeenCalledWith(
@@ -733,7 +786,7 @@ describe("bulk intake service", () => {
     const initial = { ...generationItem("failed"), generationAttempts: 2 };
     const findFirst = vi.fn().mockResolvedValue(initial);
     const updateMany = vi.fn();
-    mocks.getPrisma.mockReturnValue({ bulkItem: { findFirst, updateMany } });
+    usePrisma({ bulkItem: { findFirst, updateMany } });
     await generateBulkItem({ batchId: initial.batchId, itemId: initial.id, account, user, expectedAttempts: 1 });
     expect(updateMany).not.toHaveBeenCalled();
     expect(mocks.reserveUsageOrThrow).not.toHaveBeenCalled();
@@ -742,7 +795,7 @@ describe("bulk intake service", () => {
 
   it("refuses a new generation attempt when interrupted work needs reconciliation", async () => {
     const initial = { ...generationItem("needs_review"), errorCode: "BULK_GENERATION_STALE" };
-    mocks.getPrisma.mockReturnValue({ bulkItem: { findFirst: vi.fn().mockResolvedValue(initial) } });
+    usePrisma({ bulkItem: { findFirst: vi.fn().mockResolvedValue(initial) } });
     await expect(generateBulkItem({ batchId: initial.batchId, itemId: initial.id, account, user }))
       .rejects.toMatchObject({ code: "BULK_GENERATION_REVIEW_REQUIRED" });
     expect(mocks.generateListingDraftWithGemini).not.toHaveBeenCalled();
@@ -754,7 +807,7 @@ describe("bulk intake service", () => {
       inventoryItemId: "40000000-0000-4000-8000-000000000010",
     };
     const findFirst = vi.fn().mockResolvedValue(converted);
-    mocks.getPrisma.mockReturnValue({ bulkItem: { findFirst } });
+    usePrisma({ bulkItem: { findFirst } });
 
     const result = await generateBulkItem({
       batchId: converted.batchId,
@@ -796,7 +849,7 @@ describe("bulk intake service", () => {
       },
       $transaction: vi.fn(async (callback: (value: typeof tx) => Promise<void>) => callback(tx)),
     };
-    mocks.getPrisma.mockReturnValue(prisma);
+    usePrisma(prisma);
 
     const result = await cancelBulkBatch(before.id, account.id);
 

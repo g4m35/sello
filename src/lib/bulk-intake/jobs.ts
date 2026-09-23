@@ -1,3 +1,4 @@
+import { bulkJobId } from "./job-id";
 import { z } from "zod";
 import { getPrisma } from "@/lib/prisma";
 import { resolveRuntimeEntitlements } from "@/lib/auth/feature-access";
@@ -9,6 +10,7 @@ import { generateBulkItem, getBulkBatchView, groupBulkPhotosInTransaction, lockB
 import type { AccountRecord } from "@/lib/billing/account";
 import type { BulkPhotoGroupInput } from "./validation";
 
+export const BULK_GENERATION_MIN_BUDGET_MS = 90_000;
 export const BULK_GENERATION_QUEUE = "bulk-generation-v1";
 const payloadSchema = z.object({
   version: z.literal(1), accountId: z.string().min(1), userId: z.string().min(1),
@@ -38,7 +40,7 @@ export async function enqueueBulkGeneration(args: {
       !["BULK_GENERATION_STALE", "BULK_GENERATION_UNCERTAIN"].includes(item.errorCode ?? ""));
     const ids: string[] = [];
     for (const item of items) {
-      const id = `bulk-identify:${item.id}:${item.generationAttempts}`;
+      const id = bulkJobId("identify", item.id, item.generationAttempts);
       await tx.jobLog.upsert({ where: { id }, create: {
         id, queueName: BULK_GENERATION_QUEUE, jobName: "identify-and-prepare", status: "QUEUED",
         payload: { version: 1, accountId: args.account.id, userId: args.user.id,
@@ -126,7 +128,7 @@ export async function runBulkGenerationQueue(db: Db = getPrisma(), deadline = Da
   const jobs = await db.jobLog.findMany({ where: { queueName: BULK_GENERATION_QUEUE, status: "QUEUED" }, orderBy: { createdAt: "asc" }, take: 5, select: { id: true } });
   let processed = 0;
   for (const job of jobs) {
-    if (Date.now() >= deadline) break;
+    if (Date.now() + BULK_GENERATION_MIN_BUDGET_MS > deadline) break;
     await runBulkGenerationJob(job.id, db);
     processed++;
   }
