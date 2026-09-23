@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
   markItemSold: vi.fn(),
   updateMany: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -47,9 +48,9 @@ describe("POST /api/inventory/review-tasks/[id]/resolve", () => {
       payload: {},
     });
     mocks.markItemSold.mockResolvedValue({ outcome: "marked_sold" });
-    mocks.getPrisma.mockReturnValue({
-      reviewTask: { findFirst: mocks.findFirst, updateMany: mocks.updateMany },
-    });
+    const tx = { reviewTask: { findFirst: mocks.findFirst, updateMany: mocks.updateMany } };
+    mocks.transaction.mockImplementation(async (work) => work(tx));
+    mocks.getPrisma.mockReturnValue({ $transaction: mocks.transaction });
   });
   afterEach(() => vi.clearAllMocks());
 
@@ -115,7 +116,7 @@ describe("POST /api/inventory/review-tasks/[id]/resolve", () => {
     );
   });
 
-  it("re-opens the task when canonical sale confirmation fails", async () => {
+  it("rolls back the enclosing transaction when canonical sale confirmation fails", async () => {
     mocks.findFirst.mockResolvedValue({
       type: "confirm_possible_sale",
       inventoryItemId: "item-1",
@@ -128,11 +129,25 @@ describe("POST /api/inventory/review-tasks/[id]/resolve", () => {
     const res = await POST(req({ status: "resolved" }), ctx());
 
     expect(res.status).toBe(409);
-    expect(mocks.updateMany).toHaveBeenCalledTimes(2);
-    expect(mocks.updateMany.mock.calls[1][0]).toMatchObject({
-      where: { id: TASK_ID, accountId: "account-1", status: "resolved" },
-      data: { status: "open", resolvedAt: null },
-    });
+    expect(mocks.updateMany).toHaveBeenCalledTimes(1);
+    await expect(mocks.transaction.mock.results[0].value).rejects.toThrow("Inventory changed.");
+  });
+
+  it("does not mark sold if another decision wins the conditional task claim", async () => {
+    mocks.findFirst.mockResolvedValue({ type: "confirm_possible_sale", inventoryItemId: "item-1", marketplace: "ebay", payload: {} });
+    mocks.updateMany.mockResolvedValue({ count: 0 });
+    const res = await POST(req({ status: "resolved" }), ctx());
+    expect(res.status).toBe(404);
+    expect(mocks.markItemSold).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing sale details without committing the task claim", async () => {
+    mocks.findFirst.mockResolvedValue({ type: "confirm_possible_sale", inventoryItemId: null, marketplace: "ebay", payload: {} });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    const res = await POST(req({ status: "resolved" }), ctx());
+    expect(res.status).toBe(409);
+    expect(mocks.markItemSold).not.toHaveBeenCalled();
+    await expect(mocks.transaction.mock.results[0].value).rejects.toThrow("missing required listing details");
   });
 
   it("404s when the task is not owned by the active account", async () => {
@@ -147,5 +162,94 @@ describe("POST /api/inventory/review-tasks/[id]/resolve", () => {
     const res = await POST(req({ status: "archived" }), ctx());
     expect(res.status).toBe(400);
     expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("atomic possible-sale resolution", () => {
+  type State = { taskStatus: string; sold: boolean; delistJobs: number };
+  const task = { type: "confirm_possible_sale", inventoryItemId: "item-1", marketplace: "ebay", payload: {} };
+  let state: State;
+  let failBeforeCommit: boolean;
+  let saleFailure: boolean;
+  let claims: string[];
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state = { taskStatus: "open", sold: false, delistJobs: 0 };
+    claims = []; failBeforeCommit = false; saleFailure = false;
+    mocks.requireUser.mockResolvedValue({ id: "user-1" });
+    mocks.getActiveAccount.mockResolvedValue({ id: "account-1" });
+    // Model commit/rollback and a transaction lock. The root client's model
+    // delegates intentionally do not exist, so escaping the transaction fails.
+    let lock = Promise.resolve();
+    const transaction = async (work: (tx: unknown) => Promise<unknown>) => {
+      const previous = lock;
+      let unlock!: () => void;
+      lock = new Promise<void>((resolve) => { unlock = resolve; });
+      await previous;
+      const pending = { ...state };
+      const tx = {
+        reviewTask: {
+          findFirst: async ({ where }: { where: { id: string; accountId: string; status: string } }) => {
+            expect(where).toEqual({ id: TASK_ID, accountId: "account-1", status: "open" });
+            return pending.taskStatus === "open" ? task : null;
+          },
+          updateMany: async ({ where, data }: { where: { accountId: string; status: string }; data: { status: string } }) => {
+            expect(where.accountId).toBe("account-1");
+            if (pending.taskStatus !== where.status) return { count: 0 };
+            pending.taskStatus = data.status; claims.push(data.status); return { count: 1 };
+          },
+        },
+        inventoryItem: { update: async () => { pending.sold = true; } },
+        syncJob: { create: async () => { pending.delistJobs++; } },
+      };
+      try {
+        const result = await work(tx);
+        if (failBeforeCommit) throw new Error("Interrupted before commit");
+        state = pending;
+        return result;
+      } finally { unlock(); }
+    };
+    mocks.getPrisma.mockReturnValue({ $transaction: transaction });
+    mocks.markItemSold.mockImplementation(async (db, input) => {
+      expect(input.accountId).toBe("account-1");
+      await db.$transaction(async (tx: typeof db) => {
+        await tx.inventoryItem.update();
+        if (saleFailure) throw new AppError("Delist queue failed.", 409);
+        await tx.syncJob.create();
+      });
+      return { outcome: "marked_sold" };
+    });
+  });
+
+  it("commits the resolution, sold state and delist work together", async () => {
+    expect((await POST(req({ status: "resolved" }), ctx())).status).toBe(200);
+    expect(state).toEqual({ taskStatus: "resolved", sold: true, delistJobs: 1 });
+  });
+  it("keeps the task open and inventory unchanged when delist preparation fails", async () => {
+    saleFailure = true;
+    expect((await POST(req({ status: "resolved" }), ctx())).status).toBe(409);
+    expect(state).toEqual({ taskStatus: "open", sold: false, delistJobs: 0 });
+  });
+  it("rolls back an interruption after all writes but before commit and permits a safe retry", async () => {
+    failBeforeCommit = true;
+    expect((await POST(req({ status: "resolved" }), ctx())).status).toBe(500);
+    expect(state).toEqual({ taskStatus: "open", sold: false, delistJobs: 0 });
+    failBeforeCommit = false;
+    expect((await POST(req({ status: "resolved" }), ctx())).status).toBe(200);
+    expect(state).toEqual({ taskStatus: "resolved", sold: true, delistJobs: 1 });
+  });
+  it("allows only one of two concurrent confirmations to mark sold", async () => {
+    const results = await Promise.all([POST(req({ status: "resolved" }), ctx()), POST(req({ status: "resolved" }), ctx())]);
+    expect(results.map((result) => result.status)).toEqual([200, 404]);
+    expect(mocks.markItemSold).toHaveBeenCalledOnce();
+    expect(state.delistJobs).toBe(1);
+  });
+  it.each(["resolved", "dismissed"])("serializes a %s winner against a conflicting decision", async (winner) => {
+    const loser = winner === "resolved" ? "dismissed" : "resolved";
+    const results = await Promise.all([POST(req({ status: winner }), ctx()), POST(req({ status: loser }), ctx())]);
+    expect(results.map((result) => result.status)).toEqual([200, 404]);
+    expect(claims).toEqual([winner]);
+    expect(state).toEqual({ taskStatus: winner, sold: winner === "resolved", delistJobs: winner === "resolved" ? 1 : 0 });
   });
 });
