@@ -26,29 +26,27 @@
     "prisma:validate": "prisma validate"
   },
   "dependencies": {
-    "@google/genai": "^2.12.0",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@google/genai": "^2.23.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "@radix-ui/react-dialog": "1.1.23",
     "@radix-ui/react-progress": "1.1.16",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.116.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "bullmq": "^5.80.9",
-    "ioredis": "^5.11.1",
     "lucide-react": "^1.25.0",
     "next": "^16.3.4",
-    "pg": "^8.22.0",
+    "pg": "^8.23.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "stripe": "^22.3.2",
-    "zod": "^4.4.3"
+    "stripe": "^22.6.2",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24.13.6",
-    "@types/pg": "^8.20.0",
+    "@types/pg": "^8.23.1",
     "@types/picomatch": "^4.0.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -57,12 +55,12 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.3.4",
     "picomatch": "^4.0.5",
-    "prisma": "^7.8.0",
+    "prisma": "^7.10.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.1",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "vitest": "^4.1.11",
-    "yaml": "^2.9.0"
+    "vitest": "^5.0.1",
+    "yaml": "^2.9.1"
   },
   "overrides": {
     "postcss": "8.5.25",

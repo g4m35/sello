@@ -107,7 +107,7 @@ Core direction:
 - Zod runtime validation
 - eBay OAuth/API integration groundwork
 - AES-256-GCM encrypted marketplace tokens
-- BullMQ + Redis job schemas for publishing and inventory sync
+- Durable Postgres jobs for listing preparation, publishing, and inventory sync
 - Vitest
 - Vercel deployment
 
@@ -162,7 +162,6 @@ DIRECT_URL=""
 GEMINI_API_KEY=""
 GEMINI_MODEL=""
 
-REDIS_URL=""
 
 EBAY_ENV="sandbox"
 EBAY_CLIENT_ID=""
@@ -381,7 +380,6 @@ Never expose or commit:
 - `DATABASE_URL`
 - `DIRECT_URL`
 - `GEMINI_API_KEY`
-- `REDIS_URL`
 - `EBAY_CLIENT_SECRET`
 - `EBAY_TOKEN_ENCRYPTION_KEY`
 - `EBAY_OAUTH_STATE_SECRET`

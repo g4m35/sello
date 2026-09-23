@@ -65,7 +65,11 @@ async function findMonthlyPrice(
 }
 
 async function main(): Promise<void> {
-  const stripe = new Stripe(requireSecretKey(), { apiVersion: "2026-06-24.dahlia" });
+  const stripe = new Stripe(requireSecretKey(), {
+    // Keep the deployed API contract; newer SDK types describe only their latest API.
+    // @ts-expect-error Stripe supports older API versions at runtime.
+    apiVersion: "2026-06-24.dahlia",
+  });
   const out: Record<string, string> = {};
 
   for (const planId of PAID_PLAN_IDS) {

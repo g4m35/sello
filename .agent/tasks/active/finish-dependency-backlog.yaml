@@ -1,0 +1,50 @@
+id: finish-dependency-backlog
+title: Resolve refreshed dependency backlog and remove unused Redis queues
+status: active
+owner: dependency_prs
+reviewer: autonomy_review
+risk: high
+task_type: infrastructure
+base_branch: develop
+working_branch: chore/finish-dependency-backlog
+worktree_path: /Users/jheller/dev/sello-worktrees/finish-dependency-backlog
+created_at: 2026-09-23T09:00:00.000Z
+goal: Resolve PR150-158 while preserving active automation and billing wire contracts.
+context: Owner requested all PR fixes; root explicitly authorized sensitive dependency updates and deletion of unused Redis queue scaffolding.
+non_goals:
+  - Change billing API version, live prices, marketplace actions, or schema.
+allowed_paths:
+  - package.json
+  - package-lock.json
+  - vitest.config.*
+  - src/lib/queues/**
+  - src/lib/billing/stripe.ts
+  - src/lib/billing/stripe.test.ts
+  - scripts/stripe/sync-products.ts
+  - .env.example
+  - .github/workflows/ci.yml
+  - README.md
+  - docs/architecture/overview.md
+  - docs/operations/dependency-backlog-2026-09-23.md
+  - .agent/**
+protected_paths:
+  - prisma/**
+  - src/app/api/**
+  - src/lib/inventory-sync/**
+required_reading:
+  - AGENTS.md
+  - src/lib/billing/AGENTS.md
+acceptance:
+  - Requested compatible updates install reproducibly and pass full validation.
+  - Existing Stripe API date remains unchanged and is tested.
+  - Only unused Redis queue scaffolding is removed; active Postgres workers remain unchanged.
+validation:
+  - npm ci
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - docs/operations/dependency-backlog-2026-09-23.md
+review_requirements:
+  - Independent compatibility and billing contract review before merge.
+deployment_authorized: false
+merge_authorized: false
