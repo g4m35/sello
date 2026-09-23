@@ -86,13 +86,6 @@ export const stockxSource: CompSource = {
       throw error;
     }
 
-    if (query.draftId) {
-      await prisma.listingDraft.update({
-        where: { id: query.draftId },
-        data: { stockxMarketDataCheckedAt: new Date() },
-      }).catch(() => undefined);
-    }
-
     return rows.map((row): NormalizedComp => {
       const isCompletedSale = Boolean(row.soldDate);
       return {

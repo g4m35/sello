@@ -23,6 +23,8 @@ allowed_paths:
   - src/lib/comps/sources/depop-active.ts
   - src/lib/comps/sources/google-lens.ts
   - src/lib/comps/sources/stubs.test.ts
+  - src/lib/comps/sources/stockx.ts
+  - src/lib/comps/sources/stockx.test.ts
   - .env.example
   - docs/COMPS_PROVIDERS.md
   - docs/operations/autonomous-listing.md

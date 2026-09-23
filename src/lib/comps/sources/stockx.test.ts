@@ -82,7 +82,7 @@ describe("StockX comp source", () => {
     expect(stockxSource.resultKind).toBe("active_listings");
   });
 
-  it("fetches market data through the encrypted account connection", async () => {
+  it("fetches market data without changing the seller draft version used by automatic pricing", async () => {
     stubStockXEnv();
     const fetchImpl = vi.fn<typeof fetch>(
       async () =>
@@ -138,10 +138,7 @@ describe("StockX comp source", () => {
       sold: false,
       size: null,
     });
-    expect(mocks.update).toHaveBeenCalledWith({
-      where: { id: "draft-1" },
-      data: { stockxMarketDataCheckedAt: expect.any(Date) },
-    });
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it("throws a soft not-connected error when the account has no StockX OAuth row", async () => {
