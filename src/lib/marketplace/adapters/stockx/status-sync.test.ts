@@ -98,7 +98,12 @@ function createFake({
         ) {
           return null;
         }
-        return listing;
+        return { ...listing };
+      },
+      async updateMany({ where, data }: { where: { id: string; status: string; lastSyncAt: Date | null }; data: Partial<FakeListing> }) {
+        if (where.id !== listing.id || where.status !== listing.status || where.lastSyncAt?.getTime() !== listing.lastSyncAt?.getTime()) return { count: 0 };
+        Object.assign(listing, data);
+        return { count: 1 };
       },
       async update({ data }: { data: Partial<FakeListing> }) {
         Object.assign(listing, data);
@@ -148,6 +153,49 @@ function createFake({
 }
 
 describe("syncStockXListingStatus", () => {
+  it.each(["SOLD", "DELISTED", "ENDED"])("does not resurrect %s when an earlier active response arrives", async (terminalStatus) => {
+    const f = createFake({ remoteStatus: "ACTIVE" });
+    const response = await f.fetchListingStatus("stockx-listing-1");
+    f.fetchListingStatus.mockImplementation(async () => {
+      f.listing.status = terminalStatus;
+      return response;
+    });
+    const result = await syncStockXListingStatus(f.prisma, {
+      userId: "user-1", accountId: "account-1", marketplaceListingId: f.listing.id,
+    }, f.deps);
+    expect(result.code).toBe("STOCKX_STATUS_STALE");
+    expect(f.listing.status).toBe(terminalStatus);
+    expect(f.attempts[0].status).toBe("RUNNING");
+    expect(f.events).toHaveLength(0);
+  });
+
+  it("ignores an ended response if a sale completed while the read was in flight", async () => {
+    const f = createFake({ remoteStatus: "DEACTIVATED" });
+    const response = await f.fetchListingStatus("stockx-listing-1");
+    f.fetchListingStatus.mockImplementation(async () => { f.listing.status = "SOLD"; return response; });
+    const result = await syncStockXListingStatus(f.prisma, {
+      userId: "user-1", accountId: "account-1", marketplaceListingId: f.listing.id,
+    }, f.deps);
+    expect(result.code).toBe("STOCKX_STATUS_STALE");
+    expect(f.listing.status).toBe("SOLD");
+    expect(f.attempts[0].status).toBe("RUNNING");
+    expect(f.events).toHaveLength(0);
+  });
+
+  it("ignores a stale response after a newer check even when status is unchanged", async () => {
+    const f = createFake({ remoteStatus: "DEACTIVATED" });
+    const response = await f.fetchListingStatus("stockx-listing-1");
+    const newerSync = new Date();
+    f.fetchListingStatus.mockImplementation(async () => { f.listing.lastSyncAt = newerSync; return response; });
+    const result = await syncStockXListingStatus(f.prisma, {
+      userId: "user-1", accountId: "account-1", marketplaceListingId: f.listing.id,
+    }, f.deps);
+    expect(result.code).toBe("STOCKX_STATUS_STALE");
+    expect(f.listing.status).toBe("LISTING");
+    expect(f.listing.lastSyncAt).toEqual(newerSync);
+    expect(f.events).toHaveLength(0);
+  });
+
   it("settles an active StockX listing and completes the running publish attempt", async () => {
     const { prisma, listing, events, attempts, markSold, deps } = createFake({
       remoteStatus: "ACTIVE",

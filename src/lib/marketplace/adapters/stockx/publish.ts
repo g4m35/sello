@@ -17,7 +17,7 @@ import {
 } from "./mapper";
 import { evaluateStockXListingReadiness } from "./readiness";
 import { stockxIdentityIssue } from "./identity";
-import { decryptStockXToken } from "./token-crypto";
+import { getUsableStockXAccessToken, type StockXTokenConnection, type StockXTokenPrismaLike } from "./session";
 import {
   STOCKX_ENVIRONMENT,
   type StockXActivateListingResult,
@@ -48,13 +48,7 @@ type ItemRow = {
   listingDrafts: DraftRow[];
 };
 
-type ConnectionRow = {
-  id: string;
-  accountId: string;
-  externalUserId: string | null;
-  accessTokenEnc: string;
-  refreshTokenEnc: string;
-};
+type ConnectionRow = StockXTokenConnection & { externalUserId: string | null };
 
 export type StockXPublishPrismaLike = {
   inventoryItem: {
@@ -63,7 +57,7 @@ export type StockXPublishPrismaLike = {
       include?: unknown;
     }): Promise<ItemRow | null>;
   };
-  marketplaceConnection: {
+  marketplaceConnection: StockXTokenPrismaLike["marketplaceConnection"] & {
     findUnique(args: {
       where: {
         accountId_marketplace_environment?: {
@@ -94,6 +88,7 @@ export type StockXPublishDeps = {
   resolveAccessToken: (
     connection: ConnectionRow,
     config: StockXConfig,
+    prisma: StockXTokenPrismaLike,
   ) => Promise<string> | string;
   createClient: (
     accessToken: string,
@@ -147,8 +142,8 @@ export type StockXPublishResult =
 
 export const defaultStockXPublishDeps: StockXPublishDeps = {
   env: process.env,
-  resolveAccessToken: (connection, config) =>
-    decryptStockXToken(connection.accessTokenEnc, config.tokenEncryptionKey),
+  resolveAccessToken: (connection, config, prisma) =>
+    getUsableStockXAccessToken(prisma, connection, config),
   createClient: (accessToken, config) => ({
     createListing: (payload) => createStockXListing(config, accessToken, payload),
     activateListing: (listingId) =>
@@ -214,6 +209,7 @@ export async function publishStockXListing(
       externalUserId: true,
       accessTokenEnc: true,
       refreshTokenEnc: true,
+      accessTokenExpiresAt: true,
     },
   });
 
@@ -246,7 +242,7 @@ export async function publishStockXListing(
     );
   }
 
-  const accessToken = await deps.resolveAccessToken(connection!, config);
+  const accessToken = await deps.resolveAccessToken(connection!, config, prisma);
   const client = deps.createClient(accessToken, config);
   const payload = buildStockXCreateListingPayload({ variantId, priceCents });
   const created = await client.createListing(payload);

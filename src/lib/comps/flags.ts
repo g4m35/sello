@@ -58,10 +58,6 @@ export function isEbayActiveEnabled(env: Env = process.env): boolean {
   );
 }
 
-export function isSerpapiEbayActiveEnabled(env: Env = process.env): boolean {
-  return on(env, "COMPS_SERPAPI_EBAY_ACTIVE_ENABLED") && has(env, "SERPAPI_API_KEY");
-}
-
 export function compsMaxProviderResults(env: Env = process.env): number {
   return intInRange(env.COMPS_MAX_PROVIDER_RESULTS, 20, 1, 30);
 }

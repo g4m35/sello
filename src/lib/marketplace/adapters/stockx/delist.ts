@@ -3,7 +3,7 @@ import { AppError } from "@/lib/errors";
 import { deactivateStockXListing, deleteStockXListing } from "./client";
 import { getStockXApiConfig, isStockXApiConfigured } from "./config";
 import { StockXIntegrationError, stockxErrorCodes } from "./errors";
-import { decryptStockXToken } from "./token-crypto";
+import { getUsableStockXAccessToken, type StockXTokenConnection, type StockXTokenPrismaLike } from "./session";
 import {
   STOCKX_ENVIRONMENT,
   type StockXConfig,
@@ -12,12 +12,7 @@ import {
 
 type StockXEnv = Record<string, string | undefined>;
 
-type ConnectionRow = {
-  id: string;
-  accountId: string;
-  accessTokenEnc: string;
-  refreshTokenEnc: string;
-};
+type ConnectionRow = StockXTokenConnection;
 
 export type StockXDelistPrismaLike = {
   inventoryItem: {
@@ -26,7 +21,7 @@ export type StockXDelistPrismaLike = {
       select?: unknown;
     }): Promise<{ id: string } | null>;
   };
-  marketplaceConnection: {
+  marketplaceConnection: StockXTokenPrismaLike["marketplaceConnection"] & {
     findUnique(args: {
       where: {
         accountId_marketplace_environment?: {
@@ -55,6 +50,7 @@ export type StockXDelistDeps = {
   resolveAccessToken: (
     connection: ConnectionRow,
     config: StockXConfig,
+    prisma: StockXTokenPrismaLike,
   ) => Promise<string> | string;
   createClient: (
     accessToken: string,
@@ -82,8 +78,8 @@ export type StockXDelistResult = {
 
 export const defaultStockXDelistDeps: StockXDelistDeps = {
   env: process.env,
-  resolveAccessToken: (connection, config) =>
-    decryptStockXToken(connection.accessTokenEnc, config.tokenEncryptionKey),
+  resolveAccessToken: (connection, config, prisma) =>
+    getUsableStockXAccessToken(prisma, connection, config),
   createClient: (accessToken, config) => ({
     deactivateListing: (listingId) =>
       deactivateStockXListing(config, accessToken, listingId),
@@ -137,6 +133,7 @@ export async function delistStockXListing(
       accountId: true,
       accessTokenEnc: true,
       refreshTokenEnc: true,
+      accessTokenExpiresAt: true,
     },
   });
 
@@ -148,9 +145,22 @@ export async function delistStockXListing(
     );
   }
 
-  const accessToken = await deps.resolveAccessToken(connection, config);
+  const accessToken = await deps.resolveAccessToken(connection, config, prisma);
   const client = deps.createClient(accessToken, config);
   const result = await deactivateOrDeleteStockXListing(client, input.listingId);
+
+  // An accepted asynchronous operation is not proof the listing stopped
+  // selling. Preserve the existing uncertain-outcome guard and require review
+  // rather than reporting a completed delist or repeating the mutation.
+  const inactiveStatuses = ["INACTIVE", "DEACTIVATED", "DELETED", "ENDED", "REMOVED", "CANCELED", "CANCELLED", "EXPIRED"];
+  if (result.listingId !== input.listingId || !inactiveStatuses.includes(result.status?.trim().toUpperCase() ?? "")) {
+    throw new StockXIntegrationError(
+      stockxErrorCodes.delistUnconfirmed,
+      "StockX has not confirmed this listing ended. Check its status before retrying.",
+      502,
+      { reconciliationRequired: true },
+    );
+  }
 
   return {
     status: "delisted",

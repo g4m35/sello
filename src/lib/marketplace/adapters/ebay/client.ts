@@ -24,6 +24,9 @@ import type {
   EbayTokenResponse,
 } from "./types";
 
+// Bound both receiving headers and reading the body; cron cannot wait forever.
+const EBAY_REQUEST_TIMEOUT_MS = 15_000;
+
 const apiBaseUrls: Record<EbayEnvironment, string> = {
   sandbox: "https://api.sandbox.ebay.com",
   production: "https://api.ebay.com",
@@ -186,6 +189,7 @@ export class EbaySandboxClient implements EbayApiClient {
       `${this.apiBaseUrl}/sell/inventory/v1/location/${encodeURIComponent(merchantLocationKey)}`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(EBAY_REQUEST_TIMEOUT_MS),
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           "Content-Type": "application/json",
@@ -300,6 +304,7 @@ export class EbaySandboxClient implements EbayApiClient {
 
   private async get<T>(path: string): Promise<T> {
     const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
+      signal: AbortSignal.timeout(EBAY_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -333,6 +338,7 @@ export class EbaySandboxClient implements EbayApiClient {
 
   private async getNullable<T>(path: string): Promise<T | null> {
     const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
+      signal: AbortSignal.timeout(EBAY_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -390,6 +396,7 @@ export class EbaySandboxClient implements EbayApiClient {
   ): Promise<T | null> {
     const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
       method,
+      signal: AbortSignal.timeout(EBAY_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
@@ -561,6 +568,7 @@ export async function getUsableEbayAccessToken(
   );
   const response = await fetchImpl(tokenUrls[config.environment], {
     method: "POST",
+    signal: AbortSignal.timeout(EBAY_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",
@@ -629,6 +637,7 @@ export async function getEbayApplicationAccessToken(
 ) {
   const response = await fetchImpl(tokenUrls[config.environment], {
     method: "POST",
+    signal: AbortSignal.timeout(EBAY_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
       "Content-Type": "application/x-www-form-urlencoded",

@@ -1,0 +1,50 @@
+id: autonomy-sold-safety
+title: Preserve terminal sold inventory and refresh StockX automation credentials
+status: in_review
+owner: audit_inventory_automation
+reviewer: Codex
+risk: high
+task_type: marketplace
+base_branch: develop
+working_branch: fix/autonomy-sold-safety
+worktree_path: /Users/jheller/dev/sello-worktrees/autonomy-sold-safety
+created_at: 2026-09-23T03:00:00.000Z
+goal: Keep SOLD terminal across marketplace lifecycle updates and reuse refresh-aware StockX token handling.
+context: Owner authorized implementation of automation improvements and independent subagents.
+non_goals:
+  - New recurring marketplace pollers, live marketplace actions, schema or deployment changes.
+allowed_paths:
+  - src/lib/marketplace/adapters/ebay/client.ts
+  - src/lib/marketplace/adapters/request-timeout.test.ts
+  - src/lib/marketplace/lifecycle-sync.ts
+  - src/lib/marketplace/lifecycle-sync.test.ts
+  - src/lib/marketplace/delist-handler.test.ts
+  - src/lib/marketplace/publish-handler.test.ts
+  - src/lib/marketplace/adapters/stockx/**
+  - src/lib/inventory-sync/jobs/worker.ts
+  - src/lib/inventory-sync/jobs/worker.test.ts
+  - .agent/tasks/active/autonomy-sold-safety.yaml
+protected_paths:
+  - prisma/**
+  - .github/**
+required_reading:
+  - AGENTS.md
+  - src/lib/marketplace/AGENTS.md
+  - src/lib/inventory-sync/AGENTS.md
+acceptance:
+  - Atomic marketplace lifecycle writes cannot overwrite a sold item, including a concurrent or manually recorded sale.
+  - StockX publishing, delisting and status checks refresh expired tokens within the existing account-scoped connection.
+  - Stale StockX status responses cannot overwrite a terminal listing or newer reconciliation.
+  - Pending or unverified StockX delist responses never mark a listing delisted or allow mutation replay.
+  - A refresh cannot overwrite a reconnect or competing credential rotation, and losing refreshes never return a stale token.
+  - Marketplace network calls have bounded read and response-body time without adding mutation retries.
+  - Provider failures remain fail closed and no live provider calls are used in validation.
+validation:
+  - npm run typecheck
+  - npm test -- --run src/lib/marketplace/lifecycle-sync.test.ts src/lib/marketplace/adapters/stockx src/lib/inventory-sync/jobs/worker.test.ts
+full_validation_required: true
+review_requirements:
+  - Independent code review before integration.
+deployment_authorized: false
+merge_authorized: false
+notes: Full integration gate passed for terminal-state and refresh fixes (1820 tests). Pending-delist follow-up passed typecheck, focused lint and full test suite (1824 tests). Pending asynchronous delists require manual reconciliation; independent review and integration pending.

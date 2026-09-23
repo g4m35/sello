@@ -7,7 +7,7 @@ import { markItemSold, type MarkSoldPrismaLike } from "@/lib/inventory/mark-sold
 import { fetchStockXListingStatus } from "./client";
 import { getStockXApiConfig, isStockXApiConfigured } from "./config";
 import { StockXIntegrationError, stockxErrorCodes } from "./errors";
-import { decryptStockXToken } from "./token-crypto";
+import { getUsableStockXAccessToken, type StockXTokenConnection, type StockXTokenPrismaLike } from "./session";
 import {
   STOCKX_ENVIRONMENT,
   type StockXConfig,
@@ -16,18 +16,14 @@ import {
 
 type StockXEnv = Record<string, string | undefined>;
 
-type ConnectionRow = {
-  id: string;
-  accountId: string;
-  accessTokenEnc: string;
-  refreshTokenEnc: string;
-};
+type ConnectionRow = StockXTokenConnection;
 
 type ListingRow = {
   id: string;
   inventoryItemId: string;
   marketplace: "stockx";
   status: MarketplaceListingStatus;
+  lastSyncAt: Date | null;
   externalListingId: string | null;
   metadata: Prisma.JsonValue | null;
   inventoryItem: {
@@ -46,6 +42,10 @@ export type StockXStatusSyncPrismaLike = MarkSoldPrismaLike & {
       };
       select: unknown;
     }): Promise<ListingRow | null>;
+    updateMany(args: {
+      where: { id: string; status: MarketplaceListingStatus; lastSyncAt: Date | null };
+      data: { status?: MarketplaceListingStatus; metadata?: Prisma.InputJsonValue; lastSyncAt: Date; lastError: null; endedAt?: Date };
+    }): Promise<{ count: number }>;
     update(args: {
       where: { id: string };
       data: {
@@ -57,7 +57,7 @@ export type StockXStatusSyncPrismaLike = MarkSoldPrismaLike & {
       };
     }): Promise<{ id: string }>;
   };
-  marketplaceConnection: {
+  marketplaceConnection: StockXTokenPrismaLike["marketplaceConnection"] & {
     findUnique(args: {
       where: {
         accountId_marketplace_environment?: {
@@ -120,6 +120,7 @@ export type StockXStatusSyncDeps = {
   resolveAccessToken: (
     connection: ConnectionRow,
     config: StockXConfig,
+    prisma: StockXTokenPrismaLike,
   ) => Promise<string> | string;
   createClient: (
     accessToken: string,
@@ -147,8 +148,8 @@ export type StockXStatusSyncResult = {
 
 export const defaultStockXStatusSyncDeps: StockXStatusSyncDeps = {
   env: process.env,
-  resolveAccessToken: (connection, config) =>
-    decryptStockXToken(connection.accessTokenEnc, config.tokenEncryptionKey),
+  resolveAccessToken: (connection, config, prisma) =>
+    getUsableStockXAccessToken(prisma, connection, config),
   createClient: (accessToken, config) => ({
     fetchListingStatus: (listingId) =>
       fetchStockXListingStatus(config, accessToken, listingId),
@@ -183,6 +184,7 @@ export async function syncStockXListingStatus(
       inventoryItemId: true,
       marketplace: true,
       status: true,
+      lastSyncAt: true,
       externalListingId: true,
       metadata: true,
       inventoryItem: { select: { accountId: true, sellerId: true } },
@@ -226,6 +228,7 @@ export async function syncStockXListingStatus(
       accountId: true,
       accessTokenEnc: true,
       refreshTokenEnc: true,
+      accessTokenExpiresAt: true,
     },
   });
 
@@ -237,7 +240,7 @@ export async function syncStockXListingStatus(
     );
   }
 
-  const accessToken = await deps.resolveAccessToken(connection, config);
+  const accessToken = await deps.resolveAccessToken(connection, config, prisma);
   const remote = await deps
     .createClient(accessToken, config)
     .fetchListingStatus(listing.externalListingId);
@@ -246,6 +249,15 @@ export async function syncStockXListingStatus(
   const classification = classifyStockXStatus(remote);
   const now = new Date();
   const metadata = stockxStatusMetadata(listing.metadata, remote, classification);
+
+  const staleResult: StockXStatusSyncResult = {
+    status: "unknown", code: "STOCKX_STATUS_STALE", marketplace: "stockx",
+    environment: STOCKX_ENVIRONMENT, listingId: remote.listingId, remoteStatus, operationStatus,
+  };
+  // Remote reads can finish after a sale, delist or newer status check. Only
+  // the exact nonterminal snapshot we fetched may accept a non-sale result.
+  if (classification !== "sold" && ["SOLD", "DELISTED", "ENDED"].includes(listing.status)) return staleResult;
+  const expectedListing = { id: listing.id, status: listing.status, lastSyncAt: listing.lastSyncAt };
 
   if (classification === "sold") {
     await deps.markSold(prisma, {
@@ -277,8 +289,8 @@ export async function syncStockXListingStatus(
       },
     });
   } else if (classification === "active") {
-    await prisma.marketplaceListing.update({
-      where: { id: listing.id },
+    const applied = await prisma.marketplaceListing.updateMany({
+      where: expectedListing,
       data: {
         status: "LISTED",
         metadata,
@@ -286,6 +298,7 @@ export async function syncStockXListingStatus(
         lastError: null,
       },
     });
+    if (applied.count !== 1) return staleResult;
     await prisma.publishAttempt?.updateMany({
       where: {
         marketplaceListingId: listing.id,
@@ -308,8 +321,8 @@ export async function syncStockXListingStatus(
       },
     });
   } else if (classification === "ended") {
-    await prisma.marketplaceListing.update({
-      where: { id: listing.id },
+    const applied = await prisma.marketplaceListing.updateMany({
+      where: expectedListing,
       data: {
         status: "ENDED",
         metadata,
@@ -318,6 +331,7 @@ export async function syncStockXListingStatus(
         endedAt: now,
       },
     });
+    if (applied.count !== 1) return staleResult;
     // The remote state is definitively not active, so any in-flight attempt
     // has a known outcome. Resolving it FAILED lifts the active-attempt
     // uniqueness guard; without this, an attempt stranded RUNNING blocks
@@ -344,14 +358,15 @@ export async function syncStockXListingStatus(
       },
     });
   } else {
-    await prisma.marketplaceListing.update({
-      where: { id: listing.id },
+    const applied = await prisma.marketplaceListing.updateMany({
+      where: expectedListing,
       data: {
         metadata,
         lastSyncAt: now,
         lastError: null,
       },
     });
+    if (applied.count !== 1) return staleResult;
   }
 
   return {

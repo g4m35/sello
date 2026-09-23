@@ -143,26 +143,6 @@ export default function BulkIntakePage() {
     });
   }, []);
 
-  const saveGrouping = useCallback(async () => {
-    if (!batch || busy) return;
-    const nonEmptyGroups = groups.filter((group) => group.length > 0);
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await api.groupBulkPhotos(
-        token,
-        batch.id,
-        nonEmptyGroups.map((photoIds) => ({ photoIds })),
-      );
-      setBatch(result.batch);
-      setGroups(groupsFromBatch(result.batch));
-    } catch (reason) {
-      setError((reason as { error?: string }).error ?? "Could not save photo groups.");
-    } finally {
-      setBusy(false);
-    }
-  }, [batch, busy, groups, token]);
-
   const refreshBatch = useCallback(async () => {
     if (!batch) return null;
     const result = await api.getBulkBatch(token, batch.id);
@@ -170,24 +150,43 @@ export default function BulkIntakePage() {
     return result.batch;
   }, [batch, token]);
 
+  const activeBatchId = batch?.id;
+  const processing = batch?.status === "processing";
+  useEffect(() => {
+    if (!activeBatchId || !processing) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const result = await api.getBulkBatch(token, activeBatchId);
+        if (active) setBatch(result.batch);
+      } catch (reason) {
+        if (active) setError((reason as { error?: string }).error ?? "Could not refresh progress. Your batch remains saved.");
+      } finally {
+        if (active) timer = setTimeout(poll, 3000);
+      }
+    };
+    timer = setTimeout(poll, 3000);
+    return () => { active = false; clearTimeout(timer); };
+  }, [activeBatchId, processing, token]);
+
   const generateAll = useCallback(async () => {
     if (!batch || busy) return;
     setBusy(true);
     setError(null);
     try {
-      const start = await api.startBulkGeneration(token, batch.id);
+      const editable = batch.status !== "processing" && batch.items.every(item =>
+        ["uploaded", "grouping", "ready_for_generation"].includes(item.status));
+      const start = await api.startBulkGeneration(token, batch.id,
+        editable ? groups.filter(group => group.length).map(photoIds => ({ photoIds })) : undefined);
       setBatch(start.batch);
-      for (const itemId of start.itemIds) {
-        await api.generateBulkItem(token, batch.id, itemId).catch(() => undefined);
-        const current = await api.getBulkBatch(token, batch.id);
-        setBatch(current.batch);
-      }
+      setGroups(groupsFromBatch(start.batch));
     } catch (reason) {
       setError((reason as { error?: string }).error ?? "Could not continue generation.");
     } finally {
       setBusy(false);
     }
-  }, [batch, busy, token]);
+  }, [batch, busy, groups, token]);
 
   const retryItem = useCallback(
     async (itemId: string) => {
@@ -331,7 +330,7 @@ export default function BulkIntakePage() {
                 </div>
                 <span className="t-num bulk-progress-card__value">{progress}%</span>
               </div>
-              <div className="bulk-progress" aria-label={`${progress}% processed`}>
+              <div className="bulk-progress" role="progressbar" aria-label="Batch preparation" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
                 <span style={{ width: `${progress}%` }} />
               </div>
               <div className="bulk-stats t-small muted t-num">
@@ -340,9 +339,10 @@ export default function BulkIntakePage() {
                 <span>{batch.needsReviewItems} review</span>
                 <span>{batch.failedItems} failed</span>
               </div>
+              {batch.status === "processing" ? <p className="t-small muted" role="status">Preparing in the background. You can leave this page; saved listings continue through pricing.</p> : null}
             </section>
 
-            {batch.items.every((item) => ["uploaded", "grouping", "ready_for_generation"].includes(item.status)) ? (
+            {batch.status !== "processing" && batch.items.every((item) => ["uploaded", "grouping", "ready_for_generation"].includes(item.status)) ? (
               <section className="card stack-2">
                 <div className="row bulk-section-head">
                   <div>
@@ -386,8 +386,7 @@ export default function BulkIntakePage() {
                   ))}
                 </div>
                 <div className="row">
-                  <Btn variant="secondary" onClick={saveGrouping} disabled={busy}>Save groups</Btn>
-                  <Btn variant="accent" onClick={generateAll} disabled={busy || groups.some((group) => group.length === 0)}>
+                  <Btn variant="accent" onClick={generateAll} disabled={busy || groups.every((group) => group.length === 0)}>
                     {busy ? "Working…" : "Generate listings"}
                   </Btn>
                   <Btn variant="ghost" onClick={cancel} disabled={busy}>Cancel batch</Btn>
@@ -400,7 +399,7 @@ export default function BulkIntakePage() {
                   <p className="t-small muted">Every item is isolated; one failure does not block the rest.</p>
                 </div>
                 <div className="row">
-                  {batch.items.some((item) => ["ready_for_generation", "failed"].includes(item.status) || (item.status === "needs_review" && !item.inventoryItemId)) ? (
+                  {batch.status !== "processing" && batch.items.some((item) => !["BULK_GENERATION_STALE", "BULK_GENERATION_UNCERTAIN"].includes(item.errorCode ?? "") && (["ready_for_generation", "failed"].includes(item.status) || (item.status === "needs_review" && !item.inventoryItemId))) ? (
                     <Btn variant="accent" onClick={generateAll} disabled={busy}>
                       {busy ? "Continuing…" : "Continue generation"}
                     </Btn>
@@ -439,7 +438,7 @@ export default function BulkIntakePage() {
                         Review listing
                       </Btn>
                     ) : null}
-                    {(item.status === "failed" || item.status === "needs_review") && !item.inventoryItemId ? (
+                    {(item.status === "failed" || item.status === "needs_review") && !item.inventoryItemId && !["BULK_GENERATION_STALE", "BULK_GENERATION_UNCERTAIN"].includes(item.errorCode ?? "") ? (
                       <Btn variant="secondary" onClick={() => retryItem(item.id)} disabled={busy}>
                         Retry item
                       </Btn>

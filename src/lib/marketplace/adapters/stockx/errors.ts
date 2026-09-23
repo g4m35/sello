@@ -26,6 +26,7 @@ export const stockxErrorCodes = {
   delistStarted: "STOCKX_DELIST_STARTED",
   delistSucceeded: "STOCKX_DELIST_SUCCEEDED",
   delistFailed: "STOCKX_DELIST_FAILED",
+  delistUnconfirmed: "STOCKX_DELIST_UNCONFIRMED",
   matchSaveFailed: "STOCKX_MATCH_SAVE_FAILED",
 } as const;
 

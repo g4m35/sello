@@ -1,0 +1,38 @@
+id: atomic-review-resolution
+title: Atomic confirmation of possible-sale review tasks
+status: in_review
+owner: audit_product_structure
+reviewer: root
+risk: high
+task_type: inventory
+base_branch: fix/autonomy-review-flow
+working_branch: fix/autonomy-review-flow
+worktree_path: /Users/jheller/dev/sello-worktrees/autonomy-review-flow
+created_at: 2026-09-23T04:05:23.512503Z
+goal: Close a possible-sale task only in the same transaction as sold inventory and required delist work.
+context: Owner requested full implementation; independent review identified crash window in newly exposed seller confirmation.
+non_goals:
+  - Live marketplace actions or schema changes.
+allowed_paths:
+  - src/app/api/inventory/review-tasks/**
+  - .agent/tasks/atomic-review-resolution.yaml
+protected_paths:
+  - prisma/**
+  - .github/**
+acceptance:
+  - Resolution and sold-state work commit together or roll back together.
+  - Concurrent confirmations and dismissals cannot perform contradictory mutations.
+  - Task and inventory accesses remain account-scoped.
+validation:
+  - Focused route and canonical mark-sold tests.
+  - TypeScript and focused ESLint.
+required_reading:
+  - AGENTS.md
+  - src/lib/inventory-sync/AGENTS.md
+full_validation_required: true
+documentation: []
+review_requirements:
+  - Independent root review and integration validation before release.
+deployment_authorized: false
+merge_authorized: false
+notes: Focused tests and TypeScript/ESLint passed; independent review and full integration validation are owned by the parent release task.

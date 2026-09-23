@@ -151,7 +151,7 @@ export async function POST(request: Request) {
 
 // Separated from POST so tests can drive it with a structural fake without
 // stubbing the secret/header gate.
-export async function run(request: Request, db: SyncWorkerPrismaLike) {
+export async function run(request: Request, db: SyncWorkerPrismaLike, deadline?: number) {
   try {
     // An empty body is allowed; only a present-but-malformed body is a 400.
     const raw = await request.text();
@@ -180,7 +180,7 @@ export async function run(request: Request, db: SyncWorkerPrismaLike) {
 
     const summary = await runQueuedSyncJobs(
       db,
-      { limit: parsed.limit },
+      { limit: parsed.limit, deadline },
       { authorizeExecution: createProductionExecutionGate(db) },
     );
 

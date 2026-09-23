@@ -2151,3 +2151,7 @@ img { display: block; max-width: 100%; }
   .connection__actions .btn { flex-grow: 1; }
   .connection__notice { margin-top: 20px; }
 }
+
+.inventory-attention { margin-bottom: 24px; }
+.inventory-attention h2, .inventory-attention h3, .inventory-attention p { margin: 0; }
+.inventory-attention summary { cursor: pointer; }

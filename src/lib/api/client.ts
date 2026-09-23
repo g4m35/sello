@@ -523,7 +523,14 @@ export const api = {
   },
 
   // Create flow: upload photos -> Gemini identification -> draft.
-  getListingAutomation: (token: string, id: string) => request<{ job: { status: string; message: string } | null }>(`/api/listings/${id}/automation`, token),
+  getInventoryReviewTasks: (token: string) => request<{ reviewTasks: InventoryReviewTask[] }>("/api/inventory/review-tasks", token),
+  getInventoryNotifications: (token: string) => request<{ notifications: InventoryNotification[] }>("/api/inventory/notifications", token),
+  resolveInventoryReviewTask: (token: string, id: string, status: "resolved" | "dismissed") =>
+    request<{ ok: boolean }>(`/api/inventory/review-tasks/${encodeURIComponent(id)}/resolve`, token, { method: "POST", body: JSON.stringify({ status }) }),
+
+  getListingAutomation: (token: string, id: string) => request<{ job: { status: string; message: string; recoveryAction?: "retry_preparation" | null } | null }>(`/api/listings/${id}/automation`, token),
+
+  retryListingPreparation: (token: string, id: string) => request<{ job: { status: string; message: string; recoveryAction?: "retry_preparation" | null } }>(`/api/listings/${encodeURIComponent(id)}/automation`, token, { method: "POST", body: JSON.stringify({ action: "retry_preparation" }) }),
 
   createDraftFromPhotos: (token: string, files: File[], automation?: ListingAutomation, idempotencyKey?: string) => {
     const form = new FormData();
@@ -615,11 +622,11 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ groups }) },
     ),
 
-  startBulkGeneration: (token: string, batchId: string) =>
+  startBulkGeneration: (token: string, batchId: string, groups?: { photoIds: string[] }[]) =>
     request<{ itemIds: string[]; batch: BulkBatchView }>(
       `/api/bulk/batches/${batchId}/generate`,
       token,
-      { method: "POST", body: JSON.stringify({}) },
+      { method: "POST", body: JSON.stringify({ groups }) },
     ),
 
   generateBulkItem: (token: string, batchId: string, itemId: string) =>
@@ -1017,3 +1024,6 @@ export const api = {
     } as ApiError;
   },
 };
+
+export type InventoryReviewTask = { id: string; type: string; status: string; inventoryItemId: string | null; marketplace: string | null; title: string; description: string; createdAt: string };
+export type InventoryNotification = { id: string; kind: string; title: string; body: string; inventoryItemId: string | null; createdAt: string; readAt: string | null };
