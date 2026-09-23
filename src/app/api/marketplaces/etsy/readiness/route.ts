@@ -58,9 +58,10 @@ export async function GET(request: Request) {
       title: draft?.title ?? item.productName,
       description: draft?.description ?? "",
       priceCents: draft?.recommendedPriceCents ?? item.recommendedPriceCents ?? null,
-      quantity: 1,
+      quantity: item.status === "SOLD" || item.status === "ARCHIVED" || item.soldAt || item.soldSourceMarketplace ? 0 : item.quantityAvailable,
       photoCount: item.photos.length,
       taxonomyId: url.searchParams.get("taxonomyId"),
+      readinessStateId: url.searchParams.get("readinessStateId"),
       shippingProfileId: url.searchParams.get("shippingProfileId"),
       returnPolicyId: url.searchParams.get("returnPolicyId"),
     });

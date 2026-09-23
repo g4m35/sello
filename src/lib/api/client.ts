@@ -1,4 +1,6 @@
 import type { ListingAutomation } from "@/lib/automation/policy";
+import type { AutomationSettings } from "@/lib/automation/settings-schema";
+export type { AutomationSettings } from "@/lib/automation/settings-schema";
 import type { Flaw, Marketplace, Measurement } from "@/lib/ai/listing-draft";
 import type { FeatureAccess } from "@/lib/auth/feature-access";
 import type { PlanId, PlanLimits } from "@/lib/billing/plans";
@@ -529,6 +531,10 @@ export const api = {
     request<{ ok: boolean }>(`/api/inventory/review-tasks/${encodeURIComponent(id)}/resolve`, token, { method: "POST", body: JSON.stringify({ status }) }),
 
   getListingAutomation: (token: string, id: string) => request<{ job: { status: string; message: string; recoveryAction?: "retry_preparation" | null } | null }>(`/api/listings/${id}/automation`, token),
+
+  getAutomationSettings: (token: string) => request<AutomationSettings>("/api/automation/settings", token, { timeoutMs: 15000 }),
+  saveAutomationSettings: (token: string, policy: { enabled: false; expectedRevision: string | null } | { enabled: true; consent: true; minPriceCents: number; maxPriceCents: number; expectedRevision: string | null }) =>
+    request<AutomationSettings>("/api/automation/settings", token, { method: "PUT", body: JSON.stringify(policy) }),
 
   retryListingPreparation: (token: string, id: string) => request<{ job: { status: string; message: string; recoveryAction?: "retry_preparation" | null } }>(`/api/listings/${encodeURIComponent(id)}/automation`, token, { method: "POST", body: JSON.stringify({ action: "retry_preparation" }) }),
 

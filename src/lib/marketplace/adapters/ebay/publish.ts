@@ -1,3 +1,4 @@
+import { assertStandingAuthorization, type PolicyReader } from "@/lib/automation/settings";
 import { authorizationMatches, type PublishAuthorization } from "@/lib/automation/policy";
 import type { ItemCondition } from "@/generated/prisma/client";
 import { AppError } from "@/lib/errors";
@@ -82,6 +83,7 @@ type SellerConfigRow = {
 } | null;
 
 export type EbayPublishPrismaLike = EbayMediaPrismaLike & {
+  account?: PolicyReader["account"];
   inventoryItem: {
     findFirst(args: {
       where: { id: string; accountId?: string; sellerId?: string };
@@ -397,6 +399,12 @@ export async function publishEbayListing(
     input.authorization ? buildEbayInventoryItemPayload(mapperInput) : preflight.preview.inventoryItem || buildEbayInventoryItemPayload(mapperInput);
   const offerPayload = input.authorization ? buildEbayOfferPayload(mapperInput) : preflight.preview.offer || buildEbayOfferPayload(mapperInput);
 
+  const assertStanding = async () => {
+    if (!input.authorization?.standingAuthorization) return;
+    if (!input.accountId || !prisma.account) throw new AppError("Automatic posting authorization is unavailable.", 409, "AUTOMATION_AUTHORIZATION_CHANGED");
+    await assertStandingAuthorization({ account: prisma.account }, input.accountId, input.authorization.standingAuthorization);
+  };
+  await assertStanding();
   const accessToken = await deps.resolveAccessToken(prisma, connection, config);
   const client = deps.createClient(accessToken, config.marketplaceId, environment);
   const stepEvents: EbayPublishStepRecord[] = [];
@@ -407,9 +415,11 @@ export async function publishEbayListing(
   const { offerId } = await runStep("offer", stepEvents, () =>
     client.createOffer(offerPayload),
   );
-  const { listingId } = await runStep("publish", stepEvents, () =>
-    client.publishOffer(offerId),
-  );
+  const { listingId } = await runStep("publish", stepEvents, async () => {
+    // Token/media/offer preparation may take time. Honor a pause received during it.
+    await assertStanding();
+    return client.publishOffer(offerId);
+  });
 
   return {
     status: "published",

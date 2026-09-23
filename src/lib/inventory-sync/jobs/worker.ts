@@ -1,3 +1,5 @@
+import type { syncEtsyListingForAccount } from "@/lib/marketplace/adapters/etsy/status-sync";
+import { executeEtsyWorkerDelist } from "./etsy-delist";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -8,7 +10,7 @@ import type {
   SyncJobStatus,
   SyncJobType,
 } from "@/generated/prisma/client";
-import { logUnexpectedError, safeFailureText } from "@/lib/errors";
+import { AppError, logUnexpectedError, safeFailureText } from "@/lib/errors";
 import {
   recordInventoryEvent,
   type InventoryEventPrismaLike,
@@ -378,6 +380,10 @@ type WorkerNotificationDelegate = NotificationPrismaLike["notification"] & {
 
 export type SyncWorkerPrismaLike = InventoryEventPrismaLike &
   ReviewTaskPrismaLike & {
+    reviewTask: ReviewTaskPrismaLike["reviewTask"] & {
+      findMany(args: { where: { accountId: string; inventoryItemId: string; type: "sync_conflict"; status: "open" }; select: { id: true; dedupeKey: true; payload: true } }): Promise<Array<{ id: string; dedupeKey: string | null; payload: Prisma.JsonValue }>>;
+      updateMany(args: { where: { accountId: string; inventoryItemId: string; type: "sync_conflict"; status: "open"; dedupeKey: string }; data: { status: "resolved"; resolvedAt: Date } }): Promise<{ count: number }>;
+    };
     syncJob: WorkerJobDelegate;
     marketplaceListing: WorkerListingDelegate;
     notification: WorkerNotificationDelegate;
@@ -424,6 +430,8 @@ export type RunSyncJobDeps = {
   ebayDelist?: typeof executeEbayDelist;
   stockxDelist?: typeof executeStockXDelist;
   stockxStatusSync?: typeof syncStockXListingStatus;
+  etsyStatusSync?: typeof syncEtsyListingForAccount;
+  etsyDelist?: typeof executeEtsyWorkerDelist;
   authorizeExecution?: SyncJobExecutionGate;
 };
 
@@ -1089,6 +1097,26 @@ async function execDelist(
     return execStockXDelist(db, job, inventoryItemId, listing, soldMarketplace, deps);
   }
 
+  if (listing.marketplace === "etsy") {
+    const gate = await authorizeOrPark(db, job, listing, inventoryItemId, marketplaceListingId, "delist", deps);
+    if (gate) return gate;
+    if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+    try {
+      const result = await (deps.etsyDelist ?? executeEtsyWorkerDelist)({ userId: job.userId, accountId: job.accountId,
+        inventoryItemId, marketplaceListingId }, db as unknown as ReturnType<typeof getPrisma>);
+      if (result.status === "SOLD") return finalizeSkip(db, job, "SOLD_SOURCE", "Etsy listing is already sold; no removal was performed.");
+    } catch (error) {
+      if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+      await parkForManualDelist(db, job, listing, soldMarketplace, true);
+      return finalizeExternalOutcomeUnknown(db, job, error instanceof AppError ? error : new AppError("Etsy removal could not be confirmed. Review the listing before retrying.", 503));
+    }
+    if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+    await recordInventoryEvent(db, { inventoryItemId, userId: job.userId, accountId: job.accountId,
+      type: "delist_succeeded", source: "system", marketplace: "etsy",
+      payload: { marketplaceListingId, syncJobId: job.id } });
+    return finalizeSucceeded(db, job);
+  }
+
   // Non-adapter marketplaces are defensive only: these are normally enqueued as
   // needs_review and never claimed. NEVER fake a delist for a marketplace with
   // no adapter.
@@ -1102,17 +1130,32 @@ async function parkIfOpenSyncConflict(
   inventoryItemId: string,
 ): Promise<RunSummary | null> {
   if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
-  const conflict = await db.reviewTask.findFirst({
-    where: {
-      accountId: job.accountId,
-      type: "sync_conflict",
-      status: "open",
-      inventoryItemId,
-    },
-    select: { id: true },
+  const reviews = await db.reviewTask.findMany({
+    where: { accountId: job.accountId, type: "sync_conflict", status: "open", inventoryItemId },
+    select: { id: true, dedupeKey: true, payload: true },
   });
+  // Only explicitly recognized operational reviews can be ignored after a
+  // confirmed sale. Actual sale-source conflicts and unknown legacy reviews
+  // remain fail-closed; one harmless review cannot mask another real conflict.
+  const conflict = reviews.find((review) => !isOperationalReview(review));
   if (!conflict) return null;
   return finalizeNeedsReview(db, job, "OPEN_SYNC_CONFLICT_REVIEW_REQUIRED");
+}
+
+function isOperationalReview(review: { dedupeKey: string | null; payload: Prisma.JsonValue }): boolean {
+  if (!review.payload || typeof review.payload !== "object" || Array.isArray(review.payload)) return false;
+  const payload = review.payload as Record<string, unknown>;
+  // A mixed/malformed review carrying sale evidence always retains its hold.
+  if (payload.alreadySoldMarketplace || payload.conflictingMarketplace || review.dedupeKey?.startsWith("sold-source-conflict:")) return false;
+  const key = review.dedupeKey;
+  if (typeof payload.listingAutomationJobId === "string" && payload.listingAutomationJobId.length > 0) {
+    return key === `listing-automation:${payload.listingAutomationJobId}`;
+  }
+  if (payload.reason === "etsy_publish_incomplete" && typeof payload.marketplaceListingId === "string") {
+    return key === `etsy-publish:${payload.marketplaceListingId}`;
+  }
+  return typeof payload.syncJobId === "string" && typeof payload.marketplaceListingId === "string" &&
+    key === `sync-job:${payload.syncJobId}:etsy-status`;
 }
 
 async function execEbayDelist(
@@ -1362,6 +1405,41 @@ async function execDetectStatus(
     TERMINAL_LISTING_STATUSES.has(listing.status) &&
     (listing.status !== "SOLD" || listing.inventoryItem.status === "SOLD")
   ) {
+    return finalizeSucceeded(db, job);
+  }
+
+  if (listing.marketplace === "etsy") {
+    const gate = await authorizeOrPark(db, job, listing, inventoryItemId, marketplaceListingId, "status_sync", deps);
+    if (gate) return gate;
+    if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+    try {
+      const result = await (deps.etsyStatusSync ?? (await import("@/lib/marketplace/adapters/etsy/status-sync")).syncEtsyListingForAccount)({
+        userId: job.userId, accountId: job.accountId, itemId: inventoryItemId,
+      }, db as unknown as ReturnType<typeof getPrisma>);
+      if (!result.synced || !result.state || !["active", "sold_out", "inactive", "expired", "removed"].includes(result.state)) {
+        throw new AppError("Etsy status needs review.", 409);
+      }
+    } catch (error) {
+      const safeError = error instanceof AppError ? error : new AppError("The Etsy status check could not be completed.", 503);
+      if (isRetryableFailure("ETSY_STATUS_SYNC_FAILED", safeError) && job.attempts < job.maxAttempts) {
+        return finalizeFailure(db, job, "ETSY_STATUS_SYNC_FAILED", safeError);
+      }
+      if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+      const dedupeKey = `sync-job:${job.id}:etsy-status`;
+      await createReviewTask(db, { userId: job.userId, accountId: job.accountId, inventoryItemId,
+        marketplace: "etsy", type: "sync_conflict", title: "Etsy sale monitoring needs review",
+        description: "Etsy sale status could not be confirmed. Check the listing and connection before resuming monitoring.",
+        dedupeKey, payload: { syncJobId: job.id, marketplaceListingId } });
+      await createNotification(db, { userId: job.userId, accountId: job.accountId, inventoryItemId,
+        kind: "sync_conflict", title: "Etsy sale monitoring needs review",
+        body: "Check this Etsy listing and its connection before resuming automatic sale checks.", dedupeKey });
+      return finalizeNeedsReview(db, job, "ETSY_STATUS_REVIEW_REQUIRED");
+    }
+    if (!(await heartbeatLease(db, job))) return currentJobSummary(db, job.id);
+    await db.reviewTask.updateMany({
+      where: { accountId: job.accountId, inventoryItemId, type: "sync_conflict", status: "open", dedupeKey: `sync-job:${job.id}:etsy-status` },
+      data: { status: "resolved", resolvedAt: new Date() },
+    });
     return finalizeSucceeded(db, job);
   }
 

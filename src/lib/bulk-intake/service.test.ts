@@ -63,7 +63,8 @@ import {
 } from "./service";
 
 function usePrisma<T extends object>(value: T) {
-  const db = value as T & { $executeRawUnsafe?: unknown; $transaction?: (callback: (tx: object) => unknown) => unknown };
+  const db = value as T & { account?: unknown; $executeRawUnsafe?: unknown; $transaction?: (callback: (tx: object) => unknown) => unknown };
+  db.account ??= { findUnique: vi.fn(async () => ({ automationPolicy: null, ownerUserId: "user-1", disabledAt: null })) };
   db.$executeRawUnsafe ??= vi.fn();
   const transaction = db.$transaction ?? (async (callback: (tx: object) => unknown) => callback(db));
   db.$transaction = vi.fn((callback: (tx: object) => unknown) => transaction((tx: object) => {
@@ -716,7 +717,7 @@ describe("bulk intake service", () => {
     expect(JSON.stringify(failureWrite)).not.toContain("secret-token");
   });
 
-  it.each(["confirmed", "uncertain"])("creates one prepare-only job with the listing when the transaction is %s", async (outcome) => {
+  it.each(["confirmed", "uncertain", "standing", "existing-intake"])("creates one authorized job with the listing when the transaction is %s", async (outcome) => {
     const initial = generationItem();
     const final = { ...initial, status: "listing_ready", inventoryItemId: "40000000-0000-4000-8000-000000000001" };
     const findFirst = vi.fn().mockResolvedValueOnce(initial).mockResolvedValue(final);
@@ -746,6 +747,9 @@ describe("bulk intake service", () => {
         return result;
       }),
     };
+    const enabled = outcome === "standing" || outcome === "existing-intake";
+    const revision = "00000000-0000-4000-8000-000000000001";
+    Object.assign(prisma, { account: { findUnique: vi.fn(async () => ({ ownerUserId: user.id, disabledAt: null, automationPolicy: enabled ? { version: 1, enabled: true, revision, authorizedBy: user.id, authorizedAt: outcome === "standing" ? "2026-07-09T00:00:00.000Z" : "2026-07-11T00:00:00.000Z", minPriceCents: 1000, maxPriceCents: 50000 } : null })) } });
     usePrisma(prisma);
     mocks.generateListingDraftWithGemini.mockResolvedValue({
       model: "gemini-test",
@@ -801,12 +805,12 @@ describe("bulk intake service", () => {
     expect(tx.jobLog.create).toHaveBeenCalledOnce();
     expect(tx.jobLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
       id: bulkJobId("prepare", initial.id), queueName: "listing-automation-v1",
-      payload: expect.objectContaining({ accountId: account.id, userId: user.id, policy: { mode: "prepare" } }),
+      payload: expect.objectContaining({ accountId: account.id, userId: user.id, policy: outcome === "standing" ? { mode: "publish", marketplace: "ebay", consent: true, minPriceCents: 1000, maxPriceCents: 50000 } : { mode: "prepare" }, ...(outcome === "standing" ? { standingAuthorization: { revision } } : {}) }),
     }) });
     expect(tx.aiOutput.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ provider: "gemini" }) }),
     );
-    if (outcome === "confirmed") {
+    if (outcome !== "uncertain") {
       expect(mocks.settleUsageReservationOrRequireReconciliation).toHaveBeenCalledWith(
         "usage-reservation-1", expect.any(Date), "BULK_AI_LISTING_SETTLEMENT_FAILED", prisma,
       );

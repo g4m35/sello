@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireRuntimeFeatureAccess } from "@/lib/auth/feature-access";
+import { requireEtsyCapability } from "@/lib/marketplace/adapters/etsy/capabilities";
 import { getActiveAccount } from "@/lib/billing/account";
 import { AppError, safeErrorResponse, ValidationError } from "@/lib/errors";
 import {
@@ -61,6 +62,7 @@ type WorkerIdentity = { id: string; email?: string | null };
 type ProductionExecutionGateDeps = {
   resolveUserById(userId: string): Promise<WorkerIdentity | null>;
   requireEbayDelistAccess(user: WorkerIdentity): Promise<{ id: string }>;
+  requireEtsyAccess(user: WorkerIdentity, operation: "delist" | "status_sync"): Promise<void>;
   resolveActiveAccount(userId: string): Promise<{ id: string }>;
 };
 
@@ -84,6 +86,7 @@ export function createProductionExecutionGate(
       );
       return runtime.account;
     },
+    requireEtsyAccess: async (user, operation) => { requireEtsyCapability(user, operation === "delist" ? "delist" : "orders"); },
     resolveActiveAccount: (userId) => getActiveAccount(userId, db as never),
     ...deps,
   };
@@ -110,6 +113,8 @@ export function createProductionExecutionGate(
           sellerCopy: "This marketplace action no longer matches the active account.",
         };
       }
+
+      if (input.marketplace === "etsy") await resolved.requireEtsyAccess(user, input.operation);
 
       return {
         allowed: true,

@@ -12,6 +12,7 @@ const connectedReady: EtsyReadinessInput = {
   quantity: 1,
   photoCount: 3,
   taxonomyId: 1234,
+  readinessStateId: 789,
   shippingProfileId: 5678,
   returnPolicyId: 9012,
 };
@@ -34,7 +35,8 @@ describe("evaluateEtsyReadiness", () => {
     const result = evaluateEtsyReadiness({
       ...connectedReady,
       taxonomyId: null,
-      shippingProfileId: null,
+      readinessStateId: 789,
+  shippingProfileId: null,
       returnPolicyId: null,
     });
     expect(result.ready).toBe(false);

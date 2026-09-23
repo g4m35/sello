@@ -8,6 +8,7 @@ const base: EtsyListingMapInput = {
   priceCents: 42500,
   quantity: 1,
   taxonomyId: "1234",
+  readinessStateId: 789,
   shippingProfileId: "5678",
   returnPolicyId: 9012,
   whoMade: "someone_else",

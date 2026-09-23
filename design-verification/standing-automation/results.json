@@ -1,0 +1,72 @@
+{
+  "scope": "Actual components with synthetic APIs; no live listing actions.",
+  "checks": [
+    {
+      "name": "Enabling requires explicit consent and saves bounded standing permission",
+      "pass": true
+    },
+    {
+      "name": "Pausing sends only revocation with current revision",
+      "pass": true
+    },
+    {
+      "name": "Stale settings failure remains visible and reloadable",
+      "pass": true
+    },
+    {
+      "name": "Nonowners cannot change authorization",
+      "pass": true
+    },
+    {
+      "name": "Delayed settings cannot override an actionable posting choice",
+      "pass": true
+    },
+    {
+      "name": "Failed settings load falls back to preparation",
+      "pass": true
+    },
+    {
+      "name": "Saved policy is used without per-item renewal",
+      "pass": true
+    },
+    {
+      "name": "Single listing can opt out of saved automatic posting",
+      "pass": true
+    }
+  ],
+  "a11y": [
+    {
+      "name": "settings-paused-desktop",
+      "violations": []
+    },
+    {
+      "name": "settings-enabled-desktop",
+      "violations": []
+    },
+    {
+      "name": "settings-1440",
+      "violations": []
+    },
+    {
+      "name": "upload-1440",
+      "violations": []
+    },
+    {
+      "name": "bulk-1440",
+      "violations": []
+    },
+    {
+      "name": "settings-390",
+      "violations": []
+    },
+    {
+      "name": "upload-390",
+      "violations": []
+    },
+    {
+      "name": "bulk-390",
+      "violations": []
+    }
+  ],
+  "errors": []
+}

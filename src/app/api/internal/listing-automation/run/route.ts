@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { runListingQueue } from "@/lib/automation/listing-job";
 import { logUnexpectedError, safeErrorResponse } from "@/lib/errors";
 import { pollEbayOrders } from "@/lib/inventory/ebay-order-poller";
+import { enqueueEtsyStatusChecks } from "@/lib/inventory/etsy-status-monitor";
 import { enqueueStockXStatusChecks } from "@/lib/inventory/stockx-status-monitor";
 import { runBulkGenerationQueue } from "@/lib/bulk-intake/jobs";
 import { getPrisma } from "@/lib/prisma";
@@ -46,10 +47,11 @@ async function execute() {
     const sales = await stage("ebay_sales", started + 90_000, () => pollEbayOrders(db, undefined, started + 90_000));
     if (sales?.failed) failedStages.push("ebay_sales");
     const stockx = await stage("stockx_schedule", started + 100_000, () => enqueueStockXStatusChecks(db, undefined, started + 100_000));
+    const etsy = await stage("etsy_schedule", started + 110_000, () => enqueueEtsyStatusChecks(db, undefined, started + 110_000));
     const sync = await stage("inventory_sync", started + 150_000, () => drain(started + 150_000));
     const bulkProcessed = await stage("bulk_preparation", started + 210_000, () => runBulkGenerationQueue(db, started + 210_000));
     const processed = await stage("listing_preparation", started + 250_000, () => runListingQueue(db, started + 250_000));
-    return NextResponse.json({ protection, sales, stockx, sync, bulkProcessed, processed,
+    return NextResponse.json({ protection, sales, stockx, etsy, sync, bulkProcessed, processed,
       failedStages: [...new Set(failedStages)], deferredStages }, { status: failedStages.length ? 503 : 200 });
   } catch (error) {
     const { status, body } = safeErrorResponse(error, { label: "listing_automation_worker" });

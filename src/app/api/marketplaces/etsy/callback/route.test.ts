@@ -47,6 +47,7 @@ describe("Etsy callback route", () => {
     vi.clearAllMocks();
     process.env.ETSY_API_ENABLED = "true";
     process.env.ETSY_CLIENT_ID = "etsy-keystring";
+    process.env.ETSY_CLIENT_SECRET = "test-shared-secret";
     process.env.ETSY_REDIRECT_URI = "https://sello.wtf/cb";
     process.env.ETSY_TOKEN_ENCRYPTION_KEY = "a".repeat(64);
     process.env.ETSY_OAUTH_STATE_SECRET = SECRET;
@@ -71,6 +72,7 @@ describe("Etsy callback route", () => {
     for (const key of [
       "ETSY_API_ENABLED",
       "ETSY_CLIENT_ID",
+  "ETSY_CLIENT_SECRET",
       "ETSY_REDIRECT_URI",
       "ETSY_TOKEN_ENCRYPTION_KEY",
       "ETSY_OAUTH_STATE_SECRET",

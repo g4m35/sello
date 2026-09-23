@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   itemFindFirst: vi.fn(),
   listingFindUnique: vi.fn(),
   listingUpdate: vi.fn(),
+  markSold: vi.fn(),
   getEtsyAuthorizedSession: vi.fn(),
   getListing: vi.fn(),
 }));
@@ -14,10 +15,11 @@ vi.mock("@/lib/supabase/server", () => ({ requireSupabaseUser: mocks.requireSupa
 vi.mock("@/lib/billing/account", () => ({
   getActiveAccount: vi.fn().mockResolvedValue({ id: "acc-1", ownerUserId: "u1", plan: "free" }),
 }));
+vi.mock("@/lib/inventory/mark-sold", () => ({ markItemSold: mocks.markSold }));
 vi.mock("@/lib/prisma", () => ({
   getPrisma: () => ({
     inventoryItem: { findFirst: mocks.itemFindFirst },
-    marketplaceListing: { findUnique: mocks.listingFindUnique, update: mocks.listingUpdate },
+    marketplaceListing: { findUnique: mocks.listingFindUnique, updateMany: mocks.listingUpdate },
   }),
 }));
 vi.mock("@/lib/marketplace/adapters/etsy/session", () => ({
@@ -39,6 +41,8 @@ function postRequest(body: unknown) {
 describe("Etsy sync route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.markSold.mockResolvedValue({ outcome: "marked_sold" });
+    mocks.listingUpdate.mockResolvedValue({ count: 1 });
     process.env.ETSY_API_ENABLED = "true";
     mocks.requireSupabaseUser.mockResolvedValue({ id: "u1", email: "seller@example.com" });
     mocks.itemFindFirst.mockResolvedValue({ id: ITEM_ID });
@@ -79,4 +83,24 @@ describe("Etsy sync route", () => {
       accountId: "acc-1",
     });
   });
+  it("does not overwrite a conflicting sale source", async () => {
+    mocks.listingFindUnique.mockResolvedValue({ id: "ml", externalListingId: "999" });
+    mocks.markSold.mockResolvedValue({ outcome: "conflict" });
+    const payload = await (await POST(postRequest({ itemId: ITEM_ID }))).json();
+    expect(payload).toEqual({ synced: false, reason: "sale_conflict" });
+    expect(mocks.listingUpdate).not.toHaveBeenCalled();
+  });
+  it("cannot revive a sold listing from a stale active response", async () => {
+    mocks.listingFindUnique.mockResolvedValue({ id: "ml", externalListingId: "999", status: "SOLD" });
+    mocks.getListing.mockResolvedValue({ listing_id: 999, state: "active" });
+    expect((await (await POST(postRequest({ itemId: ITEM_ID }))).json()).synced).toBe(false);
+    expect(mocks.listingUpdate).not.toHaveBeenCalled();
+  });
+  it("never accepts a different listing identity", async () => {
+    mocks.listingFindUnique.mockResolvedValue({ id: "ml", externalListingId: "999", status: "LISTED" });
+    mocks.getListing.mockResolvedValue({ listing_id: 888, state: "sold_out" });
+    expect((await POST(postRequest({ itemId: ITEM_ID }))).status).toBe(502);
+    expect(mocks.markSold).not.toHaveBeenCalled();
+  });
+
 });
