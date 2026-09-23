@@ -330,7 +330,7 @@ export default function BulkIntakePage() {
                 </div>
                 <span className="t-num bulk-progress-card__value">{progress}%</span>
               </div>
-              <div className="bulk-progress" aria-label={`${progress}% processed`}>
+              <div className="bulk-progress" role="progressbar" aria-label="Batch preparation" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
                 <span style={{ width: `${progress}%` }} />
               </div>
               <div className="bulk-stats t-small muted t-num">
