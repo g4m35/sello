@@ -29,6 +29,11 @@ import type {
 
 export type ApiError = { error: string; status: number; retrySafe?: boolean };
 
+export type AutomationSettings = {
+  policy: { enabled: boolean; revision: string | null; minPriceCents?: number; maxPriceCents?: number };
+  canManage: boolean;
+};
+
 export type FeatureAccessResponse = {
   access: FeatureAccess;
   copy: Record<keyof FeatureAccess, string>;
@@ -529,6 +534,10 @@ export const api = {
     request<{ ok: boolean }>(`/api/inventory/review-tasks/${encodeURIComponent(id)}/resolve`, token, { method: "POST", body: JSON.stringify({ status }) }),
 
   getListingAutomation: (token: string, id: string) => request<{ job: { status: string; message: string; recoveryAction?: "retry_preparation" | null } | null }>(`/api/listings/${id}/automation`, token),
+
+  getAutomationSettings: (token: string) => request<AutomationSettings>("/api/automation/settings", token),
+  saveAutomationSettings: (token: string, policy: { enabled: false; expectedRevision: string | null } | { enabled: true; consent: true; minPriceCents: number; maxPriceCents: number; expectedRevision: string | null }) =>
+    request<AutomationSettings>("/api/automation/settings", token, { method: "PUT", body: JSON.stringify(policy) }),
 
   retryListingPreparation: (token: string, id: string) => request<{ job: { status: string; message: string; recoveryAction?: "retry_preparation" | null } }>(`/api/listings/${encodeURIComponent(id)}/automation`, token, { method: "POST", body: JSON.stringify({ action: "retry_preparation" }) }),
 

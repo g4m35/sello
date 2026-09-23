@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useSession } from "@/components/providers/session-provider";
 import { Btn } from "@/components/ui/primitives";
 import { Topbar } from "@/components/app/topbar";
+import { AutomationSettingsCard } from "@/components/app/automation-settings";
 
 export default function SettingsPage() {
-  const { session, name, signOut, requestNameEdit } = useSession();
+  const { session, name, signOut, requestNameEdit, token } = useSession();
   const email = session.user.email ?? "";
 
   return (
@@ -25,6 +26,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="stack-4" style={{ display: "grid", gap: 16 }}>
+          <AutomationSettingsCard key={token} token={token} />
           <section className="card">
             <div className="card__head">
               <span className="card__title">Account</span>

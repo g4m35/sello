@@ -92,6 +92,21 @@ describe("new listing quickstart", () => {
     findPrepareButton(NewListingPage())!.props.onClick();
     await vi.waitFor(() => expect(apiMocks.createDraftFromPhotos).toHaveBeenCalledWith("t", [file], { mode: "publish", marketplace: "ebay", consent: true, minPriceCents: 10000, maxPriceCents: 20000 }, expect.any(String)));
   });
+  it("uses saved authorization without renewing per-item consent", async () => {
+    const file = new File(["photo"], "item.jpg", { type: "image/jpeg" });
+    reactHarness.states[0] = [{ file, url: "blob:photo" }];
+    reactHarness.states[7] = { canManage: true, policy: { enabled: true, revision: "saved", minPriceCents: 1000, maxPriceCents: 20000 } };
+    findPrepareButton(NewListingPage())!.props.onClick();
+    await vi.waitFor(() => expect(apiMocks.createDraftFromPhotos).toHaveBeenCalledWith("t", [file], undefined, expect.any(String)));
+  });
+  it("lets a seller opt a single listing out of saved automatic posting", async () => {
+    const file = new File(["photo"], "item.jpg", { type: "image/jpeg" });
+    reactHarness.states[0] = [{ file, url: "blob:photo" }];
+    reactHarness.states[7] = { canManage: true, policy: { enabled: true, revision: "saved", minPriceCents: 1000, maxPriceCents: 20000 } };
+    reactHarness.states[8] = false;
+    findPrepareButton(NewListingPage())!.props.onClick();
+    await vi.waitFor(() => expect(apiMocks.createDraftFromPhotos).toHaveBeenCalledWith("t", [file], { mode: "prepare" }, expect.any(String)));
+  });
   it("does not submit automatic posting with invalid bounds", () => {
     reactHarness.states[0] = [{ file: new File(["photo"], "item.jpg"), url: "blob:photo" }];
     reactHarness.states[3] = true;

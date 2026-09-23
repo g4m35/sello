@@ -1,0 +1,50 @@
+id: standing-automation
+title: Complete saved automation and resolve open Sello PRs
+status: active
+owner: Codex
+reviewer: autonomy_review
+risk: high
+task_type: marketplace
+base_branch: develop
+working_branch: feature/standing-automation
+worktree_path: /Users/jheller/dev/sello-worktrees/standing-automation
+created_at: 2026-09-23T05:15:00.000Z
+goal: Let sellers authorize future eBay listings once, complete Etsy safety and monitoring, and integrate reviewed dependency fixes.
+context: Owner requested fixing incomplete automation and all PRs, with prior full control and shipping authorization.
+non_goals:
+  - Redesign the original UI.
+  - Publish real listings as validation or enable unconfigured Etsy access.
+allowed_paths:
+  - src/**
+  - prisma/**
+  - docs/**
+  - .agent/**
+  - .creative-os/**
+  - design-verification/**
+  - README.md
+  - .env.example
+  - .gitignore
+  - package.json
+  - package-lock.json
+  - .github/**
+protected_paths: []
+required_reading:
+  - AGENTS.md
+  - prisma/AGENTS.md
+  - src/lib/marketplace/AGENTS.md
+  - src/lib/inventory-sync/AGENTS.md
+acceptance:
+  - Saved authorization applies to new single and bulk uploads only and is revocable.
+  - Existing safety, permissions, budgets and account isolation remain enforced.
+  - Etsy retries cannot duplicate listings or overwrite sold state.
+  - All open dependency PRs receive an evidence-backed resolution.
+validation:
+  - npm run validate:full
+full_validation_required: true
+documentation:
+  - docs/operations/standing-automation.md
+review_requirements:
+  - Independent review of database migration, authorization, live-action safety and dependencies.
+deployment_authorized: true
+merge_authorized: true
+notes: Owner authorized full implementation and shipping. Additive nullable Account automationPolicy migration is within this fix; no destructive data changes, no retroactive listing publication, no unrelated production migrations.
