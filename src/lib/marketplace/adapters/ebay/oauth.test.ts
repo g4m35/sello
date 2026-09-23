@@ -120,4 +120,17 @@ describe("eBay OAuth helpers", () => {
       }),
     ).toThrow(expect.objectContaining({ code: "EBAY_OAUTH_STATE_INVALID" }));
   });
+  it("binds requested scopes to the signed state and rejects tampering", () => {
+    const cookie = createEbayOAuthStateCookie({ userId: "user-1", state: "state-1", secret: config.tokenEncryptionKey,
+      consent: { environment: "sandbox", scopes: ["scope-a"] } });
+    expect(parseEbayOAuthStateCookie({ cookieValue: cookie.value, expectedState: "state-1", secret: config.tokenEncryptionKey }).consent)
+      .toEqual({ environment: "sandbox", scopes: ["scope-a"] });
+    const [encoded, signature] = cookie.value.split(".");
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString());
+    payload.consent.scopes.push("scope-b");
+    const tampered = Buffer.from(JSON.stringify(payload)).toString("base64url") + "." + signature;
+    expect(() => parseEbayOAuthStateCookie({ cookieValue: tampered, expectedState: "state-1", secret: config.tokenEncryptionKey }))
+      .toThrow(expect.objectContaining({ code: "EBAY_OAUTH_STATE_INVALID" }));
+  });
+
 });

@@ -47,7 +47,7 @@ export function getEbaySetupMessage(readiness: EbayReadinessResponse | null) {
 
   if (readiness.ready) {
     return {
-      heading: "Connected · ready",
+      heading: "Selling setup complete",
       body:
         readiness.environment === "production"
           ? "eBay setup is complete."
@@ -66,12 +66,11 @@ export function getEbayActionModel(
   connectLabel = "Connect eBay",
 ) {
   const connected = Boolean(readiness?.connected);
+  const needsReconnect = Boolean(readiness?.reconnectRequired || (connected && readiness?.salesReadPermission !== true));
 
   return {
-    showPrimaryConnect: !connected,
-    showSecondaryReconnect: connected,
-    primaryConnectLabel: connectLabel,
-    secondaryReconnectLabel: connectLabel.replace(/^Connect/, "Reconnect"),
+    showPrimaryConnect: !connected || needsReconnect,
+    primaryConnectLabel: needsReconnect ? connectLabel.replace(/^Connect/, "Reconnect") : connectLabel,
   };
 }
 
@@ -93,4 +92,16 @@ export function shouldAutoRefreshEbayReadiness(
   attempted: boolean,
 ) {
   return Boolean(readiness?.connected && !readiness.checkedAt && !attempted);
+}
+
+export function getEbayConnectionStatus(readiness: EbayReadinessResponse | null) {
+  if (!readiness) return "Checking connection…";
+  if (readiness.reconnectRequired) return "Connection expired";
+  return readiness.connected ? "Connected" : "Not connected";
+}
+
+export function getEbaySalesPermissionLabel(readiness: EbayReadinessResponse) {
+  if (!readiness.connected || readiness.reconnectRequired) return "Connect account first";
+  if (readiness.salesReadPermission == null) return "Not verified";
+  return readiness.salesReadPermission ? "Granted" : "Permission needed";
 }

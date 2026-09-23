@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppError } from "@/lib/errors";
 import {
+  EBAY_REQUIRED_SCOPES,
   createEbayOAuthStateCookie,
   ebayOAuthStateCookieName,
 } from "@/lib/marketplace/adapters/ebay/oauth";
@@ -40,14 +41,14 @@ const stateSecret = "state-secret-state-secret-state-secret-0123456789";
 const userId = "11111111-1111-4111-8111-111111111111";
 const otherUserId = "22222222-2222-4222-8222-222222222222";
 
-function tokenResponse() {
+function tokenResponse(scope: unknown = "scope-a scope-b", omitScope = false) {
   return new Response(
     JSON.stringify({
       access_token: "raw-access-token",
       refresh_token: "raw-refresh-token",
       expires_in: 7200,
       refresh_token_expires_in: 86400,
-      scope: "scope-a scope-b",
+      ...(omitScope ? {} : { scope }),
     }),
     { status: 200 },
   );
@@ -195,4 +196,44 @@ describe("eBay callback route", () => {
     expect(decryptEbayToken(data.accessTokenEnc, key)).toBe("raw-access-token");
     expect(decryptEbayToken(data.refreshTokenEnc, key)).toBe("raw-refresh-token");
   });
+  it.each([
+    { label: "omitted scopes from new consent", scope: undefined, omitScope: true, signed: true, expected: EBAY_REQUIRED_SCOPES },
+    { label: "explicit narrower grant", scope: "scope-a", omitScope: false, signed: true, expected: ["scope-a"] },
+    { label: "explicit empty grant", scope: "", omitScope: false, signed: true, expected: [] },
+    { label: "legacy cookie without recorded consent", scope: undefined, omitScope: true, signed: false, expected: [] },
+  ])("persists $label without inventing permissions", async ({ scope, omitScope, signed, expected }) => {
+    const upsert = vi.fn().mockResolvedValue({ id: "connection-1" });
+    mocks.getPrisma.mockReturnValue({ marketplaceConnection: { upsert } });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(tokenResponse(scope, omitScope));
+    const cookie = createEbayOAuthStateCookie({ userId, state: "state-1", secret: stateSecret,
+      consent: signed ? { environment: "sandbox", scopes: EBAY_REQUIRED_SCOPES } : undefined });
+    const response = await GET(callbackRequest({ state: "state-1", cookieValue: cookie.value }));
+    expect(response.status).toBe(307);
+    expect(upsert.mock.calls[0][0].create.scopes).toEqual(expected);
+    expect(upsert.mock.calls[0][0].update.scopes).toEqual(expected);
+  });
+
+  it("rejects changed environments before exchanging the code", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const upsert = vi.fn();
+    mocks.getPrisma.mockReturnValue({ marketplaceConnection: { upsert } });
+    const cookie = createEbayOAuthStateCookie({ userId, state: "state-1", secret: stateSecret,
+      consent: { environment: "production", scopes: EBAY_REQUIRED_SCOPES } });
+    const response = await GET(callbackRequest({ state: "state-1", cookieValue: cookie.value }));
+    expect(response.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed scope data before persisting tokens", async () => {
+    const upsert = vi.fn();
+    mocks.getPrisma.mockReturnValue({ marketplaceConnection: { upsert } });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(tokenResponse(["scope-a"]));
+    const cookie = createEbayOAuthStateCookie({ userId, state: "state-1", secret: stateSecret,
+      consent: { environment: "sandbox", scopes: EBAY_REQUIRED_SCOPES } });
+    const response = await GET(callbackRequest({ state: "state-1", cookieValue: cookie.value }));
+    expect(response.status).toBe(502);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
 });

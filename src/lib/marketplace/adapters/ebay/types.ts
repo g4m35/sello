@@ -17,6 +17,8 @@ export type EbayReadinessResponse = {
   environment: EbayEnvironment;
   connected: boolean;
   ready: boolean;
+  /** Stored OAuth permission; null means historical scopes were not recorded. Not worker health. */
+  salesReadPermission?: boolean | null;
   /** The stored eBay token is expired/revoked; the seller must reconnect. */
   reconnectRequired?: boolean;
   missing: string[];

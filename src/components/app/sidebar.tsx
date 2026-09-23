@@ -5,11 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { Icon, type IconName } from "@/components/ui/icon";
 import { useSession } from "@/components/providers/session-provider";
+import { SelloLogo } from "@/components/app/sello-logo";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { prefetchBillingUsage } from "@/components/billing/usage-snapshot";
 import { useMobileNav } from "@/components/providers/mobile-nav-provider";
 
-type NavItem = { href: string; label: string; icon: IconName; count?: number };
+type NavItem = { href: string; label: string; icon: IconName };
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -20,6 +21,8 @@ export function Sidebar() {
   const isActive = (href: string) =>
     href === "/inventory"
       ? pathname.startsWith("/inventory") && !pathname.startsWith("/inventory/bulk")
+      : href === "/channels"
+        ? pathname === "/channels" || pathname.startsWith("/settings/marketplaces")
       : href === "/settings"
         ? pathname === "/settings"
       : pathname === href || pathname.startsWith(href + "/");
@@ -61,7 +64,7 @@ export function Sidebar() {
           aria-label="Sello — go to inventory"
           title="Go to inventory"
         >
-          <span className="studio-mark" aria-hidden="true"><Icon name="tag" size={20} /></span>Sello<span className="sidebar__brand-tag">Studio</span>
+          <SelloLogo />
         </button>
       </div>
 
@@ -100,13 +103,11 @@ export function Sidebar() {
           >
             <Icon className="nav-item__icon" name={it.icon} size={15} />
             {it.label}
-            {it.count != null && <span className="nav-item__count t-num">{it.count}</span>}
           </button>
         ))}
       </nav>
 
       <nav className="sidebar__section" aria-label="Workspace">
-        <div className="sidebar__label">Workspace</div>
         {config.map((it) => (
           <button
             key={it.href}
@@ -118,7 +119,6 @@ export function Sidebar() {
           >
             <Icon className="nav-item__icon" name={it.icon} size={15} />
             {it.label}
-            {it.count != null && <span className="nav-item__count t-num">{it.count}</span>}
           </button>
         ))}
       </nav>

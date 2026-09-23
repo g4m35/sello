@@ -1,0 +1,37 @@
+{
+  "checks": [
+    "Dark/light desktop and exact 390px: zero axe WCAG A/AA violations and horizontal overflow.",
+    "Keyboard Manage opens confirmation; Cancel closes it and restores trigger focus.",
+    "Dialog traps Tab focus and Escape dismisses safely.",
+    "Confirmed fixture disconnect reloads state and restores Connect.",
+    "Failed fixture disconnect surfaces error and preserves connection.",
+    "Verified grant removes reconnect prompt without claiming worker health.",
+    "Missing permission and expired connection have distinct actionable states.",
+    "Incomplete setup preserves ship-from address form.",
+    "Readiness failures show Unavailable and support retry.",
+    "Reduced-motion idle screen has no running animation."
+  ],
+  "scans": [
+    {
+      "theme": "dark",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "violations": []
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "violations": []
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "violations": []
+    }
+  ],
+  "messages": []
+}

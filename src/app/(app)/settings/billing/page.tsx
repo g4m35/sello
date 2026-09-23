@@ -83,7 +83,7 @@ export default function BillingSettingsPage() {
       <main className="page">
         <div className="page__head">
           <div className="page__title-row">
-            <span className="eyebrow">PLAN & USAGE</span>
+
             <h1 className="page__title">
               Billing<em>.</em>
             </h1>

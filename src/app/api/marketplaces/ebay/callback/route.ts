@@ -55,6 +55,13 @@ export async function GET(request: Request) {
       );
     }
 
+    if (oauthState.consent && oauthState.consent.environment !== config.environment) {
+      throw new EbayIntegrationError(
+        ebayErrorCodes.oauthStateInvalid,
+        "The eBay authorization environment changed. Please reconnect.",
+        400,
+      );
+    }
     const token = await exchangeAuthorizationCode(config, code);
     if (!token.refresh_token) {
       throw new EbayIntegrationError(
@@ -64,6 +71,12 @@ export async function GET(request: Request) {
       );
     }
 
+    // eBay omits scope on successful grants. Only the signed consent request
+    // from this round trip can supply the fallback, never today's scope list or
+    // a historical connection. Explicitly returned scopes always take priority.
+    const scopes = token.scope === undefined
+      ? oauthState.consent?.scopes ?? []
+      : token.scope.split(/\s+/).filter(Boolean);
     const now = Date.now();
     const prisma = getPrisma();
     const account = await getActiveAccount(user.id, prisma);
@@ -94,7 +107,7 @@ export async function GET(request: Request) {
         refreshTokenExpiresAt: token.refresh_token_expires_in
           ? new Date(now + token.refresh_token_expires_in * 1000)
           : null,
-        scopes: token.scope?.split(/\s+/).filter(Boolean) ?? [],
+        scopes,
       },
       update: {
         accessTokenEnc: encryptEbayToken(
@@ -109,7 +122,7 @@ export async function GET(request: Request) {
         refreshTokenExpiresAt: token.refresh_token_expires_in
           ? new Date(now + token.refresh_token_expires_in * 1000)
           : null,
-        scopes: token.scope?.split(/\s+/).filter(Boolean) ?? [],
+        scopes,
       },
     });
 

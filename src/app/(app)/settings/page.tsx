@@ -17,7 +17,7 @@ export default function SettingsPage() {
       <main className="page workspace-settings">
         <div className="page__head">
           <div>
-            <span className="eyebrow">MAKE SELLO YOURS</span>
+
             <h1 className="page__title">
               Your workspace
             </h1>

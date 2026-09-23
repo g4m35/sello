@@ -243,7 +243,7 @@ export default function BulkIntakePage() {
 
       <main className="page stack-3">
         <div className="page__head">
-          <span className="eyebrow">BATCH PREPARATION</span>
+
             <h1 className="page__title">
             Bulk photo <em>intake</em>
           </h1>

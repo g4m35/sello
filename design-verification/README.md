@@ -1,13 +1,11 @@
-# Sello Studio preview verification
+# Marketplace correction preview — September 22, 2026
 
-The screenshots show actual Sello source components bundled with synthetic inventory/API fixtures. Product silhouettes are local illustration fixtures; they are not actual seller photographs or product-identification claims. Fonts match the Next production build.
+Screenshots render the actual modified Sello components and production fonts with synthetic API/session data. They do not represent live accounts or a deployed release. No local browser was launched; browser checks used Browserbase cloud through a temporary fixture tunnel.
 
-- `desktop.png`, `mobile-390.png`: inventory at desktop and an exact 390px mobile viewport. Scrollbars are hidden through Chrome's device-emulation API for mobile capture, matching an overlay-scrollbar phone; CSS is not modified to resize the screenshot.
-- `*-desktop.png`, `*-mobile.png`: intake, editor, overview, history, channels, settings, billing, bulk intake and feedback; `inventory-dark.png` checks the alternate theme.
-- `interaction-checks.json`: real keyboard, dialog, drawer, 30-item selection, error/empty-state checks and axe WCAG A/AA scans across ten seller screens.
-- `final-interactions.json`: autosave during background preparation, opt-in price validation and dark-theme accessibility.
-- `validation.txt`: full repository gate; `performance.json`: cloud fixture timing smoke, not production performance or RUM.
+- `desktop.png` and exact-width `mobile-390.png`: dark marketplace settings with historical permissions unverified. `marketplaces-light.png` checks light mode.
+- `inventory-*`, `upload-*`, `settings-*`: shared shell and heading changes. `connection-dialog-mobile.png`: confirmation controls.
+- `marketplace-interactions.json`: keyboard focus/trap/cancel, fixture disconnect success/failure, grant/unknown/missing/expired/setup/error states, reduced motion, and four axe scans.
+- `console.json` and `geometry.json`: browser-captured artifacts; geometry uses the unmodified Creative OS capture helper. `validation.txt`: full repository validation.
+- `archive-2026-09-09/`: preserved prior design, tests and approval. That approval does not accept this revision.
 
-`console.json` and `geometry.json` are captured from the browser. The latter uses the unmodified Creative OS capture script. `verification-result.json` is recomputed after the final commit because it binds artifacts to Git HEAD. Derived gate/evidence JSON is intentionally gitignored to avoid a self-invalidating commit/hash cycle. Screenshot and test evidence remain committed.
-
-Creative OS component gate passes. Final visual release approval is held for owner screenshot review; no owner acceptance is inferred from technical tests or model review. No production deployment was performed.
+Independent code review approved. Owner approved the screenshot and release on September 22; see owner-release-approval.md. No new production deployment or live OAuth exercise was performed. Derived digest-bound gate files are regenerated after committing source and remain gitignored. The fixture checks supplement the Next production build; they do not validate live provider health.

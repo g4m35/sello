@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, Loader2, Plug, RefreshCw, Unplug } from "lucide-react";
+import { ExternalLink, Loader2, Plug, RefreshCw } from "lucide-react";
 
-import { MpLogo } from "@/components/ui/marketplace";
+import { ConnectionControls } from "./connection-controls";
 import { AppError, getErrorMessage } from "@/lib/errors";
 import { readJsonResponse } from "@/lib/http";
 
@@ -137,17 +137,14 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
     !status.ready;
 
   return (
-    <section className="card">
-      <div className="card__head">
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <MpLogo id="stockx" size={36} />
-          <div>
-            <div style={{ fontWeight: 500 }}>StockX</div>
-            <div className="t-small muted">{statusLine}</div>
-          </div>
+    <section className="connection" aria-labelledby="stockx-heading">
+      <div className="connection__head">
+        <div className="connection__identity">
+          <h2 id="stockx-heading">StockX</h2>
+          <span className={`connection__status${status?.connected && !status.reconnectRequired ? " connection__status--connected" : ""}`}>{state === "ready" && status?.connected && !status.reconnectRequired ? "Connected" : statusLine}</span>
         </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="connection__actions">
+          {state === "error" && <button type="button" onClick={recheck} className="btn btn--secondary">Try again</button>}
           {state === "loading" && (
             <Loader2
               size={14}
@@ -168,6 +165,7 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
         </div>
       </div>
 
+      {state === "ready" && status?.connected && status.ready && <p className="connection__description">{status.capabilities.listingCreation ? "Listing access enabled." : "Account connected. Listing access is not enabled."}</p>}
       {showNextStep && status?.nextStep && (
         <div style={{ padding: "12px 20px", borderTop: "1px solid var(--line)" }}>
           <div className="banner banner--warn">
@@ -207,7 +205,7 @@ export function StockXConnectionCard({ accessToken }: { accessToken: string | nu
 
       {error && (
         <div
-          className="t-small danger"
+          className="connection__error" role="alert"
           style={{ padding: "10px 20px", borderTop: "1px solid var(--line)" }}
         >
           <p style={{ margin: 0 }}>{error}</p>
@@ -234,7 +232,7 @@ function StockXAction({
   status: StockXStatus;
   busy: boolean;
   onConnect: () => void;
-  onDisconnect: () => void;
+  onDisconnect: () => Promise<void>;
   onRecheck: () => void;
 }) {
   if (status.reconnectRequired) {
@@ -248,14 +246,7 @@ function StockXAction({
         >
           <Plug size={13} aria-hidden="true" /> Reconnect
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onDisconnect}
-          className="btn btn--ghost btn--sm"
-        >
-          <Unplug size={13} aria-hidden="true" /> Disconnect
-        </button>
+        <ConnectionControls name="StockX" busy={busy} onDisconnect={onDisconnect} onRecheck={onRecheck} />
       </>
     );
   }
@@ -273,14 +264,7 @@ function StockXAction({
             <RefreshCw size={13} aria-hidden="true" /> Recheck
           </button>
         )}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onDisconnect}
-          className="btn btn--ghost btn--sm"
-        >
-          <Unplug size={13} aria-hidden="true" /> Disconnect
-        </button>
+        <ConnectionControls name="StockX" busy={busy} onDisconnect={onDisconnect} onRecheck={onRecheck} />
       </>
     );
   }

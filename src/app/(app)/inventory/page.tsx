@@ -592,7 +592,7 @@ export default function InventoryPage() {
       <main className="page inventory-page">
         <div className="page__head">
           <div className="page__title-row">
-            <span className="eyebrow">YOUR SELLING STUDIO</span>
+
             <h1 className="page__title">Your inventory<span className="title-count">{total}</span></h1>
             <p className="page__title-meta">Every item, from first photo to final sale.</p>
           </div>

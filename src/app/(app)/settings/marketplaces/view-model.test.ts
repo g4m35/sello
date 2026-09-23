@@ -6,6 +6,8 @@ import {
   ebayReadinessHelp,
   ebayReadinessLabels,
   getEbayActionModel,
+  getEbayConnectionStatus,
+  getEbaySalesPermissionLabel,
   getEbaySetupMessage,
   shouldAutoRefreshEbayReadiness,
   shouldOfferEbayLocationSetup,
@@ -37,6 +39,21 @@ function readiness(
 }
 
 describe("eBay marketplace settings view model", () => {
+  it("asks to reconnect a connected account with missing sales permission", () => {
+    const data = readiness({ ready: true, missing: [], salesReadPermission: false });
+    expect(getEbayConnectionStatus(data)).toBe("Connected");
+    expect(getEbaySalesPermissionLabel(data)).toBe("Permission needed");
+    expect(getEbayActionModel(data)).toMatchObject({ showPrimaryConnect: true, primaryConnectLabel: "Reconnect eBay" });
+  });
+
+  it("does not promise worker health when permission is present, or invent a missing permission", () => {
+    expect(getEbaySalesPermissionLabel(readiness({ salesReadPermission: true }))).toBe("Granted");
+    expect(getEbaySalesPermissionLabel(readiness())).toBe("Not verified");
+    expect(getEbayActionModel(readiness({ salesReadPermission: true })).showPrimaryConnect).toBe(false);
+    expect(getEbayActionModel(readiness({ salesReadPermission: null })).showPrimaryConnect).toBe(true);
+    expect(getEbayConnectionStatus(null)).toBe("Checking connection…");
+  });
+
   it("renders connected but incomplete production setup as finish-setup", () => {
     const model = getEbaySetupMessage(readiness());
 
@@ -53,13 +70,11 @@ describe("eBay marketplace settings view model", () => {
     expect(ebayReadinessHelp.inventory_location).toContain("ships from");
   });
 
-  it("does not show a primary Connect eBay action after the account is connected", () => {
-    const actions = getEbayActionModel(readiness());
+  it("does not show a primary Connect eBay action when connected with verified sales access", () => {
+    const actions = getEbayActionModel(readiness({ salesReadPermission: true }));
 
     expect(actions.showPrimaryConnect).toBe(false);
-    expect(actions.showSecondaryReconnect).toBe(true);
     expect(actions.primaryConnectLabel).toBe("Connect eBay");
-    expect(actions.secondaryReconnectLabel).toBe("Reconnect eBay");
   });
 
   it("keeps the primary Connect action for disconnected accounts", () => {
@@ -72,7 +87,6 @@ describe("eBay marketplace settings view model", () => {
     );
 
     expect(actions.showPrimaryConnect).toBe(true);
-    expect(actions.showSecondaryReconnect).toBe(false);
   });
 
   it("renders reconnect-required as an actionable reconnect message, not a generic failure", () => {
